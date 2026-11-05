@@ -1,483 +1,231 @@
 /**
- * CorrectionLoopDriver — the closed self-improvement loop for corrections (spec §3.6/§3.7/§3.8).
+ * Correction loop: route and verify (carryover row 32; 1.x `src/monitoring/CorrectionLoopDriver.ts` at
+ * 4f88880a45f0a119aae3cfd2ccaf9ace26d405b9, spec §3.6/§3.7/§3.8).
  *
- *   detect (Layer 0) → capture+distill → CorrectionLedger →
- *   gate (CorrectionAnalyzer) → ROUTE (this) → VERIFY (this).
+ *   capture (journal) → ledger records → gate (analyzer) → ROUTE (this) → VERIFY (this).
  *
- * The headline safety property — "the loop can never change the agent's policy
- * or mint a proposal on its own" — is enforced BY CONSTRUCTION (spec §3.8). The
- * driver's injected capabilities are EXACTLY:
- *   - addAction            (open an Evolution Action — a tracked to-do)
- *   - createInitiative     (open a draft Initiative in needs-user)
- *   - feedbackLoopbackPost (POST the agent's OWN /feedback route — traverses
- *                           anomaly/quality/length guards; never FeedbackManager.submit)
- *   - recordPreference     (write .instar/preferences.json — explicit-preference
- *                           + gate-passed + policy-keyword-clean records ONLY)
- *   - attentionRoute       (route a candidate to the Attention queue for human
- *                           disposition — inferred prefs + policy-keyword matches)
+ * The 1.x headline safety property, "the loop can never change the agent's policy or mint a proposal on its
+ * own", was enforced by construction: the driver's injected capabilities were exactly addAction,
+ * createInitiative, feedbackLoopbackPost, recordPreference and attentionRoute, and a regex downgraded a
+ * policy-relaxation learning from recordPreference to the attention queue.
  *
- * It is given NO ability to mint an EvolutionProposal (the ONLY thing the
- * autonomous auto-implement evaluator acts on) and NO direct write to MEMORY.md
- * / CLAUDE.md / feedback_*.md. So an auto-implemented policy change is
- * unreachable for anything this loop produces, regardless of
- * evolutionApprovalMode. A by-construction test pins ZERO proposals + ZERO
- * memory writes under autonomy ON.
- *
- * `kind` is signal, never authority — it routes a proposal / preferences write /
- * Attention item, never blocks or mutates on its own.
+ * In 2.0 the property is stronger and needs no injected capability list, because the loop has ONE route and it
+ * applies nothing (Part 21 §11; Rules 4, 10, 24, 57, 86, 116):
+ *  - Application is the owners' and is immediate. A `prefer` memory change is a standing style the preference
+ *    owner carries on every packet from the message that stated it; a memory failure teaches recall from its
+ *    first occurrence (Part 21 §16). "Current explicit instructions are honored through their owners without
+ *    waiting to recur", so nothing here waits for four restatements before a preference counts.
+ *  - ROUTE presents a gate-crossing cluster, at most `maxRoutesPerTick` per pass with the overflow carried
+ *    open, to the judgment owner: the retrospective review's recurrence duty, as `correctionCandidates` in its
+ *    packet. Whether the recurrence deserves root-cause work is the mind's call (Rule 25); the candidate grants
+ *    nothing and no wording decides its destination, so the 1.x regex policy filter has nothing to downgrade.
+ *    The presentation is durable on the pass's own reservation row, which is the route's acted-on event.
+ *  - VERIFY is a projection over the same journal (no tick, no OCC, no cluster transaction: there is one writer
+ *    and it already wrote). A presented cluster watches a fresh window of the kind's length (7 days for a
+ *    preference, 14 for an infra-gap). Any member key recurring inside the window reopens the whole cluster
+ *    with a fresh window, at most `maxReopens` times, then `inconclusive`. Silence is never success: with no
+ *    recurrence the cluster is `verified` only when the recorded packet grounding shows the guidance was
+ *    actually carried to the model in the window (1.x accepted disk presence; Part 21 §11 retires that). Answers
+ *    given in the window that never carried it are `inconclusive`; no answer in the window is `unknown`.
  */
-import type { CorrectionLedger, CorrectionRecord } from './CorrectionLedger.js';
-import type { CorrectionAnalyzer, GateVerdict } from './CorrectionAnalyzer.js';
-import crypto from 'node:crypto';
+import { createHash } from 'node:crypto';
+import { redact } from '../../src/recall/redact.js';
+import type { JournalView, Turn } from './journal.js';
+import { correctionOccurrences, correctionRecords, type CorrectionKind, type CorrectionOccurrence,
+  type CorrectionRecord } from './correction-ledger.js';
+import { analyzeCorrections, DEFAULT_CORRECTION_GATES, type CorrectionGates, type GateVerdict } from './correction-analyzer.js';
+import { captureWindow } from './correction-capture.js';
 
-/**
- * Deterministic policy-keyword filter (spec §3.6, NEW-A / P2). A learning that
- * tries to relax a safety/policy guard does NOT get silently vetoed (a regex
- * never wields blocking authority on its own); it is DOWNGRADED to the Attention
- * queue for one-tap human disposition. Returns true when the learning matches a
- * policy-relaxation pattern.
- */
-const POLICY_VERB = /\b(ignore|skip|bypass|disable|always allow|pre-?authorize|pre-?approved|no need to confirm|never (ask|prompt|gate|confirm|block))\b/i;
-const POLICY_NOUN = /\b(guard|gate|confirm(ation)?|safety|coherence|block|approval|permission|authoriz)\b/i;
+export type CorrectionStatus =
+  | 'open'         // recorded, not yet presented past the recurrence gate
+  | 'acted-on'     // presented to the judgment owner; verify window open
+  | 'verified'     // no routed cluster member recurred AND the guidance was carried in the window
+  | 'inconclusive' // recurred past maxReopens, or silence with answers that never carried the guidance
+  | 'reopened'     // a routed cluster member recurred; re-watching (bounded by maxReopens)
+  | 'unknown';     // the window closed with no answer in it: no relevant opportunity, nothing to conclude
 
-export function matchesPolicyRelaxation(learning: string): boolean {
-  const s = String(learning);
-  return POLICY_VERB.test(s) && POLICY_NOUN.test(s);
-}
+/** Verify-window (preference path), default 7 days. */
+export const DEFAULT_VERIFY_WINDOW_DAYS_PREFERENCE = 7;
+/** Verify-window (infra-gap path), default 14 days. */
+export const DEFAULT_VERIFY_WINDOW_DAYS_INFRA_GAP = 14;
+/** Max reopens before terminal `inconclusive` (default 2). */
+export const DEFAULT_MAX_REOPENS = 2;
+/** Max clusters presented per pass (spec §10 Slice-2 NEW-5). Overflow stays `open` and is re-evaluated next pass. */
+export const DEFAULT_MAX_ROUTES_PER_TICK = 5;
+/** Bound on the lesson text a candidate carries to the judgment owner. */
+export const CANDIDATE_LEARNING_CHARS = 300;
+/** Bound on the occurrence refs a candidate lists (the first and the latest). */
+export const CANDIDATE_OCCURRENCE_REFS = 8;
+/** The look-back the judgment owner is shown for the latest occurrence: the restatement and the reply before it. */
+export const CANDIDATE_CONTEXT_TURNS = 2;
+export const CANDIDATE_CONTEXT_CHARS = 200;
 
-/** The ONLY mutation capabilities the loop is given. Deliberately excludes any
- *  proposal-creation path AND any direct memory-file write (the by-construction
- *  authority guard, spec §3.8). */
-export interface CorrectionLoopDeps {
-  /** Open an Evolution Action (tracked self-improvement to-do). */
-  addAction: (opts: {
-    title: string;
-    description: string;
-    priority?: 'critical' | 'high' | 'medium' | 'low';
-    source?: string;
-    tags?: string[];
-  }) => { id: string };
-  /** Open a draft Initiative in needs-user (a human approves turning it real). */
-  createInitiative: (input: {
-    id: string;
-    title: string;
-    description: string;
-    phases: { name: string; status: string }[];
-    needsUser: boolean;
-    needsUserReason?: string;
-  }) => Promise<{ id: string }>;
-  /** POST the agent's OWN /feedback route. NEVER FeedbackManager.submit()
-   *  directly. May resolve to either a plain boolean (legacy: true=accepted) or a
-   *  structured {posted, rateLimited} so the driver can distinguish a 429
-   *  (rate-limited — carry the record to the next run) from a guard rejection
-   *  (the guard doing its job — do NOT retry). The route's feedbackLimiter is
-   *  10/min/IP, so a converged batch must serialize + back off (spec §10 Slice-2
-   *  NEW-2). */
-  feedbackLoopbackPost: (payload: {
-    type: string;
-    title: string;
-    description: string;
-  }) => Promise<boolean | FeedbackPostResult>;
-  /** Write an explicit, gate-passed, policy-keyword-clean preference. */
-  recordPreference: (payload: {
-    learning: string;
-    dedupeKey: string;
-    confidence?: number;
-  }) => void;
-  /** Route a candidate to the Attention queue for human disposition. Resolves to
-   *  true on delivery. */
-  attentionRoute: (item: {
-    id: string;
-    title: string;
-    summary: string;
-    priority?: string;
-  }) => Promise<boolean>;
-  now?: () => number;
-  /** Verify-window (preference path), default 7 days. */
+export interface CorrectionLoopOptions {
+  gates?: CorrectionGates;
   verifyWindowDaysPreference?: number;
-  /** Verify-window (infra-gap path), default 14 days. */
   verifyWindowDaysInfraGap?: number;
-  /** Max reopens before terminal `inconclusive` (default 2). */
   maxReopens?: number;
-  /** Whether to actually POST infra-gap learnings to /feedback (default false —
-   *  propose-only: queue a tracked Action + the human posts it). */
-  autoFeedback?: boolean;
-  /** Probe whether the loop-written preference entry still exists on disk
-   *  (silence ≠ effective; verified requires the application persisted). */
-  preferenceStillPresent?: (dedupeKey: string) => boolean;
-  /** Max records routed per route() call (spec §10 Slice-2 NEW-5). Overflow
-   *  stays `open` and is re-evaluated next run. Default 5. */
   maxRoutesPerTick?: number;
-  /** Delay (ms) inserted between successive loopback /feedback POSTs so a
-   *  converged infra-gap batch serializes under the route's 10/min IP limit
-   *  (spec §10 Slice-2 NEW-2). Default 0 (no delay) — set in production wiring. */
-  feedbackPostDelayMs?: number;
-  /** Injectable sleep (testability) — defaults to a real setTimeout. */
-  sleep?: (ms: number) => Promise<void>;
-  /** Structured audit sink — one line per route/verify decision. Never throws. */
-  audit?: (event: { decision: string; dedupeKey?: string; detail?: string }) => void;
 }
 
-/** Structured loopback-POST result (spec §10 Slice-2 NEW-2). */
-export interface FeedbackPostResult {
-  /** True iff the route accepted (201). */
-  posted: boolean;
-  /** True iff the route returned 429 (rate-limited) — carry to the next run. */
-  rateLimited?: boolean;
-}
+/** A cluster the retrospective was handed, as its reservation row records it (the durable route event). */
+export interface PresentedCorrection { id: string; kind: CorrectionKind; keys: string[] }
 
-function normalizeFeedbackResult(r: boolean | FeedbackPostResult): FeedbackPostResult {
-  return typeof r === 'boolean' ? { posted: r } : r;
+export interface CorrectionLifecycleRecord extends CorrectionRecord {
+  status: CorrectionStatus;
+  routedVia?: 'retrospective';
+  verifyWindowStart?: string;
+  verifyWindowEnd?: string;
+  /** Durable identity shared by every record presented as one analyzer cluster. */
+  routeClusterId?: string;
+  reopenCount: number;
+  /** The separately stated reason for the status (Rule 108). */
+  basis: string;
 }
 
 /** Stable lifecycle identity for one routed analyzer-time cluster. */
-export function correctionRouteClusterId(verdict: GateVerdict): string {
-  const identity = `${verdict.record.kind}\0${[...verdict.clusterDedupeKeys].sort().join('\0')}`;
-  return `corr-cluster:${crypto.createHash('sha256').update(identity).digest('hex')}`;
+export function correctionRouteClusterId(kind: CorrectionKind, clusterDedupeKeys: readonly string[]): string {
+  const identity = `${kind}\0${[...clusterDedupeKeys].sort().join('\0')}`;
+  return `corr-cluster:${createHash('sha256').update(identity).digest('hex')}`;
 }
 
-export interface RouteResult {
-  routed: CorrectionRecord[];
-  toFeedback: number;
-  toPreferences: number;
-  toAttention: number;
-  /** Gate-crossing records NOT routed this run (per-tick ceiling OR a 429 cut the
-   *  infra-gap batch short). They stay `open` and re-route next run. */
-  overflow: number;
-  /** True iff a loopback /feedback POST was rate-limited (429) this run, so the
-   *  remaining infra-gap records were carried to the next run. */
-  rateLimited: boolean;
+/** Every cluster a recorded retrospective reservation presented, oldest first, with the pass and its time. */
+export function presentedCorrections(view: JournalView): (PresentedCorrection & { pass: number; at: number })[] {
+  return view.retroPasses.flatMap(pass => (pass.corrections ?? []).map(item => ({ ...item, pass: pass.pass, at: pass.at })));
 }
 
-export interface VerifyResult { evaluated: CorrectionRecord[]; }
+const windowDaysFor = (kind: CorrectionKind, options: CorrectionLoopOptions) => kind === 'user-preference'
+  ? options.verifyWindowDaysPreference ?? DEFAULT_VERIFY_WINDOW_DAYS_PREFERENCE
+  : options.verifyWindowDaysInfraGap ?? DEFAULT_VERIFY_WINDOW_DAYS_INFRA_GAP;
 
-export class CorrectionLoopDriver {
-  constructor(
-    private readonly ledger: CorrectionLedger,
-    private readonly analyzer: CorrectionAnalyzer,
-    private readonly deps: CorrectionLoopDeps,
-  ) {}
+/** Did any durable member key log an occurrence inside [start, end)? End-bounded: a complete observation population. */
+const recurredWithin = (occurrences: readonly CorrectionOccurrence[], keys: ReadonlySet<string>, start: number, end: number) =>
+  occurrences.some(row => keys.has(row.dedupeKey) && row.detectedAt >= start && row.detectedAt < end);
 
-  private now(): number { return this.deps.now ? this.deps.now() : Date.now(); }
+/** What the recorded packet groundings say about guidance delivery inside the window: carried, never carried
+ * although answers were given, or no answer at all. Older rows without the preference list read as not carried. */
+function deliveryWithin(view: JournalView, operator: (item: Turn) => boolean, kind: CorrectionKind,
+  members: readonly CorrectionOccurrence[], start: number, end: number): 'delivered' | 'not-delivered' | 'no-answer' {
+  const answered = view.order.filter(turn => turn.accepted && operator(turn) && turn.at >= start && turn.at < end
+    && turn.modelState === 'complete' && turn.grounding !== undefined);
+  if (!answered.length) return 'no-answer';
+  const wanted = new Set(kind === 'user-preference' ? members.map(row => row.trigger)
+    : members.flatMap(row => row.target === undefined ? [] : [row.target]));
+  const carried = answered.some(turn => {
+    const grounding = turn.grounding!;
+    const shown = kind === 'user-preference' ? grounding.preferences ?? []
+      : [...grounding.history, ...grounding.recalled, ...grounding.memoryCandidates];
+    return shown.some(id => wanted.has(id));
+  });
+  return carried ? 'delivered' : 'not-delivered';
+}
 
-  private sleep(ms: number): Promise<void> {
-    if (ms <= 0) return Promise.resolve();
-    return this.deps.sleep ? this.deps.sleep(ms) : new Promise((r) => setTimeout(r, ms));
-  }
-
-  /**
-   * ROUTE step (spec §3.6): for each gate-crossing record, route it by kind:
-   *   user-preference + policy-keyword-clean → recordPreference()
-   *   user-preference + policy-keyword-match → Attention (human disposes)
-   *   infra-gap (autoFeedback ON)            → feedbackLoopbackPost()
-   *   infra-gap (autoFeedback OFF, default)  → tracked Action + draft Initiative (propose-only)
-   * Before invoking the external route, atomically open one durable cluster
-   * verify window + move every member to acted-on. Idempotent: an insight
-   * already past `open` is skipped by the analyzer's status:'open' filter.
-   *
-   * Bounded per run (spec §10 Slice-2):
-   *  - PER-TICK CEILING (NEW-5): at most `maxRoutesPerTick` records route per run.
-   *    Overflow stays `open` (re-routed next run); the overflow count is audited.
-   *  - BATCHED + 429-RETRY (NEW-2): autoFeedback infra-gap POSTs serialize with
-   *    `feedbackPostDelayMs` between them (the route's feedbackLimiter is 10/min/IP);
-   *    on the FIRST 429 the batch stops — remaining infra-gap records stay `open`
-   *    and are carried to the next run (no silent drop).
-   */
-  async route(): Promise<RouteResult> {
-    const result: RouteResult = { routed: [], toFeedback: 0, toPreferences: 0, toAttention: 0, overflow: 0, rateLimited: false };
-    const { crossed } = this.analyzer.analyze();
-    const maxRoutesPerTick = this.deps.maxRoutesPerTick && this.deps.maxRoutesPerTick > 0
-      ? this.deps.maxRoutesPerTick
-      : 5;
-
-    let routedThisTick = 0;
-    let feedbackPostsThisTick = 0;
-    for (const verdict of crossed) {
-      const rec = verdict.record;
-
-      // PER-TICK CEILING: stop routing once the ceiling is hit; the rest stay
-      // `open` and re-route next run.
-      if (routedThisTick >= maxRoutesPerTick) {
-        result.overflow++;
-        continue;
+/**
+ * Every record with its lifecycle, derived from the occurrences and the recorded presentations. A record that
+ * was never presented is `open`. A presented cluster is evaluated window by window up to `now`; the status is
+ * the state of the latest window.
+ */
+export function correctionLifecycle(view: JournalView, operator: (item: Turn) => boolean, now: number,
+  options: CorrectionLoopOptions = {}): CorrectionLifecycleRecord[] {
+  const occurrences = correctionOccurrences(view, operator);
+  const records = correctionRecords(view, operator);
+  const presented = presentedCorrections(view);
+  const maxReopens = options.maxReopens ?? DEFAULT_MAX_REOPENS;
+  return records.map(record => {
+    // The latest presentation of this key: a lesson that recurred after a settled window is re-presented as a new cycle.
+    const cluster = [...presented].reverse().find(item => item.keys.includes(record.dedupeKey));
+    if (!cluster) return { ...record, status: 'open' as const, reopenCount: 0, basis: 'not yet past the recurrence gate' };
+    const keys = new Set(cluster.keys), members = occurrences.filter(row => keys.has(row.dedupeKey));
+    const days = windowDaysFor(cluster.kind, options);
+    let start = cluster.at, reopenCount = 0;
+    let status: CorrectionStatus = 'acted-on', basis = `presented to the retrospective on pass ${String(cluster.pass)}; watching ${String(days)}d`;
+    for (;;) {
+      const end = start + days * 86400_000;
+      if (now < end) { if (reopenCount) { status = 'reopened'; basis = `recurred — reopened (${String(reopenCount)}/${String(maxReopens)}), watching ${String(days)}d more`; } break; }
+      if (recurredWithin(occurrences, keys, start, end)) {
+        if (reopenCount >= maxReopens) { status = 'inconclusive'; basis = `recurred after ${String(reopenCount)} reopens — terminal inconclusive`; break; }
+        reopenCount++; start = end; continue;
       }
-      // After a 429 cut the batch short, every remaining record is overflow too
-      // (carried to the next run) — do not attempt further routing this tick.
-      if (result.rateLimited) {
-        result.overflow++;
-        continue;
-      }
-
-      const routedVia = rec.kind === 'user-preference'
-        ? (matchesPolicyRelaxation(rec.learning) ? 'attention' : 'recordPreference')
-        : 'feedback';
-      const windowDays = rec.kind === 'user-preference'
-        ? (this.deps.verifyWindowDaysPreference ?? 7)
-        : (this.deps.verifyWindowDaysInfraGap ?? 14);
-      const start = new Date(this.now()).toISOString();
-      const end = new Date(this.now() + windowDays * 86400_000).toISOString();
-      const routeClusterId = correctionRouteClusterId(verdict);
-
-      // Durably retire the WHOLE cluster before any external side effect. The
-      // transition is all-or-none and OCC-guarded; a stale sibling prevents the
-      // side effect, so a conflict can never leave paraphrases able to reroute.
-      const transition = this.ledger.updateCluster(
-        verdict.clusterRecords.map((member) => ({ id: member.id, version: member.version })),
-        {
-          status: 'acted-on',
-          routedVia,
-          verifyWindowStart: start,
-          verifyWindowEnd: end,
-          routeClusterId,
-        },
-      );
-      if (!transition.ok) {
-        this.deps.audit?.({
-          decision: transition.conflict ? 'cluster-transition-conflict' : 'cluster-transition-failed',
-          dedupeKey: rec.dedupeKey,
-          detail: transition.conflict ? 'no side effect attempted' : transition.reason,
-        });
-        continue;
-      }
-      const transitionedRepresentative =
-        transition.records.find((member) => member.id === rec.id) ?? transition.records[0];
-
-      try {
-        if (rec.kind === 'user-preference') {
-          if (routedVia === 'attention') {
-            // P2: a policy-relaxation learning NEVER auto-records — route to a human.
-            const ok = await this.deps.attentionRoute({
-              id: `correction-policy:${rec.dedupeKey.slice(0, 40)}`,
-              title: 'Learned preference needs your approval (policy-relaxation)',
-              summary: rec.scrubbedSummary,
-              priority: 'medium',
-            });
-            if (ok) result.toAttention++;
-          } else {
-            this.deps.recordPreference({
-              learning: rec.learning,
-              dedupeKey: rec.dedupeKey,
-              confidence: rec.llmConfidence,
-            });
-            result.toPreferences++;
-            // Parallel /learn proposal is queued as a tracked Action (documentation,
-            // not the closing link). Bounded — no proposal minted.
-            this.deps.addAction({
-              title: `Durable-memory candidate: ${rec.scrubbedSummary}`,
-              description: `The correction loop recorded this as a preference (${rec.dedupeKey}). Consider converting to a durable feedback_* memory entry. This is documentation only — the preferences write already closed the loop.`,
-              priority: 'low',
-              source: 'correction-preference-loop',
-              tags: ['correction-learning', 'preference'],
-            });
-          }
-        } else if (this.deps.autoFeedback) {
-          // Serialize the batch: delay before every POST after the first so a
-          // converged batch can't trip the route's 10/min IP limit.
-          if (feedbackPostsThisTick > 0) await this.sleep(this.deps.feedbackPostDelayMs ?? 0);
-          // Loopback POST through the real route guards (anomaly/quality/length).
-          // The description carries ONLY the scrubbed summary, never raw learning.
-          const raw = await this.deps.feedbackLoopbackPost({
-            type: 'improvement',
-            title: `Recurring friction: ${rec.scrubbedSummary.slice(0, 120)}`,
-            description: rec.scrubbedSummary,
-          });
-          feedbackPostsThisTick++;
-          const fb = normalizeFeedbackResult(raw);
-          if (fb.rateLimited) {
-            // A 429 has no external effect. Atomically release the reservation
-            // back to open so the analyzer can retry on the next run.
-            const release = this.ledger.updateCluster(
-              transition.records.map((member) => ({ id: member.id, version: member.version })),
-              {
-                status: 'open',
-                routedVia: undefined,
-                verifyWindowStart: undefined,
-                verifyWindowEnd: undefined,
-                routeClusterId: undefined,
-              },
-            );
-            result.rateLimited = true;
-            result.overflow++;
-            this.deps.audit?.({
-              decision: release.ok ? 'feedback-429-carry' : 'feedback-429-release-failed',
-              dedupeKey: rec.dedupeKey,
-              detail: release.ok
-                ? 'cluster released to open'
-                : (release.conflict ? 'cluster changed after reservation' : release.reason),
-            });
-            continue;
-          }
-          if (fb.posted) result.toFeedback++;
-        } else {
-          // Propose-only default: a tracked Action + a draft Initiative; the
-          // human posts the feedback. No proposal minted.
-          const slug = rec.dedupeKey.replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 50);
-          this.deps.addAction({
-            title: `Infra-gap proposal: ${rec.scrubbedSummary}`,
-            description: `Recurring friction (${verdict.qualifyingOccurrences} support / ${verdict.distinctDays} days). Consider filing /feedback so Dawn can close the gap fleet-wide. Record ${rec.id}.`,
-            priority: 'medium',
-            source: 'correction-preference-loop',
-            tags: ['correction-learning', 'infra-gap'],
-          });
-          await this.deps.createInitiative({
-            id: `correction-infra-gap-${slug}`,
-            title: `Infra-gap: ${rec.scrubbedSummary.slice(0, 80)}`,
-            description: `The Correction & Preference Learning Sentinel detected a recurring infra-gap (record ${rec.id}). Approve to file /feedback (Rising Tide) so it helps every agent.`,
-            phases: [{ name: 'Approve + file /feedback', status: 'pending' }],
-            needsUser: true,
-            needsUserReason: 'Recurring infra-gap correction; human approval required before fleet-wide feedback.',
-          });
-        }
-      } catch (err) {
-        // At-most-once safety wins over an automatic retry: the durable cluster
-        // transition remains acted-on, and verification will make a missing
-        // preference inconclusive. Retrying after an ambiguous partial effect
-        // could duplicate a feedback/action/attention item.
-        this.deps.audit?.({
-          decision: 'route-effect-failed-no-retry',
-          dedupeKey: rec.dedupeKey,
-          detail: err instanceof Error ? err.message : String(err),
-        });
-        routedThisTick++;
-        continue;
-      }
-
-      result.routed.push(transitionedRepresentative);
-      routedThisTick++;
-      this.deps.audit?.({
-        decision: `routed:${routedVia}`,
-        dedupeKey: rec.dedupeKey,
-        detail: `${transition.records.length} cluster member(s)`,
-      });
+      const delivery = deliveryWithin(view, operator, cluster.kind, members, start, end);
+      status = delivery === 'delivered' ? 'verified' : delivery === 'no-answer' ? 'unknown' : 'inconclusive';
+      basis = delivery === 'delivered' ? 'no recurrence + guidance carried in a recorded packet — verified'
+        : delivery === 'no-answer' ? 'no recurrence but no answer in the window — no relevant opportunity'
+          : 'no recurrence but no recorded packet carried the guidance — inconclusive (silence ≠ effective)';
+      break;
     }
+    const end = start + days * 86400_000;
+    // A settled cluster is not the end of the lesson: a member recurring after its last window is a fresh open
+    // record for the gate (Rule 24: the recurrence is the bug), never an occurrence nobody reads (Rule 2).
+    if ((status === 'verified' || status === 'inconclusive' || status === 'unknown') && members.some(row => row.detectedAt >= end))
+      return { ...record, status: 'open' as const, reopenCount: 0, routeClusterId: cluster.id, basis: `recurred after ${status}; open for re-presentation` };
+    return { ...record, status, routedVia: 'retrospective' as const, verifyWindowStart: new Date(start).toISOString(),
+      verifyWindowEnd: new Date(end).toISOString(), routeClusterId: cluster.id, reopenCount, basis };
+  });
+}
 
-    if (result.overflow > 0) {
-      this.deps.audit?.({
-        decision: 'overflow-carried',
-        detail: `${result.overflow} gate-crossing records left open for next run (ceiling ${maxRoutesPerTick}${result.rateLimited ? ', batch cut by 429' : ''})`,
-      });
-    }
+/** One row of the judgment owner's packet: a gate-crossing cluster with its recorded support. Data, never an instruction. */
+export interface CorrectionCandidate {
+  id: string;
+  kind: CorrectionKind;
+  keys: string[];
+  /** The representative lesson, credential-redacted and bounded. */
+  learning: string;
+  support: number;
+  days: number;
+  sessions: number;
+  /** `turn:` refs of the first and latest occurrences (bounded), which the review may cite. */
+  occurrences: string[];
+  /** The latest restatement with the reply just before it, bounded. */
+  context: { fromUser: boolean; text: string }[];
+}
 
-    return result;
-  }
+/**
+ * ROUTE: the crossed clusters not yet presented, bounded per pass. Overflow stays open and is counted. The
+ * refs are the occurrence turns, so a finding that cites them cites records the journal holds.
+ */
+export function correctionCandidates(view: JournalView, operator: (item: Turn) => boolean, now: number,
+  options: CorrectionLoopOptions = {}): { candidates: CorrectionCandidate[]; overflow: number; refs: string[] } {
+  const occurrences = correctionOccurrences(view, operator);
+  const open = correctionLifecycle(view, operator, now, options).filter(record => record.status === 'open');
+  const { crossed } = analyzeCorrections(open, occurrences, options.gates ?? DEFAULT_CORRECTION_GATES, now);
+  const limit = options.maxRoutesPerTick && options.maxRoutesPerTick > 0 ? options.maxRoutesPerTick : DEFAULT_MAX_ROUTES_PER_TICK;
+  const ordered = [...crossed].sort((a, b) => a.record.createdAt.localeCompare(b.record.createdAt) || a.record.id.localeCompare(b.record.id));
+  const candidates = ordered.slice(0, limit).map(verdict => candidateOf(view, operator, occurrences, verdict));
+  return { candidates, overflow: Math.max(0, ordered.length - limit), refs: candidates.flatMap(item => [item.id, ...item.occurrences]) };
+}
 
-  /**
-   * VERIFY step (spec §3.7): for each elapsed acted-on or reopened cluster,
-   * decide one outcome across every durable member. Reopening starts a fresh
-   * window so an old occurrence cannot consume another reopen. The infra-gap
-   * path mirrors the preference path's recurrence-after watcher with the
-   * path-appropriate window and verdict:
-   *   - recurrence-after on ANY durable member key → reopen the whole cluster
-   *     (capped at maxReopens → inconclusive). This observes paraphrases routed
-   *     together without broadening to unrelated records of the same kind.
-   *   - PREFERENCE silence ≠ effective. `verified` only when (a) no cluster key
-   *     recurred in the window AND (b) the representative preference entry is
-   *     still present (not human-deleted as wrong). Otherwise inconclusive.
-   *   - INFRA-GAP silence → `inconclusive`, NOT `verified`. Unlike a preference
-   *     (where silence + persisted application closes the loop locally), the
-   *     infra-gap fix is cross-org — Dawn ships it through Rising Tide. The agent
-   *     cannot prove its /feedback proposal caused the fix, so silence (no
-   *     recurrence, proposal still open) is inconclusive by design — never a
-   *     false "verified" the agent didn't earn.
-   */
-  runVerification(): VerifyResult {
-    const evaluated: CorrectionRecord[] = [];
-    const maxReopens = this.deps.maxReopens ?? 2;
-    const groups = new Map<string, CorrectionRecord[]>();
-    const watchable = [
-      ...this.ledger.list({ status: 'acted-on', limit: 1000 }),
-      ...this.ledger.list({ status: 'reopened', limit: 1000 }),
-    ];
-    for (const record of watchable) {
-      const groupId = record.routeClusterId ?? `legacy-singleton:${record.id}`;
-      const group = groups.get(groupId) ?? [];
-      group.push(record);
-      groups.set(groupId, group);
-    }
+function candidateOf(view: JournalView, operator: (item: Turn) => boolean, occurrences: readonly CorrectionOccurrence[],
+  verdict: GateVerdict): CorrectionCandidate {
+  const keys = new Set(verdict.clusterDedupeKeys);
+  const rows = occurrences.filter(row => keys.has(row.dedupeKey));
+  const half = Math.floor(CANDIDATE_OCCURRENCE_REFS / 2);
+  const cited = rows.length <= CANDIDATE_OCCURRENCE_REFS ? rows : [...rows.slice(0, half), ...rows.slice(-half)];
+  const latest = rows[rows.length - 1];
+  const context = latest === undefined ? [] : captureWindow(view, operator, latest.trigger, CANDIDATE_CONTEXT_TURNS)
+    .map(turn => ({ fromUser: turn.fromUser, text: turn.text.slice(0, CANDIDATE_CONTEXT_CHARS) }));
+  return { id: `correction:${correctionRouteClusterId(verdict.record.kind, verdict.clusterDedupeKeys).slice('corr-cluster:'.length, 'corr-cluster:'.length + 16)}`,
+    kind: verdict.record.kind, keys: [...verdict.clusterDedupeKeys].sort(),
+    learning: redact(verdict.record.learning).text.slice(0, CANDIDATE_LEARNING_CHARS),
+    support: verdict.qualifyingOccurrences, days: verdict.distinctDays, sessions: verdict.distinctSessions,
+    occurrences: [...new Set(cited.map(row => `turn:${row.trigger}`))], context };
+}
 
-    for (const clusterRecords of groups.values()) {
-      clusterRecords.sort((a, b) =>
-        a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-      const rec = clusterRecords[0];
-      if (!rec.verifyWindowEnd || this.now() < Date.parse(rec.verifyWindowEnd)) continue;
-      if (!rec.verifyWindowStart) continue;
+/** The runner's read-only status block: records by kind and status, candidates waiting, overflow (Rule 39). */
+export function correctionReport(view: JournalView, operator: (item: Turn) => boolean, now: number, options: CorrectionLoopOptions = {}) {
+  const lifecycle = correctionLifecycle(view, operator, now, options);
+  const count = <K extends string>(key: (record: CorrectionLifecycleRecord) => K) => lifecycle.reduce((total, record) =>
+    ({ ...total, [key(record)]: (total[key(record)] ?? 0) + 1 }), {} as Partial<Record<K, number>>);
+  const routed = correctionCandidates(view, operator, now, options);
+  return { records: lifecycle.length, occurrences: lifecycle.reduce((total, record) => total + record.occurrenceCount, 0),
+    byKind: count(record => record.kind), byStatus: count(record => record.status),
+    candidates: routed.candidates.length, overflow: routed.overflow };
+}
 
-      // Did any durable member key recur within the verify window?
-      const windowStartMs = Date.parse(rec.verifyWindowStart);
-      const recurred = this.recurredSince(
-        clusterRecords.map((member) => member.dedupeKey),
-        windowStartMs,
-      );
-
-      let next: Parameters<CorrectionLedger['update']>[1];
-      let auditReason: string;
-      if (recurred) {
-        if (rec.reopenCount >= maxReopens) {
-          next = { status: 'inconclusive' };
-          auditReason = `recurred after ${rec.reopenCount} reopens — terminal inconclusive`;
-        } else {
-          const windowDays = rec.kind === 'user-preference'
-            ? (this.deps.verifyWindowDaysPreference ?? 7)
-            : (this.deps.verifyWindowDaysInfraGap ?? 14);
-          const start = new Date(this.now()).toISOString();
-          const end = new Date(this.now() + windowDays * 86400_000).toISOString();
-          next = {
-            status: 'reopened',
-            reopenCount: rec.reopenCount + 1,
-            verifyWindowStart: start,
-            verifyWindowEnd: end,
-          };
-          auditReason = `recurred — reopened (${rec.reopenCount + 1}/${maxReopens}), watching ${windowDays}d more`;
-        }
-      } else if (rec.kind === 'user-preference') {
-        // Silence ≠ effective. Verified ONLY if the application persisted.
-        const persisted = this.deps.preferenceStillPresent
-          ? this.deps.preferenceStillPresent(rec.dedupeKey)
-          : false;
-        next = persisted ? { status: 'verified' } : { status: 'inconclusive' };
-        auditReason = persisted
-          ? 'no recurrence + preference still on disk — verified'
-          : 'no recurrence but preference removed/absent — inconclusive (silence ≠ effective)';
-      } else {
-        // infra-gap fix is cross-org (Dawn ships it). Silence (no recurrence,
-        // proposal still open) is inconclusive — the agent never earns a
-        // "verified" it can't prove it caused.
-        next = { status: 'inconclusive' };
-        auditReason = 'infra-gap: no recurrence, fix is cross-org (Dawn) — inconclusive, not verified';
-      }
-
-      const res = this.ledger.updateCluster(
-        clusterRecords.map((member) => ({ id: member.id, version: member.version })),
-        next,
-      );
-      if (res.ok) {
-        evaluated.push(...res.records);
-        this.deps.audit?.({
-          decision: `verify:${next.status}`,
-          dedupeKey: rec.dedupeKey,
-          detail: `${auditReason}; ${clusterRecords.length} cluster member(s)`,
-        });
-      } else {
-        this.deps.audit?.({
-          decision: res.conflict ? 'verify-cluster-conflict' : 'verify-cluster-failed',
-          dedupeKey: rec.dedupeKey,
-          detail: res.conflict ? 'no cluster member changed' : res.reason,
-        });
-      }
-    }
-    return { evaluated };
-  }
-
-  /** Whether any durable cluster key logged an occurrence at/after a timestamp. */
-  private recurredSince(dedupeKeys: readonly string[], sinceMs: number): boolean {
-    // The ledger only exposes day-bucketed distinct counts + the record's own
-    // detectedAt. A recurrence advances the record's detected_at (the upsert sets
-    // detected_at = excluded.detected_at), so a recurrence-after-window-open is
-    // detectable as the record's current detectedAt being >= window start.
-    return dedupeKeys.some((dedupeKey) => {
-      const rec = this.ledger.getByDedupeKey(dedupeKey);
-      if (!rec) return false;
-      return Date.parse(rec.detectedAt) >= sinceMs && rec.occurrenceCount > 1;
-    });
-  }
+/** One short clause for the operator's pull status line. */
+export function correctionStatusClause(view: JournalView, operator: (item: Turn) => boolean, now: number): string {
+  const report = correctionReport(view, operator, now);
+  if (!report.records) return 'corrections: none recorded';
+  const watching = (report.byStatus['acted-on'] ?? 0) + (report.byStatus.reopened ?? 0);
+  return `corrections: ${String(report.records)} lesson${report.records === 1 ? '' : 's'} (${String(report.occurrences)} occurrence${report.occurrences === 1 ? '' : 's'})`
+    + `, ${String(report.candidates)} recurring for review, ${String(watching)} watched, ${String(report.byStatus.verified ?? 0)} verified`;
 }

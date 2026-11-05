@@ -1,30 +1,34 @@
 /**
- * CorrectionAnalyzer — the recurrence layer (spec §3.5).
+ * Correction analyzer: the recurrence layer (carryover row 32; 1.x `src/monitoring/CorrectionAnalyzer.ts` at
+ * 4f88880a45f0a119aae3cfd2ccaf9ace26d405b9, spec §3.5).
  *
- * Deterministic core: groups similar open records of the SAME kind, then decides
- * whether each cluster crosses the THREE-PRONGED AND recurrence gate:
+ * Deterministic core, carried unchanged: group similar open records of the SAME kind by complete-link
+ * clustering at the floor calibrated on the 2026-07-30 live 37-record corpus, then decide whether each cluster
+ * crosses the THREE-PRONGED AND recurrence gate:
  *
  *   minSupport         AND
  *   minDistinctDays    AND   (restart-proof calendar-day durability)
  *   second orthogonal prong:
- *     - user-preference → minDistinctSessions ≥ 2
- *     - infra-gap       → cross-agent Rising Tide consensus (delegated to the
- *                         existing /feedback clustering — single-agent never
- *                         auto-propagates to the fleet; that is the second
- *                         consensus layer)
+ *     - user-preference → minDistinctSessions ≥ 2 (two context resets)
+ *     - infra-gap       → three distinct days; 1.x delegated a cross-agent consensus prong to its fleet
+ *                         feedback clustering, which 2.0 does not have (one agent, its own journal).
  *
- * Code-determined provenance filter (poison resistance, spec §3.5): a record
- * counts toward the gate ONLY when its qualifying occurrences (those with
- * deterministicWeight ≥ DETERMINISTIC_THRESHOLD) satisfy the prongs.
- * `llm_confidence` is ADVISORY and never alone admits a record — the gate keys
- * on a CODE-determined field an injected prompt cannot steer.
+ * Code-determined provenance filter (poison resistance, spec §3.5): a record counts toward the gate ONLY when
+ * its qualifying occurrences (those with deterministicWeight ≥ LEARNING_DETERMINISTIC_THRESHOLD, here the
+ * verified operator) satisfy the prongs. Nothing the model wrote can steer the gate.
  *
- * Signal-only: this module decides gate-crossing + returns the verdicts. It does
- * NOT route, write preferences, POST feedback, or mutate authority — that is the
- * CorrectionLoopDriver's job (which is itself by-construction authority-bounded).
+ * What the gate means in 2.0 (Part 21 §11): crossing it does not apply anything. A preference is honored by the
+ * preference owner from its first statement and a forgotten fact teaches recall from its first failure, so an
+ * operator who still had to restate a lesson this often, across days and context resets, is reporting a
+ * recurrence. The verdicts are the candidate-selection policy for the judgment owner's recurrence duty
+ * (`correction-loop-driver.ts`), never authority: similarity relates records with recorded support and rewrites
+ * no key (Rules 10, 11, 24, 86).
+ *
+ * Signal-only: this module decides gate-crossing + returns the verdicts. It does NOT route, write preferences or
+ * mutate anything.
  */
-import { CorrectionLedger, type CorrectionRecord } from './CorrectionLedger.js';
-import { LEARNING_DETERMINISTIC_THRESHOLD } from './HumanAsDetectorLog.js';
+import { distinctCounts, normalizeLearning, LEARNING_DETERMINISTIC_THRESHOLD,
+  type CorrectionOccurrence, type CorrectionRecord } from './correction-ledger.js';
 
 export interface CorrectionGates {
   minSupport: number;
@@ -52,7 +56,7 @@ export const DEFAULT_CORRECTION_GATES: CorrectionGates = {
  * requires every pair in a cluster to meet this floor; unlike connected-
  * component/single-link grouping, a chain of partial overlaps cannot merge
  * distant learnings. The corpus calibration and excluded-edge measurements are
- * in docs/measurements/2026-07-30-correction-promotion-threshold.md.
+ * in 1.x docs/measurements/2026-07-30-correction-promotion-threshold.md.
  */
 export const DEFAULT_CORRECTION_SIMILARITY_THRESHOLD = 0.65;
 
@@ -64,7 +68,7 @@ export interface GateVerdict {
   clusterRecords: CorrectionRecord[];
   clusterDedupeKeys: string[];
   crosses: boolean;
-  /** Why it did/didn't cross — for audit + the Tier-1 supervisor. */
+  /** Why it did/didn't cross — for audit and the judgment owner. */
   reason: string;
   qualifyingOccurrences: number;
   distinctDays: number;
@@ -81,7 +85,7 @@ export interface CorrectionAnalyzeResult {
 }
 
 function learningTokenSet(learning: string): Set<string> {
-  const normalized = CorrectionLedger.normalizeLearning(learning);
+  const normalized = normalizeLearning(learning);
   return new Set(normalized ? normalized.split(' ') : []);
 }
 
@@ -115,7 +119,7 @@ export function clusterCorrectionRecords(
 
   for (const candidate of ordered) {
     const compatible = clusters.find((cluster) =>
-      cluster[0].kind === candidate.kind
+      cluster[0]!.kind === candidate.kind
       && cluster.every((member) =>
         correctionLearningSimilarity(member.learning, candidate.learning) >= threshold));
     if (compatible) {
@@ -128,84 +132,71 @@ export function clusterCorrectionRecords(
   return clusters;
 }
 
-export class CorrectionAnalyzer {
-  constructor(
-    private readonly ledger: CorrectionLedger,
-    private readonly gates: CorrectionGates = DEFAULT_CORRECTION_GATES,
-  ) {}
+/**
+ * Evaluate the recurrence gate against same-kind clusters of the `open` records handed in (the lifecycle decides
+ * which records are open; `noise` records are never gate-considered). Returns one verdict per cluster so one
+ * family can be presented at most once. Pure read over the occurrences.
+ */
+export function analyzeCorrections(open: readonly CorrectionRecord[], occurrences: readonly CorrectionOccurrence[],
+  gates: CorrectionGates = DEFAULT_CORRECTION_GATES, now = Date.now()): CorrectionAnalyzeResult {
+  const sinceMs = gates.windowDays && gates.windowDays > 0 ? now - gates.windowDays * 86400_000 : undefined;
+  const threshold = gates.deterministicThreshold ?? LEARNING_DETERMINISTIC_THRESHOLD;
 
-  /**
-   * Evaluate the recurrence gate against same-kind clusters of `open` records.
-   * Returns one verdict per cluster so one family can route at most once per
-   * tick. Pure read — never mutates the ledger (the driver acts on these).
-   * `noise`-kind records are never gate-considered.
-   */
-  analyze(): CorrectionAnalyzeResult {
-    const sinceMs = this.gates.windowDays && this.gates.windowDays > 0
-      ? Date.now() - this.gates.windowDays * 86400_000
-      : undefined;
-    const threshold = this.gates.deterministicThreshold ?? LEARNING_DETERMINISTIC_THRESHOLD;
+  const records = open
+    .filter((r) => r.kind !== 'noise' && (sinceMs === undefined || Date.parse(r.detectedAt) >= sinceMs))
+    .sort((a, b) => b.detectedAt.localeCompare(a.detectedAt) || a.id.localeCompare(b.id)).slice(0, 1000);
+  const clusters = clusterCorrectionRecords(records, gates.similarityThreshold ?? DEFAULT_CORRECTION_SIMILARITY_THRESHOLD);
 
-    const records = this.ledger
-      .list({ sinceMs, status: 'open', limit: 1000 })
-      .filter((r) => r.kind !== 'noise');
-    const clusters = clusterCorrectionRecords(
-      records,
-      this.gates.similarityThreshold ?? DEFAULT_CORRECTION_SIMILARITY_THRESHOLD,
-    );
+  const verdicts: GateVerdict[] = [];
+  let below = 0;
+  for (const clusterRecords of clusters) {
+    const rec = clusterRecords[0]!;
+    const clusterDedupeKeys = clusterRecords.map((record) => record.dedupeKey);
+    // Code-determined provenance filter: only occurrences whose Layer-0 weight
+    // crossed the threshold count toward the gate.
+    const counts = distinctCounts(occurrences, clusterDedupeKeys, threshold);
+    const supportOk = counts.qualifyingOccurrences >= gates.minSupport;
 
-    const verdicts: GateVerdict[] = [];
-    let below = 0;
-    for (const clusterRecords of clusters) {
-      const rec = clusterRecords[0];
-      const clusterDedupeKeys = clusterRecords.map((record) => record.dedupeKey);
-      // Code-determined provenance filter: only occurrences whose Layer-0 weight
-      // crossed the threshold count toward the gate.
-      const counts = this.ledger.distinctCounts(clusterDedupeKeys, threshold);
-      const supportOk = counts.qualifyingOccurrences >= this.gates.minSupport;
-
-      let crosses = false;
-      let reason: string;
-      if (rec.kind === 'user-preference') {
-        const daysOk = counts.distinctDays >= this.gates.minDistinctDaysPreference;
-        const sessionsOk = counts.distinctSessions >= this.gates.minDistinctSessionsPreference;
-        crosses = supportOk && daysOk && sessionsOk;
-        reason = crosses
-          ? `preference gate crossed: ${counts.qualifyingOccurrences} support / ${counts.distinctDays} days / ${counts.distinctSessions} sessions / ${clusterRecords.length} keys`
-          : `below preference gate (support ${counts.qualifyingOccurrences}/${this.gates.minSupport}, days ${counts.distinctDays}/${this.gates.minDistinctDaysPreference}, sessions ${counts.distinctSessions}/${this.gates.minDistinctSessionsPreference}, keys ${clusterRecords.length})`;
-      } else {
-        // infra-gap: minSupport AND minDistinctDays. The SECOND orthogonal prong
-        // (cross-agent Rising Tide consensus) is delegated to the /feedback
-        // clustering — single-agent gate-crossing routes a PROPOSAL, never an
-        // auto-fleet-propagation. The driver's autoFeedback gate is where that
-        // second layer applies; the single-agent gate here is days+support.
-        const daysOk = counts.distinctDays >= this.gates.minDistinctDaysInfraGap;
-        crosses = supportOk && daysOk;
-        reason = crosses
-          ? `infra-gap gate crossed: ${counts.qualifyingOccurrences} support / ${counts.distinctDays} days (cross-agent consensus applies downstream)`
-          : `below infra-gap gate (support ${counts.qualifyingOccurrences}/${this.gates.minSupport}, days ${counts.distinctDays}/${this.gates.minDistinctDaysInfraGap})`;
-      }
-
-      const verdict: GateVerdict = {
-        record: rec,
-        clusterRecords,
-        clusterDedupeKeys,
-        crosses,
-        reason,
-        qualifyingOccurrences: counts.qualifyingOccurrences,
-        distinctDays: counts.distinctDays,
-        distinctSessions: counts.distinctSessions,
-        distinctTopics: counts.distinctTopics,
-      };
-      verdicts.push(verdict);
-      if (!crosses) below++;
+    let crosses = false;
+    let reason: string;
+    if (rec.kind === 'user-preference') {
+      const daysOk = counts.distinctDays >= gates.minDistinctDaysPreference;
+      const sessionsOk = counts.distinctSessions >= gates.minDistinctSessionsPreference;
+      crosses = supportOk && daysOk && sessionsOk;
+      reason = crosses
+        ? `preference gate crossed: ${String(counts.qualifyingOccurrences)} support / ${String(counts.distinctDays)} days / ${String(counts.distinctSessions)} sessions / ${String(clusterRecords.length)} keys`
+        : `below preference gate (support ${String(counts.qualifyingOccurrences)}/${String(gates.minSupport)}, days ${String(counts.distinctDays)}/${String(gates.minDistinctDaysPreference)}, sessions ${String(counts.distinctSessions)}/${String(gates.minDistinctSessionsPreference)}, keys ${String(clusterRecords.length)})`;
+    } else {
+      // infra-gap: minSupport AND minDistinctDays. 1.x delegated a second cross-agent
+      // consensus prong to its fleet feedback clustering; 2.0 is one agent over its own
+      // journal, so the single-agent gate here (days + support) is the whole gate and
+      // its crossing is presented to the judgment owner, never applied.
+      const daysOk = counts.distinctDays >= gates.minDistinctDaysInfraGap;
+      crosses = supportOk && daysOk;
+      reason = crosses
+        ? `infra-gap gate crossed: ${String(counts.qualifyingOccurrences)} support / ${String(counts.distinctDays)} days`
+        : `below infra-gap gate (support ${String(counts.qualifyingOccurrences)}/${String(gates.minSupport)}, days ${String(counts.distinctDays)}/${String(gates.minDistinctDaysInfraGap)})`;
     }
 
-    return {
-      verdicts,
-      crossed: verdicts.filter((v) => v.crosses),
-      considered: records.length,
-      belowThreshold: below,
+    const verdict: GateVerdict = {
+      record: rec,
+      clusterRecords,
+      clusterDedupeKeys,
+      crosses,
+      reason,
+      qualifyingOccurrences: counts.qualifyingOccurrences,
+      distinctDays: counts.distinctDays,
+      distinctSessions: counts.distinctSessions,
+      distinctTopics: counts.distinctTopics,
     };
+    verdicts.push(verdict);
+    if (!crosses) below++;
   }
+
+  return {
+    verdicts,
+    crossed: verdicts.filter((v) => v.crosses),
+    considered: records.length,
+    belowThreshold: below,
+  };
 }

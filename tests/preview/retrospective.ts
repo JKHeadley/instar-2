@@ -14,6 +14,8 @@ import { promiseProposals, recordedPromises, type AgentPromise } from './agent-c
 import type { JournalView, Turn } from './journal.js';
 import { wholeReplySent } from './reply-parts.js';
 import { taskFields } from './answer-reading.js';
+import { correctionCandidates, type CorrectionCandidate, type PresentedCorrection } from './correction-loop-driver.js';
+import { correctionCases, evaluateCorrectionInstanceFix } from './correction-fix-gate.js';
 
 /** The one bounded, resumable retrospective consumer (Rules 8, 9, 16, 19, 24, 25, 48, 50, 51, 58, 85, 94, 104, 108).
  * It is a worker step like the step check, not a daemon: one review attempt per pass (plus at most
@@ -417,6 +419,8 @@ export interface RetroPass { pass: number; at: number; turnsSeen: number; cases:
    * absent on a pass recorded before they were kept, which falls back to the halving. */
   estimatedAnswerBytes?: number; outputTokens?: number;
   state?: 'complete' | 'failed' | 'unknown'; result?: RetroResult; reason?: string; completedAt?: number; reruns?: RetroRerun[];
+  /** Carryover row 32: the gate-crossing correction clusters this pass presented (its reservation row records them). */
+  corrections?: PresentedCorrection[];
   /** The duty follow-up (RETRO_DUTY_FOLLOWUP_QUESTION): the duties it asked about, the first answer's validated result
    * and usage held until the pass is recorded, and the follow-up call's own outcome. A crash between the reservation
    * and the pass's record leaves `held` durable, so recovery records the first answer as it stood (never replayed). */
@@ -677,7 +681,14 @@ export interface RetrospectivePlan { cases: RetroCase[]; omitted: { case: string
   prior: PriorContext; waiverAvailable: boolean; waiverRefs: string[]; reruns: string[];
   /** Recorded with the pass, so that if its answer runs over the cap the next ask can be sized from what this
    * estimate really cost rather than from a fixed fraction of it. */
-  estimatedAnswerBytes: number }
+  estimatedAnswerBytes: number;
+  /** Carryover row 32: the correction clusters this packet presents (recorded on the reservation row), and the
+   * ids a finding may cite for them (the candidate ids and their occurrence turns). */
+  corrections: PresentedCorrection[]; correctionRefs: string[] }
+/** The recurrence finding a presented correction candidate asks for, at the lengths the question states. */
+const CORRECTION_FINDING_BYTES = Buffer.byteLength(JSON.stringify({ duty: 'recurrence', refs: [`turn:${'x'.repeat(40)}`],
+  summary: 's'.repeat(RETRO_OUTCOME_REASON_CHARS), recurs: [`correction:${'x'.repeat(16)}`], rootCause: 'r'.repeat(RETRO_OUTCOME_REASON_CHARS),
+  structuralRemedy: { none: 'n'.repeat(RETRO_OUTCOME_REASON_CHARS) }, disposition: { owner: 'agent', next: 'n'.repeat(RETRO_OUTCOME_REASON_CHARS) } }));
 /** `reason` says whether the case carries a separately recorded reason of its own (Rule 108), so a
  * reassessment is held to the same presence check as a first grade. */
 interface PriorContext { grades: { id: string; seq: number; reason: boolean }[]; authorizations: string[] }
@@ -715,6 +726,11 @@ export function retrospectivePlan(view: JournalView, population: readonly RetroC
     && !owed.some(row => now - row.since >= RETRO_STALE_CASE_MS) && !rerunReady.length) return null;
   const reruns = rerunReady.slice(0, Math.min(RETRO_RERUN_MAX, spare - 1)).map(row => row.case);
   const prior = priorContext(view, population);
+  // Carryover row 32: the correction clusters past the recurrence gate, bounded per pass, as the recurrence
+  // duty's candidates. The review's own population names the operator's messages, so it is the operator here.
+  const populationIds = new Set(population.map(item => item.id));
+  const routed = correctionCandidates(view, turn => populationIds.has(`turn:${turn.id}`), now);
+  const candidateBytes = routed.candidates.length * CORRECTION_FINDING_BYTES;
   const cases: RetroCase[] = [], omitted: { case: string; reason: string }[] = [];
   // Two bounds, not one: the packet bound on what the review reads, and the answer bound on what it is asked
   // to write. An ask over the provider's output cap can never be answered, so a case that would push the
@@ -724,14 +740,14 @@ export function retrospectivePlan(view: JournalView, population: readonly RetroC
   // fits would plan nothing, record nothing, and so never widen again: the owed cases could not drain.
   for (const { item: owedItem } of owed) {
     const answerBudget = cases.length ? narrowed : RETRO_ANSWER_BUDGET_BYTES;
-    const estimate = estimatedAnswerBytes([...cases, owedItem]);
+    const estimate = estimatedAnswerBytes([...cases, owedItem]) + candidateBytes;
     // The same bounds as before, in the order that makes them cheap: the packet trial — the only expensive
     // term — is built only while the count and the answer budget still admit the case. Built first, it was
     // rebuilt once per OWED case, which on the live 980-case backlog is 980 whole packets per pass.
     if (cases.length < RETRO_MAX_CASES && estimate <= answerBudget) {
       const item = owedItem.deliveredReply === undefined ? owedItem
         : { ...owedItem, commitmentReview: commitmentPage(view, owedItem.id) };
-      if (Buffer.byteLength(packetOf([...cases, item], view, contextDigest, population, evidence, narrowed)) <= RETRO_MAX_STATE_BYTES) {
+      if (Buffer.byteLength(packetOf([...cases, item], view, contextDigest, population, evidence, narrowed, routed.candidates)) <= RETRO_MAX_STATE_BYTES) {
         cases.push(item); continue;
       }
     }
@@ -739,11 +755,12 @@ export function retrospectivePlan(view: JournalView, population: readonly RetroC
       ? 'bound: answer budget, deferred to a later pass' : 'bound: deferred to a later pass' });
   }
   if (!cases.length && !reruns.length) return null;
-  const state = packetOf(cases, view, contextDigest, population, evidence, narrowed);
-  return { cases, omitted, eligible: owed.length, state, estimatedAnswerBytes: estimatedAnswerBytes(cases),
+  const state = packetOf(cases, view, contextDigest, population, evidence, narrowed, routed.candidates);
+  return { cases, omitted, eligible: owed.length, state, estimatedAnswerBytes: estimatedAnswerBytes(cases) + candidateBytes,
     packetSha256: `sha256:${createHash('sha256').update(state).digest('hex')}`,
     prior: { grades: [...prior.grades, ...prior.index].map(row => ({ id: row.case, seq: row.seq, reason: row.reason !== undefined })), authorizations: prior.authorizations.map(row => row.id) },
-    waiverAvailable: evidence.waivers !== undefined, waiverRefs: waiverPacket(evidence, view.retroPasses.length)?.refs ?? [], reruns };
+    waiverAvailable: evidence.waivers !== undefined, waiverRefs: waiverPacket(evidence, view.retroPasses.length)?.refs ?? [], reruns,
+    corrections: routed.candidates.map(({ id, kind, keys }) => ({ id, kind, keys })), correctionRefs: routed.refs };
 }
 /** Bounded earlier context the review needs to judge recurrence and to reopen a settled grade on later evidence:
  * the newest settled grades in detail, and one rotating page of a compact index over every older one, so a
@@ -778,12 +795,15 @@ function priorContext(view: JournalView, population: readonly RetroCase[]) {
  * budget the cases were not sized to: live 2026-10-02 passes 10, 11 and 12 of Justin's root were planned at a
  * narrowed budget while the question still told the model it had the whole RETRO_ANSWER_BUDGET_BYTES, and all
  * three ran over the cap again — the narrowing reached the plan but never reached the model. */
-function packetOf(cases: readonly RetroCase[], view: JournalView, contextDigest: string, population: readonly RetroCase[], evidence: RetroSiblingEvidence, answerBudgetBytes: number) {
+function packetOf(cases: readonly RetroCase[], view: JournalView, contextDigest: string, population: readonly RetroCase[], evidence: RetroSiblingEvidence, answerBudgetBytes: number,
+  candidates: readonly CorrectionCandidate[] = []) {
   const openRefs = new Set(cases.filter(item => item.category === 'open').map(item => item.id.slice('open:'.length)));
   const ids = new Set(cases.map(item => item.id));
   const prior = priorContext(view, population);
   const waivers = waiverPacket(evidence, view.retroPasses.length)?.packet ?? WAIVER_EVIDENCE_UNAVAILABLE;
+  // A packet with no candidates is byte-identical to one built before candidates existed.
   return JSON.stringify({ duties: RETROSPECTIVE_DUTIES, gravityWells: GRAVITY_WELLS, contextDigest, answerBudgetBytes, waiverEvidence: waivers,
+    ...(candidates.length ? { correctionCandidates: candidates } : {}),
     priorFindings: completePasses(view).flatMap(pass => pass.result!.findings).slice(-20)
       .map(item => ({ id: item.id, duty: item.duty, summary: item.summary, open: openRefs.has(item.id) })),
     priorGrades: prior.grades.filter(row => !ids.has(row.case)),
@@ -826,7 +846,7 @@ export const RETROSPECTIVE_QUESTION = [
   'uninspected: ONE ARRAY of the duty ids, from the duties list, that you did NOT inspect, usually because their producer evidence is missing; [] when you inspected every duty. Every duty id you leave out of it is recorded as inspected by you, so list every duty you did not actually inspect. Whether an inspected duty found something is read from your findings (and, for gravity-well, from the wells you mark observed): do not restate it. If waiverEvidence is an "unavailable" string, list "waiver-recurrence". Write each id exactly as the duties list spells it: a list holding an id that is not in the duties list cannot be read, so NO duty is recorded inspected.',
   `gravity-well: ONE ARRAY of exactly ${String(GRAVITY_WELLS.length)} entries, one per gravity well IN THE ORDER of the gravityWells list: 0 when no case shows it, or a non-empty array of the context refs that show it. No note and no other value.`,
   'unsupported-reversal: flag an answer that reversed an earlier position after pushback with no new evidence or argument (Rule 19). A reversal for a new reason is fine.',
-  'recurrence: when a repair or problem repeats an earlier one, open a root-cause finding (recurs lists the earlier finding ids or refs and is never empty: a problem with nothing earlier in the context to repeat is not a recurrence; rootCause names the suspected cause) and decide structuralRemedy: {"remove": what structure that demands care could be removed} or {"none": why no bounded change is warranted now}. A repeated repair is not resolved by repeating it.',
+  'recurrence: when a repair or problem repeats an earlier one, open a root-cause finding (recurs lists the earlier finding ids or refs and is never empty: a problem with nothing earlier in the context to repeat is not a recurrence; rootCause names the suspected cause) and decide structuralRemedy: {"remove": what structure that demands care could be removed} or {"none": why no bounded change is warranted now}. A repeated repair is not resolved by repeating it. correctionCandidates, when present, lists lessons the operator had to restate past the recurrence policy although each was already in force (support, days and sessions are recorded counts; context is quoted data): each candidate is a recurrence whose recurs cites its id and whose refs cite its occurrences.',
   'removable-attention and workaround: repeated manual work or a hand-made workaround worth turning into a permanent ability; propose the candidate, do not assume every repetition deserves a tool.',
   `waste (efficiency duty): look for wasted calls, repeated questions, redundant replies, held or failed work that cost attempts; ALWAYS write eff, one sentence of at most ${String(RETRO_EFFICIENCY_CHARS)} characters, even if nothing was found.`,
   'process-tier and proportionality: from each answer\'s meta (checks, held, state), judge whether the checking it received matched its stakes: too little for a consequential or irreversible answer, or too much for a trivial one. waiver-recurrence: from waiverEvidence, flag waivers that recur for the same rule or acts without a prior waiver; cite only the waiver/act ids shown on this page. summary.waivers, summary.linkedActs and summary.counts are the EXACT totals; the summary\'s id arrays and the waiver/act rows are one rotating page of a larger set, notShown says how many a later page still holds, and sizeUnavailable counts items too large to show on any page (their detail is unavailable here, not absent). Never read a short or empty page as a zero total: the counts are the total, an incomplete window proves nothing.',
@@ -993,7 +1013,7 @@ export function feedbackRecordOf(entry: RetroFeedback, pass: number, at: number,
  * I-proofroom2-20261003-114332, 12 of 22 cases supplied, 1418 output tokens), and each patch isolated only that
  * instance. The recurring cause was the rule that any one refusal discards the whole pass; this removes the rule
  * (Rule 24, plan #412). */
-export function validateRetrospective(raw: unknown, plan: Pick<RetrospectivePlan, 'cases'> & Partial<Pick<RetrospectivePlan, 'omitted' | 'prior' | 'waiverAvailable' | 'waiverRefs'>>,
+export function validateRetrospective(raw: unknown, plan: Pick<RetrospectivePlan, 'cases'> & Partial<Pick<RetrospectivePlan, 'omitted' | 'prior' | 'waiverAvailable' | 'waiverRefs' | 'correctionRefs'>>,
   view: JournalView, pass: number, at = 0, contextDigest = 'sha256:unbound', zone = 'America/Los_Angeles'): RetroResult {
   const body = object(raw, 'answer');
   const prior = plan.prior ?? { grades: [], authorizations: [] };
@@ -1008,13 +1028,14 @@ export function validateRetrospective(raw: unknown, plan: Pick<RetrospectivePlan
     ...prior.grades.filter(row => row.reason).map(row => row.id)]);
   const priorAuth = new Set(prior.authorizations);
   const waiverRefs = new Set(plan.waiverRefs ?? []);
+  const correctionRefs = new Set(plan.correctionRefs ?? []);
   const refSeq = (ref: string) => byId.get(ref)?.seq ?? followRefs.get(ref) ?? priorGrades.get(ref) ?? -1;
   /** Improvement proof: an actual record (message, answer, verdict or repair) at or after the point the item
    * was opened. An open item, a finding, an authorization or a rerun is an obligation or a copy, never proof. */
   const laterRecord = (evidence: readonly string[], opened: number) =>
     evidence.some(ref => /^(?:turn|answer|verdict|repair):/u.test(ref) && refSeq(ref) >= opened);
   const refs = (value: unknown, name: string, allowPrior = false) => list(value, name).map(ref => {
-    if (typeof ref !== 'string' || !(ids.has(ref) || followRefs.has(ref) || waiverRefs.has(ref)
+    if (typeof ref !== 'string' || !(ids.has(ref) || followRefs.has(ref) || waiverRefs.has(ref) || correctionRefs.has(ref)
       || allowPrior && (priorFindings.has(ref) || priorGrades.has(ref) || priorAuth.has(ref))))
       throw Error(`retrospective: ${name} cites an unknown record`);
     return ref;
@@ -1215,6 +1236,13 @@ export function validateRetrospective(raw: unknown, plan: Pick<RetrospectivePlan
       // Proof, not prose: the improvement item it verifies and evidence later than that item was opened.
       const of = typeof item.improvementOf === 'string' ? item.improvementOf.replace(/^open:/u, '') : '';
       if (!openIds.has(of)) throw Error('retrospective: a verified improvement names the open improvement item it proves');
+      // Carryover row 32: a fix claimed for a recorded correction is admitted only through the correspondence
+      // gate (the item's own feedback case is the review the correction owns; a decoy item never admits).
+      const admission = evaluateCorrectionInstanceFix(view, { originCorrection: correctionCases(view).has(target), correctionCase: target,
+        ...(openItems.get(of)?.feedback === undefined ? {} : { claimedClassReviewRef: openItems.get(of)!.feedback! }), reviewEnabled: true });
+      if (!admission.allow) throw Error(admission.reason === 'correspondence-mismatch'
+        ? 'retrospective: a verified improvement proves the improvement item opened for that feedback'
+        : `retrospective: correction fix refused: ${admission.reason}`);
       if (openItems.get(of)?.feedback !== target) throw Error('retrospective: a verified improvement proves the improvement item opened for that feedback');
       const opened = priorFindings.get(of) ?? Number.MAX_SAFE_INTEGER;
       const evidence = refs(item.evidence, 'improvement evidence');

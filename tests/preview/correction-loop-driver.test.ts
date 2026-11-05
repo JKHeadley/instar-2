@@ -1,502 +1,336 @@
 /**
- * Unit — CorrectionLoopDriver routing + by-construction authority + closed loop
- * (spec §3.6/§3.7/§3.8).
+ * Unit — correction loop: route and verify (carryover row 32; 1.x tests/unit/CorrectionLoopDriver.test.ts at
+ * 4f88880a, spec §3.6/§3.7/§3.8).
  *
- * Pins: explicit-preference (policy-clean) → recordPreference; policy-relaxation
- * → Attention (NEVER recordPreference); infra-gap (autoFeedback OFF) → tracked
- * Action + draft Initiative (NOT a /feedback POST); infra-gap (autoFeedback ON)
- * → feedbackLoopbackPost; by-construction authority (the LoopDeps interface
- * carries no proposal-minting + no memory-write); closed-loop verify — silence
- * ≠ effective (verified only if the preference persists); recurrence reopens
- * capped at maxReopens.
+ * Pins, as in 1.x: one clustered lesson routes once and retires every supporting paraphrase; a route is bounded per
+ * pass with overflow carried open; the closed loop verifies only when nothing recurred AND the guidance was really
+ * in force (silence ≠ effective); a sibling recurrence reopens the whole cluster with a fresh window; the reopen
+ * cap ends inconclusive; nothing the loop does can write memory or grant authority. Where 1.x pinned its injected
+ * capability list, its regex policy filter, its OCC cluster transaction and its loopback feedback POST, 2.0 pins
+ * the one route it has (the retrospective's recurrence duty), the durable reservation that records it, and the
+ * packet grounding that proves delivery. Both sides of each boundary are exercised, and every case reads the
+ * same journal after a reopen.
  */
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import { CorrectionLedger } from '../../src/monitoring/CorrectionLedger.js';
-import { CorrectionAnalyzer } from '../../src/monitoring/CorrectionAnalyzer.js';
-import {
-  CorrectionLoopDriver,
-  matchesPolicyRelaxation,
-  type CorrectionLoopDeps,
-} from '../../src/monitoring/CorrectionLoopDriver.js';
+import { describe, it, expect } from 'vitest';
+import { correctionCandidates, correctionLifecycle, correctionReport, correctionRouteClusterId, correctionStatusClause,
+  DEFAULT_MAX_REOPENS, DEFAULT_MAX_ROUTES_PER_TICK, DEFAULT_VERIFY_WINDOW_DAYS_INFRA_GAP, DEFAULT_VERIFY_WINDOW_DAYS_PREFERENCE,
+  type PresentedCorrection } from './correction-loop-driver.js';
+import { dedupeKey, getByDedupeKey } from './correction-ledger.js';
+import { correctionWorld, T, type CorrectionWorld } from './correction-fixture.js';
+
+const DAY = 86400_000;
+/** A preference restated 4 times across 2 days and 2 context resets: the 1.x seedCrossingPreference. */
+function seedCrossingPreference(w: CorrectionWorld, learning: string | string[], start = '2026-05-01T10:00:00Z') {
+  const texts = typeof learning === 'string' ? [learning, learning, learning, learning] : learning;
+  texts.forEach((text, i) => {
+    if (i === 2) w.summarize(T(start) + DAY - 3600_000);
+    w.preference(text, T(start) + (i % 2) * DAY + i * 60_000);
+  });
+}
+/** A fact forgotten 4 times across 3 days: the 1.x seedCrossingInfraGap. */
+function seedCrossingInfraGap(w: CorrectionWorld, fact: string, start = '2026-05-01T10:00:00Z') {
+  const sources: string[] = [];
+  for (let i = 0; i < 4; i++) sources.push(w.forgotten(fact, 'What was it again?', T(start) + (i % 3) * DAY + i * 60_000).source);
+  return sources;
+}
+const present = (w: CorrectionWorld, at: number, options: { state?: 'complete' | 'failed' | 'unknown'; limit?: number } = {}) => {
+  const routed = correctionCandidates(w.view, w.operator, at, options.limit ? { maxRoutesPerTick: options.limit } : {});
+  const corrections: PresentedCorrection[] = routed.candidates.map(({ id, kind, keys }) => ({ id, kind, keys }));
+  w.pass(at, { corrections, ...(options.state ? { state: options.state } : {}) });
+  return routed;
+};
+const statuses = (w: CorrectionWorld, now: number, options = {}) => correctionLifecycle(w.view, w.operator, now, options);
+const PARAPHRASES = ['alpha beta gamma delta theta', 'alpha beta gamma epsilon theta', 'alpha beta gamma zeta theta', 'alpha beta gamma eta theta'];
 
 describe('CorrectionLoopDriver', () => {
-  let ledger: CorrectionLedger | null = null;
-  afterEach(() => { ledger?.close(); ledger = null; });
-
-  function fresh(): CorrectionLedger {
-    ledger = new CorrectionLedger({ dbPath: ':memory:', machineId: 'test', maxOccurrencesPerKey: 200 });
-    return ledger;
-  }
-
-  function seedCrossingPreference(l: CorrectionLedger, learning: string) {
-    for (let i = 0; i < 4; i++) {
-      l.record({ kind: 'user-preference', learning, scrubbedSummary: `summary of ${learning}`, deterministicWeight: 3, topicId: 1, sessionId: `session-${(i % 2) + 1}`, detectedAt: `2026-05-0${(i % 2) + 1}T10:00:00Z` });
-    }
-  }
-  function seedCrossingInfraGap(l: CorrectionLedger, learning: string) {
-    for (let i = 0; i < 4; i++) {
-      l.record({ kind: 'infra-gap', learning, scrubbedSummary: `summary of ${learning}`, deterministicWeight: 3, topicId: 1, detectedAt: `2026-05-0${(i % 3) + 1}T10:00:00Z` });
-    }
-  }
-
-  function deps(overrides: Partial<CorrectionLoopDeps> = {}): {
-    deps: CorrectionLoopDeps;
-    recordPreference: ReturnType<typeof vi.fn>;
-    attentionRoute: ReturnType<typeof vi.fn>;
-    feedbackLoopbackPost: ReturnType<typeof vi.fn>;
-    addAction: ReturnType<typeof vi.fn>;
-    createInitiative: ReturnType<typeof vi.fn>;
-  } {
-    const recordPreference = vi.fn();
-    const attentionRoute = vi.fn(async () => true);
-    const feedbackLoopbackPost = vi.fn(async () => true);
-    const addAction = vi.fn(() => ({ id: 'ACT-1' }));
-    const createInitiative = vi.fn(async () => ({ id: 'INIT-1' }));
-    return {
-      recordPreference, attentionRoute, feedbackLoopbackPost, addAction, createInitiative,
-      deps: {
-        addAction, createInitiative, feedbackLoopbackPost, recordPreference, attentionRoute,
-        ...overrides,
-      },
-    };
-  }
-
-  describe('routing split', () => {
-    it('explicit-preference (policy-clean) → recordPreference()', async () => {
-      const l = fresh();
-      seedCrossingPreference(l, 'lead with the one action');
-      const d = deps();
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      const result = await driver.route();
-      expect(d.recordPreference).toHaveBeenCalledTimes(1);
-      expect(result.toPreferences).toBe(1);
-      expect(d.attentionRoute).not.toHaveBeenCalled();
+  describe('routing (one route: the judgment owner)', () => {
+    it('a crossing preference becomes a candidate for the retrospective; below the gate it stays open', () => {
+      const w = correctionWorld();
+      try {
+        w.preference('lead with the one action', T('2026-05-01T10:00:00Z'));
+        w.preference('lead with the one action', T('2026-05-02T10:00:00Z'));
+        expect(correctionCandidates(w.view, w.operator, T('2026-05-10T00:00:00Z')).candidates).toEqual([]);
+        expect(statuses(w, T('2026-05-10T00:00:00Z'))[0]).toMatchObject({ status: 'open', reopenCount: 0 });
+        const v = correctionWorld();
+        try {
+          seedCrossingPreference(v, 'lead with the one action');
+          const routed = correctionCandidates(v.view, v.operator, T('2026-05-10T00:00:00Z'));
+          expect(routed.candidates).toHaveLength(1);
+          expect(routed.candidates[0]).toMatchObject({ kind: 'user-preference', support: 4, days: 2, sessions: 2, learning: 'lead with the one action',
+            keys: [dedupeKey('user-preference', 'lead with the one action')] });
+          expect(routed.candidates[0]!.occurrences).toHaveLength(4);
+          expect(routed.candidates[0]!.context.map(turn => turn.fromUser)).toEqual([false, true]);
+          expect(routed.refs).toEqual([routed.candidates[0]!.id, ...routed.candidates[0]!.occurrences]);
+          expect(routed.overflow).toBe(0);
+        } finally { v.close(); }
+      } finally { w.close(); }
     });
 
-    it('routes one clustered preference once and retires every supporting paraphrase', async () => {
-      const l = fresh();
-      [
-        'alpha beta gamma delta theta',
-        'alpha beta gamma epsilon theta',
-        'alpha beta gamma zeta theta',
-        'alpha beta gamma eta theta',
-      ].forEach((learning, i) => {
-        l.record({
-          kind: 'user-preference',
-          learning,
-          scrubbedSummary: learning,
-          deterministicWeight: 3,
-          sessionId: `session-${(i % 2) + 1}`,
-          detectedAt: `2026-05-0${(i % 2) + 1}T10:00:00Z`,
-        });
-      });
-      const d = deps();
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      expect((await driver.route()).toPreferences).toBe(1);
-      expect(d.recordPreference).toHaveBeenCalledTimes(1);
-      expect(l.list({ status: 'open', limit: 100 })).toHaveLength(0);
-      expect(l.list({ status: 'acted-on', limit: 100 })).toHaveLength(4);
-      expect((await driver.route()).toPreferences).toBe(0);
-      expect(d.recordPreference).toHaveBeenCalledTimes(1);
+    it('routes one clustered preference once and retires every supporting paraphrase', () => {
+      const w = correctionWorld();
+      try {
+        seedCrossingPreference(w, PARAPHRASES);
+        const now = T('2026-05-10T00:00:00Z');
+        const routed = present(w, now);
+        expect(routed.candidates).toHaveLength(1);
+        expect(routed.candidates[0]!.keys).toHaveLength(4);
+        const after = statuses(w, now);
+        expect(after.filter(record => record.status === 'open')).toHaveLength(0);
+        expect(after.filter(record => record.status === 'acted-on')).toHaveLength(4);
+        const clusterIds = new Set(after.map(record => record.routeClusterId));
+        expect(clusterIds.size).toBe(1);
+        expect(after.every(record => record.routedVia === 'retrospective' && record.verifyWindowStart === new Date(now).toISOString()
+          && record.verifyWindowEnd === new Date(now + DEFAULT_VERIFY_WINDOW_DAYS_PREFERENCE * DAY).toISOString())).toBe(true);
+        expect(correctionCandidates(w.view, w.operator, now + 1000).candidates).toHaveLength(0);
+        w.reopen();
+        expect(statuses(w, now)).toEqual(after);
+      } finally { w.close(); }
     });
 
-    it('atomically aborts a stale cluster before invoking the external side effect', async () => {
-      const l = fresh();
-      const learnings = [
-        'alpha beta gamma delta theta',
-        'alpha beta gamma epsilon theta',
-        'alpha beta gamma zeta theta',
-        'alpha beta gamma eta theta',
-      ];
-      learnings.forEach((learning, i) => {
-        l.record({
-          kind: 'user-preference',
-          learning,
-          scrubbedSummary: learning,
-          deterministicWeight: 3,
-          sessionId: `session-${(i % 2) + 1}`,
-          detectedAt: `2026-05-0${(i % 2) + 1}T10:00:00Z`,
-        });
-      });
-      const analyzer = new CorrectionAnalyzer(l);
-      const stale = analyzer.analyze();
-      // Advance one member after analysis so its version no longer matches the
-      // verdict. The cluster transition must be all-or-none and pre-effect.
-      l.record({
-        kind: 'user-preference',
-        learning: learnings[1],
-        scrubbedSummary: learnings[1],
-        deterministicWeight: 3,
-        sessionId: 'session-3',
-        detectedAt: '2026-05-03T10:00:00Z',
-      });
-      const audit = vi.fn();
-      const d = deps({ audit });
-      const staleAnalyzer = { analyze: () => stale } as CorrectionAnalyzer;
-      const driver = new CorrectionLoopDriver(l, staleAnalyzer, d.deps);
-
-      const result = await driver.route();
-      expect(result.routed).toHaveLength(0);
-      expect(d.recordPreference).not.toHaveBeenCalled();
-      expect(l.list({ status: 'open', limit: 100 })).toHaveLength(4);
-      expect(audit).toHaveBeenCalledWith(expect.objectContaining({
-        decision: 'cluster-transition-conflict',
-        detail: 'no side effect attempted',
-      }));
+    it('a pass that failed after reserving still counts as presented: no retry after an ambiguous outcome', () => {
+      const w = correctionWorld();
+      try {
+        seedCrossingPreference(w, 'lead with the one action');
+        const now = T('2026-05-10T00:00:00Z');
+        present(w, now, { state: 'failed' });
+        expect(statuses(w, now)[0]!.status).toBe('acted-on');
+        expect(correctionCandidates(w.view, w.operator, now + 1000).candidates).toHaveLength(0);
+        // The neighbor: a reservation that presented nothing leaves the record open and routable.
+        const v = correctionWorld();
+        try {
+          seedCrossingPreference(v, 'lead with the one action');
+          v.pass(now, { state: 'failed' });
+          expect(statuses(v, now)[0]!.status).toBe('open');
+          expect(correctionCandidates(v.view, v.operator, now + 1000).candidates).toHaveLength(1);
+        } finally { v.close(); }
+      } finally { w.close(); }
     });
 
-    it('does not retry an ambiguous external failure after the durable transition', async () => {
-      const l = fresh();
-      seedCrossingPreference(l, 'lead with the one action');
-      const recordPreference = vi.fn(() => {
-        throw new Error('ambiguous preference write failure');
-      });
-      const audit = vi.fn();
-      const d = deps({ recordPreference, audit });
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-
-      expect((await driver.route()).routed).toHaveLength(0);
-      expect(recordPreference).toHaveBeenCalledTimes(1);
-      expect(l.list({ status: 'acted-on', limit: 100 })).toHaveLength(1);
-      await driver.route();
-      expect(recordPreference).toHaveBeenCalledTimes(1);
-      expect(audit).toHaveBeenCalledWith(expect.objectContaining({
-        decision: 'route-effect-failed-no-retry',
-      }));
+    it('wording decides nothing: a policy-relaxation preference takes the same single route, applies nothing and writes no memory', () => {
+      const w = correctionWorld();
+      try {
+        seedCrossingPreference(w, 'from now on skip the safety confirmation guard');
+        const now = T('2026-05-10T00:00:00Z');
+        const memoryBefore = w.view.memory.length;
+        const routed = present(w, now);
+        expect(routed.candidates).toHaveLength(1);
+        expect(statuses(w, now)[0]).toMatchObject({ status: 'acted-on', routedVia: 'retrospective' });
+        expect(w.view.memory).toHaveLength(memoryBefore);
+        // A plain preference is routed identically.
+        const v = correctionWorld();
+        try {
+          seedCrossingPreference(v, 'lead with the one action');
+          const plain = present(v, now);
+          expect(Object.keys(plain.candidates[0]!).sort()).toEqual(Object.keys(routed.candidates[0]!).sort());
+          expect(statuses(v, now)[0]!.routedVia).toBe('retrospective');
+        } finally { v.close(); }
+      } finally { w.close(); }
     });
 
-    it('policy-relaxation preference → Attention, NEVER recordPreference()', async () => {
-      const l = fresh();
-      seedCrossingPreference(l, 'from now on skip the safety confirmation guard');
-      const d = deps();
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      const result = await driver.route();
-      expect(d.recordPreference).not.toHaveBeenCalled();
-      expect(d.attentionRoute).toHaveBeenCalledTimes(1);
-      expect(result.toAttention).toBe(1);
-    });
-
-    it('infra-gap (autoFeedback OFF, default) → tracked Action + draft Initiative, NOT a /feedback POST', async () => {
-      const l = fresh();
-      seedCrossingInfraGap(l, 'force push nag every session');
-      const d = deps({ autoFeedback: false });
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      await driver.route();
-      expect(d.addAction).toHaveBeenCalled();
-      expect(d.createInitiative).toHaveBeenCalledTimes(1);
-      expect(d.feedbackLoopbackPost).not.toHaveBeenCalled();
-    });
-
-    it('infra-gap (autoFeedback ON) → feedbackLoopbackPost with the scrubbed summary only', async () => {
-      const l = fresh();
-      seedCrossingInfraGap(l, 'force push nag every session');
-      const d = deps({ autoFeedback: true });
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      const result = await driver.route();
-      expect(d.feedbackLoopbackPost).toHaveBeenCalledTimes(1);
-      const payload = d.feedbackLoopbackPost.mock.calls[0][0];
-      expect(payload.description).toContain('summary of');
-      expect(result.toFeedback).toBe(1);
-    });
-  });
-
-  describe('matchesPolicyRelaxation (deterministic policy-keyword filter)', () => {
-    it('matches verb + safety/policy noun', () => {
-      expect(matchesPolicyRelaxation('skip the confirmation gate')).toBe(true);
-      expect(matchesPolicyRelaxation('never ask me to confirm the push')).toBe(true);
-      expect(matchesPolicyRelaxation('disable the safety guard')).toBe(true);
-    });
-    it('does NOT match an ordinary preference', () => {
-      expect(matchesPolicyRelaxation('lead with the one action')).toBe(false);
-      expect(matchesPolicyRelaxation('use plain language')).toBe(false);
-    });
-  });
-
-  describe('by-construction authority guard (§3.8) — autonomy ON, ZERO proposals + ZERO memory writes', () => {
-    it('the only mutation deps are addAction / createInitiative / feedbackLoopbackPost / recordPreference / attentionRoute', async () => {
-      const l = fresh();
-      seedCrossingPreference(l, 'lead with the one action');
-      seedCrossingInfraGap(l, 'force push nag');
-      // Simulate evolutionApprovalMode 'autonomous' ON — the loop has no path to
-      // mint a proposal regardless, because the dep simply isn't in the interface.
-      const d = deps({ autoFeedback: true });
-      const depKeys = Object.keys(d.deps);
-      // No proposal-mint, no memory-write capability is present.
-      expect(depKeys).not.toContain('createProposal');
-      expect(depKeys).not.toContain('mintProposal');
-      expect(depKeys).not.toContain('writeMemory');
-      expect(depKeys).not.toContain('writeClaudeMd');
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      await driver.route();
-      // createInitiative is only ever called with needsUser:true (human approves).
-      for (const call of d.createInitiative.mock.calls) {
-        expect(call[0].needsUser).toBe(true);
-      }
+    it('an infra-gap crossing (4 support / 3 days) is a candidate too; 2 days is not', () => {
+      const w = correctionWorld();
+      try {
+        seedCrossingInfraGap(w, 'the force push guard asks every session');
+        const routed = correctionCandidates(w.view, w.operator, T('2026-05-10T00:00:00Z'));
+        expect(routed.candidates).toHaveLength(1);
+        expect(routed.candidates[0]).toMatchObject({ kind: 'infra-gap', support: 4, days: 3 });
+        const v = correctionWorld();
+        try {
+          for (let i = 0; i < 5; i++) v.forgotten('the force push guard asks every session', 'What was it again?', T('2026-05-01T10:00:00Z') + (i % 2) * DAY + i * 60_000);
+          expect(correctionCandidates(v.view, v.operator, T('2026-05-10T00:00:00Z')).candidates).toHaveLength(0);
+        } finally { v.close(); }
+      } finally { w.close(); }
     });
   });
 
   describe('closed-loop verify (§3.7)', () => {
-    it('a preference whose dedupeKey did not recur AND still on disk → verified', async () => {
-      const l = fresh();
-      seedCrossingPreference(l, 'lead with the one action');
-      const dedupeKey = CorrectionLedger.dedupeKey('user-preference', 'lead with the one action');
-      let nowMs = Date.parse('2026-05-10T00:00:00Z');
-      const d = deps({
-        now: () => nowMs,
-        verifyWindowDaysPreference: 7,
-        preferenceStillPresent: () => true,
-      });
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      await driver.route();
-      // Advance past the verify window.
-      nowMs = Date.parse('2026-05-20T00:00:00Z');
-      const verify = driver.runVerification();
-      expect(verify.evaluated.length).toBe(1);
-      expect(l.getByDedupeKey(dedupeKey)!.status).toBe('verified');
+    it('a preference whose cluster did not recur AND was carried in a recorded packet → verified', () => {
+      const w = correctionWorld();
+      try {
+        const source = w.preference('lead with the one action', T('2026-05-01T10:00:00Z'));
+        seedCrossingPreference(w, 'lead with the one action', '2026-05-01T11:00:00Z');
+        const key = dedupeKey('user-preference', 'lead with the one action');
+        const routedAt = T('2026-05-10T00:00:00Z');
+        present(w, routedAt);
+        w.reply('how is the garden?', T('2026-05-12T00:00:00Z'), { preferences: [source] });
+        expect(getByDedupeKey(statuses(w, T('2026-05-14T00:00:00Z')), key)).toMatchObject({ status: 'acted-on' });
+        const verified = getByDedupeKey(statuses(w, T('2026-05-20T00:00:00Z')), key)!;
+        expect(verified).toMatchObject({ status: 'verified', reopenCount: 0 });
+        expect(verified.basis).toContain('verified');
+        w.reopen();
+        expect(getByDedupeKey(statuses(w, T('2026-05-20T00:00:00Z')), key)!.status).toBe('verified');
+      } finally { w.close(); }
     });
 
-    it('SILENCE alone is NOT effective — verified requires the preference persisted', async () => {
-      const l = fresh();
-      seedCrossingPreference(l, 'lead with the one action');
-      const dedupeKey = CorrectionLedger.dedupeKey('user-preference', 'lead with the one action');
-      let nowMs = Date.parse('2026-05-10T00:00:00Z');
-      const d = deps({
-        now: () => nowMs,
-        verifyWindowDaysPreference: 7,
-        // The user deleted the preference (it was wrong) — silence is NOT success.
-        preferenceStillPresent: () => false,
-      });
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      await driver.route();
-      nowMs = Date.parse('2026-05-20T00:00:00Z');
-      driver.runVerification();
-      expect(l.getByDedupeKey(dedupeKey)!.status).toBe('inconclusive');
+    it('SILENCE alone is NOT effective — answers that never carried the guidance are inconclusive, and no answer at all is unknown', () => {
+      const w = correctionWorld();
+      try {
+        seedCrossingPreference(w, 'lead with the one action');
+        const key = dedupeKey('user-preference', 'lead with the one action');
+        present(w, T('2026-05-10T00:00:00Z'));
+        // Answers in the window, none carrying the preference (the recorded packet has no such source).
+        w.reply('how is the garden?', T('2026-05-12T00:00:00Z'), { preferences: [] });
+        w.reply('and the shed?', T('2026-05-13T00:00:00Z'));
+        const silent = getByDedupeKey(statuses(w, T('2026-05-20T00:00:00Z')), key)!;
+        expect(silent.status).toBe('inconclusive');
+        expect(silent.basis).toContain('silence');
+        const v = correctionWorld();
+        try {
+          seedCrossingPreference(v, 'lead with the one action');
+          present(v, T('2026-05-10T00:00:00Z'));
+          expect(getByDedupeKey(statuses(v, T('2026-05-20T00:00:00Z')), key)).toMatchObject({ status: 'unknown' });
+        } finally { v.close(); }
+      } finally { w.close(); }
     });
 
-    it('a sibling recurrence reopens the cluster, then a clean fresh window verifies it', async () => {
-      const l = fresh();
-      const learnings = [
-        'alpha beta gamma delta theta',
-        'alpha beta gamma epsilon theta',
-        'alpha beta gamma zeta theta',
-        'alpha beta gamma eta theta',
-      ];
-      learnings.forEach((learning, i) => {
-        l.record({
-          kind: 'user-preference',
-          learning,
-          scrubbedSummary: learning,
-          deterministicWeight: 3,
-          sessionId: `session-${(i % 2) + 1}`,
-          detectedAt: `2026-05-0${(i % 2) + 1}T10:00:00Z`,
-        });
-      });
-      let nowMs = Date.parse('2026-05-10T00:00:00Z');
-      const d = deps({
-        now: () => nowMs,
-        verifyWindowDaysPreference: 7,
-        preferenceStillPresent: () => true,
-      });
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      await driver.route();
-      const actedOn = l.list({ status: 'acted-on', limit: 100 });
-      expect(new Set(actedOn.map((record) => record.routeClusterId)).size).toBe(1);
-      expect(actedOn.every((record) => Boolean(record.routeClusterId))).toBe(true);
-
-      // A non-representative wording recurs after the shared verify window opens.
-      nowMs = Date.parse('2026-05-15T00:00:00Z');
-      l.record({
-        kind: 'user-preference',
-        learning: learnings[3],
-        scrubbedSummary: learnings[3],
-        deterministicWeight: 3,
-        sessionId: 'session-3',
-        detectedAt: '2026-05-15T00:00:00Z',
-      });
-      nowMs = Date.parse('2026-05-20T00:00:00Z');
-      const verify = driver.runVerification();
-      expect(verify.evaluated).toHaveLength(4);
-      expect(l.list({ status: 'verified', limit: 100 })).toHaveLength(0);
-      const reopened = l.list({ status: 'reopened', limit: 100 });
-      expect(reopened).toHaveLength(4);
-      expect(reopened.every((record) =>
-        record.verifyWindowStart === '2026-05-20T00:00:00.000Z')).toBe(true);
-
-      // The old May 15 occurrence predates the reset start, so it cannot burn
-      // another reopen. With no new recurrence, the fresh window verifies all.
-      nowMs = Date.parse('2026-05-30T00:00:00Z');
-      expect(driver.runVerification().evaluated).toHaveLength(4);
-      expect(l.list({ status: 'verified', limit: 100 })).toHaveLength(4);
-      expect(l.list({ status: 'reopened', limit: 100 })).toHaveLength(0);
+    it('a sibling recurrence reopens the cluster, then a clean fresh window verifies it', () => {
+      const w = correctionWorld();
+      try {
+        seedCrossingPreference(w, PARAPHRASES);
+        const routedAt = T('2026-05-10T00:00:00Z');
+        present(w, routedAt);
+        const actedOn = statuses(w, routedAt);
+        expect(new Set(actedOn.map((record) => record.routeClusterId)).size).toBe(1);
+        expect(actedOn.every((record) => Boolean(record.routeClusterId))).toBe(true);
+        // A non-representative wording recurs after the shared verify window opens.
+        const recurrence = w.preference(PARAPHRASES[3]!, T('2026-05-15T00:00:00Z'));
+        // The fresh window starts where the elapsed one ended (deterministic, not at a later tick).
+        const freshStart = routedAt + DEFAULT_VERIFY_WINDOW_DAYS_PREFERENCE * DAY;
+        const reopened = statuses(w, T('2026-05-20T00:00:00Z'));
+        expect(reopened).toHaveLength(4);
+        expect(reopened.filter(record => record.status === 'verified')).toHaveLength(0);
+        expect(reopened.every(record => record.status === 'reopened' && record.reopenCount === 1
+          && record.verifyWindowStart === new Date(freshStart).toISOString())).toBe(true);
+        // The old May 15 occurrence predates the fresh start, so it cannot burn another reopen. With no new
+        // recurrence and the guidance carried, the fresh window verifies all four.
+        w.reply('how is the garden?', T('2026-05-19T00:00:00Z'), { preferences: [recurrence] });
+        const settled = statuses(w, T('2026-05-30T00:00:00Z'));
+        expect(settled.filter(record => record.status === 'verified')).toHaveLength(4);
+        expect(settled.filter(record => record.status === 'reopened')).toHaveLength(0);
+      } finally { w.close(); }
     });
 
-    it('a new recurrence in the fresh second window reaches the reopen cap', async () => {
-      const l = fresh();
-      const learning = 'lead with the one action';
-      seedCrossingPreference(l, learning);
-      const dedupeKey = CorrectionLedger.dedupeKey('user-preference', learning);
-      let nowMs = Date.parse('2026-05-10T00:00:00Z');
-      const d = deps({
-        now: () => nowMs,
-        verifyWindowDaysPreference: 7,
-        maxReopens: 1,
-        preferenceStillPresent: () => true,
-      });
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      await driver.route();
+    it('a new recurrence in the fresh second window reaches the reopen cap', () => {
+      const w = correctionWorld();
+      try {
+        const learning = 'lead with the one action';
+        seedCrossingPreference(w, learning);
+        const key = dedupeKey('user-preference', learning);
+        const routedAt = T('2026-05-10T00:00:00Z');
+        present(w, routedAt);
+        w.preference(learning, T('2026-05-15T00:00:00Z'));
+        const freshStart = routedAt + DEFAULT_VERIFY_WINDOW_DAYS_PREFERENCE * DAY;
+        expect(getByDedupeKey(statuses(w, T('2026-05-20T00:00:00Z'), { maxReopens: 1 }), key)).toMatchObject({
+          status: 'reopened', reopenCount: 1, verifyWindowStart: new Date(freshStart).toISOString() });
+        // This occurrence is genuinely new relative to the reset start, so the second elapsed window reaches
+        // maxReopens and becomes inconclusive.
+        w.preference(learning, T('2026-05-20T00:00:00Z'));
+        expect(getByDedupeKey(statuses(w, T('2026-05-30T00:00:00Z'), { maxReopens: 1 }), key)).toMatchObject({ status: 'inconclusive', reopenCount: 1 });
+        // With the default cap the same history is still watching a third window.
+        expect(getByDedupeKey(statuses(w, T('2026-05-30T00:00:00Z')), key)).toMatchObject({ status: 'reopened', reopenCount: 2 });
+        expect(DEFAULT_MAX_REOPENS).toBe(2);
+      } finally { w.close(); }
+    });
 
-      nowMs = Date.parse('2026-05-15T00:00:00Z');
-      l.record({
-        kind: 'user-preference',
-        learning,
-        scrubbedSummary: learning,
-        deterministicWeight: 3,
-        sessionId: 'session-3',
-        detectedAt: '2026-05-15T00:00:00Z',
-      });
-      nowMs = Date.parse('2026-05-20T00:00:00Z');
-      driver.runVerification();
-      expect(l.getByDedupeKey(dedupeKey)).toMatchObject({
-        status: 'reopened',
-        reopenCount: 1,
-        verifyWindowStart: '2026-05-20T00:00:00.000Z',
-      });
-
-      // This occurrence is genuinely new relative to the reset start, so the
-      // second elapsed window reaches maxReopens and becomes inconclusive.
-      nowMs = Date.parse('2026-05-25T00:00:00Z');
-      l.record({
-        kind: 'user-preference',
-        learning,
-        scrubbedSummary: learning,
-        deterministicWeight: 3,
-        sessionId: 'session-4',
-        detectedAt: '2026-05-25T00:00:00Z',
-      });
-      nowMs = Date.parse('2026-05-30T00:00:00Z');
-      expect(driver.runVerification().evaluated).toHaveLength(1);
-      expect(l.getByDedupeKey(dedupeKey)).toMatchObject({
-        status: 'inconclusive',
-        reopenCount: 1,
-      });
+    it('a recurrence after a settled window reopens the lesson for the gate instead of being ignored', () => {
+      const w = correctionWorld();
+      try {
+        seedCrossingPreference(w, 'lead with the one action');
+        const key = dedupeKey('user-preference', 'lead with the one action');
+        present(w, T('2026-05-10T00:00:00Z'));
+        expect(getByDedupeKey(statuses(w, T('2026-05-20T00:00:00Z')), key)!.status).toBe('unknown');
+        w.preference('lead with the one action', T('2026-05-21T00:00:00Z'));
+        const again = getByDedupeKey(statuses(w, T('2026-05-22T00:00:00Z')), key)!;
+        expect(again.status).toBe('open');
+        expect(again.basis).toContain('recurred after');
+        expect(correctionCandidates(w.view, w.operator, T('2026-05-22T00:00:00Z')).candidates.map(item => item.keys)).toEqual([[key]]);
+      } finally { w.close(); }
     });
   });
 
-  describe('infra-gap closed-loop verify (spec §10 Slice-2 #7)', () => {
-    it('infra-gap silence (no recurrence, fix is cross-org) → inconclusive, NOT verified', async () => {
-      const l = fresh();
-      seedCrossingInfraGap(l, 'force push nag every session');
-      const dedupeKey = CorrectionLedger.dedupeKey('infra-gap', 'force push nag every session');
-      let nowMs = Date.parse('2026-05-10T00:00:00Z');
-      const d = deps({ autoFeedback: true, now: () => nowMs, verifyWindowDaysInfraGap: 14 });
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      await driver.route();
-      expect(l.getByDedupeKey(dedupeKey)!.status).toBe('acted-on');
-      // Advance past the 14-day infra-gap window; no recurrence.
-      nowMs = Date.parse('2026-05-30T00:00:00Z');
-      driver.runVerification();
-      // Cross-org fix can't be self-attributed → inconclusive, never verified.
-      expect(l.getByDedupeKey(dedupeKey)!.status).toBe('inconclusive');
+  describe('infra-gap closed-loop verify', () => {
+    it('infra-gap silence with the lesson carried by recall → verified; with no answer → unknown (14-day window)', () => {
+      const w = correctionWorld();
+      try {
+        const sources = seedCrossingInfraGap(w, 'the force push guard asks every session');
+        const key = dedupeKey('infra-gap', 'the force push guard asks every session');
+        const routedAt = T('2026-05-10T00:00:00Z');
+        present(w, routedAt);
+        const during = statuses(w, T('2026-05-20T00:00:00Z'));
+        expect(getByDedupeKey(during, key)).toMatchObject({ status: 'acted-on',
+          verifyWindowEnd: new Date(routedAt + DEFAULT_VERIFY_WINDOW_DAYS_INFRA_GAP * DAY).toISOString() });
+        w.reply('what does the guard do?', T('2026-05-18T00:00:00Z'), { recalled: [sources[0]!] });
+        expect(getByDedupeKey(statuses(w, T('2026-05-30T00:00:00Z')), key)!.status).toBe('verified');
+        const v = correctionWorld();
+        try {
+          seedCrossingInfraGap(v, 'the force push guard asks every session');
+          present(v, routedAt);
+          expect(getByDedupeKey(statuses(v, T('2026-05-30T00:00:00Z')), key)!.status).toBe('unknown');
+        } finally { v.close(); }
+      } finally { w.close(); }
     });
 
-    it('infra-gap recurrence-after on the SAME dedupeKey → reopened (uses the 14d window)', async () => {
-      const l = fresh();
-      seedCrossingInfraGap(l, 'force push nag every session');
-      const dedupeKey = CorrectionLedger.dedupeKey('infra-gap', 'force push nag every session');
-      let nowMs = Date.parse('2026-05-10T00:00:00Z');
-      const d = deps({ autoFeedback: true, now: () => nowMs, verifyWindowDaysInfraGap: 14, maxReopens: 2 });
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      await driver.route();
-      // The friction recurs AFTER the proposal (a new occurrence advances detected_at).
-      nowMs = Date.parse('2026-05-15T00:00:00Z');
-      l.record({ kind: 'infra-gap', learning: 'force push nag every session', scrubbedSummary: 'nag', deterministicWeight: 3, topicId: 1, detectedAt: '2026-05-15T00:00:00Z' });
-      // Advance past the window end and verify.
-      nowMs = Date.parse('2026-05-30T00:00:00Z');
-      driver.runVerification();
-      expect(l.getByDedupeKey(dedupeKey)!.status).toBe('reopened');
-      expect(l.getByDedupeKey(dedupeKey)!.reopenCount).toBe(1);
-    });
-  });
-
-  describe('per-tick add ceiling (spec §10 Slice-2 NEW-5)', () => {
-    it('caps routed records at maxRoutesPerTick; overflow stays open + counted', async () => {
-      const l = fresh();
-      // 7 distinct crossing preferences; ceiling of 3.
-      const learnings = ['amber', 'bronze', 'cobalt', 'denim', 'emerald', 'fuchsia', 'gold'];
-      for (let p = 0; p < 7; p++) {
-        for (let i = 0; i < 4; i++) {
-          l.record({ kind: 'user-preference', learning: learnings[p], scrubbedSummary: `s${p}`, deterministicWeight: 3, topicId: 1, sessionId: `session-${(i % 2) + 1}`, detectedAt: `2026-05-0${(i % 2) + 1}T10:00:00Z` });
-        }
-      }
-      const d = deps({ maxRoutesPerTick: 3 });
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      const result = await driver.route();
-      expect(result.routed.length).toBe(3);
-      expect(result.overflow).toBe(4); // 7 crossing − 3 routed
-      // The 4 overflow records are still `open` (re-route next run).
-      const stillOpen = l.list({ status: 'open', limit: 100 }).filter((r) => r.kind === 'user-preference').length;
-      expect(stillOpen).toBe(4);
-    });
-
-    it('a second run routes the carried-over overflow (idempotent re-route)', async () => {
-      const l = fresh();
-      const learnings = ['amber', 'bronze', 'cobalt', 'denim', 'emerald'];
-      for (let p = 0; p < 5; p++) {
-        for (let i = 0; i < 4; i++) {
-          l.record({ kind: 'user-preference', learning: learnings[p], scrubbedSummary: `s${p}`, deterministicWeight: 3, topicId: 1, sessionId: `session-${(i % 2) + 1}`, detectedAt: `2026-05-0${(i % 2) + 1}T10:00:00Z` });
-        }
-      }
-      const d = deps({ maxRoutesPerTick: 3 });
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      const r1 = await driver.route();
-      expect(r1.routed.length).toBe(3);
-      expect(r1.overflow).toBe(2);
-      const r2 = await driver.route();
-      expect(r2.routed.length).toBe(2); // the carried-over overflow
-      expect(r2.overflow).toBe(0);
+    it('infra-gap recurrence-after on the SAME dedupeKey → reopened (uses the 14d window)', () => {
+      const w = correctionWorld();
+      try {
+        seedCrossingInfraGap(w, 'the force push guard asks every session');
+        const key = dedupeKey('infra-gap', 'the force push guard asks every session');
+        present(w, T('2026-05-10T00:00:00Z'));
+        w.forgotten('the force push guard asks every session', 'What was it again?', T('2026-05-15T00:00:00Z'));
+        expect(getByDedupeKey(statuses(w, T('2026-05-30T00:00:00Z')), key)).toMatchObject({ status: 'reopened', reopenCount: 1,
+          verifyWindowStart: new Date(T('2026-05-24T00:00:00Z')).toISOString() });
+      } finally { w.close(); }
     });
   });
 
-  describe('batched + 429-retry feedback (spec §10 Slice-2 NEW-2)', () => {
-    it('on a 429 the batch stops; remaining infra-gap records stay open + carried', async () => {
-      const l = fresh();
-      const learnings = ['amber', 'bronze', 'cobalt', 'denim'];
-      for (let p = 0; p < 4; p++) {
-        for (let i = 0; i < 4; i++) {
-          l.record({ kind: 'infra-gap', learning: learnings[p], scrubbedSummary: `g${p}`, deterministicWeight: 3, topicId: 1, detectedAt: `2026-05-0${(i % 3) + 1}T10:00:00Z` });
-        }
-      }
-      // First POST succeeds, second returns 429.
-      let calls = 0;
-      const feedbackLoopbackPost = vi.fn(async () => {
-        calls++;
-        return calls === 1 ? { posted: true } : { posted: false, rateLimited: true };
-      });
-      const sleep = vi.fn(async () => {});
-      const d = deps({ autoFeedback: true, maxRoutesPerTick: 10, feedbackPostDelayMs: 7000, sleep, feedbackLoopbackPost });
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      const result = await driver.route();
-      expect(result.toFeedback).toBe(1);     // only the first posted
-      expect(result.rateLimited).toBe(true);
-      expect(result.overflow).toBeGreaterThanOrEqual(2); // the 429'd record + the rest
-      // Exactly 2 POSTs were attempted (the 429 stops the batch).
-      expect(feedbackLoopbackPost).toHaveBeenCalledTimes(2);
-      // The delay was applied before the 2nd POST.
-      expect(sleep).toHaveBeenCalledWith(7000);
-      // The 429'd records remain open (re-route next run).
-      const stillOpen = l.list({ status: 'open', limit: 100 }).filter((r) => r.kind === 'infra-gap').length;
-      expect(stillOpen).toBe(3); // 4 crossing − 1 posted
+  describe('per-pass route ceiling (spec §10 Slice-2 NEW-5)', () => {
+    it('caps presented clusters at maxRoutesPerTick; overflow stays open + counted', () => {
+      const w = correctionWorld();
+      try {
+        const learnings = ['amber', 'bronze', 'cobalt', 'denim', 'emerald', 'fuchsia', 'gold'];
+        learnings.forEach((learning, p) => seedCrossingPreference(w, learning, `2026-05-0${String(p + 1)}T10:00:00Z`));
+        const now = T('2026-05-20T00:00:00Z');
+        const routed = present(w, now, { limit: 3 });
+        expect(routed.candidates.length).toBe(3);
+        expect(routed.overflow).toBe(4); // 7 crossing − 3 routed
+        const stillOpen = statuses(w, now).filter(record => record.kind === 'user-preference' && record.status === 'open').length;
+        expect(stillOpen).toBe(4);
+        expect(DEFAULT_MAX_ROUTES_PER_TICK).toBe(5);
+      } finally { w.close(); }
     });
 
-    it('a legacy boolean feedback result is still honored (posted=true)', async () => {
-      const l = fresh();
-      seedCrossingInfraGap(l, 'force push nag every session');
-      const feedbackLoopbackPost = vi.fn(async () => true); // legacy boolean
-      const d = deps({ autoFeedback: true, feedbackLoopbackPost });
-      const driver = new CorrectionLoopDriver(l, new CorrectionAnalyzer(l), d.deps);
-      const result = await driver.route();
-      expect(result.toFeedback).toBe(1);
-      expect(result.rateLimited).toBe(false);
+    it('a second pass routes the carried-over overflow (idempotent re-route)', () => {
+      const w = correctionWorld();
+      try {
+        ['amber', 'bronze', 'cobalt', 'denim', 'emerald'].forEach((learning, p) => seedCrossingPreference(w, learning, `2026-05-0${String(p + 1)}T10:00:00Z`));
+        const now = T('2026-05-20T00:00:00Z');
+        const r1 = present(w, now, { limit: 3 });
+        expect(r1.candidates.length).toBe(3);
+        expect(r1.overflow).toBe(2);
+        const r2 = present(w, now + 3600_000, { limit: 3 });
+        expect(r2.candidates.length).toBe(2); // the carried-over overflow
+        expect(r2.overflow).toBe(0);
+        expect(statuses(w, now + 3600_000).every(record => record.status === 'acted-on')).toBe(true);
+      } finally { w.close(); }
+    });
+  });
+
+  describe('observability (Rule 39)', () => {
+    it('reports records by kind and status, candidates waiting and overflow, and one status clause', () => {
+      const w = correctionWorld();
+      try {
+        const now = T('2026-05-10T00:00:00Z');
+        expect(correctionStatusClause(w.view, w.operator, now)).toBe('corrections: none recorded');
+        seedCrossingPreference(w, 'lead with the one action');
+        w.preference('plain words', T('2026-05-03T10:00:00Z'));
+        expect(correctionReport(w.view, w.operator, now)).toMatchObject({ records: 2, occurrences: 5, byKind: { 'user-preference': 2 },
+          byStatus: { open: 2 }, candidates: 1, overflow: 0 });
+        present(w, now);
+        expect(correctionReport(w.view, w.operator, now)).toMatchObject({ byStatus: { open: 1, 'acted-on': 1 }, candidates: 0 });
+        expect(correctionStatusClause(w.view, w.operator, now)).toBe('corrections: 2 lessons (5 occurrences), 0 recurring for review, 1 watched, 0 verified');
+        expect(correctionRouteClusterId('user-preference', ['b', 'a'])).toBe(correctionRouteClusterId('user-preference', ['a', 'b']));
+        expect(correctionRouteClusterId('infra-gap', ['a', 'b'])).not.toBe(correctionRouteClusterId('user-preference', ['a', 'b']));
+      } finally { w.close(); }
     });
   });
 });
