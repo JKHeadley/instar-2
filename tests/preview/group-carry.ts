@@ -71,8 +71,23 @@ export function buildCarriedMemory(source: JournalView, scope: GroupCarryScope,
   const summary = liveSummaries(source).at(-1);
   if (summary) add('summary', `summary:${summary.through}`, summary.text, summary.at);
   for (const item of summary?.memoryItems ?? []) if (own(item.source)) add('recall', item.source, item.quote);
-  for (const [id, promise] of source.commitments.entries()) if (!source.closed.has(id) && own(promise.source))
-    add('promise', promise.source, JSON.stringify(promise));
+  for (const [id, promise] of source.commitments.entries()) if (!source.closed.has(id) && own(promise.source)) {
+    // One Memory's disclosure-minimized context rule: retain the current account, not just
+    // the opening promise. Execution, reply bindings and send authority remain in the
+    // predecessor; copying them into the destination's work store would replay an effect.
+    const work = source.obligationWork[`commitment:${id}`];
+    const account = work === undefined ? undefined : {
+      at: work.last,
+      ...(work.outcome === undefined ? {} : { outcome: work.outcome }),
+      ...(work.inFlight === undefined ? {} : { inFlightAt: work.inFlight }),
+      execution: 'retained by predecessor; context only',
+      ...(work.note === undefined ? {} : { note: work.note }),
+      ...(work.waitsOn === undefined ? {} : { waitsOn: work.waitsOn }),
+      ...(work.report === undefined ? {} : { result: { text: work.report.text, at: work.report.at,
+        delivery: work.report.delivered !== undefined ? 'delivered' : work.report.boundTo !== undefined ? 'unknown' : 'pending' } }),
+    };
+    add('promise', promise.source, JSON.stringify({ ...promise, ...(account === undefined ? {} : { work: account }) }));
+  }
   // An open request NOT transferred (a later private message may have withdrawn it) stays owned by the predecessor;
   // it travels only as labelled context so this conversation knows of it, and is never sent from here.
   const moving = new Set(refs.map(ref => JSON.stringify([ref.source, ref.quote, ref.when])));

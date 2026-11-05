@@ -183,8 +183,12 @@ owned by neither until the same command is run again, which reuses the recorded 
 leaves two owners. A request that a later, still-unsettled private message may have withdrawn is not
 moved: the private root keeps holding it as before, and the group sees it only as labelled context.
 The command's output counts both (`transferredRequests`, `keptByPredecessor`). Agent promises are
-context in both roots; a promise grants no send. Nothing is recorded in the private journal when
-there is nothing to move.
+context in both roots; a promise grants no send. A carried open promise also retains its recorded
+work account, including a finished result and whether its delivery was pending, confirmed, or
+unknown at the snapshot. The predecessor retains execution and delivery ownership; this context
+creates no work or send in the group, and later private changes are not refreshed automatically.
+Rejected results awaiting rework are not offered as finished results. Nothing is recorded in the
+private journal when there is nothing to move.
 
 While the disclosure grant or the operator-only audience cannot be shown, every turn of the carried
 group, a due request included, is held unsent and continues once both hold again. The final model

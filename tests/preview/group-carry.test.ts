@@ -3,9 +3,10 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appendGroupCarry, buildCarriedMemory, groupCarryPacket, validCarriedMemory } from './group-carry.js';
-import { createJournalWorker, openPreviewJournal, openRequests, CARRIED_MEMORY_ITEM_SOURCE, MEMORY_ITEM_SHAPE, PREFERENCE_DECISION, ModelPending, type JournalRecord } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, openRequests, LOOP_REVISIT_MS, obligationDecision, CARRIED_MEMORY_ITEM_SOURCE, MEMORY_ITEM_SHAPE, PREFERENCE_DECISION, ModelPending, type JournalRecord } from './journal-test-worker.js';
 import { resolveGroupDisclosure, verifyGroupAudience, createGroupAudienceCache } from './group-disclosure.js';
 import { now, key, sealKey, scope, records, authority, membership, permissionFor } from './group-carry-fixture.js';
+import { readAnswer } from './answer-reading.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SELF_DESCRIPTION, SELF_IDENTITY, LITERAL_COPY_INSTRUCTIONS, SOURCE_PINS, sourcePacket, CAPABILITY_SENTENCE_LABEL, capabilitySentence } from './briefing.js';
 
@@ -18,17 +19,17 @@ const update = (id: number, text: string, forum = false) => ({ update_id: id, me
   chat: { id: Number(forum ? scope.chat : scope.operator), type: forum ? 'supergroup' : 'private', ...(forum ? { is_forum: true } : {}) },
   from: { id: Number(scope.operator) }, text } });
 const permission = () => resolveGroupDisclosure(scope, authority(), now, records, sealKey);
-async function world() {
+async function world(lifetime = 86400000) {
   const dir = mkdtempSync(join(tmpdir(), 'group-carry-')); dirs.push(dir);
   const path = join(dir, 'source.encrypted'), target = join(dir, 'destination.encrypted');
-  const writer = openPreviewJournal(path, key, genesis);
+  const writer = openPreviewJournal(path, key, { ...genesis, expires: now + lifetime });
   const worker = createJournalWorker(writer, { now: () => now - 2000, stopped: () => false,
     model: async () => 'Noted.', send: async () => 10, checkOutbound: () => {} });
   worker.intake([update(1, 'My preferred meeting place is the arboretum.')]); await worker.drain();
   writer.close();
   // The carry holds the predecessor's writer (it records any request transfer); with nothing open it writes nothing there.
   const source = openPreviewJournal(path, key);
-  const destination = openPreviewJournal(target, key, { ...genesis, chat: scope.chat, forum: true });
+  const destination = openPreviewJournal(target, key, { ...genesis, expires: now + lifetime, chat: scope.chat, forum: true });
   return { path, target, source, destination };
 }
 it('carries once under sourced grant and verified audience, survives compaction, and leaves a predecessor with no open request byte-identical', async () => {
@@ -384,4 +385,110 @@ it.each([false, true])('login outage recovers after pre-dispatch refusal; admitt
       expect(sends).toBe(1);
     } finally { replay.close(); }
   } finally { w.destination.close(); w.source.close(); }
+});
+
+// Carryover row 40: an owed result is different from the promise that opened it.
+it.each(['pending', 'unknown', 'delivered', 'closed'] as const)(
+  'carries the recorded work account without transferring execution: %s', async state => {
+    const w = await world();
+    const id = w.source.view.order[0]!.id;
+    const report = 'The venue check found that the library has step-free access.';
+    w.source.view.commitments.push({ source: id, in: 'reply', quote: 'I will check access.', owner: 'agent', waitsOn: 'nothing' });
+    w.source.view.obligationWork['commitment:0'] = { attempts: 1, last: now - 500, lastSlot: now - 1000,
+      outcome: 'report', report: { text: report, at: now - 500,
+        ...(state === 'unknown' || state === 'delivered' ? { boundTo: 'source-result-reply' } : {}),
+        ...(state === 'delivered' ? { delivered: 'source-result-reply' } : {}) } };
+    if (state === 'closed') w.source.view.closed.set(0, { id: 0, source: id, quote: 'Cancel that check.' });
+    appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false);
+    const entry = w.destination.view.groupCarry!.entries.find(e => e.kind === 'promise');
+    if (state === 'closed') expect(entry).toBeUndefined();
+    else {
+      const account = JSON.parse(entry!.text).work;
+      expect(account).toMatchObject({ at: now - 500, outcome: 'report',
+        result: { text: report, at: now - 500, delivery: state } });
+      expect(account.execution).toBe('retained by predecessor; context only');
+    }
+    expect(w.destination.view.commitments).toEqual([]);
+    expect(w.destination.view.obligationWork).toEqual({});
+    expect(w.destination.view.calls).toBe(0);
+    expect(w.destination.view.replies).toBe(0);
+    w.destination.compact(); w.destination.close();
+    const resumed = openPreviewJournal(w.target, key);
+    const packet = groupCarryPacket(resumed.view.groupCarry!, 'What was the access check result?', now + 1000, 409600, resumed.view);
+    expect(JSON.stringify(packet).includes(report)).toBe(state !== 'closed');
+    resumed.close(); w.source.close();
+  });
+
+it('replays a recorded owed result into an authorized restarted session, with corrections and audience refusal intact', async () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/obligation-step-outputs-live-2026-10-04.json', import.meta.url), 'utf8')) as {
+    calls: { call: string; output: string }[] };
+  // Live deferred-answer update 6232091, second work step. No invented result shape.
+  const call = capture.calls.find(item => item.call === 'obligation:commitment:3:1791099958095')!;
+  const reading = readAnswer(call.output, { wrapped: 'accept', evidence: [call.call] });
+  if (!reading.ok) throw Error('recorded answer unreadable');
+  const decision = obligationDecision(reading.value, 'commitment', now, 'UTC');
+  if (!decision.report) throw Error('recorded report missing');
+  const w = await world(3 * LOOP_REVISIT_MS);
+  let clock = now;
+  const source = w.source.view.order[0]!.id;
+  const promise = 'I will finish that check.';
+  const writer = createJournalWorker(w.source, { now: () => clock, stopped: () => false,
+    model: async input => input.id.startsWith('obligation:') ? reading.value : JSON.stringify({ reply: promise,
+      memory: [{ mode: 'correct', source, quote: 'arboretum', replacement: 'library' }],
+      openLoops: [{ kind: 'promise', quote: promise, waitsOn: 'nothing' }] }),
+    send: async () => 2, checkOutbound: () => {} });
+  writer.intake([update(2, 'Correction: the meeting place is the library. Please finish the check.')]);
+  await writer.drain(); clock += LOOP_REVISIT_MS; await writer.workObligations();
+  expect(w.source.view.obligationWork['commitment:0']?.report?.text).toBe(decision.report);
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, clock, () => false);
+  const sourceBytes = readFileSync(w.path);
+  w.destination.compact(); w.destination.close(); w.source.close();
+  const destination = openPreviewJournal(w.target, key);
+  let allowed = false, calls = 0, sends = 0, context = '';
+  const worker = createJournalWorker(destination, { now: () => clock + 1000, stopped: () => false,
+    groupDisclosure: async () => allowed, model: async input => { calls++; context = input.context; return 'I have the earlier context.'; },
+    send: async () => ++sends, checkOutbound: () => {} });
+  worker.intake([update(3, 'Where is the meeting, and what result was owed?', true)]);
+  await worker.drain();
+  expect(calls).toBe(0); expect(sends).toBe(0);
+  allowed = true; await worker.drain();
+  const memory = JSON.parse(context).predecessorMemory;
+  expect(JSON.stringify(memory)).toContain('library');
+  expect(JSON.stringify(memory)).not.toContain('arboretum');
+  const account = memory.entries.filter((e: { kind: string }) => e.kind === 'promise')
+    .map((e: { text: string }) => JSON.parse(e.text)).find((e: { work?: unknown }) => e.work)?.work;
+  expect(account.result).toMatchObject({ text: decision.report, delivery: 'pending' });
+  expect(calls).toBe(1); expect(sends).toBe(1);
+  await worker.workObligations(); await worker.sendRequested(); await worker.drain();
+  expect(sends).toBe(1); expect(destination.view.commitments).toEqual([]);
+  expect(readFileSync(w.path)).toEqual(sourceBytes);
+  destination.close();
+});
+
+it('retains waiting context, excludes rejected report bytes, and refuses an oversized result snapshot before either append', async () => {
+  const w = await world(), source = w.source.view.order[0]!.id;
+  w.source.view.commitments.push({ source, in: 'reply', quote: 'I will check.', owner: 'agent', waitsOn: 'external' });
+  w.source.view.obligationWork['commitment:0'] = { attempts: 1, last: now - 1, lastSlot: now - 2,
+    outcome: 'waiting', waitsOn: 'external', note: 'Waiting for the venue response.',
+    withheld: { text: 'Rejected result text.', at: now - 1, by: source, objection: 'Unsupported conclusion.' } };
+  const p = permission(); if (p.kind !== 'resolved') throw Error(p.reason);
+  const small = buildCarriedMemory(w.source.view, scope, p, now);
+  expect(JSON.stringify(small)).not.toContain('Rejected result text.');
+  expect(JSON.parse(small.entries.find(e => e.kind === 'promise')!.text).work).toMatchObject({
+    outcome: 'waiting', waitsOn: 'external', note: 'Waiting for the venue response.' });
+  w.source.view.obligationWork['commitment:0'] = { attempts: 1, last: now - 1, lastSlot: now - 2, inFlight: now - 2 };
+  const inFlight = JSON.parse(buildCarriedMemory(w.source.view, scope, p, now).entries.find(e => e.kind === 'promise')!.text).work;
+  expect(inFlight.inFlightAt).toBe(now - 2);
+  expect(inFlight).not.toHaveProperty('outcome');
+  expect(inFlight).not.toHaveProperty('result');
+  const sizes = [w.source.size, w.destination.size];
+  // Each report fits its individual 1500-character admission bound; their whole snapshot does not.
+  for (let i = 1; i <= 100; i++) {
+    w.source.view.commitments.push({ source, in: 'reply', quote: `Check ${i}.`, owner: 'agent', waitsOn: 'nothing' });
+    w.source.view.obligationWork[`commitment:${i}`] = { attempts: 1, last: now - 1, lastSlot: now - 2,
+      outcome: 'report', report: { text: 'x'.repeat(1500), at: now - 1 } };
+  }
+  expect(() => appendGroupCarry(w.destination, w.source, scope, p, true, now, () => false)).toThrow(/bounded carry size/u);
+  expect([w.source.size, w.destination.size]).toEqual(sizes);
+  w.destination.close(); w.source.close();
 });
