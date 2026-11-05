@@ -6,7 +6,11 @@ import { join } from 'node:path';
 import { publishSetupRecord } from '../../scripts/onboarding-state.mjs';
 import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY } from './effect-doorway.mjs';
 import { readRootMcp } from './tool-turn.mjs';
+import { OWNER_BROWSER_TOOL } from './owner-browser-contract.mjs';
 
+// Rules 18/63/100/103: the reviewed scope of the agent-owned GitHub connection the operator grants by name. The request
+// cannot name pages or a credential, and nothing else reaches this scope; the owner's contract still checks it at each read.
+const AGENT_GITHUB_PAGES = Object.freeze(['account-profile', 'account-repositories']);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const text = value => typeof value === 'string' && value.trim().length > 0;
 export function setupTrustPolicy(request) {
@@ -31,6 +35,16 @@ export function setupTrustPolicy(request) {
     grants.push({ ...scoped, id, effect: effect.effect, target: effect.target,
       approves: ['scope', 'resources'], resourceLevelUsd: request.resourceLevelUsd,
       source: request.source, custodian: request.custodian, recovery: effect.recovery });
+  }
+  if (request.agentGitHubConnection !== undefined) {
+    const c = request.agentGitHubConnection;
+    if (!c || Object.keys(c).sort().join(',') !== 'account,ownership,recovery,service' || c.service !== 'github' || c.account !== 'EchoOfDawn'
+      || c.ownership !== 'agent' || !text(c.recovery) || request.effects.some(effect => effect.target === OWNER_BROWSER_TOOL))
+      throw Error('the agent-owned GitHub connection needs exactly the github service, the EchoOfDawn account, agent ownership and a recovery obligation');
+    const scope = { effect: 'tool:mcp', target: OWNER_BROWSER_TOOL };
+    registered.push({ ...scope, consequence: 'data', reversibility: 'reversible', reach: 'agent', costUsd: 0, source: request.source, recovery: c.recovery });
+    grants.push({ ...scope, id: `operator-trust:${createHash('sha256').update(JSON.stringify([request.source, scope, AGENT_GITHUB_PAGES])).digest('hex')}`,
+      ownerBrowserPages: [...AGENT_GITHUB_PAGES], approves: ['scope'], source: request.source, custodian: request.custodian, recovery: c.recovery });
   }
   return decodeEffectPolicy({ ...DEFAULT_EFFECT_POLICY, ...(request.role ? { role: request.role } : {}), policySensitive: request.policySensitive ?? [], registered, grants,
     ...(request.onboarding ? { onboarding: request.onboarding } : {}) });
@@ -92,7 +106,8 @@ export function configureTrust(root, action, request) {
     if (policy.registered.some(r => !oldPolicy.registered.some(old => same({ ...old, classification: undefined }, { ...r, classification: undefined })))
       || policy.grants.some(g => !oldPolicy.grants.some(old => old.effect === g.effect && old.target === g.target
         && same(old.request, g.request) && old.source === g.source && old.custodian === g.custodian && old.recovery === g.recovery
-        && old.expiresAt === undefined && g.resourceLevelUsd <= old.resourceLevelUsd
+        && old.expiresAt === undefined && (g.resourceLevelUsd === undefined || g.resourceLevelUsd <= old.resourceLevelUsd)
+        && (g.ownerBrowserPages ?? []).every(page => (old.ownerBrowserPages ?? ['account-profile']).includes(page))
         && g.approves.every(test => old.approves.includes(test))))
       || Object.entries(mcp.mcpServers).some(([name, server]) => !same(server, oldMcp.mcpServers[name]))
       || (mcp.reads ?? []).some(name => !(oldMcp.reads ?? []).includes(name)))
