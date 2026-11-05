@@ -22,7 +22,7 @@ function fixture(run: { events: readonly { method: string; params: unknown }[] }
   const calls: { method: string; params: Readonly<Record<string, unknown>> }[] = [], opens: Parameters<SessionProtocolIO['open']>[0][] = [];
   const deliveries = new Map<string, HarnessInputDelivery>();
   const transport: SessionProtocolIO = {
-    async open(input) { opens.push(input); live = true; return { identity: 'protocol:123:nonce',
+    async open(input) { opens.push(input); live = true; return { identity: opens.length === 1 ? 'protocol:123:nonce' : `protocol:123:nonce-${opens.length}`,
       async request(method, params) { calls.push({ method, params });
         if (method === 'thread/start' || method === 'thread/resume') return { thread: { id: terminals[0]!.threadId } };
         if (method === 'turn/start') { frames.push(...run.events.filter(event => !hold || event.method !== 'turn/completed')); return { turn: { id: terminals[turn++]!.turn.id } }; }
@@ -266,4 +266,86 @@ it('recorded protocol completion permits idle cleanup, while open turns and chan
   const busyAdapter = busy.make(), busyWorker = await busyAdapter.launch(busy.spec);
   await busyAdapter.deliver(busy.delivery(busyWorker));
   expect(await busyAdapter.observeIdle!(busyWorker)).toBeNull();
+});
+
+it('carryover 08 reconstructs a completed Codex turn from durable physical frames without another request', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'conversation-capture-recovery-'));
+  const f = fixture(), physical = createSessionProtocolIO(root);
+  const transport = { ...physical, open: (launch: Parameters<SessionProtocolIO['open']>[0]) => physical.open({ ...launch,
+    executable: process.execPath, args: [fileURLToPath(new URL('./fixtures/protocol-process.mjs', import.meta.url))],
+    cwd: root, deadline: Date.now() + 10000, requestTimeoutMs: 1000 }) };
+  try {
+    const first = f.make(transport), worker = await first.launch(f.spec), delivery = f.delivery(worker);
+    await first.deliver(delivery);
+    await physical.close(worker.claim, worker.incarnation, worker.launch);
+    const restartedPhysical = createSessionProtocolIO(root);
+    const restarted = f.make(restartedPhysical);
+    const recovered = await restarted.observe({ ...worker, delivery, cursor: 0, limit: 16 });
+    expect(recovered.observations).toEqual([
+      { kind: 'reply', delivery: delivery.operation, text: 'LOCAL_PROTOCOL_OK', digest: hash('LOCAL_PROTOCOL_OK') },
+      { kind: 'turn-end', delivery: delivery.operation, state: 'completed' },
+    ]);
+    expect((await restarted.observe({ ...worker, delivery, cursor: 2, limit: 16 })).observations).toEqual([]);
+    await expect(restarted.deliver(delivery)).rejects.toThrow();
+  } finally { await physical.close('claim1', 'inc1'); rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each(['complete', 'empty', 'missing-end', 'missing-response', 'duplicate-request', 'wrong-input', 'wrong-worker', 'missing-capture', 'legacy'] as const)(
+  'carryover 08 Codex recovery checks %s evidence without dispatch', async mode => {
+    const run = captured.runs[0]!;
+    const f = fixture(), original = f.make(), worker = await original.launch(f.spec), delivery = f.delivery(worker);
+    await original.deliver(delivery);
+    const start = f.calls.find(call => call.method === 'turn/start')!;
+    const request = { direction: 'request', frame: { id: 3, ...start } };
+    const response = { direction: 'response', frame: { id: 3, result: { turn: { id: f.terminals[0]!.turn.id } } } };
+    const events = run.events.filter(event => mode !== 'missing-end' || event.method !== 'turn/completed');
+    const replay = events.map(event => ({ direction: 'response', frame: mode === 'empty'
+      ? JSON.parse(JSON.stringify(event, (key, value) => key === 'text' ? '' : value)) : event }));
+    f.transport.capture = () => {
+      if (mode === 'missing-capture') throw Error('missing capture');
+      return [request, ...(mode === 'duplicate-request' ? [request] : []),
+        ...(mode === 'missing-response' ? [] : [response]), ...replay];
+    };
+    if (mode === 'legacy') { const { protocolDeliveries: _bindings, ...legacy } = f.journal; f.config.io.save(legacy); }
+    await original.control({ ...worker, action: 'close', authority: 'grant', reason: 'restart' });
+    const next = f.make(), count = f.calls.length;
+    const query = { ...worker, delivery: mode === 'wrong-input' ? { ...delivery, text: 'changed' } : delivery, cursor: 0, limit: 16,
+      ...(mode === 'wrong-worker' ? { incarnation: 'other' } : {}) };
+    if (mode === 'complete') expect((await next.observe(query)).observations[0]).toMatchObject({ kind: 'reply', text: 'LOCAL_PROTOCOL_OK' });
+    else if (mode === 'empty') expect((await next.observe(query)).observations).toEqual([{ kind: 'turn-end', delivery: delivery.operation, state: 'no-reply' }]);
+    else await expect(next.observe(query)).rejects.toThrow();
+    expect(f.calls.length).toBe(count);
+  });
+
+it.each([false, true])('carryover 08 proves a prepared Codex bootstrap unsent only when no turn request exists: dispatched=%s', async dispatched => {
+  const f = fixture(), original = f.make(), worker = await original.launch(f.spec), delivery = f.delivery(worker);
+  await original.deliver(delivery);
+  const request = f.calls.find(call => call.method === 'turn/start')!;
+  f.transport.capture = target => {
+    expect(target.requireClosed).toBe(true);
+    return [{ direction: 'request', frame: { method: 'initialize' } },
+      ...(dispatched ? [{ direction: 'request', frame: { id: 3, ...request } }] : [])];
+  };
+  await original.control({ ...worker, action: 'close', authority: 'grant', reason: 'restart' });
+  expect(await f.make().notDispatched!(delivery)).toBe(!dispatched);
+});
+
+it('carryover 08 reconstructs recorded summary, verdict and reply shapes after adapter loss', async () => {
+  const historical = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
+  for (const sample of historical.otherShapes) {
+    const run = JSON.parse(JSON.stringify(captured.runs[0], (key, value) => key === 'text' ? sample.raw : value));
+    const f = fixture(run), original = f.make(), worker = await original.launch(f.spec), delivery = f.delivery(worker, sample.id);
+    await original.deliver(delivery);
+    f.transport.capture = () => [
+      { direction: 'request', frame: { id: 3, ...f.calls.find(call => call.method === 'turn/start')! } },
+      { direction: 'response', frame: { id: 3, result: { turn: { id: f.terminals[0]!.turn.id } } } },
+      ...run.events.map((frame: unknown) => ({ direction: 'response', frame })),
+    ];
+    await original.control({ ...worker, action: 'close', authority: 'grant', reason: 'restart' });
+    const count = f.calls.length;
+    const batch = await f.make().observe({ ...worker, delivery, cursor: 0, limit: 16 });
+    if (sample.raw.trim()) expect(batch.observations[0], sample.id).toMatchObject({ kind: 'reply', text: sample.raw });
+    else expect(batch.observations, sample.id).toEqual([{ kind: 'turn-end', delivery: sample.id, state: 'no-reply' }]);
+    expect(f.calls.length).toBe(count);
+  }
 });

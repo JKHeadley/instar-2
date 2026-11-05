@@ -4,6 +4,7 @@ Subject base: bcbe1def1642146c18f1e0d569ab84016fa6454e
 Review state: open
 Reviewed content: none
 Outcome: Grant the worker read access to the generated MCP launch configuration before its continuing session starts and expose the owner browser tool with an Anthropic-compatible input schema. Keep the configuration owned by the operator and read-only to the worker. Regenerate the source-pinned register against the committed repair.
+Integration review (train-169, carried from its Outcome line): Reopened by train-169 because combined-source register regeneration changes the previously frozen generated outputs; the original connector ACL and schema repair source remains unchanged. Independent review of the combination is required. Original outcome: grant the worker read access to the generated MCP launch configuration before its continuing session starts and expose the owner browser tool with an Anthropic-compatible input schema. Keep the configuration owned by the operator and read-only to the worker. Regenerate the source-pinned register against the committed repair.
 Affected rules: 31, 63, 74, 78, 95, 101, 103, 111, 113, 116
 Affected floors: secrets — only the already redacted launch file is readable, not credential custody; spend cap — unchanged; stop — unchanged; no duplicate sends — no new effect path; durable intake — unchanged.
 Operator questions: none
