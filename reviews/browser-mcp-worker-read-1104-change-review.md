@@ -1,8 +1,8 @@
 # Change review — worker reads connector launch configuration
 
 Subject base: bcbe1def1642146c18f1e0d569ab84016fa6454e
-Review state: frozen
-Reviewed content: sha256:41339ecebaa3eebf3d3a09bcb98108b0bdb289e724fb0bd3514a7e0c7431d0cc
+Review state: open
+Reviewed content: none
 Outcome: Grant the worker read access to the generated MCP launch configuration before its continuing session starts and expose the owner browser tool with an Anthropic-compatible input schema. Keep the configuration owned by the operator and read-only to the worker. Regenerate the source-pinned register against the committed repair.
 Affected rules: 31, 63, 74, 78, 95, 101, 103, 111, 113, 116
 Affected floors: secrets — only the already redacted launch file is readable, not credential custody; spend cap — unchanged; stop — unchanged; no duplicate sends — no new effect path; durable intake — unchanged.
@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: significant
 Declared tier: significant
 Tier rationale: This repairs a worker account access boundary used by the signed-in browser connector. It requires a real worker-account test, full exact-head gate, independent review, and copy trial before live use.
-Side effects: The harness worker can read the generated MCP launch file for its own session. It cannot edit that file or read the owner browser profile.
+Side effects: The harness worker can read the generated MCP launch file for its own session. It cannot edit that file or read the owner browser profile. The reply-review-proof-accounting-1105 candidate changes shared generated register bytes, so this frozen round is void; the accounting repair is covered by its own change review and requires independent review before release.
 Undo and recovery: Keep live 47b9c823 serving until the corrected build proves a real signed-in multi-step browser task. Restore that live build if the later switch fails.
 Multi-machine posture: This is the existing macOS harness account ACL on the local generated file; no remote credential or profile copy.
 Layer below: A real copy produced an MCP file with owner_github but the worker account could not read it. The adjacent admission file was readable. The added test uses sudo as the worker to read the exact launch file and fails when the ACL line is removed. After that repair, a second real copy reached Claude but its MCP log said it skipped observe because the schema used top-level oneOf. The server already checks the exact page/pages request. The native client test now rejects top-level oneOf, and a real copy must show the tool and complete the signed-in two-page task. The seven generated register files changed only to pin the new committed source and its derived digest.
