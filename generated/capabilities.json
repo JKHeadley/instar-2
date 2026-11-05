@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:c647d5e782baa51707268c33eb16e4bd2b6f50995b95d6ecbd18b634d87ec4a0",
-  "commit": "c0f8e4661e7cf633cefff69450fb3ab3f7298554",
+  "generation": "sha256:2bcbb440ef9ca35207da83389565234caae37160473bdaac87bcd819793d2c65",
+  "commit": "5d5a3a7251ed9c68ee8bc8bb6d7778b13a52f99e",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -90,6 +90,22 @@
         "availability": "not-loaded",
         "userFacing": false,
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+      },
+      {
+        "id": "process-control",
+        "status": "dark",
+        "module": "src/effects",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark partial support for admitted exact-process signals, durable claims and independent settlement; installed recovery remains unproven."
+      },
+      {
+        "id": "process-control-kernel",
+        "status": "dark",
+        "module": "src/assembly",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery remain unproven."
       },
       {
         "id": "register-tooling",
@@ -222,6 +238,22 @@
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
       },
       {
+        "id": "process-control",
+        "status": "dark",
+        "module": "src/effects",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark partial support for admitted exact-process signals, durable claims and independent settlement; installed recovery remains unproven."
+      },
+      {
+        "id": "process-control-kernel",
+        "status": "dark",
+        "module": "src/assembly",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery remain unproven."
+      },
+      {
         "id": "register-tooling",
         "status": "live",
         "module": "src/register",
@@ -350,6 +382,22 @@
         "availability": "not-loaded",
         "userFacing": false,
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+      },
+      {
+        "id": "process-control",
+        "status": "dark",
+        "module": "src/effects",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark partial support for admitted exact-process signals, durable claims and independent settlement; installed recovery remains unproven."
+      },
+      {
+        "id": "process-control-kernel",
+        "status": "dark",
+        "module": "src/assembly",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery remain unproven."
       },
       {
         "id": "register-tooling",
@@ -482,6 +530,22 @@
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
       },
       {
+        "id": "process-control",
+        "status": "dark",
+        "module": "src/effects",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "dark partial support for admitted exact-process signals, durable claims and independent settlement; installed recovery remains unproven."
+      },
+      {
+        "id": "process-control-kernel",
+        "status": "dark",
+        "module": "src/assembly",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery remain unproven."
+      },
+      {
         "id": "register-tooling",
         "status": "live",
         "module": "src/register",
@@ -610,6 +674,22 @@
         "availability": "available",
         "userFacing": false,
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+      },
+      {
+        "id": "process-control",
+        "status": "dark",
+        "module": "src/effects",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark partial support for admitted exact-process signals, durable claims and independent settlement; installed recovery remains unproven."
+      },
+      {
+        "id": "process-control-kernel",
+        "status": "dark",
+        "module": "src/assembly",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery remain unproven."
       },
       {
         "id": "register-tooling",
