@@ -42,3 +42,5 @@ Decision: AQ88-review-invalidation | Reopen the two prior frozen browser review 
 simplestRobustRoute: Adapt the existing surfacer's routing to the existing journal and transport endpoint. One serialized consumer prevents concurrent duplicate hub creation. A replicated dispatch fence prevents duplicate effects after owner loss; retained prepared state distinguishes work that can still drain. No new provider, timer, store or execution owner. Physical deployment and unattended shipped-path completion are not claimed by the portable component tests.
 80/20: Focused deterministic consumer evidence first. Row 88 tracks the uncompleted production composition, model evidence, independently authenticated owner-offline receipt intake and channel parity. The 44 earlier failures remain unresolved under the desk diagnosis.
 VERDICT: author submission only; independent review and actual installed proof remain required.
+
+Publication checkpoint: generated outputs bind source 746cab6150b5a04e21ae5059a0ad15696fa10deb, generation sha256:36b94132f8408253805d398c995a5310828bb888143ed4e463d625bd57b07585. Authority remains shape-only; the hub feature remains dark.
