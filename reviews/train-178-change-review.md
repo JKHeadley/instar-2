@@ -70,7 +70,7 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing citation instruction 
 
 Deferral: generated/register.json:1 | not-a-deferral=Source hash publication is regenerated from the exact combined commit; the existing separate Part Two authority remains unchanged.
 
-Publication: Includes both ordinary merges, conflict-resolution repair, typed restart integration and the source-bound register publication commits. Initial source a9e2c36f7 was pushed before the long report; final publication is independently verified in the handoff.
+Publication: Includes both ordinary merges, conflict-resolution repair, typed restart integration and the source-bound register publication commits. Accepted-receipt crash consumer repairs and their regenerated publication are included. Initial source a9e2c36f7 was pushed before the long report; final publication is independently verified in the handoff.
 
 Validation: Exact command outputs and pending host evidence are in the train178 report. No parent gate credit is borrowed.
 
