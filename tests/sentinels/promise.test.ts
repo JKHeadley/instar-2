@@ -42,6 +42,9 @@ it('closes a promise that leaves the open population, and does nothing while sto
   const gone = decidePromises({ now: 2000, stopped: false, promises: [], state: asked });
   expect(gone.actions).toEqual([expect.objectContaining({ event: 'closed' })]);
   expect(gone.state['commitment:0']?.closedAt).toBe(2000);
+  const resumed = decidePromises({ now: 3000, stopped: false, promises: [promise()], state: gone.state });
+  expect(resumed.actions[0]).toEqual({ kind: 'work', id: 'commitment:0' });
+  expect(resumed.state['commitment:0']?.closedAt).toBeNull();
   expect(decidePromises({ now: 5000, stopped: true, promises: [promise()], state: {} })).toEqual({ state: {}, actions: [] });
   expect(decidePromises({ now: 5000, stopped: false, promises: [promise({ dueAt: Number.NaN })], state: {} }).actions).toEqual([]);
 });
