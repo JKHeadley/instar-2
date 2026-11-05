@@ -84,7 +84,7 @@ it.runIf(darwin)('CPU, identity-safe termination through the shipped exec chain,
     for (const fault of ['supervisor-kill', 'supervisor-stop', 'guard-kill', 'deadline', 'guard-stop'])
       expect(guard.lines[`guard-${fault}`], fault).toMatch(/^PASS worker ended=yes/);
     // Both sides of every supervisor backstop bound (stopped guard, deadline, owner lapse).
-    expect(guard.lines['guard-backstop']).toMatch(/^PASS .*250ms past the deadline, or 600ms after the last owner/);
+    expect(guard.lines['guard-backstop']).toMatch(/^PASS .*250ms past the deadline, or beyond 850ms after the last owner .*600ms normal guard budget plus 250ms; also extends enforcement before worker termination.*scheduling and termination latency apply/);
     const gate = feasibility(enforcer, 'gate', profile, dir);
     expect(gate.lines.gate).toMatch(/^PASS .*guard=31/);
     expect(gate.lines['gate-refused']).toMatch(/^PASS .*guard=35/);
@@ -128,13 +128,13 @@ function writeConf(dir: string, overrides: Record<string, string> = {}) {
 }
 
 /** A supervise build bound to a temporary installation (test build flags only). */
-function installation(dir: string) {
+function installation(dir: string, defines: string[] = []) {
   const socket = join(dir, 'run', 'control.sock');
   const conf = join(dir, 'installation.conf'), service = join(dir, 'service.json');
   const restarts = join(dir, 'supervisor-restarts');
   const enforcer = build(dir, [`-DINSTAR_CONTROL_SOCKET="${socket}"`, `-DINSTAR_CONTROL_PEER_UID=${process.getuid!()}`,
     `-DINSTAR_INSTALL_CONF="${conf}"`, `-DINSTAR_SERVICE_CONF="${service}"`, '-DINSTAR_TEST_UNPRIVILEGED=1',
-    `-DINSTAR_RESTART_STATE="${restarts}"`, '-DINSTAR_STABLE_MS=400']);
+    `-DINSTAR_RESTART_STATE="${restarts}"`, '-DINSTAR_STABLE_MS=400', ...defines]);
   releaseRuntime(dir);
   shippedProfile(dir);
   mkdirSync(join(dir, 'rel', 'scripts'), { recursive: true });
@@ -377,9 +377,9 @@ it.runIf(darwin)('one accounted slot: launch, slot bound, one owner attach with 
     expect(quiet.exited()).toBe(false);
     clearInterval(beat);
     const t0 = Date.now();
-    // The stated owner bound is 600 ms from the last authority check (two serial
-    // 250 ms timers plus beat slack, backstopped by the supervisor); observe the
-    // worker's end directly, with scheduling margin.
+    // The normal guard budget is 600 ms; the supervisor requests enforcement beyond
+    // the 850 ms owner-loss threshold, even if the guard stalls before killing.
+    // Neither is a hard termination bound. Observe the end with scheduling margin.
     let ended = 0;
     for (let i = 0; i < 300 && !ended; i++) { await sleep(5); if (!alive(stalled.pid)) ended = Date.now() - t0; }
     expect(ended).toBeGreaterThan(0);
@@ -413,6 +413,43 @@ it.runIf(darwin)('one accounted slot: launch, slot bound, one owner attach with 
     expect(gone).toBe(true);
   } finally { sup.child.kill('SIGKILL'); rmSync(dir, { recursive: true, force: true }); }
 }, 120_000);
+
+// Post-termination report delays, load-independently (no load runs on the Studio):
+// a test build stalls the guard between the worker's end and its report, as a loaded
+// scheduler does (a 150 ms stall lost the race at the old 600 ms backstop and recorded the
+// lapse as guard-lost). Within the grace the guard's own lapse verdict (31) lands and the
+// slot settles `stopped`; past it the supervisor kills the lost guard and the slot stays
+// honestly `unknown` (terminal 99): a verdict is never promoted without the guard's report.
+// These cases inject only AFTER termination; they do not prove a 600 ms termination
+// bound or cover a guard stalled before killing. That stall also gets the 850 ms threshold.
+for (const [stallMs, state, terminal] of [[150, 'stopped', '31'], [500, 'unknown', '99']] as const)
+  it.runIf(darwin)(`lapse with a ${stallMs} ms guard report stall settles ${state}: a guard report is required for stopped`, async () => {
+    const dir = tempRoot();
+    const x = installation(dir, [`-DINSTAR_TEST_GUARD_REPORT_STALL_MS=${stallMs}`]);
+    stubService(dir);
+    const sup = await startSupervisor(x.enforcer, x.socket);
+    try {
+      expect(existsSync(x.socket), sup.stderr()).toBe(true);
+      const client = createMonitorClient(x.enforcer);
+      const ask = (request: any) => unframe(Buffer.from(client.roundTrip(frame(request)))).receipt;
+      const stalled = ask(launchRequest('stalled'));
+      expect(stalled).toMatchObject({ state: 'running', reason: 'ok' });
+      const quiet = createAttachedWorkerChannel(x.enforcer, stalled.launchIdentity);
+      const beat = setInterval(() => quiet.progress(), 40);
+      await sleep(300);
+      clearInterval(beat);
+      const t0 = Date.now();
+      let ended = 0;
+      for (let i = 0; i < 300 && !ended; i++) { await sleep(5); if (!alive(stalled.pid)) ended = Date.now() - t0; }
+      expect(ended).toBeGreaterThan(0);                        // observe termination; this does not establish a 600 ms hard bound
+      if (state === 'stopped') expect(ended).toBeLessThan(1000);
+      let lapsed: any = null;
+      for (let i = 0; i < 100 && !lapsed; i++) { const r = ask(observeRequest('stalled', stalled.launchIdentity)); if (r.state !== 'running') lapsed = r; else await sleep(100); }
+      expect(lapsed).toMatchObject({ state, reason: 'guard-lost', evidenceReferences: [`native-guard:${stalled.launchIdentity}`,
+        expect.stringMatching(new RegExp(`^native-guard-terminal:${terminal}:`))] });
+      quiet.close();
+    } finally { sup.child.kill('SIGKILL'); rmSync(dir, { recursive: true, force: true }); }
+  }, 60_000);
 
 // ---- the reviewed installation package: stage, install dry run, uninstall, verify ----
 // Dry runs only (synthetic inventory); `--apply` is the operator's administrator path.
