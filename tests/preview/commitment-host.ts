@@ -167,6 +167,7 @@ export function createCommitmentHost(journal: { readonly view: JournalView; appe
     });
   };
 
+  let tickFailures = 0;
   const tick = (): { ran: number; failures: string[] } => {
     const failures: string[] = [];
     // A stop or expiry holds everything; the rows stay and resume with the next admitted owner (floor: stop).
@@ -184,9 +185,10 @@ export function createCommitmentHost(journal: { readonly view: JournalView; appe
       if (item.every === undefined) due.delete(item); else item.due = ports.now() + item.every;
       try { item.run(); } catch (error) { failures.push((error as Error).message); }
     }
+    tickFailures += failures.length;
     return { ran: ready.length, failures };
   };
-  const report = () => ({ ...commitmentStoreReport(journal.view), health: live.tracker.getHealth() });
+  const report = () => ({ ...commitmentStoreReport(journal.view), health: live.tracker.getHealth(), tickFailures });
   return { tick, report, tracker: () => live.tracker, beacon: () => live.beacon,
     runCheckIns: (): Promise<CheckInReminderPassReport> => live.checkIns.runPass(), stop() { live.tracker.stop(); live.beacon.stop(); due.clear(); } };
 }

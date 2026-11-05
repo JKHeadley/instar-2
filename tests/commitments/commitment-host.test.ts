@@ -456,3 +456,19 @@ it('status reads only the journal, so a second machine reports the same rows', (
     expect(sentinelReport(w.journal.view).commitments).toMatchObject({ tracked: 1 });
   } finally { w.close(); }
 });
+
+it('a failing step is counted for status and does not stop the next one', () => {
+  const w = world({}, { config: { get: () => { throw Error('setting store unavailable'); }, set() {} } });
+  try {
+    w.host.tick();
+    w.host.tracker().record({ type: 'one-time-action', userRequest: 'x', agentResponse: 'y', owner: 'agent', externalKey: 'kept' });
+    const c = w.host.tracker().getAll()[0]!;
+    w.clock.now += 16_000;
+    const original = w.host.tracker().verify;
+    w.host.tracker().verify = () => { throw Error('sweep failed'); };
+    expect(w.host.tick().failures).toEqual(['sweep failed']);
+    w.host.tracker().verify = original;
+    expect(w.host.report().tickFailures).toBe(1);
+    expect(w.host.tracker().get(c.id)?.status).toBe('pending');
+  } finally { w.close(); }
+});
