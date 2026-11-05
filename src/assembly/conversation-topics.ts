@@ -210,7 +210,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
         // An interrupted append is reconciled against the durable journal, never
         // inferred from an in-memory flag. Closing does not refund spent calls.
         if (pending) ensure(config.recoveryEdges, 'allowance renewal needs journal reconciliation');
-        const recorded = pending ? config.recoveryEdges!().find(row => row.id === pending.id) : undefined;
+        const recorded = pending ? config.recoveryEdges!().find(row => 'id' in row && row.id === pending.id) : undefined;
         if (recorded) ensure(JSON.stringify(recorded) === JSON.stringify(pending), 'allowance renewal evidence differs');
         else config.append(state.renewal!);
         const topics = Object.fromEntries(Object.entries(state.topics).map(([topic, row]) => {

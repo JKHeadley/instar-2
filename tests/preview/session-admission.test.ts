@@ -470,3 +470,29 @@ it('configured account reads reach the current policy checkpoint with exact inpu
   expect((await hook(s.state, call('mcp__x__read', input, 'restored'))).decision).toBe('allow');
   expect(s.rows).toHaveLength(2); // Ordinary reads can repeat; every dispatch has its durable cause.
 });
+
+// Carryover 02 r4, admission continuity: the trusted read of an adopted claim's recorded checkpoint address.
+it('reads the recorded checkpoint only from this user\'s regular 0600 config naming the exact claim on loopback, and refuses every substitution', async () => {
+  // @ts-expect-error see above
+  const { readSessionAdmissionGate } = await import('./session-admission.mjs');
+  const { chmodSync, symlinkSync, renameSync } = await import('node:fs');
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'admission-read-'))); const base = join(root, 'admission'), workspace = join(root, 'work');
+  mkdirSync(workspace, { recursive: true });
+  try {
+    const gate = `http://127.0.0.1:4242/${'a'.repeat(32)}/session-work-a`;
+    prepareSessionAdmission({ base, claim: 'session-work-a', workspace, maxCalls: 24, gate });
+    expect(readSessionAdmissionGate(base, 'session-work-a')).toEqual({ port: 4242, secret: 'a'.repeat(32), maxCalls: 24 });
+    expect(() => readSessionAdmissionGate(base, 'session-work-b')).toThrow('not a regular file');
+    expect(() => readSessionAdmissionGate(base, '../session-work-a')).toThrow('exact claim required');
+    prepareSessionAdmission({ base, claim: 'session-work-b', workspace, maxCalls: 24, gate });
+    expect(() => readSessionAdmissionGate(base, 'session-work-b')).toThrow('does not name this claim');
+    prepareSessionAdmission({ base, claim: 'session-work-c', workspace, maxCalls: 24, gate: `http://127.0.0.1:4242/${'a'.repeat(32)}/session-work-c` });
+    chmodSync(join(base, 'session-work-c', 'config.json'), 0o644);
+    expect(() => readSessionAdmissionGate(base, 'session-work-c')).toThrow('custody bounds');
+    chmodSync(join(base, 'session-work-c', 'config.json'), 0o600);
+    renameSync(join(base, 'session-work-c', 'config.json'), join(root, 'elsewhere.json'));
+    symlinkSync(join(root, 'elsewhere.json'), join(base, 'session-work-c', 'config.json'));
+    expect(() => readSessionAdmissionGate(base, 'session-work-c')).toThrow('not a regular file');
+    expect(() => prepareSessionAdmission({ base, claim: 'session-work-d', workspace, maxCalls: 24, gate: `http://10.0.0.5:4242/${'a'.repeat(32)}/session-work-d` })).toThrow('checkpoint address');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

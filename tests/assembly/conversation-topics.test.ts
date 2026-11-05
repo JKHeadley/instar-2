@@ -818,7 +818,7 @@ it.each([128, 7500])('renewal uses the real journal budget and survives reopen (
     expect(journal.view.calls).toBe(reserved === 128 ? 256 : 7500);
     journal.close(); journal = open();
     expect(journal.view.calls).toBe(reserved === 128 ? 256 : 7500);
-    expect(journal.sessionWorkRecords().filter(row => row.id === 'operator:allowance:renew')).toHaveLength(1);
+    expect(journal.sessionWorkRecords().filter(row => 'id' in row && row.id === 'operator:allowance:renew')).toHaveLength(1);
     if (reserved === 128) {
       await f.port.close();
       f.config.store.load = () => createConversationHostStore(custodyPath, key).load(); f.restart();

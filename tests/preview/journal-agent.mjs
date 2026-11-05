@@ -29,7 +29,7 @@ import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, createSubscriptionVe
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
   TOOLS_DEFAULT_ACTIVATION, createHeldSecrets, custodyHeldSources, heldSpan, heldVerdict } from './tool-turn.mjs';
-import { prepareSessionAdmission, sessionAdmissionCommand, SESSION_ADMISSION_KEPT } from './session-admission.mjs';
+import { prepareSessionAdmission, sessionAdmissionCommand, SESSION_ADMISSION_KEPT, readSessionAdmissionGate } from './session-admission.mjs';
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
 import { admitToolCallEffect } from './tool-admission.mjs';
 import { grantVolume, HARNESS_OFF_REASON, HARNESS_SESSION_BRIDGE, harnessCredentialValues, harnessGate, harnessHookPath, harnessRefusedNotice, harnessSessionAdmission,
@@ -2834,7 +2834,24 @@ async function main() {
                 check: heldVerdict(heldSecrets), ownerRead: conversationSession ? (id, input) => gate.observeOwner(claim, id, input) : null }));
             }
             gate.open(claim, { framework, allowance: edge.budget.calls, edge,
-              ...(conversationSession ? { reserveCall: ordinal => sessionWork.port.reserveCall(claim, ordinal) } : {}) }); },
+              // Carryover 02: a one-shot claim's every call records its durable intent ordinal against the reserved edge
+              // before it is forwarded (the journal enforces contiguity and the reservation), so a restart restores the
+              // exact spent liability; a conversation claim keeps its per-call charge.
+              reserveCall: conversationSession ? ordinal => sessionWork.port.reserveCall(claim, ordinal)
+                : ordinal => journal.append({ kind: 'session-work', record: { type: 'SessionWorkCall', schemaVersion: 1, edge: edge.id, ordinal, at: wallNow() }, at: wallNow() }) }); },
+          // Carryover 02 admission continuity: the adopted claim's ORIGINAL endpoint, from its own recorded config through the
+          // trusted reader (authority for nothing), rebound on this host only after the owner's lease; the claim reopens
+          // with its original edge, spent intents, uncertain effects and open delegations. The old step's shell network
+          // checkpoint and connectors are not re-attached: a restored worker's tool traffic fails closed as before.
+          ...(conversationSession ? {} : { restoreAdmission: async (claim, edge, restore) => {
+            const recorded = readSessionAdmissionGate(admissionBase, claim);
+            if (recorded.maxCalls < 1) return false;
+            await gate.restore({ port: recorded.port, secret: recorded.secret });
+            gate.open(claim, { framework, allowance: edge.budget.calls, edge,
+              reserveCall: ordinal => journal.append({ kind: 'session-work', record: { type: 'SessionWorkCall', schemaVersion: 1, edge: edge.id, ordinal, at: wallNow() }, at: wallNow() }),
+              restored: { calls: restore.spent, uncertainEffects: restore.uncertainEffects, delegations: restore.delegations, secret: recorded.secret } });
+            return true;
+          } }),
           admissionState: claim => gate.state(claim),
           closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {});
             const connectors = sessionConnectors.get(claim); sessionConnectors.delete(claim);

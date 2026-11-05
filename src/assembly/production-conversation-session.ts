@@ -4,7 +4,7 @@ import type { HarnessInputDelivery as ConversationDelivery, HarnessAdapterPort, 
 import type { ProcessControlPayload, EffectSettlement } from '../effects/index.js';
 import { canonical, consumeOutcome, consumeResult, type Result, type Refused } from '../index.js';
 import { sessionWorkPolicy, SESSION_WORK_LIMITS } from './production-session-work.js';
-import type { SessionWorkConfig, SessionWorkEdge, SessionWorkEdgeClose, SessionWorkCall, SessionWorkLease,
+import type { SessionWorkConfig, SessionWorkEdge, SessionWorkEdgeClose, SessionWorkCall, SessionWorkEffect, SessionWorkLease,
   SessionWorkOutcome, SessionWorkRequest } from './production-session-work.js';
 
 /** One conversation, one admission and one reserved allowance. Turns do not replenish it.
@@ -207,7 +207,7 @@ export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'crea
    * No extra model call and no authority is conferred by a status sample. */
   readonly workingActivity?: (operation: string, claim: string | null, phase: 'start' | 'working' | 'end') => void;
   /** Durable host journal evidence; never reopens the former process's admission. */
-  readonly recoveryEdges?: () => readonly (SessionWorkEdge | SessionWorkEdgeClose)[];
+  readonly recoveryEdges?: () => readonly (SessionWorkEdge | SessionWorkEdgeClose | SessionWorkCall | SessionWorkEffect)[];
   /** The already-admitted parent lifetime; replacing a process cannot extend it. */
   readonly allowanceDeadline: number;
   /** A withdrawn grant fences the worker without ending durable conversation custody. */

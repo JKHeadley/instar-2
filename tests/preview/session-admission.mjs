@@ -2,7 +2,7 @@
 // outside the session's working scope, holding the hook's config (with the host checkpoint's address for this claim),
 // its tool-call slots, its record and the confined-shell profile. The same hook as the tool turn
 // (tool-admission-hook.mjs) reads it; this module lays it out fresh before each step.
-import { lstatSync, mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, openSync, closeSync, fstatSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync, constants } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { shellSandboxProfile } from './tool-admission.mjs';
@@ -55,6 +55,32 @@ export function prepareSessionAdmission({ base, claim, workspace, maxCalls, gate
   if (opened) opened.open([join(state, 'config.json'), ...(shellProfile ? [shellProfile] : [])]);
   pruneSessionAdmission(base, claim);
   return state;
+}
+/**
+ * Carryover 02 admission continuity: the ONE trusted read of an adopted claim's own recorded checkpoint address, for the
+ * host that restores it after a restart. The file is authority for nothing: it only names the endpoint the original
+ * worker was given at spawn. Refuses anything but this user's regular, single-link, 0600 file reached by its exact
+ * claim path (no symbolic link, no traversal), of bounded size, whose `gate` names this exact claim on loopback.
+ * Never logs or returns more than the port, secret and call bound.
+ */
+export function readSessionAdmissionGate(base, claim) {
+  const path = join(stateOf(base, claim), 'config.json');
+  const named = lstatSync(path, { throwIfNoEntry: false });
+  if (!named || named.isSymbolicLink() || !named.isFile()) throw Error('session admission: recorded checkpoint config is not a regular file');
+  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const opened = fstatSync(fd);
+    if (!opened.isFile() || opened.nlink !== 1 || opened.dev !== named.dev || opened.ino !== named.ino
+      || (opened.mode & 0o777) !== 0o600 || opened.uid !== process.getuid() || opened.size > 65536)
+      throw Error('session admission: recorded checkpoint config fails custody bounds');
+    const config = JSON.parse(readFileSync(fd, 'utf8'));
+    const match = /^http:\/\/127\.0\.0\.1:([0-9]{1,5})\/([0-9a-f]{32})\/([A-Za-z0-9._-]{1,121})$/u.exec(typeof config?.gate === 'string' ? config.gate : '');
+    const port = match ? Number(match[1]) : 0;
+    if (!match || match[3] !== claim || !Number.isSafeInteger(port) || port < 1 || port > 65535
+      || !Number.isSafeInteger(config.maxCalls) || config.maxCalls < 1)
+      throw Error('session admission: recorded checkpoint does not name this claim on loopback');
+    return { port, secret: match[2], maxCalls: config.maxCalls };
+  } finally { closeSync(fd); }
 }
 /** Keeps the newest `SESSION_ADMISSION_KEPT` step directories (by modification time), never the current one. */
 function pruneSessionAdmission(base, current) {

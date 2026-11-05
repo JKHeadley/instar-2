@@ -542,31 +542,40 @@ after a host restart (StaleSessionBackstop/ResumeQueue): the open edge's exact
 intake digest and registered claim are matched through the driver's
 `recoverWorker`; the step resumes under the original edge id, deadline, allowance
 and result destination, with no launch, delivery or replay, and closes once with
-the original identity. The restored claim reopens with the ORIGINAL remaining
-liability: the worker's own transcript count since the edge opened (the existing
-accounting read) is subtracted from the edge's reserved calls, an unreadable meter
-or an exhausted allowance refuses adoption, and delegations opened before the
-restart settle as uncertain. Honest limit, and the open contract for the desk: the
-installed admission checkpoint listens on a per-launch loopback port under a
-per-launch secret, baked into the worker's environment at spawn, so a live
-restored worker's further model calls cannot reach the new host's gate today;
-restoration therefore recovers a result the worker already wrote or a step that
-needs no further call. Full continuity needs three bounded additions to existing
-owners, none a new store, protocol or service: (1) `createAdmissionGate` accepts a
-`listen: { port, secret }` restored from the adopted claim's own admission
-`config.json` `gate` field (0600, same trust domain), binding only when the old
-host has released the port and serving the restored secret only for adopted
-claims; (2) the gate appends a durable `SessionWorkCall { edge, ordinal, at }` row
-before forwarding every one-shot model call, as the conversation owner's per-call
-charge already does, and `sessionWorkRecords()` returns those rows so the restored
-count is `max(rows, transcript)` and a call in flight at the crash is never lost;
-(3) `open(claim, …)` accepts restored `calls` and the `uncertainEffects` derived
-from the edge's durable `SessionWorkEffect` rows prepared without an `observed`
-row, so the replay fences hold after the restart. The desk decision is whether a
-per-launch gate secret may be restored from that state file. The step's 600 000 ms
-lifetime still ends before the inherited 1 800 000 ms stale window by design; the
-one-shot owner reads the existing registered-work watcher (60 s indeterminate
-silence, 90 min active) as its stale signal instead.
+the original identity. Admission continuity (desk source decision 2026-11-05): the
+adopted claim reopens on its ORIGINAL checkpoint endpoint with its ORIGINAL
+liability, in the existing owners and with no new store, service, protocol or grant.
+
+- Durable intent: every one-shot model call records a `SessionWorkCall { edge,
+  ordinal, at }` row through the gate's existing `reserveCall` hook before it is
+  forwarded; the journal enforces contiguity and the edge's reservation and charges
+  nothing twice (the edge reserved the liability). The spent count after a restart
+  is the contiguous high-water ordinal; a gap, duplicate or disorder refuses.
+- Transcript check: the worker's own transcript count since the edge opened may not
+  exceed the intents (surprising, refuses) and may fall short (an intent recorded
+  and never answered keeps its liability; nothing is refunded).
+- Endpoint: the host's `restoreAdmission` reads the claim's own recorded `gate`
+  through `readSessionAdmissionGate` (this user's regular, single-link, 0600 file
+  at the exact claim path, naming this claim on loopback; authority for nothing),
+  binds that port under that secret as a second gate listener only after the
+  owner's lease, and refuses a busy or foreign port. A bind is never owner proof:
+  the existing lease, generation and stop fences decide. The restored secret serves
+  only the claim adopted under it; the host's own claims stay under the fresh secret.
+- State: `open(claim, { restored })` starts at the spent intents, with the edge's
+  effects prepared without an observation and its delegations without a close
+  restored as they are, so the replay fences hold and the delegations settle through
+  the existing close path. The old step's shell network checkpoint and connectors
+  are not re-attached; that traffic fails closed as before.
+- Proof: a real worker process with the endpoint baked at spawn spends 5 of 24
+  through host A's gate, host A retires lawfully, host B restores the endpoint under
+  its lease, and the worker's next 19 calls pass while the 20th is refused by the
+  gate; busy or foreign ports, substituted configs, stale or ambiguous workers,
+  unknown or exceeded liability, stop and deadline refuse without a launch, delivery
+  or replenishment.
+
+The step's 600 000 ms lifetime still ends before the inherited 1 800 000 ms stale
+window by design; the one-shot owner reads the existing registered-work watcher
+(60 s indeterminate silence, 90 min active) as its stale signal instead.
 
 The host session IO's control-plane observer (DegradedTmuxGuard) now also yields
 one deduplicated notice per degraded episode, re-raised at the thirty-minute
