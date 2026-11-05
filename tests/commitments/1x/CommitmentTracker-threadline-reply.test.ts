@@ -14,9 +14,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { CommitmentTracker } from '../../src/monitoring/CommitmentTracker.js';
-import { LiveConfig } from '../../src/config/LiveConfig.js';
-import { SafeFsExecutor } from '../../src/core/SafeFsExecutor.js';
+import { CommitmentTracker } from './host.js';
+import { LiveConfig } from './host.js';
+import { SafeFsExecutor } from './host.js';
 
 function tmpState(): { stateDir: string; cleanup: () => void } {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-tl-reply-'));
@@ -137,9 +137,7 @@ describe('CommitmentTracker — threadline-reply verification method', () => {
     expect(after?.violationCount).toBe(0);
   });
 
-  it('threadline-reply commitments are NOT auto-marked delivered by the unverifiable backfill', () => {
-    // Construct, persist, then re-construct to trigger backfill on a record
-    // with verificationMethod: 'threadline-reply'.
+  it('threadline-reply commitments stay pending across a restart', () => {
     const tracker1 = new CommitmentTracker({ stateDir, liveConfig: new LiveConfig(stateDir) });
     const c = tracker1.record({
       type: 'one-time-action',
@@ -151,7 +149,6 @@ describe('CommitmentTracker — threadline-reply verification method', () => {
       agentResponse: 'a',
     });
     expect(c.status).toBe('pending');
-    // Fresh tracker triggers backfill in constructor.
     const tracker2 = new CommitmentTracker({ stateDir, liveConfig: new LiveConfig(stateDir) });
     const after = tracker2.getActive().find(x => x.id === c.id);
     expect(after?.status).toBe('pending');

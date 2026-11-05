@@ -15,27 +15,29 @@
  *
  * Lifecycle:
  *   record → verify → (auto-correct if needed) → monitor → resolve
+ *
+ * 2.0 adaptation: ambient time, timers, files and logging arrive through
+ * `CommitmentTrackerPorts`; the journal adapter (tests/preview/commitment-host.ts)
+ * supplies the durable store, so this class owns no second store. Omitted from
+ * 1.x because the rule book forbids them: inference of delivery from a missing
+ * verifier (Rules 26/42), timer closure of a directive (Rule 93) and regular
+ * expressions deciding what a reply meant (Rule 10). See src/commitments/README.md.
  */
 
-import { EventEmitter } from 'node:events';
-import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import path from 'node:path';
-import crypto from 'node:crypto';
-import type { LiveConfig } from '../config/LiveConfig.js';
-import type { ComponentHealth } from '../core/types.js';
-import { DegradationReporter } from './DegradationReporter.js';
-import { SafeFsExecutor } from '../core/SafeFsExecutor.js';
-import { AutoExpiryLedger } from '../core/AutoExpiryLedger.js';
+import { AutoExpiryLedger } from './AutoExpiryLedger.js';
+import { CommitmentEmitter, type CommitmentTrackerPorts, type ConfigWatchPort, type ComponentHealth } from './ports.js';
 
 // ── Types ─────────────────────────────────────────────────────────
 
 export type CommitmentType = 'config-change' | 'behavioral' | 'one-time-action';
 export type CommitmentStatus = 'pending' | 'verified' | 'violated' | 'expired' | 'withdrawn' | 'delivered';
+/** How far out a promise said it would land, as the model admitted it. */
+export type DeclaredHorizon = { kind: 'duration'; ms: number } | { kind: 'end-of-day' } | { kind: 'next-day' } | { kind: 'soon' };
 
 export class CommitmentPersistenceError extends Error {
   readonly code = 'COMMITMENT_PERSISTENCE_FAILED';
-  constructor(readonly errorClass: 'mkdir' | 'temp-write' | 'rename') {
+  constructor(readonly errorClass: 'mkdir' | 'temp-write' | 'rename' | 'journal-refused') {
     super(`Commitment store persistence failed (${errorClass})`);
     this.name = 'CommitmentPersistenceError';
   }
@@ -71,17 +73,17 @@ export interface Commitment {
   /** When the commitment was made */
   createdAt: string;
   /** When the commitment was last verified */
-  lastVerifiedAt?: string;
+  lastVerifiedAt?: string | undefined;
   /** When the commitment was fulfilled or violated */
-  resolvedAt?: string;
+  resolvedAt?: string | undefined;
   /** Resolution details */
-  resolution?: string;
+  resolution?: string | undefined;
   /** Number of consecutive successful verifications */
   verificationCount: number;
   /** Number of violations detected */
   violationCount: number;
   /** Telegram topic ID where the commitment was made */
-  topicId?: number;
+  topicId?: number | undefined;
   /**
    * durable-conversation-identity §3.5.2 property 5 (R4-M1): for a commitment
    * bound to a MINTED (negative) conversation id, the DENORMALIZED bind-time
@@ -91,18 +93,18 @@ export interface Commitment {
    * ownership migration can never reopen the C3-class misdelivery. Absent on
    * legacy/Telegram bindings (delivery falls back to `resolve(id)`).
    */
-  boundTuple?: { platform: 'slack'; channelId: string; threadTs: string | null };
+  boundTuple?: { platform: 'slack'; channelId: string; threadTs: string | null } | undefined;
   /**
    * §7 bind-time authority: WHO opened this durable state — recorded from the
    * VERIFIED bind-token payload (`session:<name>`) or the server-self
    * principal (`server:<component>`), never from the request body.
    */
-  boundBy?: string;
+  boundBy?: string | undefined;
   /** Source: 'agent' (self-registered) or 'sentinel' (detected by LLM scanner) */
-  source?: 'agent' | 'sentinel' | 'manual';
+  source?: 'agent' | 'sentinel' | 'manual' | undefined;
   /** Exact motivating correction provenance for correspondence-gated work. */
-  correctionId?: string;
-  classReviewRef?: string;
+  correctionId?: string | undefined;
+  classReviewRef?: string | undefined;
 
   // ── C1+C2 "The Agent Carries the Loop" state model (owner ⟂ blockedOn) ──
   // Two ORTHOGONAL fields (spec agent-owned-followthrough §4.1, FD1/FD6):
@@ -113,13 +115,13 @@ export interface Commitment {
   // goes through the guarded /commitments/:id/transition route that re-runs the
   // record()-time well-formedness gates).
   /** Who drives the next action. Default 'agent' (the agent owns follow-through). */
-  owner?: 'agent' | 'user';
+  owner?: 'agent' | 'user' | undefined;
   /** What the next action waits on. Default 'none'. */
-  blockedOn?: 'none' | 'external' | 'user-input' | 'user-authorization';
+  blockedOn?: 'none' | 'external' | 'user-input' | 'user-authorization' | undefined;
   /** throughput-metrics v1: authoritative bounded blocker lifecycle handoff. */
-  blockerEpisodes?: BlockerEpisode[];
+  blockerEpisodes?: BlockerEpisode[] | undefined;
   /** Capacity fallback pairing one dropped open with its later clear. */
-  blockerMeasurementDropped?: { openedAtMs: number };
+  blockerMeasurementDropped?: { openedAtMs: number } | undefined;
   /**
    * For an owner:'agent' commitment whose work is side-effecting: the agent's
    * self-declared action class. INERT in C1+C2 (well-formedness-validated only,
@@ -127,7 +129,7 @@ export interface Commitment {
    * follow-on (agent-autonomy-ratchet). Side-effect authority remains the
    * existing tool-call-time external-operation-gate, unchanged by this feature.
    */
-  actionClass?: string;
+  actionClass?: string | undefined;
   /**
    * For owner:'agent', blockedOn:'external': the last observable dependency-probe
    * recorded by the agent's own session (via POST /commitments/:id/probe). A
@@ -135,14 +137,14 @@ export interface Commitment {
    * resets the absolute lifetime ceiling. Observation Needs Structure — the
    * refused-without-it artifact that makes "monitoring" falsifiable.
    */
-  lastProbe?: { at: string; checked: string; readinessSignal: string };
+  lastProbe?: { at: string; checked: string; readinessSignal: string } | undefined;
   /**
    * Set when the external-block staleness governor (§4.4) has dead-lettered this
    * commitment (raised the ONE operator Attention item). Dedupes the dead-letter
    * so it fires once per stale episode. Cleared by a fresh recordProbe (a renewed
    * genuine wait re-arms the governor).
    */
-  externalBlockDeadLetteredAt?: string;
+  externalBlockDeadLetteredAt?: string | undefined;
   /**
    * Names a newer commitment that supersedes this one. Objective close-evidence
    * for the §4.5 graveyard reconciler: when the named superseder reaches a
@@ -150,23 +152,23 @@ export interface Commitment {
    * disposition with evidence — NOT an "abandoned" auto-close). Settable at
    * record() or via the guarded transition route.
    */
-  supersededBy?: string;
+  supersededBy?: string | undefined;
 
   // ── Type-specific fields ────────────────────────────────
 
   /** For config-change: the config path and expected value */
-  configPath?: string;
+  configPath?: string | undefined;
   configExpectedValue?: unknown;
 
   /** For behavioral: the rule text injected into sessions */
-  behavioralRule?: string;
+  behavioralRule?: string | undefined;
   /** For behavioral/one-time: when this commitment expires (null = forever) */
-  expiresAt?: string;
+  expiresAt?: string | undefined;
 
   /** For one-time-action: verification method */
-  verificationMethod?: 'config-value' | 'file-exists' | 'manual' | 'threadline-reply';
+  verificationMethod?: 'config-value' | 'file-exists' | 'manual' | 'threadline-reply' | undefined;
   /** For one-time-action with file-exists: the path to check */
-  verificationPath?: string;
+  verificationPath?: string | undefined;
 
   /**
    * For verificationMethod === 'threadline-reply': the thread we're waiting on.
@@ -174,9 +176,9 @@ export interface Commitment {
    * the periodic verify sweep is a no-op for this method.
    * Per THREAD-TOPIC-LINKAGE-SPEC.md.
    */
-  relatedThreadId?: string;
+  relatedThreadId?: string | undefined;
   /** For verificationMethod === 'threadline-reply': the remote agent. */
-  relatedAgent?: string;
+  relatedAgent?: string | undefined;
   /**
    * For verificationMethod === 'threadline-reply': ISO timestamp of the most
    * recently delivered reply on this thread. Used by the salience gate's
@@ -184,7 +186,7 @@ export interface Commitment {
    * has been recorded yet). Distinct from `heartbeatCount`, which counts
    * beacon emissions, not reply arrivals.
    */
-  lastReplyAt?: string;
+  lastReplyAt?: string | undefined;
 
   /**
    * For CollaborationRedriveEngine — DURABLE, MONOTONIC, REPLY-INDEPENDENT
@@ -194,11 +196,11 @@ export interface Commitment {
    * mutual re-drive scenario. Spec:
    * docs/specs/collaboration-redrive-on-counterpart-silence.md §2.4.
    */
-  redriveCount?: number;
+  redriveCount?: number | undefined;
   /** ISO timestamp of the most recent re-drive send (spacing window). */
-  lastRedriveAt?: string;
+  lastRedriveAt?: string | undefined;
   /** Text of the most recent re-drive (decorative novelty-tiebreaker). */
-  lastRedriveText?: string;
+  lastRedriveText?: string | undefined;
 
   // ── Self-healing tracking ─────────────────────────────
 
@@ -209,7 +211,7 @@ export interface Commitment {
   /** Whether this commitment has been escalated as a potential bug */
   escalated: boolean;
   /** Escalation details */
-  escalationDetail?: string;
+  escalationDetail?: string | undefined;
 
   // ── Concurrency ───────────────────────────────────────
 
@@ -221,16 +223,16 @@ export interface Commitment {
 
   // ── Promise Beacon (Phase 1 — PROMISE-BEACON-SPEC.md) ──
   /** When set, this commitment is watched by PromiseBeacon. Requires topicId. */
-  beaconEnabled?: boolean;
+  beaconEnabled?: boolean | undefined;
   /** Explicit reason this commitment was created without a follow-through schedule. */
-  followThroughOptOutReason?: string;
+  followThroughOptOutReason?: string | undefined;
   /** Heartbeat cadence in ms. Server clamps to [60_000, 21_600_000]. */
-  cadenceMs?: number;
+  cadenceMs?: number | undefined;
   /**
    * Soft "I'll check in by X" marker. Past it, one atRisk notice is emitted
    * and cadence continues (see Round 3 clarification #4).
    */
-  nextUpdateDueAt?: string;
+  nextUpdateDueAt?: string | undefined;
   /**
    * A SPECIFIC promised moment — "I'll check in on this by Friday" (ACT-724).
    * Exactly one reminder is posted to `topicId` when it arrives; see
@@ -243,7 +245,7 @@ export interface Commitment {
    * cadence logic. A promise with a date is a different thing from a nudge
    * interval, and gets its own field.
    */
-  checkInAt?: string;
+  checkInAt?: string | undefined;
   /**
    * Set ONLY after the reminder has actually been delivered.
    *
@@ -257,70 +259,70 @@ export interface Commitment {
    * existing content dedup (identical text to the same topic inside its window),
    * so at-least-once delivery does not become at-least-twice.
    */
-  checkInReminderSentAt?: string;
+  checkInReminderSentAt?: string | undefined;
   /**
    * How many delivery attempts have been made. Bounds retry so a permanently
    * broken transport cannot be hammered forever, while a transient failure
    * still gets another chance — the thing stamp-before-send gave away.
    */
-  checkInReminderAttempts?: number;
+  checkInReminderAttempts?: number | undefined;
   /**
    * Set when retries were EXHAUSTED without delivery. A loud give-up: the
    * reminder is genuinely undelivered and this is the record that says so,
    * rather than a "sent" stamp that quietly lies.
    */
-  checkInReminderFailedAt?: string;
+  checkInReminderFailedAt?: string | undefined;
   /** Soft deadline — past it, cadence doubles (no terminal transition). */
-  softDeadlineAt?: string;
+  softDeadlineAt?: string | undefined;
   /** Hard deadline — past it, commitment transitions to `expired`. */
-  hardDeadlineAt?: string;
+  hardDeadlineAt?: string | undefined;
   /** Last heartbeat emission (ISO). */
-  lastHeartbeatAt?: string;
+  lastHeartbeatAt?: string | undefined;
   /** Count of heartbeats emitted so far. */
-  heartbeatCount?: number;
+  heartbeatCount?: number | undefined;
   /**
    * Claude Code session UUID at declaration. On mismatch, commitment is
    * violated with reason `"session-lost"` (Round 3 #3).
    */
-  sessionEpoch?: string;
+  sessionEpoch?: string | undefined;
   /**
    * Non-terminal flag — Tier-3 "stalled" verdicts set this; still heartbeating
    * with a softer tone. Only corroborated signals transition to `violated`.
    */
-  atRisk?: boolean;
+  atRisk?: boolean | undefined;
   /**
    * Non-terminal flag — boot-cap / daily-spend-cap suppression. Status stays
    * `pending`, no heartbeats fire (Round 3 #2).
    */
-  beaconSuppressed?: boolean;
+  beaconSuppressed?: boolean | undefined;
   /** Reason accompanying `beaconSuppressed`. */
-  beaconSuppressionReason?: string;
+  beaconSuppressionReason?: string | undefined;
   /** SHA-256 of the last tmux snapshot used for a heartbeat. */
-  lastSnapshotHash?: string;
+  lastSnapshotHash?: string | undefined;
   /** Machine owning the beacon for this commitment. */
-  ownerMachineId?: string;
+  ownerMachineId?: string | undefined;
   /** Provenance of the beacon-enabling mutation. */
-  beaconCreatedBySource?: 'skill' | 'api-loopback' | 'sentinel' | 'manual';
+  beaconCreatedBySource?: 'skill' | 'api-loopback' | 'sentinel' | 'manual' | undefined;
   /** Idempotency key for skill retries. */
-  externalKey?: string;
+  externalKey?: string | undefined;
   /** Verified delivery message id (set by POST /commitments/:id/deliver). */
-  deliveryMessageId?: string;
+  deliveryMessageId?: string | undefined;
   /**
    * Non-terminal: beacon is paused because nothing has changed for
    * `beaconAutoPauseAfterUnchanged` consecutive heartbeats. Status stays
    * `pending`. Cleared by POST /commitments/:id/resume (or by a "keep watching"
    * Telegram reply on the same topic).
    */
-  beaconPaused?: boolean;
+  beaconPaused?: boolean | undefined;
   /** Reason accompanying `beaconPaused` (e.g. `"auto-paused-no-progress"`). */
-  beaconPausedReason?: string;
+  beaconPausedReason?: string | undefined;
   /** When the beacon was paused (ISO). */
-  beaconPausedAt?: string;
+  beaconPausedAt?: string | undefined;
   /**
    * Number of consecutive unchanged-snapshot heartbeats before auto-pausing.
    * Default 12 (≈2h at 10-min cadence). 0 disables auto-pause.
    */
-  beaconAutoPauseAfterUnchanged?: number;
+  beaconAutoPauseAfterUnchanged?: number | undefined;
   /**
    * Snapshot of the unchanged-streak length at the pause boundary, written
    * only when the beacon auto-pauses or when /resume zeroes it. Hot-state
@@ -329,7 +331,7 @@ export interface Commitment {
    * beacons. Not updated on every heartbeat to avoid serialized-write
    * amplification on the mutate queue.
    */
-  consecutiveUnchanged?: number;
+  consecutiveUnchanged?: number | undefined;
 
   // ── Commitments Coherence (P1.5 — COMMITMENTS-COHERENCE-SPEC §3.1/§3.2) ──
 
@@ -340,42 +342,42 @@ export interface Commitment {
    * at creation, NEVER reassigned. Legacy records: absent ⇒ owned by the
    * store they live in (serve-time stamping + lazy back-fill on next mutate).
    */
-  originMachineId?: string;
+  originMachineId?: string | undefined;
   /**
    * The store replicationSeq of this record's last STATE-MEANINGFUL mutation
    * (status/fields/creation — NOT beacon bookkeeping). What makes
    * commitments-sync a seq-windowed DELTA instead of a whole-store blob.
    */
-  lastMutatedSeq?: number;
+  lastMutatedSeq?: number | undefined;
 
   // ── Promise-Beacon Escalation (PROMISE-BEACON-ESCALATION-SPEC §4) ──
   // ALL server-written-only (I11): never accepted on POST/PATCH /commitments.
   // Durable cold-state so a restart cannot reset the cap (I1).
   /** Count of Rung-1 revive attempts. Incremented BEFORE the spawn (I1). */
-  escalationAttempts?: number;
+  escalationAttempts?: number | undefined;
   /** ISO of the most recent escalation attempt (backoff floor anchor). */
-  lastEscalationAt?: string;
+  lastEscalationAt?: string | undefined;
   /** Which rung the escalation is currently on. */
-  currentRung?: '1' | '2' | '3' | null;
+  currentRung?: '1' | '2' | '3' | null | undefined;
   /** Idempotency key for the in-flight Rung-1 spawn (I6/I14). */
-  escalationAttemptId?: string;
+  escalationAttemptId?: string | undefined;
   /** True while a Rung-1 revive is in flight (resolved by the timeout contract, §3.1). */
-  escalationInFlight?: boolean;
+  escalationInFlight?: boolean | undefined;
   /**
    * Spawn-time marker on a revived session. Read by the external-operation-gate
    * to block side-effecting tools until server-recorded revalidation (I13).
    */
-  revivalMode?: 'status-only-until-revalidated';
+  revivalMode?: 'status-only-until-revalidated' | undefined;
   /** Server-recorded revalidation time (ISO). Unblocks side-effects in the gate (I13). */
-  revalidatedAt?: string;
+  revalidatedAt?: string | undefined;
   /** The authenticated session id that revalidated (I13). */
-  revalidatedBy?: string;
+  revalidatedBy?: string | undefined;
   /** Count of Rung-2 honest-status notifications sent (bounded, §3.2). */
-  rung2NotificationCount?: number;
+  rung2NotificationCount?: number | undefined;
   /** ISO of the most recent Rung-2 send (per-commitment floor). */
-  lastRung2At?: string;
+  lastRung2At?: string | undefined;
   /** Most recent escalation refusal reason for observability (§6). */
-  refusalReason?: string;
+  refusalReason?: string | undefined;
 }
 
 export interface CommitmentStore {
@@ -427,8 +429,8 @@ export interface ConversationBinder {
 }
 
 export interface CommitmentTrackerConfig {
-  stateDir: string;
-  liveConfig: LiveConfig;
+  ports: CommitmentTrackerPorts;
+  liveConfig: ConfigWatchPort;
   /** durable-conversation-identity binder (usually late-bound via
    *  setConversationBinder at bootstrap — the registry constructs after the
    *  tracker). Absent → minted-id binds carry no pin/boundTuple (legacy). */
@@ -509,17 +511,17 @@ interface MutateQueueEntry {
   reject: (err: Error) => void;
 }
 
-export class CommitmentTracker extends EventEmitter {
+export class CommitmentTracker extends CommitmentEmitter {
   private config: CommitmentTrackerConfig;
   private store: CommitmentStore;
-  private storePath: string;
-  private rulesPath: string;
-  private interval: ReturnType<typeof setInterval> | null = null;
-  private autoExpiryInterval: ReturnType<typeof setInterval> | null = null;
-  private autoExpiryInitialTimeout: ReturnType<typeof setTimeout> | null = null;
+  private readonly ports: CommitmentTrackerPorts;
+  private interval: { cancel(): void } | null = null;
+  private autoExpiryInterval: { cancel(): void } | null = null;
+  private autoExpiryInitialTimeout: { cancel(): void } | null = null;
   /** CMT-1118: durable per-sweep record of would-expire / expired ids. */
   private readonly autoExpiryLedger: AutoExpiryLedger;
   private nextId: number;
+  private startupVerify: { cancel(): void } | null = null;
   /**
    * Coalesce the per-mutation full-store writes of a synchronous sweep into ONE
    * write at the end. `verify()` mutates every active commitment via
@@ -534,6 +536,8 @@ export class CommitmentTracker extends EventEmitter {
    * with the deferred window.
    */
   private batchingSaves = false;
+  /** Ids changed since the last durable write: the journal stores deltas, not whole stores. */
+  private readonly dirtyIds = new Set<string>();
   private pendingSave = false;
   private batchSnapshot: CommitmentStore | null = null;
   private pendingBindingReleases: Array<{ before: Commitment; after: Commitment }> = [];
@@ -558,62 +562,14 @@ export class CommitmentTracker extends EventEmitter {
   constructor(config: CommitmentTrackerConfig) {
     super();
     this.config = config;
-    this.storePath = path.join(config.stateDir, 'state', 'commitments.json');
-    this.rulesPath = path.join(config.stateDir, 'state', 'commitment-rules.md');
-    this.autoExpiryLedger = new AutoExpiryLedger({ stateDir: config.stateDir, feature: 'commitments' });
+    this.ports = config.ports;
+    this.autoExpiryLedger = new AutoExpiryLedger({ ports: config.ports, feature: 'commitments' });
     this.store = this.loadStore();
     this.nextId = this.computeNextId();
-    this.backfillUnverifiableOneTimeActions();
     this.rebuildThreadIdIndex();
   }
 
-  /**
-   * One-shot migration: any pre-existing one-time-action that is stuck
-   * in `violated` with no real verification method (violationCount > 0,
-   * verificationCount === 0, no verificationMethod) is retro-transitioned
-   * to `delivered` with a clear resolution. This drains the ~270 noisy
-   * rows that accumulated before this fix shipped. Idempotent — rows
-   * already `delivered`/`withdrawn`/`expired` are skipped.
-   */
-  private backfillUnverifiableOneTimeActions(): void {
-    const rollback = structuredClone(this.store);
-    let changed = 0;
-    for (const c of this.store.commitments) {
-      if (c.type !== 'one-time-action') continue;
-      if (c.status === 'delivered' || c.status === 'withdrawn' || c.status === 'expired') continue;
-      if (!CommitmentTracker.isUnverifiableOneTime(c)) continue;
-      // Scope to what the docstring above always claimed: ONLY the historical
-      // noisy rows (stuck violated, violations accumulated, never verified).
-      // Without this check, every BOOT retro-terminalized every pending
-      // unverifiable promise — under restart churn that re-introduced the
-      // CMT-1101 evaporation through the back door, clobbering the verify-sweep
-      // fix within minutes (2026-06-05, framework-issue 5bac8d53).
-      if (!((c.violationCount ?? 0) > 0 && (c.verificationCount ?? 0) === 0)) continue;
-      c.status = 'delivered';
-      c.resolvedAt = c.resolvedAt ?? new Date().toISOString();
-      c.resolution =
-        c.resolution ??
-        'Backfilled: no automated verification method — trusting agent acknowledgment.';
-      c.version = (c.version ?? 0) + 1;
-      changed++;
-    }
-    if (changed > 0) {
-      try {
-        const saved = this.saveStore();
-        if (saved.state === 'failed') {
-          this.store = rollback;
-          throw new CommitmentPersistenceError(saved.errorClass);
-        }
-        console.log(
-          `[CommitmentTracker] Backfill: ${changed} unverifiable one-time-action(s) transitioned to delivered`,
-        );
-      } catch (err) {
-        console.warn(
-          `[CommitmentTracker] Backfill save failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
-  }
+  private nowIso(): string { return this.ports.clock.iso(this.ports.clock.now()); }
 
   // ── Lifecycle ──────────────────────────────────────────────────
 
@@ -624,42 +580,41 @@ export class CommitmentTracker extends EventEmitter {
     const autoExpiry = this.resolveAutoExpiryConfig();
 
     // First verification after a short delay
-    setTimeout(() => this.verify(), 15_000);
+    this.startupVerify = this.ports.timers.after(15_000, () => this.verify());
 
-    this.interval = setInterval(() => this.verify(), intervalMs);
-    this.interval.unref();
+    this.interval = this.ports.timers.every(intervalMs, () => this.verify());
 
     if (autoExpiry.enabled) {
-      this.autoExpiryInitialTimeout = setTimeout(() => {
+      this.autoExpiryInitialTimeout = this.ports.timers.after(30_000, () => {
         this.autoExpiryInitialTimeout = null;
         this.sweepAutoExpiry();
-      }, 30_000);
-      this.autoExpiryInitialTimeout.unref();
-      this.autoExpiryInterval = setInterval(() => {
+      });
+      this.autoExpiryInterval = this.ports.timers.every(autoExpiry.sweepIntervalMs, () => {
         this.sweepAutoExpiry();
-      }, autoExpiry.sweepIntervalMs);
-      this.autoExpiryInterval.unref();
+      });
     }
 
     const active = this.getActive().length;
     if (active > 0) {
-      console.log(`[CommitmentTracker] Started (every ${Math.round(intervalMs / 1000)}s, ${active} active commitment(s))`);
+      this.ports.log(`[CommitmentTracker] Started (every ${Math.round(intervalMs / 1000)}s, ${active} active commitment(s))`);
     } else {
-      console.log(`[CommitmentTracker] Started (every ${Math.round(intervalMs / 1000)}s, no active commitments)`);
+      this.ports.log(`[CommitmentTracker] Started (every ${Math.round(intervalMs / 1000)}s, no active commitments)`);
     }
   }
 
   stop(): void {
+    this.startupVerify?.cancel();
+    this.startupVerify = null;
     if (this.interval) {
-      clearInterval(this.interval);
+      this.interval.cancel();
       this.interval = null;
     }
     if (this.autoExpiryInitialTimeout) {
-      clearTimeout(this.autoExpiryInitialTimeout);
+      this.autoExpiryInitialTimeout.cancel();
       this.autoExpiryInitialTimeout = null;
     }
     if (this.autoExpiryInterval) {
-      clearInterval(this.autoExpiryInterval);
+      this.autoExpiryInterval.cancel();
       this.autoExpiryInterval = null;
     }
   }
@@ -686,6 +641,8 @@ export class CommitmentTracker extends EventEmitter {
     // Promise Beacon (Phase 1) — all optional & additive.
     beaconEnabled?: boolean;
     cadenceMs?: number;
+    /** The model's declared time horizon for this promise (Rule 10). */
+    horizon?: DeclaredHorizon;
     nextUpdateDueAt?: string;
     /**
      * A SPECIFIC promised moment ("I'll check in on this by Friday") — the field
@@ -770,7 +727,7 @@ export class CommitmentTracker extends EventEmitter {
     let configExpectedValue = input.configExpectedValue;
     let verificationMethod = input.verificationMethod;
     if (type === 'config-change' && CommitmentTracker.isTopicScopedConfigPath(configPath)) {
-      console.warn(`[CommitmentTracker] "${configPath}" is topic-scoped, not a global setting — recording as one-time-action, no config-watch`);
+      this.ports.log(`[CommitmentTracker] "${configPath}" is topic-scoped, not a global setting — recording as one-time-action, no config-watch`);
       type = 'one-time-action';
       configPath = undefined;
       configExpectedValue = undefined;
@@ -780,23 +737,21 @@ export class CommitmentTracker extends EventEmitter {
     const id = `CMT-${String(this.nextId++).padStart(3, '0')}`;
 
     // Auto-enable PromiseBeacon on time-promise commitments. If the
-    // caller didn't explicitly set beaconEnabled, sniff the agent's
-    // response for a time marker like "back in 20 min" or "by EOD" —
-    // when present AND a topicId is attached, opt the commitment in
-    // with a conservative cadence and hard deadline. This closes the
-    // "I said 'back in an hour' and went silent" gap without requiring
-    // every record() call-site to plumb beacon flags.
+    // caller didn't explicitly set beaconEnabled and the model declared a
+    // time horizon with a topicId attached, opt the commitment in with a
+    // conservative cadence and hard deadline. This closes the "I said 'back
+    // in an hour' and went silent" gap.
     let autoBeaconEnabled = input.beaconEnabled;
     let autoCadenceMs = input.cadenceMs;
     let autoHardDeadlineAt = input.hardDeadlineAt;
     if (autoBeaconEnabled === undefined && input.topicId !== undefined) {
-      const detected = CommitmentTracker.detectTimePromise(input.agentResponse);
+      const detected = CommitmentTracker.cadenceForHorizon(input.horizon);
       if (detected) {
         autoBeaconEnabled = true;
         autoCadenceMs = autoCadenceMs ?? detected.cadenceMs;
         autoHardDeadlineAt =
           autoHardDeadlineAt ??
-          new Date(Date.now() + detected.hardDeadlineOffsetMs).toISOString();
+          this.ports.clock.iso(this.ports.clock.now() + detected.hardDeadlineOffsetMs);
       }
     }
 
@@ -806,7 +761,7 @@ export class CommitmentTracker extends EventEmitter {
       agentResponse: input.agentResponse,
       type,
       status: 'pending',
-      createdAt: new Date().toISOString(),
+      createdAt: this.nowIso(),
       verificationCount: 0,
       violationCount: 0,
       topicId: input.topicId,
@@ -877,12 +832,12 @@ export class CommitmentTracker extends EventEmitter {
         const superseded = this.mutateSync(older.id, c => ({
           ...c,
           status: 'withdrawn',
-          resolvedAt: new Date().toISOString(),
+          resolvedAt: this.nowIso(),
           resolution: `superseded-by-${id}: newer request expects ${configPath} = ${JSON.stringify(configExpectedValue)}`,
           supersededBy: id,
         }));
         this.refreshThreadIdIndex(superseded);
-        console.log(`[CommitmentTracker] Withdrawn ${older.id}: superseded by ${id}`);
+        this.ports.log(`[CommitmentTracker] Withdrawn ${older.id}: superseded by ${id}`);
         this.emit('withdrawn', superseded);
       }
     }
@@ -894,7 +849,7 @@ export class CommitmentTracker extends EventEmitter {
 
     this.refreshThreadIdIndex(commitment);
 
-    console.log(`[CommitmentTracker] Recorded ${id}: "${input.userRequest}" (${type})`);
+    this.ports.log(`[CommitmentTracker] Recorded ${id}: "${input.userRequest}" (${type})`);
     this.emit('recorded', commitment);
 
     // Run immediate verification for config-change commitments.
@@ -920,7 +875,7 @@ export class CommitmentTracker extends EventEmitter {
     const updated = this.mutateSync(id, c => ({
       ...c,
       status: 'withdrawn',
-      resolvedAt: new Date().toISOString(),
+      resolvedAt: this.nowIso(),
       resolution: reason,
     }));
 
@@ -930,7 +885,7 @@ export class CommitmentTracker extends EventEmitter {
 
     this.refreshThreadIdIndex(updated);
 
-    console.log(`[CommitmentTracker] Withdrawn ${id}: ${reason}`);
+    this.ports.log(`[CommitmentTracker] Withdrawn ${id}: ${reason}`);
     this.emit('withdrawn', updated);
     return true;
   }
@@ -959,7 +914,7 @@ export class CommitmentTracker extends EventEmitter {
       beaconPausedAt: undefined,
       consecutiveUnchanged: 0,
     }));
-    console.log(`[CommitmentTracker] Resumed ${id}`);
+    this.ports.log(`[CommitmentTracker] Resumed ${id}`);
     this.emit('resumed', updated);
     return updated;
   }
@@ -979,12 +934,12 @@ export class CommitmentTracker extends EventEmitter {
     const updated = this.mutateSync(id, c => ({
       ...c,
       status: 'delivered' as CommitmentStatus,
-      resolvedAt: new Date().toISOString(),
+      resolvedAt: this.nowIso(),
       deliveryMessageId: deliveryMessageId ?? c.deliveryMessageId,
     }));
     this.refreshThreadIdIndex(updated);
 
-    console.log(`[CommitmentTracker] Delivered ${id}`);
+    this.ports.log(`[CommitmentTracker] Delivered ${id}`);
     this.emit('delivered', updated);
     return updated;
   }
@@ -996,7 +951,8 @@ export class CommitmentTracker extends EventEmitter {
     const existing = this.store.commitments.find(c => c.id === id);
     if (!existing) return null;
     if (['expired', 'withdrawn', 'delivered'].includes(existing.status)) return null;
-    const updated = this.expireSync(id, reason, new Date().toISOString());
+    if (CommitmentTracker.isDirective(existing)) return null;
+    const updated = this.expireSync(id, reason, this.nowIso());
     this.refreshThreadIdIndex(updated);
     this.emit('expired', updated);
     return updated;
@@ -1019,7 +975,7 @@ export class CommitmentTracker extends EventEmitter {
     if (existing.verificationMethod !== 'threadline-reply') return null;
     return this.mutateSync(id, c => ({
       ...c,
-      lastReplyAt: replyAt ?? new Date().toISOString(),
+      lastReplyAt: replyAt ?? this.nowIso(),
     }));
   }
 
@@ -1046,7 +1002,7 @@ export class CommitmentTracker extends EventEmitter {
     if (!checked || !readinessSignal) return null;
     const updated = this.mutateSync(id, c => ({
       ...c,
-      lastProbe: { at: new Date().toISOString(), checked, readinessSignal },
+      lastProbe: { at: this.nowIso(), checked, readinessSignal },
       // A fresh probe re-arms the governor: clear any prior dead-letter mark so a
       // future re-stale fires again (a renewed genuine wait, not a stuck one).
       externalBlockDeadLetteredAt: undefined,
@@ -1089,7 +1045,7 @@ export class CommitmentTracker extends EventEmitter {
       this.mutateSync(c.id, prev => ({
         ...prev,
         status: 'withdrawn' as CommitmentStatus,
-        resolvedAt: new Date().toISOString(),
+        resolvedAt: this.nowIso(),
         resolution: `superseded-by-${c.supersededBy} (auto-reconciled: superseder is ${superseder.status})`,
       }));
       closed.push(c.id);
@@ -1165,7 +1121,7 @@ export class CommitmentTracker extends EventEmitter {
     ) return existing;
     // Origin-local request-to-persist clock starts after all structural
     // validation and immediately before the authoritative synchronous mutation.
-    const persistStartedNs = process.hrtime.bigint();
+    const persistStartedMs = this.ports.clock.now();
     const updated = this.mutateSync(id, c => ({
       ...c,
       owner,
@@ -1180,8 +1136,8 @@ export class CommitmentTracker extends EventEmitter {
           commitmentId: updated.id,
           episodeId: episode.episodeId,
           sourceEventId: `blocker-lifecycle-v1:request:${episode.episodeId}`,
-          observedAtMs: Date.now(),
-          latencyMs: Number(process.hrtime.bigint() - persistStartedNs) / 1_000_000,
+          observedAtMs: this.ports.clock.now(),
+          latencyMs: this.ports.clock.now() - persistStartedMs,
         });
       }
     }
@@ -1267,10 +1223,10 @@ export class CommitmentTracker extends EventEmitter {
    * re-checked (Phase 1 of commitment signal-quality fix).
    */
   getActive(): Commitment[] {
-    const now = new Date().toISOString();
+    const now = this.nowIso();
     return this.store.commitments.filter(c => {
       if (c.status === 'withdrawn' || c.status === 'expired' || c.status === 'delivered') return false;
-      if (c.expiresAt && c.expiresAt < now) return false;
+      if (c.expiresAt && c.expiresAt < now && !CommitmentTracker.isDirective(c)) return false;
       // Active = pending, verified, or violated (violated is still "active" — it needs attention)
       return c.status === 'pending' || c.status === 'verified' || c.status === 'violated';
     });
@@ -1289,6 +1245,16 @@ export class CommitmentTracker extends EventEmitter {
    */
   getActiveByTopicId(topicId: number): Commitment[] {
     return this.getActive().filter((c) => c.topicId === topicId);
+  }
+
+  /**
+   * Rule 93: what the operator told the agent to keep doing holds until it is
+   * superseded or done, never until a clock runs out. A behavioural rule and a
+   * global setting watch are directives; both still close by withdraw() or
+   * deliver(), each with its cause. Every timer path below tests this.
+   */
+  static isDirective(c: Pick<Commitment, 'type'>): boolean {
+    return c.type === 'behavioral' || c.type === 'config-change';
   }
 
   /** Config roots that name a topic/session, not a global setting (see record()). */
@@ -1321,44 +1287,23 @@ export class CommitmentTracker extends EventEmitter {
   }
 
   /**
-   * Sniff a commitment's agent-response text for an explicit time
-   * promise — "back in 20 minutes", "in an hour", "by EOD", etc.
-   * Returns a suggested beacon cadence and a hard-deadline offset when
-   * a marker is found, null otherwise. Conservative by design: misses
-   * are a no-op.
+   * The tuned cadence and hard-deadline outcome of a time promise. The model
+   * declares the horizon when it admits the promise (Rule 10: what a reply meant
+   * is never read back out of its words here); the numbers are 1.x's, measured.
    *
    * Cadence heuristic: half of the promised duration, clamped to the
    * beacon's own [60_000, 21_600_000] ms range. Hard-deadline offset
    * is 3x the promised duration so a slow response isn't terminal,
    * just flagged.
    */
-  static detectTimePromise(
-    text: string,
+  static cadenceForHorizon(
+    horizon: DeclaredHorizon | undefined,
   ): { cadenceMs: number; hardDeadlineOffsetMs: number } | null {
-    if (!text) return null;
-    const t = text.toLowerCase();
-
-    // Explicit N-unit phrases: "back in 20 minutes", "in an hour", "in 2h".
-    // Hedge-tolerant (slack-followthrough-generalization §4.2, R3 hedge fix):
-    // a leading "about/around/roughly/~" must not break the match — the exact
-    // S7 miss was "in about 5 minutes" (`about` broke `in\s+(an?|\d+)`).
-    const numeric = t.match(
-      /\b(?:back\s+)?in\s+(?:about\s+|around\s+|roughly\s+|~\s*)?(an?|\d+)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|h|m|s)\b/,
-    );
-    if (numeric) {
-      const raw = numeric[1];
-      const n = raw === 'a' || raw === 'an' ? 1 : parseInt(raw, 10);
-      const unit = numeric[2];
-      let unitMs: number;
-      if (unit === 's' || /^secs?$/.test(unit) || /^seconds?$/.test(unit)) {
-        unitMs = 1000;
-      } else if (unit === 'm' || /^mins?$/.test(unit) || /^minutes?$/.test(unit)) {
-        unitMs = 60_000;
-      } else {
-        unitMs = 3_600_000; // h / hr / hour
-      }
-      const totalMs = n * unitMs;
-      if (totalMs >= 60_000) {
+    if (!horizon) return null;
+    switch (horizon.kind) {
+      case 'duration': {
+        const totalMs = horizon.ms;
+        if (!Number.isFinite(totalMs) || totalMs < 60_000) return null;
         const half = Math.floor(totalMs / 2);
         const cadence = Math.max(60_000, Math.min(half, 21_600_000));
         return {
@@ -1366,23 +1311,15 @@ export class CommitmentTracker extends EventEmitter {
           hardDeadlineOffsetMs: Math.min(totalMs * 3, 24 * 3_600_000),
         };
       }
+      case 'end-of-day':
+        return { cadenceMs: 60 * 60_000, hardDeadlineOffsetMs: 12 * 3_600_000 };
+      case 'next-day':
+        return { cadenceMs: 2 * 3_600_000, hardDeadlineOffsetMs: 24 * 3_600_000 };
+      case 'soon':
+        return { cadenceMs: 30 * 60_000, hardDeadlineOffsetMs: 2 * 3_600_000 };
+      default:
+        return null;
     }
-
-    // Softer markers — shorthand time promises.
-    if (/\b(by\s+eod|end\s+of\s+(the\s+)?day)\b/.test(t)) {
-      return { cadenceMs: 60 * 60_000, hardDeadlineOffsetMs: 12 * 3_600_000 };
-    }
-    if (/\b(tomorrow|by\s+morning|by\s+tomorrow)\b/.test(t)) {
-      return { cadenceMs: 2 * 3_600_000, hardDeadlineOffsetMs: 24 * 3_600_000 };
-    }
-    if (
-      /\b(i'?ll\s+(?:check\s+in|report\s+back|get\s+back|ping|update)|back\s+(?:shortly|soon|when)|shortly|soon)\b/
-        .test(t)
-    ) {
-      return { cadenceMs: 30 * 60_000, hardDeadlineOffsetMs: 2 * 3_600_000 };
-    }
-
-    return null;
   }
 
   /**
@@ -1403,7 +1340,7 @@ export class CommitmentTracker extends EventEmitter {
     return structuredClone(this.store.blockerEpisodeDropBuckets ?? {});
   }
 
-  markBlockerClearTelemetryComplete(commitmentId: string, episodeId: string, atMs = Date.now()): boolean {
+  markBlockerClearTelemetryComplete(commitmentId: string, episodeId: string, atMs = this.ports.clock.now()): boolean {
     const commitment = this.get(commitmentId);
     const episode = commitment?.blockerEpisodes?.find(e => e.episodeId === episodeId);
     if (!commitment || !episode || episode.closedAtMs === undefined) return false;
@@ -1465,7 +1402,7 @@ export class CommitmentTracker extends EventEmitter {
     }
 
     const report: CommitmentVerificationReport = {
-      timestamp: new Date().toISOString(),
+      timestamp: this.nowIso(),
       active: active.length,
       verified,
       violated: violations.length,
@@ -1576,11 +1513,11 @@ export class CommitmentTracker extends EventEmitter {
         const next: Commitment = {
           ...c,
           status: 'verified',
-          lastVerifiedAt: new Date().toISOString(),
+          lastVerifiedAt: this.nowIso(),
           verificationCount: c.verificationCount + 1,
         };
         if (c.type === 'one-time-action') {
-          next.resolvedAt = new Date().toISOString();
+          next.resolvedAt = this.nowIso();
           next.resolution = 'Verified complete';
         }
         return next;
@@ -1597,11 +1534,11 @@ export class CommitmentTracker extends EventEmitter {
         this.config.onVerified(updated);
       }
       if (wasViolated) {
-        console.log(`[CommitmentTracker] ${id} recovered: "${updated.userRequest}"`);
+        this.ports.log(`[CommitmentTracker] ${id} recovered: "${updated.userRequest}"`);
       }
     } else if (wasVerified) {
       // Regression — was verified, now violated
-      console.warn(`[CommitmentTracker] VIOLATION ${id}: "${updated.userRequest}" — ${result.detail}`);
+      this.ports.log(`[CommitmentTracker] VIOLATION ${id}: "${updated.userRequest}" — ${result.detail}`);
       // Once escalated ("keeps reverting — looks like a bug"), the user has been
       // told once; a per-flap repeat is noise (live: 1001 alerts per commitment).
       if (this.config.onViolation && !updated.escalated) {
@@ -1654,14 +1591,14 @@ export class CommitmentTracker extends EventEmitter {
     const violated = active.filter(c => c.status === 'violated');
 
     if (active.length === 0) {
-      return { status: 'healthy', message: 'No active commitments', lastCheck: new Date().toISOString() };
+      return { status: 'healthy', message: 'No active commitments', lastCheck: this.nowIso() };
     }
 
     if (violated.length > 0) {
       return {
         status: 'degraded',
         message: `${violated.length} violated commitment(s): ${violated.map(c => c.id).join(', ')}`,
-        lastCheck: new Date().toISOString(),
+        lastCheck: this.nowIso(),
       };
     }
 
@@ -1678,7 +1615,7 @@ export class CommitmentTracker extends EventEmitter {
         unverified === 0
           ? `${active.length} commitment(s) tracked, all verified`
           : `${active.length} commitment(s) tracked — ${verified} verified, ${unverified} not automatically verifiable (no violations)`,
-      lastCheck: new Date().toISOString(),
+      lastCheck: this.nowIso(),
     };
   }
 
@@ -1712,7 +1649,7 @@ export class CommitmentTracker extends EventEmitter {
    */
   private ensureBehavioralRulesFile(): void {
     try {
-      if (!fs.existsSync(this.rulesPath)) {
+      if (!this.ports.behavioralRules.exists()) {
         this.writeBehavioralRules();
       }
     } catch {
@@ -1730,7 +1667,7 @@ export class CommitmentTracker extends EventEmitter {
         if (!commitment.verificationPath) {
           return { passed: false, detail: 'Missing verificationPath for file-exists check' };
         }
-        const exists = fs.existsSync(commitment.verificationPath);
+        const exists = this.ports.fileExists(commitment.verificationPath);
         return {
           passed: exists,
           detail: exists ? `File exists: ${commitment.verificationPath}` : `File missing: ${commitment.verificationPath}`,
@@ -1762,7 +1699,7 @@ export class CommitmentTracker extends EventEmitter {
       // Re-verify after correction
       const recheck = this.verifyConfigChange(commitment);
       if (recheck.passed) {
-        const now = new Date().toISOString();
+        const now = this.nowIso();
         const updated = this.mutateSync(commitment.id, c => ({
           ...c,
           status: 'verified',
@@ -1775,19 +1712,19 @@ export class CommitmentTracker extends EventEmitter {
         // Check for escalation: too many corrections in a time window suggests a bug
         this.checkForEscalation(updated);
 
-        console.log(`[CommitmentTracker] Auto-corrected ${updated.id}: ${updated.configPath} → ${JSON.stringify(updated.configExpectedValue)} (correction #${updated.correctionCount})`);
+        this.ports.log(`[CommitmentTracker] Auto-corrected ${updated.id}: ${updated.configPath} → ${JSON.stringify(updated.configExpectedValue)} (correction #${updated.correctionCount})`);
         this.emit('corrected', updated);
         return true;
       }
     } catch (err) {
-      DegradationReporter.getInstance().report({
+      this.ports.degraded({
         feature: 'CommitmentTracker.attemptAutoCorrection',
         primary: `Auto-correct config drift for commitment ${commitment.id}`,
         fallback: 'Config drift persists, violation remains unresolved',
         reason: `Auto-correction failed: ${err instanceof Error ? err.message : String(err)}`,
         impact: `Commitment "${commitment.userRequest}" remains violated until next cycle`,
       });
-      console.error(`[CommitmentTracker] Auto-correction failed for ${commitment.id}:`, err);
+      this.ports.log(`[CommitmentTracker] Auto-correction failed for ${commitment.id}:`, err);
     }
 
     return false;
@@ -1802,11 +1739,11 @@ export class CommitmentTracker extends EventEmitter {
 
     const threshold = this.config.escalationThreshold ?? 3;
     const windowMs = this.config.escalationWindowMs ?? 3_600_000; // 1 hour
-    const now = Date.now();
+    const now = this.ports.clock.now();
 
     // Count corrections within the window
     const recentCorrections = (commitment.correctionHistory ?? []).filter(ts => {
-      return (now - new Date(ts).getTime()) < windowMs;
+      return (now - this.ports.clock.parse(ts)) < windowMs;
     });
 
     if (recentCorrections.length >= threshold) {
@@ -1818,7 +1755,7 @@ export class CommitmentTracker extends EventEmitter {
         escalationDetail: detail,
       }));
 
-      console.warn(`[CommitmentTracker] ESCALATION ${updated.id}: ${detail}`);
+      this.ports.log(`[CommitmentTracker] ESCALATION ${updated.id}: ${detail}`);
       this.emit('escalation', updated, detail);
 
       if (this.config.onEscalation) {
@@ -1835,18 +1772,11 @@ export class CommitmentTracker extends EventEmitter {
   private writeBehavioralRules(): void {
     const content = this.getBehavioralContext();
     try {
-      const dir = path.dirname(this.rulesPath);
-      fs.mkdirSync(dir, { recursive: true });
-
       if (content) {
-        const tmpPath = `${this.rulesPath}.${process.pid}.tmp`;
-        fs.writeFileSync(tmpPath, content + '\n');
-        fs.renameSync(tmpPath, this.rulesPath);
+        this.ports.behavioralRules.write(content + '\n');
       } else {
         // No active commitments — remove the file so hooks skip injection
-        if (fs.existsSync(this.rulesPath)) {
-          SafeFsExecutor.safeUnlinkSync(this.rulesPath, { operation: 'src/monitoring/CommitmentTracker.ts:907' });
-        }
+        this.ports.behavioralRules.remove();
       }
     } catch {
       // @silent-fallback-ok — rules file is nice-to-have, monitor catches violations anyway
@@ -1855,9 +1785,9 @@ export class CommitmentTracker extends EventEmitter {
 
   // ── Expiration ─────────────────────────────────────────────────
 
-  sweepAutoExpiry(now = new Date()): CommitmentAutoExpirySweepReport {
+  sweepAutoExpiry(nowMs = this.ports.clock.now()): CommitmentAutoExpirySweepReport {
     const config = this.resolveAutoExpiryConfig();
-    const timestamp = now.toISOString();
+    const timestamp = this.ports.clock.iso(nowMs);
     const report: CommitmentAutoExpirySweepReport = {
       timestamp,
       dryRun: config.dryRun,
@@ -1880,7 +1810,7 @@ export class CommitmentTracker extends EventEmitter {
       report.scanned++;
       // §3.5 — the operator-wait branch is judged FIRST so a user-owned row
       // never falls through to the agent rule's "presumed completed" wording.
-      const wait = ow.enabled ? this.operatorWaitDisposition(commitment, now, ow.maxAgeDays) : null;
+      const wait = ow.enabled ? this.operatorWaitDisposition(commitment, nowMs, ow.maxAgeDays) : null;
       if (wait) {
         report.operatorWait.eligible++;
         report.dispositions.push({ id: commitment.id, branch: 'operator-wait', waitedDays: wait.waitedDays, reason: wait.reason, applied: !ow.dryRun });
@@ -1888,7 +1818,7 @@ export class CommitmentTracker extends EventEmitter {
         else report.capped = true;
         continue;
       }
-      const agent = config.enabled ? this.autoExpiryDisposition(commitment, now, config.maxAgeDays) : null;
+      const agent = config.enabled ? this.autoExpiryDisposition(commitment, nowMs, config.maxAgeDays) : null;
       if (!agent) continue;
       report.eligible++;
       report.dispositions.push({ id: commitment.id, branch: 'agent', waitedDays: agent.waitedDays, reason: agent.reason, applied: !config.dryRun, class: agent.class });
@@ -1934,7 +1864,7 @@ export class CommitmentTracker extends EventEmitter {
       })),
     });
 
-    console.log(
+    this.ports.log(
       `[CommitmentTracker] Auto-expiry sweep: scanned=${report.scanned} eligible=${report.eligible} expired=${report.expired} dryRun=${report.dryRun} maxAgeDays=${report.maxAgeDays} capped=${report.capped}` +
       ` operatorWait(eligible=${report.operatorWait.eligible} expired=${report.operatorWait.expired} dryRun=${ow.dryRun} maxAgeDays=${ow.maxAgeDays})`,
     );
@@ -1949,25 +1879,25 @@ export class CommitmentTracker extends EventEmitter {
    * the origin machine's to expire. Never expires a row with a future hard
    * deadline. Returns the per-row reason, or null.
    */
-  private operatorWaitDisposition(commitment: Commitment, now: Date, maxAgeDays: number): { waitedDays: number; reason: string } | null {
+  private operatorWaitDisposition(commitment: Commitment, now: number, maxAgeDays: number): { waitedDays: number; reason: string } | null {
     const owner = commitment.owner ?? 'agent';
     const blockedOn = commitment.blockedOn ?? 'none';
     const waitsOnOperator = owner === 'user' || blockedOn === 'user-input' || blockedOn === 'user-authorization';
-    if (!waitsOnOperator) return null;
+    if (!waitsOnOperator || CommitmentTracker.isDirective(commitment)) return null;
     if (commitment.status !== 'pending' && commitment.status !== 'violated') return null;
     if (this.config.originMachineId && commitment.originMachineId && commitment.originMachineId !== this.config.originMachineId) return null;
-    const createdMs = Date.parse(commitment.createdAt);
+    const createdMs = this.ports.clock.parse(commitment.createdAt);
     if (!Number.isFinite(createdMs)) return null;
     let waitStartMs = createdMs;
     const episode = (commitment.blockerEpisodes ?? []).at(-1);
     if (episode && typeof episode.startedAtMs === 'number' && Number.isFinite(episode.startedAtMs) && episode.startedAtMs > waitStartMs) {
       waitStartMs = episode.startedAtMs;
     }
-    const waitedDays = (now.getTime() - waitStartMs) / 86_400_000;
+    const waitedDays = (now - waitStartMs) / 86_400_000;
     if (waitedDays <= maxAgeDays) return null;
     if (commitment.hardDeadlineAt) {
-      const hardDeadlineMs = Date.parse(commitment.hardDeadlineAt);
-      if (Number.isFinite(hardDeadlineMs) && hardDeadlineMs > now.getTime()) return null;
+      const hardDeadlineMs = this.ports.clock.parse(commitment.hardDeadlineAt);
+      if (Number.isFinite(hardDeadlineMs) && hardDeadlineMs > now) return null;
     }
     const what = blockedOn === 'user-authorization' ? 'your authorization' : blockedOn === 'user-input' ? 'your answer' : 'you';
     return {
@@ -1985,20 +1915,21 @@ export class CommitmentTracker extends EventEmitter {
   }
 
   private expireCommitments(): void {
-    const now = new Date().toISOString();
+    const now = this.nowIso();
     let changed = false;
 
     // Snapshot ids before mutating so we don't iterate a live array under
     // concurrent mutateSync() index-preserving writes.
     const targets = this.store.commitments
-      .filter(c => c.expiresAt && c.expiresAt < now && c.status !== 'expired' && c.status !== 'withdrawn')
+      .filter(c => c.expiresAt && c.expiresAt < now && c.status !== 'expired' && c.status !== 'withdrawn'
+        && !CommitmentTracker.isDirective(c))
       .map(c => c.id);
 
     for (const id of targets) {
       this.expireSync(id, 'Expired', now);
       changed = true;
       const c = this.get(id);
-      if (c) console.log(`[CommitmentTracker] Expired ${c.id}: "${c.userRequest}"`);
+      if (c) this.ports.log(`[CommitmentTracker] Expired ${c.id}: "${c.userRequest}"`);
     }
 
     if (changed) {
@@ -2048,23 +1979,23 @@ export class CommitmentTracker extends EventEmitter {
    */
   private autoExpiryDisposition(
     commitment: Commitment,
-    now: Date,
+    now: number,
     maxAgeDays: number,
   ): { waitedDays: number; reason: string; class: 'opted-out' | 'no-activity' } | null {
-    if (commitment.owner !== 'agent') return null;
+    if (commitment.owner !== 'agent' || CommitmentTracker.isDirective(commitment)) return null;
     if ((commitment.blockedOn ?? 'none') !== 'none') return null;
     if (commitment.status !== 'pending' && commitment.status !== 'violated') return null;
     if (this.config.originMachineId && commitment.originMachineId && commitment.originMachineId !== this.config.originMachineId) return null;
-    const createdAtMs = Date.parse(commitment.createdAt);
+    const createdAtMs = this.ports.clock.parse(commitment.createdAt);
     if (!Number.isFinite(createdAtMs)) return null;
     let activityMs = createdAtMs;
-    const probeMs = commitment.lastProbe ? Date.parse(commitment.lastProbe.at) : NaN;
+    const probeMs = commitment.lastProbe ? this.ports.clock.parse(commitment.lastProbe.at) : NaN;
     if (Number.isFinite(probeMs) && probeMs > activityMs) activityMs = probeMs;
-    const ageMs = now.getTime() - activityMs;
+    const ageMs = now - activityMs;
     if (ageMs <= maxAgeDays * 24 * 60 * 60 * 1000) return null;
     if (commitment.hardDeadlineAt) {
-      const hardDeadlineMs = Date.parse(commitment.hardDeadlineAt);
-      if (Number.isFinite(hardDeadlineMs) && hardDeadlineMs > now.getTime()) return null;
+      const hardDeadlineMs = this.ports.clock.parse(commitment.hardDeadlineAt);
+      if (Number.isFinite(hardDeadlineMs) && hardDeadlineMs > now) return null;
     }
     const waitedDays = Math.floor(ageMs / 86_400_000);
     const optOut = typeof commitment.followThroughOptOutReason === 'string' ? commitment.followThroughOptOutReason.trim() : '';
@@ -2173,6 +2104,7 @@ export class CommitmentTracker extends EventEmitter {
         { ...withLifecycle, version: observedVersion + 1 },
       );
       this.store.commitments[latestIdx] = committed;
+      this.dirtyIds.add(id);
       const saved = this.saveStore();
       if (saved.state === 'failed') {
         this.store = rollback;
@@ -2209,6 +2141,7 @@ export class CommitmentTracker extends EventEmitter {
       { ...withLifecycle, version: observedVersion + 1 },
     );
     this.store.commitments[idx] = committed;
+    this.dirtyIds.add(id);
     const saved = this.saveStore();
     if (saved.state === 'failed') {
       if (rollback) this.store = rollback;
@@ -2240,7 +2173,7 @@ export class CommitmentTracker extends EventEmitter {
 
   private applyBlockerLifecycle(before: Commitment, candidate: Commitment): Commitment {
     if (!this.config.blockerLifecycleEnabled) return candidate;
-    const now = Date.now();
+    const now = this.ports.clock.now();
     const from = before.blockedOn ?? 'none';
     const to = candidate.blockedOn ?? 'none';
     let episodes = (before.blockerEpisodes ?? []).map(e => ({ ...e, transitions: [...e.transitions] }));
@@ -2300,7 +2233,7 @@ export class CommitmentTracker extends EventEmitter {
   }
 
   private incrementBlockerDropBucket(kind: 'request' | 'clear', atMs: number): void {
-    const day = new Date(atMs).toISOString().slice(0, 10);
+    const day = this.ports.clock.iso(atMs).slice(0, 10);
     const buckets = { ...(this.store.blockerEpisodeDropBuckets ?? {}) };
     const bucket = { ...(buckets[day] ?? { request: 0, clear: 0 }) };
     bucket[kind]++;
@@ -2357,6 +2290,7 @@ export class CommitmentTracker extends EventEmitter {
       { ...commitment, version: commitment.version ?? 0 },
     );
     this.store.commitments.push(withVersion);
+    this.dirtyIds.add(withVersion.id);
     const saved = this.saveStore();
     if (saved.state === 'failed') {
       this.store = rollback;
@@ -2369,8 +2303,9 @@ export class CommitmentTracker extends EventEmitter {
 
   private loadStore(): CommitmentStore {
     try {
-      if (fs.existsSync(this.storePath)) {
-        const data = JSON.parse(fs.readFileSync(this.storePath, 'utf-8'));
+      const loaded = this.ports.store.load();
+      if (loaded !== null) {
+        const data = loaded as CommitmentStore & { version: number };
         if ((data.version === 1 || data.version === 2) && Array.isArray(data.commitments)) {
           // Migrate: add self-healing fields to existing commitments
           for (const c of data.commitments) {
@@ -2414,15 +2349,11 @@ export class CommitmentTracker extends EventEmitter {
           // high-water replicationSeq ever advertised; a store now BELOW it
           // was rewound — re-mint the incarnation so peers re-pull wholesale
           // instead of silently stranding (journal §3.4 rule 3 verbatim).
-          try {
-            const metaRaw = fs.readFileSync(`${this.storePath}.meta.json`, 'utf-8');
-            const meta = JSON.parse(metaRaw) as { highWaterSeq?: number };
-            if (typeof meta?.highWaterSeq === 'number' && data.replicationSeq < meta.highWaterSeq) {
-              data.storeIncarnation = randomUUID();
-            }
-          } catch { /* @silent-fallback-ok: no meta sidecar = no prior advert to rewind below (first boot) — nothing to fence (COMMITMENTS-COHERENCE-SPEC §3.2) */
+          const highWaterSeq = this.ports.store.readHighWater();
+          if (highWaterSeq !== null && data.replicationSeq < highWaterSeq) {
+            data.storeIncarnation = randomUUID();
           }
-          return data as CommitmentStore;
+          return data;
         }
       }
     } catch {
@@ -2432,7 +2363,7 @@ export class CommitmentTracker extends EventEmitter {
     return {
       version: 2,
       commitments: [],
-      lastModified: new Date().toISOString(),
+      lastModified: this.nowIso(),
       replicationSeq: 1,
       storeIncarnation: randomUUID(),
     };
@@ -2464,7 +2395,7 @@ export class CommitmentTracker extends EventEmitter {
   }
 
   private saveStore(): { state: 'committed' } | { state: 'deferred' } | {
-    state: 'failed'; errorClass: 'mkdir' | 'temp-write' | 'rename';
+    state: 'failed'; errorClass: CommitmentPersistenceError['errorClass'];
   } {
     // Coalesce writes during a batched sweep (see `batchingSaves`): mark dirty
     // and let the sweep flush ONE write at the end instead of O(N) here.
@@ -2472,44 +2403,19 @@ export class CommitmentTracker extends EventEmitter {
       this.pendingSave = true;
       return { state: 'deferred' };
     }
-    this.store.lastModified = new Date().toISOString();
-    const dir = path.dirname(this.storePath);
-    const tmpPath = `${this.storePath}.${process.pid}.tmp`;
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-    } catch {
-      return { state: 'failed', errorClass: 'mkdir' };
-    }
-    try {
-      // Compact (not pretty-printed): this is a machine-read state file, and at
-      // ~1.6MB the indentation was pure serialization + I/O overhead per write.
-      fs.writeFileSync(tmpPath, JSON.stringify(this.store) + '\n');
-    } catch {
-      return { state: 'failed', errorClass: 'temp-write' };
-    }
-    try {
-      fs.renameSync(tmpPath, this.storePath);
-    } catch {
-      try { SafeFsExecutor.safeUnlinkSync(tmpPath, { operation: 'src/monitoring/CommitmentTracker.ts:saveStore-temp-cleanup' }); }
-      catch { /* @silent-fallback-ok — best-effort temp cleanup */ }
-      return { state: 'failed', errorClass: 'rename' };
-    }
+    this.store.lastModified = this.nowIso();
+    const changed = [...this.dirtyIds].flatMap(id => this.store.commitments.filter(c => c.id === id));
+    const saved = this.ports.store.save(this.store, changed);
+    if (saved.state === 'failed') return saved;
+    this.dirtyIds.clear();
     // The authoritative replacement is committed. The rewind-fence sidecar is
     // deliberately best-effort and cannot retroactively turn success into
     // failure (a stale sidecar is harmless; an ahead sidecar would false-trip).
     try {
-      // P1.5 §3.2 rewind fence: the meta sidecar tracks the high-water
-      // replicationSeq. Written AFTER the store (a crash between leaves the
-      // sidecar behind the store — harmless; ahead would false-trip the
-      // rewind fence). Best-effort like the store write itself.
       const seq = this.store.replicationSeq;
-      if (typeof seq === 'number') {
-        const metaTmp = `${this.storePath}.meta.json.${process.pid}.tmp`;
-        fs.writeFileSync(metaTmp, JSON.stringify({ highWaterSeq: seq }));
-        fs.renameSync(metaTmp, `${this.storePath}.meta.json`);
-      }
+      if (typeof seq === 'number') this.ports.store.writeHighWater(seq);
     } catch {
-      // @silent-fallback-ok — store rename already committed; sidecar retries later
+      // @silent-fallback-ok — store write already committed; sidecar retries later
     }
     return { state: 'committed' };
   }

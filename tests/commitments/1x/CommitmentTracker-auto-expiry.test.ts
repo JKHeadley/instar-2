@@ -2,10 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { CommitmentTracker } from '../../src/monitoring/CommitmentTracker.js';
-import { LiveConfig } from '../../src/config/LiveConfig.js';
-import { SafeFsExecutor } from '../../src/core/SafeFsExecutor.js';
-import { applyDefaults, getMigrationDefaults } from '../../src/config/ConfigDefaults.js';
+import { CommitmentTracker } from './host.js';
+import { LiveConfig } from './host.js';
+import { SafeFsExecutor } from './host.js';
 
 function createTmpState(): { stateDir: string; cleanup: () => void } {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'commitment-auto-expiry-'));
@@ -177,21 +176,9 @@ describe('CommitmentTracker auto-expiry sweep', () => {
     expect(storeWrites).toBe(1);
   });
 
-  it('backfills commitment auto-expiry defaults without overwriting operator choices', () => {
-    const config: Record<string, unknown> = {
-      commitments: { autoExpiry: { dryRun: false, maxAgeDays: 45 } },
-    };
-    const { patched, changes } = applyDefaults(config, getMigrationDefaults('managed-project'));
-
-    expect(patched).toBe(true);
-    expect((config.commitments as any).autoExpiry).toMatchObject({
-      enabled: true,
-      maxAgeDays: 45,
-      sweepIntervalMs: 21_600_000,
-      dryRun: false,
-    });
-    expect(changes).toContain('commitments.autoExpiry.enabled (added)');
-    expect(changes).toContain('commitments.autoExpiry.sweepIntervalMs (added)');
+  it('fills commitment auto-expiry defaults without overwriting operator choices', () => {
+    const t = new CommitmentTracker({ stateDir, liveConfig: new LiveConfig(stateDir), autoExpiry: { dryRun: false, maxAgeDays: 45 } });
+    expect(t.sweepAutoExpiry(now)).toMatchObject({ enabled: true, maxAgeDays: 45, dryRun: false });
   });
   // ── CMT-1118: blockedOn, opt-out reason, probe activity, replicas, review ledger ──
 

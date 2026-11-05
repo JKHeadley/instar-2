@@ -18,10 +18,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { CommitmentTracker } from '../../src/monitoring/CommitmentTracker.js';
-import type { CommitmentTrackerConfig, Commitment } from '../../src/monitoring/CommitmentTracker.js';
-import { LiveConfig } from '../../src/config/LiveConfig.js';
-import { SafeFsExecutor } from '../../src/core/SafeFsExecutor.js';
+import { CommitmentTracker } from './host.js';
+import type { CommitmentTrackerConfig, Commitment } from './host.js';
+import { LiveConfig } from './host.js';
+import { SafeFsExecutor } from './host.js';
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -124,9 +124,10 @@ describe('CommitmentTracker', () => {
 
   // ── Time-promise detection and beacon auto-enable ────────
 
-  describe('detectTimePromise (static)', () => {
-    it('detects "back in 20 minutes" and returns a bounded cadence', () => {
-      const r = CommitmentTracker.detectTimePromise('Got it, back in 20 minutes with findings.');
+  // 2.0: the model declares the horizon (Rule 10); the tuned numbers are unchanged.
+  describe('cadenceForHorizon (static)', () => {
+    it('a 20-minute promise returns a bounded cadence', () => {
+      const r = CommitmentTracker.cadenceForHorizon({ kind: 'duration', ms: 20 * 60_000 });
       expect(r).not.toBeNull();
       expect(r!.cadenceMs).toBeGreaterThanOrEqual(60_000);
       expect(r!.cadenceMs).toBeLessThanOrEqual(21_600_000);
@@ -135,34 +136,34 @@ describe('CommitmentTracker', () => {
       expect(r!.hardDeadlineOffsetMs).toBe(60 * 60_000);
     });
 
-    it('detects "in an hour"', () => {
-      const r = CommitmentTracker.detectTimePromise("I'll check back in an hour.");
+    it('an hour', () => {
+      const r = CommitmentTracker.cadenceForHorizon({ kind: 'duration', ms: 3_600_000 });
       expect(r).not.toBeNull();
       expect(r!.cadenceMs).toBe(30 * 60_000);
     });
 
-    it('detects "by EOD" with a conservative cadence', () => {
-      const r = CommitmentTracker.detectTimePromise('Will ship this by EOD.');
+    it('end of day has a conservative cadence', () => {
+      const r = CommitmentTracker.cadenceForHorizon({ kind: 'end-of-day' });
       expect(r).not.toBeNull();
       expect(r!.cadenceMs).toBe(60 * 60_000);
+      expect(r!.hardDeadlineOffsetMs).toBe(12 * 3_600_000);
     });
 
-    it('detects vague promises like "shortly" / "I\'ll report back"', () => {
-      const a = CommitmentTracker.detectTimePromise('Back shortly with findings.');
-      const b = CommitmentTracker.detectTimePromise("I'll report back when the build finishes.");
-      expect(a).not.toBeNull();
-      expect(b).not.toBeNull();
+    it('next day and soon', () => {
+      expect(CommitmentTracker.cadenceForHorizon({ kind: 'next-day' })).toEqual({ cadenceMs: 2 * 3_600_000, hardDeadlineOffsetMs: 24 * 3_600_000 });
+      expect(CommitmentTracker.cadenceForHorizon({ kind: 'soon' })).toEqual({ cadenceMs: 30 * 60_000, hardDeadlineOffsetMs: 2 * 3_600_000 });
     });
 
-    it('returns null when no time marker is present', () => {
-      expect(CommitmentTracker.detectTimePromise('Done.')).toBeNull();
-      expect(CommitmentTracker.detectTimePromise('')).toBeNull();
-      expect(CommitmentTracker.detectTimePromise('Thanks for the update.')).toBeNull();
+    it('caps the hard deadline at 24h and the cadence at 6h', () => {
+      expect(CommitmentTracker.cadenceForHorizon({ kind: 'duration', ms: 48 * 3_600_000 })).toEqual({ cadenceMs: 21_600_000, hardDeadlineOffsetMs: 24 * 3_600_000 });
     });
 
-    it('returns null for sub-minute phrasing (too tight to beacon usefully)', () => {
-      // "in 30 seconds" is well below the 60s minimum cadence — beacon opts out.
-      expect(CommitmentTracker.detectTimePromise('in 30 seconds')).toBeNull();
+    it('returns null when no horizon was declared', () => {
+      expect(CommitmentTracker.cadenceForHorizon(undefined)).toBeNull();
+    });
+
+    it('returns null for sub-minute horizons (too tight to beacon usefully)', () => {
+      expect(CommitmentTracker.cadenceForHorizon({ kind: 'duration', ms: 30_000 })).toBeNull();
     });
   });
 
@@ -173,6 +174,7 @@ describe('CommitmentTracker', () => {
         type: 'one-time-action',
         userRequest: 'summarize the thread',
         agentResponse: 'On it — back in 30 minutes with the summary.',
+        horizon: { kind: 'duration', ms: 30 * 60_000 },
         topicId: 7535,
       });
       expect(c.beaconEnabled).toBe(true);
@@ -186,6 +188,7 @@ describe('CommitmentTracker', () => {
         type: 'one-time-action',
         userRequest: 'research X',
         agentResponse: 'Back in an hour.',
+        horizon: { kind: 'duration', ms: 3_600_000 },
       });
       expect(c.beaconEnabled).toBeUndefined();
     });
@@ -328,10 +331,9 @@ describe('CommitmentTracker', () => {
       const tracker = makeTracker(stateDir);
       // Create a commitment that's already expired
       tracker.record({
-        type: 'behavioral',
+        type: 'one-time-action',
         userRequest: 'req',
         agentResponse: 'resp',
-        behavioralRule: 'rule',
         expiresAt: new Date(Date.now() - 60_000).toISOString(), // expired 1 min ago
       });
 
@@ -753,8 +755,9 @@ describe('CommitmentTracker', () => {
 
   // ── Backfill: legacy violated rows with no verification method ────
 
-  describe('backfill on construction', () => {
-    it('transitions pre-existing unverifiable violated one-time-actions to delivered', () => {
+  // 2.0: a legacy row is never closed as delivered without a receipt (Rules 26/42/68).
+  describe('no delivery backfill on construction', () => {
+    it('retains pre-existing unverifiable violated one-time-actions', () => {
       // Seed a store file mimicking the 272-violated state
       const storePath = path.join(stateDir, 'state', 'commitments.json');
       const seed = {
@@ -795,16 +798,16 @@ describe('CommitmentTracker', () => {
 
       const tracker = makeTracker(stateDir);
       const legacy1 = tracker.get('CMT-LEGACY-1')!;
-      expect(legacy1.status).toBe('delivered');
-      expect(legacy1.resolvedAt).toBeTruthy();
-      expect(legacy1.resolution).toMatch(/Backfilled/);
+      expect(legacy1.status).toBe('violated');
+      expect(legacy1.resolvedAt).toBeUndefined();
+      expect(legacy1.resolution).toBeUndefined();
 
       // Behavioral commitment untouched
       const legacy2 = tracker.get('CMT-LEGACY-2')!;
       expect(legacy2.status).toBe('verified');
     });
 
-    it('is idempotent — second construction does not re-backfill', () => {
+    it('stays retained across a second construction', () => {
       const storePath = path.join(stateDir, 'state', 'commitments.json');
       const seed = {
         version: 1,
@@ -833,7 +836,7 @@ describe('CommitmentTracker', () => {
 
       const t2 = makeTracker(stateDir);
       const afterSecond = t2.get('CMT-IDEM-1')!;
-      expect(afterSecond.status).toBe('delivered');
+      expect(afterSecond.status).toBe('violated');
       expect(afterSecond.resolvedAt).toBe(resolvedAt1); // unchanged
     });
   });
@@ -886,10 +889,9 @@ describe('CommitmentTracker', () => {
       const tracker = makeTracker(stateDir);
       const c1 = tracker.record({ type: 'behavioral', userRequest: 'req1', agentResponse: 'resp1', behavioralRule: 'rule1' });
       tracker.record({
-        type: 'behavioral',
+        type: 'one-time-action',
         userRequest: 'req2',
         agentResponse: 'resp2',
-        behavioralRule: 'rule2',
         expiresAt: new Date(Date.now() - 60_000).toISOString(), // already expired
       });
 
@@ -906,10 +908,9 @@ describe('CommitmentTracker', () => {
     it('expires commitments past their expiresAt date during verification', () => {
       const tracker = makeTracker(stateDir);
       const c = tracker.record({
-        type: 'behavioral',
+        type: 'one-time-action',
         userRequest: 'req',
         agentResponse: 'resp',
-        behavioralRule: 'rule',
         expiresAt: new Date(Date.now() - 1000).toISOString(), // already past
       });
 

@@ -7,8 +7,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { CommitmentTracker, type CommitmentTrackerConfig } from '../../src/monitoring/CommitmentTracker.js';
-import { SafeFsExecutor } from '../../src/core/SafeFsExecutor.js';
+import { CommitmentTracker, type CommitmentTrackerConfig } from './host.js';
+import { SafeFsExecutor } from './host.js';
 
 const DAY = 86_400_000;
 let tmp: string;

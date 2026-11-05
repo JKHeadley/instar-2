@@ -8,22 +8,21 @@
  * sweep only logged aggregate counts, so the ids it would expire were never
  * written anywhere a reviewer could read — the flip rule could not be met.
  *
- * One JSONL row per sweep with eligible rows (plus one `eligible: 0` row when
- * the set becomes empty, including the first empty sweep after a start), at
- * `<stateDir>/logs/<feature>-auto-expiry.jsonl`. A row carries the full id list
+ * One row per sweep with eligible rows (plus one `eligible: 0` row when the set
+ * becomes empty, including the first empty sweep after a start), appended
+ * through the tracker's `expiryLedger` port. A row carries the full id list
  * only when the eligible set CHANGED since the last row this process wrote;
  * an unchanged set writes a short `unchanged: true` row with the same
  * `setHash`, so a 6-hourly sweep over a stable backlog does not rewrite the
  * same list four times a day. The first sweep after a restart always writes
- * the full list. Rotation: one `.1` generation past `maxBytes`.
+ * the full list. Size and retention belong to the store behind the port.
  *
  * Observability only — it never changes what a sweep does, and an append
  * failure is logged and swallowed.
  */
 
 import * as crypto from 'node:crypto';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import type { CommitmentTrackerPorts } from './ports.js';
 
 export interface AutoExpiryLedgerItem {
   id: string;
@@ -51,20 +50,15 @@ export interface AutoExpiryLedgerRow {
   items: AutoExpiryLedgerItem[];
 }
 
-const DEFAULT_MAX_BYTES = 5_000_000;
 /** Bound on ids written per row; matches the commitment sweep cap. */
 const MAX_ITEMS_PER_ROW = 500;
 
 export class AutoExpiryLedger {
-  readonly logPath: string;
-  private readonly maxBytes: number;
-  private readonly now: () => number;
+  private readonly ports: Pick<CommitmentTrackerPorts, 'clock' | 'expiryLedger' | 'log'>;
   private lastHash: string | null = null;
 
-  constructor(opts: { stateDir: string; feature: 'commitments' | 'evolution-actions'; maxBytes?: number; now?: () => number }) {
-    this.logPath = path.join(opts.stateDir, 'logs', `${opts.feature}-auto-expiry.jsonl`);
-    this.maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
-    this.now = opts.now ?? (() => Date.now());
+  constructor(opts: { ports: Pick<CommitmentTrackerPorts, 'clock' | 'expiryLedger' | 'log'>; feature: 'commitments' | 'evolution-actions' }) {
+    this.ports = opts.ports;
   }
 
   /**
@@ -76,7 +70,7 @@ export class AutoExpiryLedger {
     const ids = row.items.map((item) => item.id).sort();
     const setHash = crypto.createHash('sha256').update(ids.join('\n')).digest('hex').slice(0, 16);
     const { items, extra, ...summary } = row;
-    const base = { ts: new Date(this.now()).toISOString(), ...summary, ...(extra ?? {}), setHash };
+    const base = { ts: this.ports.clock.iso(this.ports.clock.now()), ...summary, ...(extra ?? {}), setHash };
     // An applied sweep is never folded into "unchanged": its ids are the expiry record.
     if (setHash === this.lastHash && row.expired === 0) {
       if (ids.length > 0) this.append({ ...base, unchanged: true });
@@ -89,16 +83,10 @@ export class AutoExpiryLedger {
 
   private append(row: Record<string, unknown>): void {
     try {
-      const dir = path.dirname(this.logPath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      try {
-        const st = fs.statSync(this.logPath);
-        if (st.size > this.maxBytes) fs.renameSync(this.logPath, `${this.logPath}.1`);
-      } catch { /* no file yet — nothing to rotate */ }
-      fs.appendFileSync(this.logPath, `${JSON.stringify(row)}\n`, 'utf-8');
+      this.ports.expiryLedger.append(row);
     } catch (err) {
       // @silent-fallback-ok: the review ledger is observability; a write fault must never break the sweep.
-      console.warn(`[AutoExpiryLedger] append failed (${path.basename(this.logPath)}): ${err instanceof Error ? err.message : String(err)}`);
+      this.ports.log(`[AutoExpiryLedger] append failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }

@@ -14,12 +14,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { CommitmentTracker } from '../../src/monitoring/CommitmentTracker.js';
-import { LiveConfig } from '../../src/config/LiveConfig.js';
+import { CommitmentTracker } from './host.js';
+import { LiveConfig } from './host.js';
 import { LlmQueue } from '../../src/monitoring/LlmQueue.js';
 import { ProxyCoordinator } from '../../src/monitoring/ProxyCoordinator.js';
 import { PromiseBeacon } from '../../src/monitoring/PromiseBeacon.js';
-import { SafeFsExecutor } from '../../src/core/SafeFsExecutor.js';
+import { SafeFsExecutor } from './host.js';
 
 function tmpState() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'promise-beacon-'));

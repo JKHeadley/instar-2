@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { CommitmentTracker } from '../../src/monitoring/CommitmentTracker.js';
-import { LiveConfig } from '../../src/config/LiveConfig.js';
-import { SafeFsExecutor } from '../../src/core/SafeFsExecutor.js';
+import { CommitmentTracker } from './host.js';
+import { LiveConfig } from './host.js';
+import { SafeFsExecutor } from './host.js';
 
 describe('CommitmentTracker blocker lifecycle', () => {
   const dirs: string[] = [];

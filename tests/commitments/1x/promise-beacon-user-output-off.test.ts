@@ -9,9 +9,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getMigrationDefaults, applyDefaults } from '../../src/config/ConfigDefaults.js';
-import { LiveConfig } from '../../src/config/LiveConfig.js';
-import { SafeFsExecutor } from '../../src/core/SafeFsExecutor.js';
-import { CommitmentTracker, type Commitment } from '../../src/monitoring/CommitmentTracker.js';
+import { LiveConfig } from './host.js';
+import { SafeFsExecutor } from './host.js';
+import { CommitmentTracker, type Commitment } from './host.js';
 import { LlmQueue } from '../../src/monitoring/LlmQueue.js';
 import {
   PromiseBeacon,

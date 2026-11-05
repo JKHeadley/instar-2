@@ -9,8 +9,8 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { CheckInReminderReconciler } from '../../src/monitoring/CheckInReminderReconciler.js';
-import type { Commitment } from '../../src/monitoring/CommitmentTracker.js';
-import { CHECK_IN_MAX_ATTEMPTS } from '../../src/monitoring/checkInReminderCore.js';
+import type { Commitment } from './host.js';
+import { CHECK_IN_MAX_ATTEMPTS } from '../../../src/commitments/checkInReminderCore.js';
 
 const NOW = Date.parse('2026-07-25T12:00:00.000Z');
 const PAST = '2026-07-25T11:00:00.000Z';
