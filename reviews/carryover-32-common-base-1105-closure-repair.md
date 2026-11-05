@@ -25,6 +25,8 @@ Prompt review: No question or provider selection changes. Existing recorded summ
 
 Evidence: Reviewer probe reproduced one absent-review failure and one saved-review pass before the fix. Repaired gate and real captured review suites pass 28/28: absent, saved, decoy, same-pass and pending reviews; non-completing outcomes and ordinary/unrelated closures; durable refusals and open/verified feedback after restart. Recorded summary-writer/uncertain, Jev uncertain/undecided, reply review and delivered/empty reply shapes: updates 715672480, 715672483, 715672482, 969389570, 969389923, 715672479, 715672550. Typecheck, build and architecture pass. Final cheap gate outcomes and exact pushed inventory are recorded in PROGRESS. No full suite or installed probe runs in this repair; row 32 remains OPEN for desk combined gate and actual-use proof. The captured correction provider result uses a synthetic seed and is not installed acceptance.
 
+Review lifecycle: The rejected original feature review is explicitly reopened under Rule 109 because this repair changes its subject. This frozen repair record binds the revised source; independent re-review remains owed.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: one call to the existing gate at the alternate completion checkpoint prevents a refused correction being reported verified; no new store, worker, review round or capability restriction. Existing later-outcome evidence still applies after admission.

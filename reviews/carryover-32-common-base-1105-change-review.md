@@ -1,8 +1,8 @@
 # Change review — Carry correction learning onto the shared base
 
 Subject base: 990678d5996737c1fd13d8a49b4e0c9a1045d196
-Review state: frozen
-Reviewed content: sha256:d9acb58fb6e054ba9e37ee5c73b76657487337a37973ea8017dfd08a7450461f
+Review state: open
+Reviewed content: none
 Outcome: Carry complete row 32 source onto the exact shared base while preserving current journal and commitment owners. Installed/live acceptance remains OPEN.
 Affected rules: Purpose coherence; Rules 2/4/7/8/10/12/24/26/28/32/34/36/39/42/46/55/57/58/60/70/74/85/86/95/96/101/102/108/109/111/113/116.
 Affected floors: secrets — existing redact owner; spend cap — existing call admission and packet estimates; stop — existing worker gate; no duplicate sends — no new effect; durable intake — existing journal before model calls.
