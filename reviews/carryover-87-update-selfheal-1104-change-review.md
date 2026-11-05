@@ -14,8 +14,8 @@ Side effects: Repeated updates now inspect installed CLI syntax and migration po
 Undo and recovery: Revert this change to restore the prior updater behavior. Rerun the same release after correcting failed migration input; incomplete state and backups survive. Unknown customization and corrupt records are preserved. Never restore an old backup over live intake.
 Multi-machine posture: Machine-local, deliberately: each host owns its release tree and updater lock. No peer durability, ownership, authority record or remote configuration changes.
 Layer below: Read the full constitution, current 1.x update checker, migrator, drift verifier and LiveConfig; inspected 2.0 migration transaction, MCP installer/runtime reader, production installation decoder and immutable installation importer. Actual npm installation and installed CLI tests cover the consumer. The unchanged independent installation authority still governs runtime activation.
-Bug class: migration-consumer
-Bug evidence: tests/preview/update.test.ts fails if a completed id hides stale content or an incorrect candidate version is accepted; tests/preview/mcp-setup.test.ts repairs an already-installed root through its own CLI and reads current configuration through the runtime reader.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/update.test.ts
 Hook bypass: none
 Convergence: none
 Decision: c87-verify | Extend the existing migration entry with an optional read-only postcondition and reuse its backup/intent/completion transaction for stale-state repair. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-87-update-selfheal-1104-PROGRESS.md
