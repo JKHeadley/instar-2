@@ -7,7 +7,7 @@ import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { openPreviewJournal } from './journal.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { harnessCommand, createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
@@ -114,6 +114,36 @@ describe('readiness: the switch is decided from live state, a refusal names its 
       return output;
     } });
     expect(rows).toHaveLength(specs.length);
+  });
+  it('distinguishes command, missing-row and malformed-row refusals without exposing paths or command output', () => {
+    const writes = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const failures: Record<string, unknown>[] = [];
+    const specs = ['r:/private/secret-path'];
+    const run = (exec: () => string) => probeAccess(specs, { exec, onFailure: (record: Record<string, unknown>) => failures.push(record) });
+    try {
+      expect(run(() => '')).toBeNull();
+      expect(failures.at(-1)).toEqual({ kind: 'row-count', expected: 1, actual: 0, valid: 0, bytes: 0 });
+      expect(run(() => 'not-json-secret\n')).toBeNull();
+      expect(failures.at(-1)).toMatchObject({ kind: 'row-shape', expected: 1, actual: 1, valid: 0 });
+      expect(run(() => '{"ok":"true"}\n')).toBeNull();
+      expect(failures.at(-1)?.kind).toBe('row-shape');
+      expect(run(() => { throw Object.assign(new Error('private command failure'), { code: 'EACCES', signal: 'SIGTERM', stdout: 'secret' }); })).toBeNull();
+      expect(failures.at(-1)).toEqual({ kind: 'command', expected: 1, code: 'EACCES', signal: 'SIGTERM', bytes: 6 });
+      expect(run(() => { throw { code: '/private/secret-path', signal: 'secret' }; })).toBeNull();
+      expect(failures.at(-1)).toMatchObject({ code: 'unknown', signal: 'none' });
+      expect(run(() => '{"ok":false}\n')).toEqual([{ ok: false }]);
+      expect(JSON.stringify(writes.mock.calls)).not.toMatch(/secret|private command|private\/secret/u);
+    } finally { writes.mockRestore(); }
+  });
+  it('retains precise probe failure classes through readiness while keeping incomplete results refused', () => {
+    const writes = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const realProbe = (exec: () => string) => (specs: string[], options: Record<string, unknown>) => probeAccess(specs, { ...options, exec });
+    try {
+      expect(ready({ probe: realProbe(() => '') })).toMatchObject({ ready: false, reason: expect.stringContaining('row-count') });
+      expect(ready({ probe: realProbe(() => { throw Object.assign(Error('hidden'), { code: 'EACCES' }); }) }))
+        .toMatchObject({ ready: false, reason: 'the harness access probe could not run (code=EACCES, signal=none)' });
+      expect(ready({ probe: () => null }).reason).toMatch(/not permitted/u);
+    } finally { writes.mockRestore(); }
   });
   it('refuses each missing condition by name', () => {
     expect(ready({ exec: exec('none') })).toEqual({ ready: false, reason: 'no user _instarharness' });
@@ -426,6 +456,22 @@ describe('the launcher', () => {
       .trim().split('\n').map(line => JSON.parse(line));
     expect(rows.map(row => row.ok)).toEqual([true, true, false]);
     expect(rows[2].code).toBe('ENOENT');
+  });
+  it('flushes every real probe row before a successful exit when the pipe reader pauses', async () => {
+    const count = 2500;
+    const child = spawn(process.execPath, [launcher, '--probe', ...Array(count).fill(`r:${fake}`)], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '', error = '', paused = false;
+    child.stdout.on('data', (chunk: Buffer) => {
+      output += chunk;
+      if (!paused) { paused = true; child.stdout.pause(); setTimeout(() => child.stdout.resume(), 500); }
+    });
+    child.stderr.on('data', (chunk: Buffer) => { error += chunk; });
+    const code = await new Promise<number | null>((resolve, reject) => { child.once('error', reject); child.once('close', resolve); });
+    expect(code).toBe(0);
+    expect(error).toBe('');
+    const rows = output.trim().split('\n').map(line => JSON.parse(line));
+    expect(rows).toHaveLength(count);
+    expect(rows.every(row => row.path === fake && row.mode === 'r' && row.ok === true)).toBe(true);
   });
 });
 

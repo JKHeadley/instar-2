@@ -263,18 +263,28 @@ export function tmpCanary(base = '/private/tmp') {
 
 /** Effective access as the harness user, read through the launcher's probe: one row per path ({path, mode, ok, code}),
  * or null when the probe could not run (no sudo rule, no user, no launcher). */
-export function probeAccess(specs, { user = HARNESS_USER, launcher = HARNESS_LAUNCHER, exec = execFileSync } = {}) {
+export function probeAccess(specs, { user = HARNESS_USER, launcher = HARNESS_LAUNCHER, exec = execFileSync, onFailure = () => {} } = {}) {
   let text;
+  const refuse = record => {
+    process.stderr.write(`[harness-probe] ${JSON.stringify(record)}\n`);
+    onFailure(record);
+    return null;
+  };
   // The kernel deny proof covers every operator-owned /private/tmp entry. On a
   // busy Studio that list can exceed two thousand paths; keep the proof intact
   // and allow the one-shot probe enough time to finish.
   try { text = exec('/usr/bin/sudo', ['-n', '-u', user, launcher, '--probe', ...specs], { encoding: 'utf8', timeout: 45000, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }); }
   catch (error) {
-    process.stderr.write(`[harness-probe] failed code=${String(error?.code ?? 'unknown')} signal=${String(error?.signal ?? 'none')} bytes=${String(error?.stdout?.length ?? 0)}\n`);
-    return null;
+    const label = (value, fallback) => typeof value === 'string' && /^[A-Z0-9_]{1,32}$/u.test(value) ? value : fallback;
+    return refuse({ kind: 'command', expected: specs.length, code: label(error?.code, 'unknown'),
+      signal: label(error?.signal, 'none'), bytes: typeof error?.stdout === 'string' || Buffer.isBuffer(error?.stdout) ? Buffer.byteLength(error.stdout) : 0 });
   }
   const rows = text.split('\n').filter(Boolean).map(line => { try { return JSON.parse(line); } catch { return null; } });
-  return rows.length === specs.length && rows.every(row => row && typeof row.ok === 'boolean') ? rows : null;
+  const valid = rows.filter(row => row && typeof row.ok === 'boolean').length;
+  if (rows.length !== specs.length || valid !== rows.length)
+    return refuse({ kind: rows.length !== specs.length ? 'row-count' : 'row-shape', expected: specs.length,
+      actual: rows.length, valid, bytes: Buffer.byteLength(text) });
+  return rows;
 }
 
 /**
@@ -317,12 +327,18 @@ export function harnessReadiness({ user = HARNESS_USER, profile, denied, exec = 
   const own = [profile.home, profile.configDirectory, profile.workingDirectory, tmpDirectory, HARNESS_LAUNCHER, hookScript, profile.executable];
   const writable = [profile.home, profile.configDirectory, tmpDirectory];
   const refused = [...denied, ...custody, ...closed.entries];
-  let rows;
+  let rows, probeFailure;
   try {
     rows = probe([...own.map(path => `r:${path}`), ...writable.map(path => `w:${path}`), ...refused.map(path => `r:${path}`), `r:${fresh.path}`],
-      { user, exec });
+      { user, exec, onFailure: record => { probeFailure = record; } });
   } finally { fresh.remove(); }
-  if (rows === null) return no('the harness launch is not permitted (sudo rule, user or launcher missing)');
+  if (rows === null) {
+    if (probeFailure?.kind === 'command')
+      return no(`the harness access probe could not run (code=${probeFailure.code}, signal=${probeFailure.signal})`);
+    if (probeFailure)
+      return no(`the harness access probe returned ${probeFailure.kind} (expected=${probeFailure.expected}, actual=${probeFailure.actual}, valid=${probeFailure.valid}, bytes=${probeFailure.bytes})`);
+    return no('the harness launch is not permitted (sudo rule, user or launcher missing)');
+  }
   const allowedCount = own.length + writable.length;
   const missing = rows.slice(0, allowedCount).find(row => !row.ok);
   if (missing) return no(`the harness user cannot ${missing.mode === 'w' ? 'write' : 'read'} ${missing.path}`);

@@ -4092,6 +4092,11 @@ turn directory's `state` links there; the hook may add files but not change or r
 checkpoint's private state and the MCP configuration stay in the turn directory's `private/`, the hook runs from a
 read-only copy, and the turn's volume grants both identities by inherited ACL entries, never through a link.
 
+The launcher's access probe drains its stdout before exiting, including when its reader pauses. Readiness still refuses
+incomplete or malformed probe rows. Its bounded diagnostics distinguish command failures from row count and row shape
+failures without printing probed paths or command output. The existing installer atomically replaces a differing launcher
+on readiness, so this repair reaches existing installations through that same path.
+
 Delegated session work (the session work grant) runs the same way. The session's persistent volume (the same image)
 mounts at `/private/tmp/its-<12 hex>` instead of under the root, which the harness user cannot traverse, and both
 identities are granted on it. Each step's admission state lives in `/Users/Shared/instar-harness/turns/<root>/session/`,
