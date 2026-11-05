@@ -3,7 +3,7 @@
 // re-targeted at src/assembly/pending-input.ts; each block names the 1.x describe it carries.
 import { describe, expect, it } from 'vitest';
 import { PENDING_INPUT_LADDER, afterPresentation, classifyPromptTextPresentation, locatePromptText, pendingInputAction,
-  pendingInputAt, pendingInputMarker, pendingInputStep } from '../../src/assembly/pending-input.js';
+  pendingInputAt, pendingInputStep } from '../../src/assembly/pending-input.js';
 import type { PendingInputDecision, PendingInputRecord } from '../../src/assembly/pending-input.js';
 import { classifyPaneActive } from '../../src/assembly/production-session-driver.js';
 
@@ -99,19 +99,14 @@ describe('classifyPaneActive stands in for 1.x isPaneActivelyWorking', () => {
   });
 });
 
-describe('pendingInputAction (1.x actionForAttempt) and pendingInputMarker (1.x extractInjectionMarker)', () => {
+describe('pendingInputAction (1.x actionForAttempt)', () => {
   it('matches SessionManager.fireStuckInputRecovery escalation', () => {
     expect([0, 1, 2, 3, 99].map(pendingInputAction)).toEqual(['Enter', 'Enter', 'C-m', 'Enter-sleep-Enter', 'Enter-sleep-Enter']);
   });
   it('keeps the 1.x schedule, two-capture minimum and four-rung budget as data', () => {
     expect(PENDING_INPUT_LADDER).toMatchObject({ schedule: [500, 1500, 3500, 6500], verifyAt: 9000, minObservations: 2, maxAttempts: 4 });
   });
-  it('takes the first 40 visible characters and refuses markers under 8', () => {
-    expect(pendingInputMarker('\n  [telegram:7195] hello there friend, this is a long message')).toBe('[telegram:7195] hello there friend, this');
-    expect(pendingInputMarker('hello')).toBeNull();
-    expect(pendingInputMarker('/compact')).toBe('/compact');
-  });
-  it('locates the pending text only when it carries the marker (1.x isMarkerStuckAtPrompt)', () => {
+  it('locates the pending text only when it equals the full accepted payload', () => {
     expect(pendingInputAt(STUCK_PANE_IDLE, '[telegram:7195] hello there friend')?.text).toBe('[telegram:7195] hello there friend');
     expect(pendingInputAt(STUCK_PANE_IDLE, '[telegram:7195] a completely different message')).toBeNull();
     expect(pendingInputAt(EMPTY_PROMPT_PANE, '[telegram:7195] hello there friend')).toBeNull();
@@ -121,11 +116,11 @@ describe('pendingInputAction (1.x actionForAttempt) and pendingInputMarker (1.x 
 });
 
 /** Drive the pure ladder the way the driver does: a capture per tick, the styled frame on demand. */
-function sentinel(marker: string, options: { codex?: boolean } = {}) {
-  let record: PendingInputRecord = { marker, promptText: null, sentAt: 0, observations: 0, attempts: 0, pressing: false, presentation: null, undelivered: false };
+function sentinel(payload: string) {
+  let record: PendingInputRecord = { operation: 'delivery', intake: 'intake', digest: 'sha256:test', payload, promptText: null, sentAt: 0, observations: 0, attempts: 0, pressing: false, presentation: null, undelivered: false };
   const fired: number[] = []; let styledCaptures = 0; let cleared = 0;
   const tick = (pane: string, now: number, styled: string | null | (() => string | null) = pane): PendingInputDecision => {
-    let decision = pendingInputStep(record, pane, classifyPaneActive(pane), now, !options.codex);
+    let decision = pendingInputStep(record, pane, classifyPaneActive(pane), now, true);
     if (decision.kind === 'classify') {
       styledCaptures++;
       let frame: string | null = null;
@@ -175,12 +170,11 @@ describe('pendingInputStep — tick lifecycle (1.x StuckInputSentinel tick lifec
     const s = sentinel(MARKER); for (let i = 0; i < 5; i++) s.tick(WORKING_PANE, LATE);
     expect(s.fired).toEqual([]); expect(s.record.observations).toBe(0);
   });
-  it('resets corroboration when the prompt text changes (new content = fresh sighting) without renewing the rung budget', () => {
+  it('never admits appended content under the original payload identity', () => {
     const s = sentinel(MARKER); s.tick(STUCK_PANE_IDLE, LATE); s.tick(STUCK_PANE_IDLE, LATE);
+    const changed = STUCK_PANE_IDLE.replace(MARKER, `${MARKER} and more words`);
+    expect(s.tick(changed, LATE).kind).toBe('clear');
     expect(s.fired).toEqual([0]);
-    const wrapped = STUCK_PANE_IDLE.replace(MARKER, `${MARKER} and more words`);
-    s.tick(wrapped, LATE); expect(s.fired).toEqual([0]); expect(s.record.observations).toBe(1);
-    s.tick(wrapped, LATE); expect(s.fired).toEqual([0, 1]);
   });
   it('clears the record when the prompt clears between ticks (the input submitted)', () => {
     const s = sentinel(MARKER); s.tick(STUCK_PANE_IDLE, LATE); s.tick(STUCK_PANE_IDLE, LATE);
@@ -191,9 +185,7 @@ describe('pendingInputStep — tick lifecycle (1.x StuckInputSentinel tick lifec
     const d = s.tick(STUCK_PANE_IDLE, LATE); expect(d.kind).toBe('press');
     const cut = { ...s.record, pressing: true }; // the key may or may not have reached the pane
     const next = pendingInputStep(cut, STUCK_PANE_IDLE, false, LATE, true);
-    expect(next.kind).toBe('classify'); expect(next.kind === 'classify' && next.record.attempts).toBe(1);
-    const pressed = afterPresentation((next as Extract<PendingInputDecision, { kind: 'classify' }>).record, 'real');
-    expect(pressed.kind === 'press' && pressed.attempt).toBe(1);
+    expect(next).toMatchObject({ kind: 'observe', detail: 'pending input submission uncertain; observation only' });
   });
 });
 
@@ -226,20 +218,20 @@ describe('pendingInputStep — F2 ghost-text exclusion (the invariant)', () => {
     frame = STUCK_PANE_IDLE; s.tick(STUCK_PANE_IDLE, LATE, () => frame);
     expect(s.fired).toEqual([0]);
   });
-  it('resets a sticky ghost record when the prompt text changes to genuinely typed input', () => {
+  it('does not let changed text inherit a ghost input identity', () => {
     const s = sentinel(MARKER); const ghost = STUCK_PANE_IDLE.replace(MARKER, `${ESC}[0;2m${MARKER}${ESC}[0m`);
     s.tick(STUCK_PANE_IDLE, LATE, ghost); s.tick(STUCK_PANE_IDLE, LATE, ghost);
     expect(s.fired).toEqual([]); expect(s.record.presentation).toBe('ghost');
     const typed = STUCK_PANE_IDLE.replace(MARKER, `${MARKER} for real`);
     s.tick(typed, LATE, typed); s.tick(typed, LATE, typed);
-    expect(s.fired).toEqual([0]);
+    expect(s.fired).toEqual([]);
   });
-  it('does NOT gate the Codex marker path (marker = text we ourselves sent)', () => {
+  it('requires full payload and styling on the Codex composer too', () => {
     const CODEX_DRAFT = '[telegram:1052] continue running into version issues';
     const pane = [`› ${CODEX_DRAFT}`, '', '  gpt-5.5 medium'].join('\n');
-    const s = sentinel(CODEX_DRAFT.slice(0, 40), { codex: true });
+    const s = sentinel(CODEX_DRAFT);
     s.tick(pane, LATE); s.tick(pane, LATE);
-    expect(s.fired).toEqual([0]); expect(s.styledCaptures).toBe(0);
+    expect(s.fired).toEqual([0]); expect(s.styledCaptures).toBe(1);
   });
   it('re-judges the presentation before EVERY rung, so a suggestion appearing mid-ladder is not pressed', () => {
     const s = sentinel(MARKER); const ghost = STUCK_PANE_IDLE.replace(MARKER, `${ESC}[0;2m${MARKER}${ESC}[0m`);
@@ -247,4 +239,19 @@ describe('pendingInputStep — F2 ghost-text exclusion (the invariant)', () => {
     s.tick(STUCK_PANE_IDLE, LATE, ghost); s.tick(STUCK_PANE_IDLE, LATE, ghost);
     expect(s.fired).toEqual([0]); expect(s.record.presentation).toBe('ghost');
   });
+});
+
+it('does not truncate extra input at a separator or footer-looking payload line', () => {
+  const expected = 'The exact accepted input';
+  for (const extra of ['────────', 'gpt-delete', '? for shortcuts', '⏵⏵ bypass permissions on']) {
+    const pane = ['────────', `❯ ${expected}`, extra, 'extra input', '────────', '⏵⏵ bypass permissions on'].join('\n');
+    expect(pendingInputAt(pane, expected)).toBeNull();
+  }
+});
+it('does not treat a glyph embedded in output as a composer', () => {
+  expect(pendingInputAt('output contains ❯ The accepted input', 'The accepted input')).toBeNull();
+});
+it('checks normal intensity over every line of a multiline input', () => {
+  const expected = 'First line\nSecond line';
+  expect(classifyPromptTextPresentation(`❯ First line\n${ESC}[2mSecond line${ESC}[0m\n────`, expected)).toBe('inconclusive');
 });

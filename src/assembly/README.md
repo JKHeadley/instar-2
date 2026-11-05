@@ -431,20 +431,20 @@ behavior without importing legacy timers, direct messages or pane-wide interrupt
 `pending-input.ts` and the session driver's `observe()` carry the 1.x `verifyInjection` and
 `StuckInputSentinel` behavior (legacy-1x/, JKHeadley/instar 4f88880a): Claude Code occasionally
 eats the Enter after a bracketed paste, so an accepted input sits unsubmitted at an idle prompt.
-Every text the driver sends records a durable marker (its first forty visible characters) on the
-session before its Enter. While that turn is open, each observation that finds the marker at an
-idle prompt is one corroborating capture; two agreeing captures, the 1.x rung instants (500, 1500,
-3500 and 6500 ms after the send) and, on the generic `❯` path, a same-pane styled capture proving
-the text renders at normal intensity precede each recovery key (Enter, Enter, C-m, Enter+Enter).
-A dim model-suggested ghost of the text is never pressed and is sticky for that text; an unreadable,
-raced or mixed frame is inconclusive and re-judged next time. The Codex `›` composer relies on the
-marker alone, as in 1.x, because its dim placeholder never equals the sent text. The rung is saved
-before the key, so a cut leaves it consumed and never resent. With every rung spent and the text
-still pending at the 9000 ms verify instant the driver reports `pause-observed` /
-`input-undelivered` to the existing owner, which records the uncertain turn and retires the worker;
-no text is resent, no deadline moves, and no notice is sent from here. An active pane (queued input)
-is never treated as stuck. Design: `docs/18-sentinel-holders/04-the-silently-stopped-matrix.md`
-(input-buffer row) and P14-NF-56; behavior inventory:
+Each accepted delivery records its original operation, intake digest and complete terminal payload
+before Enter. Two agreeing captures and the 1.x rung instants (500, 1500, 3500 and 6500 ms)
+retain valid recovery. Every recovery key passes Eight's typed `submit-authentic-pending-input`
+admission, then Ten's fresh full-payload, activity, menu and styling checks, including the second
+Enter after the final rung's sleep. Joined tmux captures preserve soft wrapping without treating
+a shared prologue as identity. Dim, mixed, truncated, raced or menu evidence never authorizes input.
+
+The original delivery journal retains each typed request, its styled observation digest and its
+key outcome. A lost outcome remains uncertain across restart and cannot advance to another rung.
+Key acceptance is not consumption: the existing result and authenticated turn receipt still close
+the work. The four-rung budget, original deadline and undelivered observation remain. No text is
+resent, and no new store, timer or operator prompt is introduced. Internal continuation and compact
+commands keep their existing owner paths; they cannot borrow an accepted intake's recovery authority.
+Design: D18 §4/§8/§13 and P14-NF-56; inventory:
 `docs/implementation/carryover-14-safe-input-delivery-1104.md`.
 
 ## Native connection retry exhaustion

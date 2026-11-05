@@ -145,3 +145,15 @@ host's durable ledger before the send, and returns the recorded outcome for any 
 already dispatched: an unknown outcome stays `uncertain` and is never sent again. It holds
 no process, file or network API; `scripts/host-watch.mjs` (journal mode) supplies the ledger
 and the fixed Telegram bridge after three failed runner restarts.
+
+## Authentic pending input (`worker-input.ts`)
+
+`submitAuthenticPendingInput` admits the narrow Eight/Ten `worker-input` action granted by
+D18 §4/§8/§13 and P14-NF-56. It re-resolves the original accepted delivery, its intake and full
+payload digests, exact worker incarnation, owner claim and original turn deadline. The confined
+session driver supplies fresh full-composer evidence and the existing durable delivery journal.
+The closed action cannot supply arbitrary text, a menu response or another delivery identity.
+Each bounded key ordinal is durably recorded before dispatch; lost key or settlement receipts
+remain uncertain and cannot be retried under a fresh ordinal. Successful dispatch means key
+acceptance only; the existing owner turn observation remains the consumption bar. No side store,
+new standing grant or ordinary-reply payload is involved.

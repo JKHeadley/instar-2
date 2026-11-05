@@ -24,16 +24,16 @@ never recovered).
 
 | 1.x behavior (source) | 2.0 disposition | Where |
 |---|---|---|
-| Marker of the injected text, first 40 visible characters, minimum 8 (`SessionManager.extractInjectionMarker`) | Carried | `pendingInputMarker` |
-| Marker still at a `❯`/`›` prompt line, or its first 30 characters on the wrapped row (`isMarkerStuckAtPrompt`) | Carried; Gemini `│ *` and pi rule-sandwich composers omitted: 2.0 `SessionFramework` is only `claude-code` and `codex-cli` | `pendingInputAt`, `locatePromptText` |
-| Generic prompt-text reader: text after the last `❯`, wrapped next line, separator/footer excluded (`StuckInputSentinel.locatePromptText`, `isStatusLine`) | Carried, widened to `›` | `locatePromptText` |
+| Marker of the injected text, first 40 visible characters, minimum 8 (`SessionManager.extractInjectionMarker`) | Replaced: a shared prologue does not identify a production envelope; the complete payload and original intake digest are required | `pendingInputAt`, `DeliveryRecord` |
+| Marker still at a `❯`/`›` prompt line, or its first 30 characters on the wrapped row (`isMarkerStuckAtPrompt`) | Replaced by full payload equality on joined tmux captures; Gemini `│ *` and pi rule-sandwich composers omitted: 2.0 `SessionFramework` is only `claude-code` and `codex-cli` | `pendingInputAt`, `locatePromptText` |
+| Generic prompt-text reader: text after the last `❯`, wrapped next line, separator/footer excluded (`StuckInputSentinel.locatePromptText`, `isStatusLine`) | Anchored composer glyph and complete multiline payload, with segment styling coordinates; widened to `›` | `locatePromptText` |
 | Never fire while the pane shows a working footer (`CLAUDE_WORKING_INDICATORS`) | Replaced by the existing `classifyPaneActive` (footer hints, "working…", spinner glyphs). Evidence: the 1.x activity cases pass against it in `tests/assembly/pending-input.test.ts`; 2.0 already uses one activity tell for every driver decision (Rule 116) | driver `observe()` |
 | Same text must persist across two consecutive ticks before any key (`minTicksBeforeFire = 2`) | Carried as two consecutive observations | `PENDING_INPUT_LADDER.minObservations` |
 | In-process schedule 500/1500/3500/6500 ms after injection, verify-only pass at 9000 ms (`verifyInjection.markerCheckSchedule`) | Carried as instants after the recorded send; the host's `observe()` cadence drives the ticks | `PENDING_INPUT_LADDER.schedule`, `verifyAt` |
 | Four rungs: Enter, Enter, C-m, Enter + 150 ms + Enter (`actionForAttempt`, `performStuckInputKeyEffect`) | Carried | `pendingInputAction`, driver `observe()` |
 | Exhausted after four rungs until the text changes | Carried per send: the budget is per sent input and never renews on a text change (a text change resets corroboration and the styled verdict only) | `pendingInputStep` |
-| F2 ghost-text exclusion: same-pane `capture-pane -e`, SGR dim decoding with 38;5 / 38;2 / colon sub-parameters, `real`/`ghost`/`inconclusive`; ghost sticky, inconclusive transient; re-assessed before every rung; Codex marker path not gated | Carried verbatim | `classifyPromptTextPresentation`, `afterPresentation`, driver `captureStyled` |
-| Rung consumed on `effect-unknown` (key may have reached the pane) | Carried: the record is saved with the rung consumed before the key, so a cut leaves it consumed | `PendingInputRecord.pressing` |
+| F2 ghost-text exclusion: same-pane `capture-pane -e`, SGR dim decoding with 38;5 / 38;2 / colon sub-parameters, `real`/`ghost`/`inconclusive`; ghost sticky, inconclusive transient; re-assessed before every rung; Codex marker path not gated | ANSI decoder retained; both harnesses require fresh complete-payload styling, activity and menu checks at every key, including after sleep | `classifyPromptTextPresentation`, `afterPresentation`, driver `captureStyled` |
+| Rung consumed on `effect-unknown` (key may have reached the pane) | Strengthened: typed dispatch intent is durable before each key; an unknown outcome preserves the original identity and inhibits further keys until reconciled | `PendingInputRecord.pressing` |
 | Refusal budget (`consecutiveRefusals`, the 75,001-row loop) | Omitted: 2.0 has no durable-delivery fence returning `refused` here; stop, identity and tmux failures throw out of `observe()` and leave the saved record, so no silent retry loop exists. Evidence: `checkStop`, `verifyLive`, `run` in the driver | — |
 | One `undeliverable` row and `onUndeliverable` consumer: attention item plus a deterministic Telegram notice (`server.ts` 11695) | Re-expressed: `pause-observed` / `input-undelivered` to the existing owner, which records the uncertain turn and retires the worker (`conversation-harness-adapter.ts` → `production-conversation-session.ts`). The owner's existing uncertain-outcome path owns any operator notice (Rules 53, 87, 88); no notice is sent from the driver | driver `observe()` |
 | Tier-C escalation (server restart + replay via `SessionRecoveryChannel`, `RecoveryActuationAuthority`, dark by default) | Omitted: 2.0 worker loss and replacement are owned by the conversation session's existing `replace()` path with its own admission checks (`production-conversation-session.ts`); a holder-requested restart is a Part Eight typed effect that is granted but not landed (`docs/18-sentinel-holders/08`). The 1.x escalation tests are in `legacy-1x/tests/unit/StuckInputSentinel-escalation.test.ts` for the desk | — |
@@ -43,16 +43,14 @@ never recovered).
 
 ## Decisions (Rule 102)
 
-- CARRYOVER-14-1104-1 — Carry the ladder as completion of Ten's own delivery inside the session
-  driver, through its existing tmux port and durable journal, not as a new holder, store or effect.
-  The typed `worker-input` seam (`submit-authentic-pending-input`, ledger #21) is granted but not
-  landed; the driver already owns the Enter it is completing, and the key binds the exact process
-  identity, incarnation and sent text.
-- CARRYOVER-14-1104-2 — Require the marker of the exact sent text on both harnesses, and on the
-  generic `❯` path additionally the same-pane styled `real` verdict before every rung; keep the
-  Codex marker path ungated as in 1.x.
-- CARRYOVER-14-1104-3 — Keep the four-rung budget per sent input; a prompt-text change resets
-  corroboration and the styled verdict but never renews the budget.
+- CARRYOVER-14-1104-1 — Eight owns the narrow typed `submit-authentic-pending-input` action.
+  Ten re-resolves the original accepted delivery and complete payload at the existing checkpoint;
+  the same delivery journal records admission, fresh-frame digest and uncertain key outcomes.
+  No separate holder, store, timer or operator authorization is needed.
+- CARRYOVER-14-1104-2 — Both composers require full payload equality and a fresh normal-intensity
+  frame without active work or a menu. The last rung rechecks after its sleep. A shared prologue,
+  arbitrary prompt glyph or normal intensity alone cannot authorize a key.
+- CARRYOVER-14-1104-3 — Keep the four-rung budget per sent input; changed payloads never inherit the original intake authority and never renew the budget.
 - CARRYOVER-14-1104-4 — Report a spent ladder as `pause-observed` / `input-undelivered` to the
   existing owner instead of 1.x tier-C restart/replay and direct Telegram notice; omit the JSONL
   event log and DegradationReporter.
@@ -63,10 +61,12 @@ never recovered).
 
 ## Evidence
 
-Failing before (unmodified source, `tests/assembly/production-session-pending-input.test.ts`):
-8 of 9 cases fail (no record, no re-press, no ghost verdict, no undelivered report; the stop case
-passes vacuously). `tests/assembly/pending-input.test.ts` cannot load (module absent). Passing
-after: 9 of 9 and 46 of 46. Existing `tests/assembly/production-session-driver.test.ts`: 139 of 139.
+`tests/assembly/production-session-pending-input.test.ts` retains successful input recovery next
+to Astra's shared-envelope, focused-menu and fresh-active-frame negative cases. It also covers
+both harnesses, final-rung races, changed durable authority and unknown outcomes across restart.
+`tests/assembly/pending-input.test.ts` retains the 1.x SGR/F2 recorded-shape cases and bounded ladder.
+`tests/assembly/pending-input-admission.test.ts` checks closed payload bindings, durable-before-key
+ordering, ordinal deduplication, refused evidence and unknown dispatch/settlement outcomes.
 No live task has run; row 14 stays OPEN until the whole feature passes one.
 
 ## Known limits

@@ -10,7 +10,7 @@
  * ladder, and after live finding F2 (2026-07-02) it refused to press at a model-suggested
  * composer suggestion ("ghost text"), which is rendered dim (SGR 2) and is byte-identical to real
  * input once styling is stripped. The invariant carried here: NEVER AUTO-SUBMIT TEXT THE OPERATOR
- * (OR THE HOST) DID NOT ACTUALLY SEND. Only text that (a) contains the marker of the exact text the
+ * (OR THE HOST) DID NOT ACTUALLY SEND. Only text that (a) equals the complete payload the
  * driver itself sent and (b) provably renders at normal intensity is eligible for a recovery key.
  * Ghost, mixed, raced or unreadable presentation all fail toward NOT pressing.
  */
@@ -35,60 +35,47 @@ export function pendingInputAction(attempt: number): PendingInputAction {
   return 'Enter-sleep-Enter';
 }
 
-/** 1.x SessionManager.extractInjectionMarker: the distinguishing first 40 visible characters of
- *  the sent text, or null when too short (< 8) to identify it reliably at a prompt. */
-export function pendingInputMarker(sentText: string): string | null {
-  const marker = sentText.replace(/^\s+/u, '').slice(0, 40).trim();
-  return marker.length >= 8 ? marker : null;
+/** A composer span in a joined tmux frame. Each segment retains its styling coordinates. */
+export interface LocatedPromptText {
+  readonly lineIdx: number; readonly start: number; readonly text: string;
+  readonly segments: readonly Readonly<{ lineIdx: number; start: number; text: string }>[];
 }
-
-/** Lines that are Claude Code status/separator chrome rather than wrapped input
- *  (1.x StuckInputSentinel.isStatusLine). */
-function isStatusLine(line: string): boolean {
-  const t = line.trim();
-  if (!t) return true;
-  if (/^─+$/u.test(t)) return true;
-  if (t.startsWith('⏵⏵ ')) return true;
-  return false;
-}
-
-export interface LocatedPromptText { readonly lineIdx: number; readonly start: number; readonly text: string }
-/**
- * 1.x StuckInputSentinel.locatePromptText, widened to both supported composers: Claude Code's `❯`
- * and Codex's `›`. Finds the last prompt line, returns the trimmed text after its last prompt glyph,
- * or the immediately following non-status line when the prompt line itself is empty (wrapped
- * input). The column `start` lets the styled-frame classifier map exactly these characters onto
- * a per-character dim mask, so the verdict is about the same text the plain frame showed.
- */
+/** Anchored composer glyph, never a glyph embedded in output. Read the whole input up to the
+ * harness separator/footer. `capture-pane -J` joins soft wraps; real input newlines remain.
+ * Menu/activity classification is additionally required at the driver checkpoint. */
 export function locatePromptText(lines: readonly string[]): LocatedPromptText | null {
   for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i];
-    if (!line) continue;
-    const idx = Math.max(line.lastIndexOf('❯'), line.lastIndexOf('›'));
-    if (idx < 0) continue;
-    const after = line.slice(idx + 1);
-    const text = after.trim();
-    if (text.length > 0) return { lineIdx: i, start: idx + 1 + (after.length - after.trimStart().length), text };
-    const next = lines[i + 1];
-    if (next && next.trim().length > 0 && !isStatusLine(next))
-      return { lineIdx: i + 1, start: next.length - next.trimStart().length, text: next.trim() };
-    return null;
+    const match = /^(\s*)[❯›] ?(.*)$/u.exec(lines[i] ?? '');
+    if (!match) continue;
+    const start = match[1]!.length + 1 + ((lines[i] ?? '')[match[1]!.length + 1] === ' ' ? 1 : 0);
+    const segments = [{ lineIdx: i, start, text: match[2]! }];
+    // Use the bottom composer border, not a separator-looking line inside the payload.
+    const border = lines.map(line => /^\s*[─━]+\s*$/u.test(line)).lastIndexOf(true);
+    const last = lines.map(line => line.trim().length > 0).lastIndexOf(true);
+    // Codex's unboxed composer ends at a separated model/status footer.
+    const footer = border <= i && last > i + 1 && !lines[last - 1]?.trim()
+      && /^\s*gpt-[a-z0-9.-]+\s+(?:low|medium|high|xhigh)\s*$/u.test(lines[last] ?? '') ? last - 1 : lines.length;
+    const end = border > i ? border : footer;
+    for (let j = i + 1; j < end; j++) segments.push({ lineIdx: j, start: 0, text: lines[j]! });
+    while (segments.length && !segments.at(-1)!.text.trim()) segments.pop();
+    while (segments.length && !segments[0]!.text.trim()) segments.shift();
+    if (!segments.length) return null;
+    return { lineIdx: segments[0]!.lineIdx, start: segments[0]!.start,
+      text: segments.map(segment => segment.text).join('\n'), segments };
   }
   return null;
 }
 
-/**
- * The text at the prompt when it still carries the marker of the exact text the driver sent
- * (1.x SessionManager.isMarkerStuckAtPrompt: the full marker, or its first 30 characters for a
- * wrapped row). Null when the prompt is empty, shows other text, or there is no prompt. Gemini's
- * boxed composer and pi's rule-sandwiched composer are not located: 2.0 runs only Claude Code and
- * Codex sessions (`SessionFramework`).
- */
-export function pendingInputAt(pane: string, marker: string): LocatedPromptText | null {
-  if (marker.length < 8) return null;
+/** Full payload equality: shared prologues, substrings and truncated captures carry no authority. */
+export function pendingInputAt(pane: string, payload: string): LocatedPromptText | null {
+  if (!payload.trim()) return null;
   const located = locatePromptText(pane.split('\n'));
-  if (!located) return null;
-  return located.text.includes(marker) || located.text.includes(marker.slice(0, 30)) ? located : null;
+  return located?.text === payload ? located : null;
+}
+
+/** Visible frame decoded by the same ANSI reader as the presentation verdict. */
+export function pendingInputVisibleFrame(ansi: string): string {
+  return parseAnsiDimLines(ansi).map(line => line.text).join('\n');
 }
 
 /**
@@ -166,13 +153,15 @@ export function classifyPromptTextPresentation(ansiPane: string, expectedText: s
     const parsed = parseAnsiDimLines(ansiPane);
     const located = locatePromptText(parsed.map(l => l.text));
     if (!located || located.text !== expectedText) return 'inconclusive';
-    const dimMask = parsed[located.lineIdx]?.dim ?? [];
     let sawDim = false, sawNormal = false;
-    for (let k = 0; k < located.text.length; k++) {
-      const ch = located.text[k];
-      if (ch === ' ' || ch === '\t') continue; // whitespace carries no styling signal
-      if (dimMask[located.start + k]) sawDim = true;
-      else sawNormal = true;
+    for (const segment of located.segments) {
+      const dimMask = parsed[segment.lineIdx]?.dim ?? [];
+      for (let k = 0; k < segment.text.length; k++) {
+        const ch = segment.text[k];
+        if (ch === ' ' || ch === '\t') continue;
+        if (dimMask[segment.start + k]) sawDim = true;
+        else sawNormal = true;
+      }
     }
     if (sawDim && !sawNormal) return 'ghost';
     if (sawNormal && !sawDim) return 'real';
@@ -184,16 +173,18 @@ export function classifyPromptTextPresentation(ansiPane: string, expectedText: s
 
 /** The driver's durable per-session record of one sent input it has not yet seen consumed. */
 export interface PendingInputRecord {
-  /** Marker of the exact text the driver sent (pendingInputMarker). */
-  readonly marker: string;
-  /** The prompt text the last observation located; a change resets corroboration and the styled
-   *  verdict (1.x: new content is a fresh stuck event) but never the per-send rung budget. */
+  /** Original durable delivery and full terminal payload, never reconstructed from the pane. */
+  readonly operation: string;
+  readonly intake: string;
+  readonly digest: string;
+  readonly payload: string;
+  /** Complete prompt text corroborated by the last observation. No shared-prefix matching. */
   readonly promptText: string | null;
   /** When the driver pressed Enter for it. */
   readonly sentAt: number;
-  /** Consecutive observations that saw the marker at an idle prompt (reset when it is not). */
+  /** Consecutive observations that saw the complete payload at an idle prompt (reset when it is not). */
   readonly observations: number;
-  /** Recovery rungs consumed: sent, or recorded as intended before a cut (effect unknown). */
+  /** Bounded recovery rungs consumed; unknown dispatch inhibits the whole remaining ladder. */
   readonly attempts: number;
   /** Durable intent for the rung in flight; true across a cut means that rung's effect is unknown. */
   readonly pressing: boolean;
@@ -222,12 +213,13 @@ export type PendingInputDecision =
  */
 export function pendingInputStep(record: PendingInputRecord, pane: string, paneActive: boolean, now: number,
   gatePresentation: boolean): PendingInputDecision {
-  const located = pendingInputAt(pane, record.marker);
+  if (record.pressing) return { kind: 'observe', record, detail: 'pending input submission uncertain; observation only' };
+  if (paneActive) return { kind: 'observe', record: { ...record, observations: 0 }, detail: 'input queued behind active work' };
+  const located = pendingInputAt(pane, record.payload);
   if (!located) return { kind: 'clear' };
-  const settled = record.pressing ? { ...record, pressing: false } : record;
+  const settled = record;
   const same = settled.promptText === located.text;
   const current = same ? settled : { ...settled, promptText: located.text, observations: 0, presentation: null };
-  if (paneActive) return { kind: 'observe', record: { ...current, observations: 0 }, detail: 'input queued behind active work' };
   const seen = { ...current, observations: current.observations + 1 };
   if (seen.undelivered) return { kind: 'undelivered', record: seen };
   if (seen.observations < PENDING_INPUT_LADDER.minObservations)
