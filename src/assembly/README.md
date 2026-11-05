@@ -178,7 +178,7 @@ measured bound proposal is in the R5 progress handoff.
 
 ## Capabilities
 
-- `process-control-kernel`: dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery remain unproven.
+- `process-control-kernel`: dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery unproven.
 
 - `harness-doorway-parity`: binds each supported harness and model doorway to certified code; the rest are marked unproven.
   Details: binds each supported harness and model doorway to its certified code and runtime; the rest are marked unproven or unsupported.
