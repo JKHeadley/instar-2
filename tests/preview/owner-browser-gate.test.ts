@@ -106,7 +106,9 @@ it('the installed thin MCP launch reaches its claim through the real connector s
   child.stdout.on('data', chunk => { buffer += chunk; let end; while ((end = buffer.indexOf('\n')) >= 0) { answers.push(JSON.parse(buffer.slice(0, end))); buffer = buffer.slice(end + 1); } });
   const call = async (row: unknown) => { child.stdin.write(`${JSON.stringify(row)}\n`); const n = answers.length;
     for (let i = 0; i < 100 && answers.length === n; i++) await new Promise(resolve => setTimeout(resolve, 5)); return answers.at(-1)!; };
-  expect((await call({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).result.tools).toHaveLength(1);
+  const listed = (await call({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).result.tools as { inputSchema: Record<string, unknown> }[];
+  expect(listed).toHaveLength(1);
+  expect(listed[0]!.inputSchema).not.toHaveProperty('oneOf');
   const row = { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'observe', arguments: input } };
   expect(JSON.parse((await call(row)).result.content![0]!.text)).toEqual(observation);
   expect(JSON.parse((await call(row)).result.content![0]!.text)).toMatchObject({ status: 'refused' }); expect(w.count()).toBe(1);
