@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, rmSync, statSync, utimesSync, unlinkSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error Host JavaScript.
@@ -17,7 +18,9 @@ import { runTemplatesDriftVerifier } from '../../scripts/update-drift.mjs';
 // @ts-expect-error Host JavaScript.
 import { LiveConfig } from '../../scripts/update-live-config.mjs';
 // @ts-expect-error Host JavaScript.
-import { installMcp } from '../../scripts/mcp-setup.mjs';
+import { installMcp, verifyMcpDefaults } from '../../scripts/mcp-setup.mjs';
+// @ts-expect-error Host JavaScript.
+import { readRootMcp } from './tool-turn.mjs';
 const roots: string[] = [], controllers: { stop(): void }[] = [];
 const root = () => { const r = mkdtempSync(join(tmpdir(), 'update-runtime-')); roots.push(r); return r; };
 const save = (r: string, name: string, value: unknown) => writeFileSync(join(r, name), JSON.stringify(value));
@@ -157,6 +160,65 @@ it('LiveConfig refreshes actual readers, emits changes and retains last valid da
   writeFileSync(join(r, 'runtime-settings.json'), '{'); c.forceRefresh();
   expect(c.get('updates.autoApply', false)).toBe(true); expect(c.lastError).toContain('unreadable');
 });
+it('actual updater decisions read changed bytes with unchanged mtime; a reentrant listener sees the new value', async () => {
+  const r = root(); save(r, 'runtime-settings.json', { updates: { autoApply: false }, monitoring: { templatesDriftVerifier: { enabled: false } } });
+  const c = createProductUpdater(r, { runningVersion: () => '0.1.0', stopped: () => false,
+    readiness: () => ({ idle: true }), discover: async () => '0.2.0', apply: vi.fn() }); controllers.push(c);
+  await c.updater.tick(); expect(c.updater.getStatus().config.autoApply).toBe(false);
+  const settings = join(r, 'runtime-settings.json'), times = statSync(settings);
+  const observed: unknown[] = []; c.live.on('change', ({ path }: { path: string }) => observed.push(c.live.get(path)));
+  save(r, 'runtime-settings.json', { updates: { autoApply: true }, monitoring: { templatesDriftVerifier: { enabled: false } } });
+  utimesSync(settings, times.atime, times.mtime);
+  await c.updater.tick(); expect(c.updater.getStatus().config.autoApply).toBe(true); expect(observed).toEqual([true]);
+  save(r, 'runtime-settings.json', { updates: { autoApply: false } }); await c.updater.tick();
+  unlinkSync(settings); await c.updater.tick(); expect(c.updater.getStatus().config.autoApply).toBe(false);
+});
+it('same-release cadence repairs the real MCP consumer through the existing transaction, even with discovery offline', async () => {
+  const r = root(), directory = installed(r, '0.1.0');
+  mkdirSync(join(directory, 'scripts'));
+  writeFileSync(join(directory, 'scripts/update-release.mjs'), `export * from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'scripts/update-release.mjs')).href)};`);
+  installMcp(r);
+  const path = join(r, 'mcp.json'), config = JSON.parse(readFileSync(path, 'utf8'));
+  // Missing template is a real migration postcondition failure; preserve all
+  // authority-bearing inputs and use the installed migration's own verifier.
+  unlinkSync(path); expect(verifyMcpDefaults(r)).toBe(false);
+  let idle = false, stopped = false;
+  const execute = vi.fn(async () => ({ code: 0, stdout: '', limited: false }));
+  const c = createProductUpdater(r, { runningVersion: () => '0.1.0', stopped: () => stopped,
+    readiness: () => ({ idle }), discover: async () => { throw Error('offline'); }, execute }); controllers.push(c);
+  await c.updater.tick(); expect(verifyMcpDefaults(r)).toBe(false);
+  idle = true; vi.setSystemTime(Date.now() + 1800001);
+  await c.updater.tick(); expect(verifyMcpDefaults(r)).toBe(true);
+  expect(readRootMcp(r)).toMatchObject({ servers: config.mcpServers, reads: config.reads });
+  expect(execute).toHaveBeenCalledWith(expect.objectContaining({ executable: process.execPath, args: expect.arrayContaining(['--check']) }));
+  const state = JSON.parse(readFileSync(join(r, 'update-state.json'), 'utf8'));
+  expect(state.steps).toContainEqual({ id: 'mcp-defaults-verified-1104', status: 'done' });
+  unlinkSync(path); stopped = true; vi.setSystemTime(Date.now() + 3600001);
+  await c.updater.tick(); expect(verifyMcpDefaults(r)).toBe(false);
+});
+it('release discovery uses maintenance admission and retains failed capacity pressure', async () => {
+  const r = root(); save(r, 'runtime-settings.json', { monitoring: { templatesDriftVerifier: { enabled: false } } });
+  const execute = vi.fn(async () => ({ code: 0, stdout: 'fixture\trefs/tags/v0.1.0\n', limited: false }));
+  const c = createProductUpdater(r, { runningVersion: () => '0.1.0', stopped: () => false,
+    readiness: () => ({ idle: true }), execute }); controllers.push(c);
+  await c.updater.tick(); expect(execute).toHaveBeenCalledWith(expect.objectContaining({ executable: 'git', timeout: 15000 }));
+  expect(c.updater.getStatus().lastError).toBeNull();
+  execute.mockResolvedValue({ code: 0, stdout: '', limited: true });
+  await c.updater.tick(); expect(c.updater.getStatus().lastError).toContain('unavailable');
+  expect(readUpdateRuntime(r).updater.failureState.failures).toHaveLength(1);
+});
+it('same-release repair honors both live switches independently', async () => {
+  const r = root(); installed(r, '0.1.0');
+  const apply = vi.fn(async () => ({ status: 'unchanged' }));
+  const c = createProductUpdater(r, { runningVersion: () => '0.1.0', stopped: () => false,
+    readiness: () => ({ idle: true }), discover: async () => '0.1.0', apply }); controllers.push(c);
+  for (const [autoApply, enabled] of [[false, true], [true, false], [false, false]]) {
+    save(r, 'runtime-settings.json', { updates: { autoApply }, monitoring: { templatesDriftVerifier: { enabled } } });
+    await c.updater.tick(); expect(apply).not.toHaveBeenCalled();
+  }
+  save(r, 'runtime-settings.json', { updates: { autoApply: true }, monitoring: { templatesDriftVerifier: { enabled: true } } });
+  await c.updater.tick(); expect(apply).toHaveBeenCalledOnce();
+});
 it('shipped runner wiring observes health after a successful poll and drains only at its idle boundary', () => {
   const code = readFileSync('tests/preview/journal-agent.mjs', 'utf8');
   expect(code).toContain('drainUpdateRestart(root,');
@@ -186,6 +248,21 @@ it('malformed optional update state cannot prevent launching the original runner
   const next = createUpdateLaunch({ root: r, agent: [join(initial, 'tests/preview/journal-agent.mjs')] }, launch);
   expect((await next()).code).toBe(0); expect(launch).toHaveBeenCalledOnce();
   expect(readFileSync(join(r, 'update-state.json'), 'utf8')).toBe('{');
+});
+it('a recreated watchdog refuses a known schema-incompatible prior runner without erasing its evidence', async () => {
+  const r = root(), initial = root(), prior = installed(r, '0.1.0');
+  save(initial, 'package.json', { version: '0.0.9' });
+  mkdirSync(join(prior, 'scripts'));
+  writeFileSync(join(prior, 'scripts/update-release.mjs'), 'export const readableSchemas = [1];');
+  writeUpdateRuntime(r, 'healthyRelease', 'v0.1.0');
+  writeUpdateRuntime(r, 'handshake', { status: 'failed', expectedVersion: '0.1.0' });
+  save(r, 'version.json', { version: '0.1.0', release: 'v0.1.0', schema: 2, migrations: [] });
+  const before = readFileSync(join(r, 'update-state.json'), 'utf8');
+  const launch = vi.fn(async () => ({ code: 0 }));
+  const next = createUpdateLaunch({ root: r, agent: [join(initial, 'tests/preview/journal-agent.mjs')] }, launch);
+  expect(await next()).toMatchObject({ signal: 'schema-incompatible' });
+  expect(launch).not.toHaveBeenCalled();
+  expect(readFileSync(join(r, 'update-state.json'), 'utf8')).toBe(before);
 });
 it('actual updater timers coalesce newer releases and respect live disabling before an armed apply fires', async () => {
   const c = controller(); let latest = '0.2.0'; c.checker.getShadowInstalledVersion = () => null;

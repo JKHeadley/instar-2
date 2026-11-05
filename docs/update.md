@@ -182,20 +182,41 @@ installation facts and revocations are never read as grants. Invalid settings ke
 the last valid values. Default MCP repair still runs through the existing migration,
 including repeated tags; SHA inventory does not authorize replacing customization.
 
-Evidence lives in `tests/preview/update-runtime.test.ts`,
-`update-gate.test.ts`, `update-runner-process.test.ts` and the prior installer tests.
-The process test uses the real admitted runner and local HTTP fixture, with release
-discovery bounded to a deterministic git fixture. It requires the transport shim’s
-`/bin/sh` process-limit operation and is skipped when that operation is unavailable
-(as on this WSL host). Its success remains for the Studio gate; it is not live proof.
-No model prompts, output parsers or model acceptance decisions are changed.
+Evidence lives in `tests/preview/update-runtime.test.ts`, `update-gate.test.ts`,
+`update-runner-process.test.ts`, `update-lifecycle.test.ts` and the installer tests.
+The runner inventory explicitly accounts for the selected release's migration manifest
+as an external installed artifact; any other computed import still refuses startup.
+Its loader and the shipped manifest remain in the running-code digest. The manifest
+of a future candidate is not claimed part of that digest.
 
-**Still open before full parity:** inventory every remaining 1.x LiveConfig consumer
-against its actual 2.x owner and demonstrate refresh or explain a superseding
-implementation with code/test evidence. Only updater/drift consumers are covered
-here. Complete unattended replacement/custody admission evidence is also required:
-the process test proves the running tick and handshake, while replacement selection
-and failure use injected launch outcomes. The feature's formal repeated-work bound
-is not asserted through a new critical-outcome probe; its declaration accurately
-retains periodic service repetition, with runtime failure brakes tested separately.
-This continuation must not be promoted as complete row-87 parity on those proofs.
+The isolated physical lifecycle test performs real npm installation, idle drain,
+watchdog launch of the separately admitted replacement, successful HTTP polling and
+handshake completion. It recreates the watchdog, installs a candidate that fails before
+polling, and observes the previously healthy release serving again. A durable
+`runtime.healthyRelease` in the existing transaction carries the healthy selection
+across watchdog processes. No activation record is rewritten. The test substitutes
+only offline release discovery and the npm source location; no injected launch outcome
+stands in for process health. It is not a live installed deployment proof.
+
+Automatic updates refuse a target schema unreadable by the running fallback before
+any migration. Reopening a prior healthy release checks its actual manifest against
+the current schema; known incompatibility refuses that launch and preserves evidence.
+Corrupt optional update records still preserve the original configured runner.
+
+At the normal update cadence, an idle runner with autoApply and template verification
+enabled checks and repairs its installed release through the existing migration
+transaction, even without a newer release or successful discovery. Disabling either
+switch or stopping the runner prevents repair. Changed settings bytes are reread at
+decisions even when their modification time did not change. Malformed, oversized or
+removed settings retain the last valid values.
+
+[The consumer and template-owner map](update-consumers.md) names all 77 earlier keys,
+the additional direct/constant keys found at the new pinned 1.x revision, dynamic-path
+limits, protected owners and dependencies on other carryover rows. It does not treat
+unported owners as superseded. No model prompt or judgment policy is changed here.
+
+Row 87 remains open: the standalone installer still needs durable resource-owner
+admission, the periodic service needs its actual registered critical-outcome bound
+and live probe, and unresolved dynamic/nested consumer domains need owning-row review.
+The isolated process proof, independent Astra compliance review and live installed
+proof are distinct evidence tiers; only the first is supplied by this test.

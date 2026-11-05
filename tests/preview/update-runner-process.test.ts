@@ -27,7 +27,9 @@ it.skipIf(!processLimitAvailable)('the shipped runner polls, completes its hands
     monitoring: { templatesDriftVerifier: { enabled: false } } }));
   const commands = join(world.directory, 'commands'); mkdirSync(commands);
   // Bounded deterministic release discovery only. Every other launch/port remains the shipped path.
-  writeFileSync(join(commands, 'git'), `#!/bin/sh\nprintf 'fixture\\trefs/tags/v${version}\\n'\n`); chmodSync(join(commands, 'git'), 0o700);
+  const git = spawnSync('/usr/bin/which', ['git'], { encoding: 'utf8' }).stdout.trim();
+  expect(git.startsWith('/')).toBe(true);
+  writeFileSync(join(commands, 'git'), `#!/bin/sh\nif [ "$1" = ls-remote ]; then\n  printf 'fixture\\trefs/tags/v${version}\\n'\nelse\n  exec '${git.replaceAll("'", "'\\''")}' "$@"\nfi\n`); chmodSync(join(commands, 'git'), 0o700);
   const endpoint = spawn(process.execPath, [join(process.cwd(), 'tests/preview/journal-poll-endpoint.mjs'), log, updates, '-', 'long-poll'],
     { stdio: ['ignore', 'pipe', 'pipe'] });
   try {
@@ -54,6 +56,10 @@ it.skipIf(!processLimitAvailable)('the shipped runner polls, completes its hands
     expect(runtime.updater.lastCheck).toEqual(expect.any(String));
     expect(runtime.templateScan).toBeUndefined();
     expect(readFileSync(log, 'utf8')).toContain('getUpdates');
+    const resources = JSON.parse(readFileSync(join(root, 'resources.json'), 'utf8'));
+    expect(resources.counters.admitted).toBeGreaterThan(0);
+    expect(resources.lastLaunch).toMatchObject({ work: 'maintenance', allocation: { state: 'returned' } });
+    expect(resources.allocation.state).toBe('six');
     const after = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
     try { expect(after.view.calls).toBe(0); expect(after.view.replies).toBe(0); } finally { after.close(); }
   } finally { endpoint.kill('SIGTERM'); }

@@ -51,35 +51,37 @@ export class LiveConfig extends EventEmitter {
         this.refresh();
     }
     refreshIfStale() {
-        try {
-            if (!existsSync(this.configPath))
-                return;
-            const stat = statSync(this.configPath);
-            if (stat.mtimeMs !== this.lastMtime) {
-                this.refresh();
-            }
-        }
-        catch {
-        }
+        // A writer can preserve mtime (or replace within the filesystem's time
+        // resolution). These small settings are read at the decision boundary;
+        // compare bytes, not a timestamp standing in for their contents.
+        this.refresh();
     }
     refresh() {
         try {
             if (!existsSync(this.configPath)) {
-                this.cache = {};
+                // Deletion/read failure is uncertainty, not permission to restore
+                // defaults that may turn automatic work back on.
                 return;
             }
+            if (statSync(this.configPath).size > 1024 * 1024)
+                throw Error("settings exceed read bound");
             const content = readFileSync(this.configPath, 'utf-8');
+            if (content === this.lastContent) { this.lastError = null; return; }
             const newConfig = JSON.parse(content);
             if (!newConfig || typeof newConfig !== "object" || Array.isArray(newConfig))
                 throw Error("settings object required");
             const stat = statSync(this.configPath);
             this.lastMtime = stat.mtimeMs;
             this.lastReadAt = Date.now();
+            const previous = this.cache;
+            this.cache = newConfig;
+            this.lastContent = content;
+            this.lastError = null;
             const pathsToCheck = this.watchPaths.size > 0
                 ? this.watchPaths
                 : this.accessedPaths;
             for (const dotPath of pathsToCheck) {
-                const oldValue = this.getNestedValue(this.cache, dotPath);
+                const oldValue = this.getNestedValue(previous, dotPath);
                 const newValue = this.getNestedValue(newConfig, dotPath);
                 if (!this.deepEqual(oldValue, newValue)) {
                     const change = {
@@ -91,8 +93,6 @@ export class LiveConfig extends EventEmitter {
                     this.emit('change', change);
                 }
             }
-            this.cache = newConfig;
-            this.lastError = null;
         }
         catch (err) {
             this.lastError = "Runtime settings unreadable; retained last valid settings";

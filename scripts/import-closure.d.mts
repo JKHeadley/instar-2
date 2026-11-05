@@ -1,2 +1,3 @@
-export function importClosure(entries: readonly string[], read: (path: string) => string | null, exists: (path: string) => boolean, core?: (path: string) => boolean):
+export function importClosure(entries: readonly string[], read: (path: string) => string | null, exists: (path: string) => boolean, core?: (path: string) => boolean,
+  externalLoad?: (from: string, expression: string) => boolean):
   { files: string[]; unresolved: { from: string | null; specifier: string }[]; computed: { from: string; line: number }[] };

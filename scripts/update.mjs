@@ -34,16 +34,28 @@ function stampValid(stamp) {
 }
 // Adapted from 1.x UpdateChecker.validateCandidate: inspect the installed bytes,
 // never npm's exit code or a prior success stamp alone (Rules 26/42/95).
-function validateCandidate(installed, release) {
+function candidateIdentity(installed, release) {
   const pkg = load(join(installed, 'package.json'));
   const cli = join(installed, 'bin/instar2.mjs');
   if (pkg.name !== packageInfo.name || typeof pkg.version !== 'string' || !existsSync(cli))
     throw Error('Invalid installed release');
   if (/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(release) && pkg.version !== release.slice(1))
     throw Error('Installed version does not match the requested release; current release retained');
-  const probe = spawnSync(process.execPath, ['--check', cli],
-    { timeout: 10000, maxBuffer: 1024 * 1024, stdio: 'ignore' });
-  if (probe.status !== 0) throw Error('Installed CLI syntax check failed; current release retained');
+  return pkg;
+}
+// The admitted runner supplies its existing resource owner. The standalone
+// installer retains its host invocation until that command has a durable owner.
+async function executeCommand(input, execute) {
+  if (execute) return execute(input);
+  const result = spawnSync(input.executable, input.args, { cwd: input.cwd, timeout: input.timeout,
+    maxBuffer: input.maxBytes, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  return { code: result.status, signal: result.signal, limited: Boolean(result.error), stdout: result.stdout };
+}
+async function validateCandidate(installed, release, execute) {
+  const pkg = candidateIdentity(installed, release);
+  const probe = await executeCommand({ executable: process.execPath, args: ['--check', join(installed, 'bin/instar2.mjs')],
+    cwd: installed, timeout: 10000, maxBytes: 1024 * 1024 }, execute);
+  if (probe.code !== 0 || probe.limited || probe.cancellationReason) throw Error('Installed CLI syntax check failed; current release retained');
   return pkg;
 }
 async function verified(migration, root) {
@@ -51,19 +63,19 @@ async function verified(migration, root) {
   if (typeof result !== 'boolean') throw Error('Migration verification must return a boolean');
   return result;
 }
-function install(root, release, source) {
+async function install(root, release, source, execute) {
   const destination = join(root, 'releases', release);
   if (!existsSync(destination)) {
     const stage = join(root, 'releases', `.install-${randomUUID()}`);
     mkdirSync(stage, { recursive: true, mode: 0o700 });
     // npm's own git installer; ignore lifecycle scripts so staging cannot mutate the root.
     // Output is intentionally not forwarded: git/npm diagnostics may contain credentials.
-    const result = spawnSync('npm', ['install', '--prefix', stage, '--ignore-scripts', '--no-audit', '--no-fund', '--install-links', '--', source],
-      { encoding: 'utf8', timeout: 300000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
-    if (result.status !== 0) throw Error('Release installation failed; current release retained');
+    const result = await executeCommand({ executable: 'npm', args: ['install', '--prefix', stage, '--ignore-scripts', '--no-audit', '--no-fund', '--install-links', '--', source],
+      cwd: stage, timeout: 300000, maxBytes: 1024 * 1024 }, execute);
+    if (result.code !== 0 || result.limited || result.cancellationReason) throw Error('Release installation failed; current release retained');
     // 1.x validates in shadow-install.pending before promotion. Keep this same
     // ordering: a bad candidate must not poison the reusable release directory.
-    validateCandidate(join(stage, 'node_modules', packageInfo.name), release);
+    await validateCandidate(join(stage, 'node_modules', packageInfo.name), release, execute);
     save(join(stage, 'release-source.json'), { release, source });
     flushTree(stage); renameSync(stage, destination); sync(dirname(destination));
   }
@@ -90,7 +102,7 @@ export async function updateRoot(directory, options = {}) {
   await initializeUpdateRuntime();
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const releaseLock = acquireUpdateLock(root);
-  try { return await apply(root, release, source); }
+  try { return await apply(root, release, source, options.execute, options.fallbackSchemas); }
   finally { releaseLock(); }
 }
 export async function initializeUpdateRuntime() {
@@ -125,7 +137,7 @@ function acquireUpdateLock(root) {
   return () => { if (existsSync(marker)) unlinkSync(marker); rmdirSync(lock); sync(root); };
 }
 
-async function apply(root, release, source) {
+async function apply(root, release, source, execute, fallbackSchemas) {
   const versionPath = join(root, 'version.json'), statePath = join(root, 'update-state.json');
   if (!existsSync(versionPath)) save(versionPath, { version: packageInfo.version, schema: schemaVersion, status: 'adopted', migrations: [] });
   const previous = load(versionPath); stampValid(previous);
@@ -134,11 +146,14 @@ async function apply(root, release, source) {
   const pointer = existsSync(current) ? readlinkSync(current) : null;
   let state = existsSync(statePath) ? load(statePath) : null;
   if (state && !['complete', 'observing'].includes(state.phase) && state.release !== release) throw Error('Resume the interrupted release before selecting another');
-  const installed = install(root, release, source);
-  const pkg = validateCandidate(installed, release);
-  const manifest = await import(pathToFileURL(join(installed, 'scripts/update-release.mjs')).href);
+  const installed = await install(root, release, source, execute);
+  const pkg = await validateCandidate(installed, release, execute);
+  const manifest = await releaseManifest(installed);
   if (!Number.isSafeInteger(manifest.schemaVersion) || manifest.schemaVersion < 1 || !Array.isArray(manifest.readableSchemas)
     || !manifest.readableSchemas.includes(previous.schema)) throw Error('Release cannot read the existing state schema; downgrade refused');
+  if (fallbackSchemas !== undefined && (!Array.isArray(fallbackSchemas)
+    || !fallbackSchemas.includes(Math.max(previous.schema, manifest.schemaVersion))))
+    throw Error('Automatic update would make the prior runner unable to read state; current release retained');
   // Adapt MigratorStepEngine.registerStep (Instar 1.x): unique names, registration
   // order, idempotent workers. An id identifies a step; it does not sort the list.
   if (!Array.isArray(manifest.migrations) || manifest.migrations.some(m => !m || typeof m.id !== 'string' || !m.id
@@ -195,6 +210,24 @@ async function apply(root, release, source) {
   state.phase = 'complete'; save(statePath, state);
   return { status: 'updated', release, backup: state.backup };
 }
+async function releaseManifest(installed) {
+  return import(pathToFileURL(join(installed, 'scripts/update-release.mjs')).href);
+}
+/** Reopen a previously healthy release after supervisor recreation. Compatibility
+ * is checked against today's state; a prior health record cannot lower its schema. */
+export async function readableUpdateRelease(root, release) {
+  const directory = join(root, 'releases', releaseTag(release), 'node_modules', packageInfo.name);
+  const pkg = candidateIdentity(directory, release), stamp = load(join(root, 'version.json'));
+  stampValid(stamp);
+  const manifest = await releaseManifest(directory);
+  if (!Array.isArray(manifest.readableSchemas) || !manifest.readableSchemas.length
+    || manifest.readableSchemas.some(schema => !Number.isSafeInteger(schema) || schema < 1))
+    throw Error('Malformed prior release compatibility; preserved for repair');
+  if (!manifest.readableSchemas.includes(stamp.schema))
+    throw new UpdateSchemaRefused('Prior runner cannot read the current state schema');
+  return { directory, version: pkg.version, release };
+}
+export class UpdateSchemaRefused extends Error {}
 
 // One transaction holder and one writer lock for installation, restart and findings.
 // Runtime data is observation/request state, never authority or installation facts.
@@ -247,7 +280,9 @@ export function installedUpdate(root) {
   if (readlinkSync(join(root, 'current')) !== expected || version.release !== state.release
     || version.version !== state.next?.version) throw Error('Installed update transaction disagrees with current release');
   const directory = join(root, expected);
-  const pkg = validateCandidate(directory, state.release);
+  // No process is launched by a status/idle-boundary read. Installation checks
+  // syntax through its resource owner; only a new admitted poll proves health.
+  const pkg = candidateIdentity(directory, state.release);
   if (pkg.version !== version.version) throw Error('Installed bytes disagree with version stamp');
   return { directory, version: pkg.version, release: state.release, transaction: state.id };
 }

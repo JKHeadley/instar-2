@@ -75,6 +75,33 @@ it('adopts an unstamped root, backs up settings, installs with npm and repeats w
   expect((await updateRoot(root, { release: 'v0.2.0', source: 'file:/does-not-exist' })).status).toBe('unchanged');
   expect(readFileSync(join(root, 'update-state.json'), 'utf8')).toBe(before);
 });
+it('automatic installation refuses a schema the prior runner cannot read before migration, while a readable schema proceeds', async () => {
+  const root = scratch();
+  await updateRoot(root, { release: 'v0.2.0', source: fixture(), fallbackSchemas: [1] });
+  const pointer = readlinkSync(join(root, 'current')), version = readFileSync(join(root, 'version.json'), 'utf8');
+  const source = fixture('0.3.0', `import { writeFileSync } from 'node:fs';
+    export const migrations = [{ id: 'schema-change', run(root) { writeFileSync(root + '/schema-effect', 'changed'); } }];`, 2);
+  await expect(updateRoot(root, { release: 'v0.3.0', source, fallbackSchemas: [1] })).rejects.toThrow('prior runner unable');
+  expect(existsSync(join(root, 'schema-effect'))).toBe(false);
+  expect(readlinkSync(join(root, 'current'))).toBe(pointer);
+  expect(readFileSync(join(root, 'version.json'), 'utf8')).toBe(version);
+  await updateRoot(root, { release: 'v0.3.0', source, fallbackSchemas: [1, 2] });
+  expect(existsSync(join(root, 'schema-effect'))).toBe(true);
+});
+it('installer process operations use supplied admission and a capacity refusal cannot publish a release', async () => {
+  const root = scratch(), calls: string[] = [];
+  const source = fixture();
+  const execute = async (input: { executable: string; args: string[]; cwd: string; timeout: number; maxBytes: number }) => {
+    calls.push(input.executable);
+    if (input.executable === process.execPath) return { code: 0, limited: true, localLimit: 'capacity' };
+    const result = spawnSync(input.executable, input.args, { cwd: input.cwd, timeout: input.timeout, maxBuffer: input.maxBytes, encoding: 'utf8' });
+    return { code: result.status, limited: false };
+  };
+  await expect(updateRoot(root, { release: 'v0.2.0', source, execute })).rejects.toThrow('syntax check failed');
+  expect(calls).toEqual(['npm', process.execPath]);
+  expect(existsSync(join(root, 'current'))).toBe(false);
+  expect(existsSync(join(root, 'releases/v0.2.0'))).toBe(false);
+});
 it('records migration intent before effect; a failed migration resumes without flipping or changing the stamp', async () => {
   const root = scratch();
   await updateRoot(root, { release: 'v0.2.0', source: fixture() });
