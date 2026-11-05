@@ -10,6 +10,7 @@ import { schemaVersion } from './update-release.mjs';
 import { assertAgentPaths } from './agent-paths.mjs';
 
 const packageInfo = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+let candidateBinding;
 const load = path => JSON.parse(readFileSync(path, 'utf8'));
 const sync = path => { const fd = openSync(path, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } };
 function save(path, value) {
@@ -85,6 +86,13 @@ export async function updateRoot(directory, options = {}) {
   const source = options.source ?? `github:JKHeadley/instar-2#${release}`;
   const root = resolve(directory);
   assertAgentPaths({ root });
+  if (!candidateBinding) candidateBinding = (async () => {
+    const { register } = await import('node:module');
+    register('./slice-ts-loader.mjs', import.meta.url);
+    return import('./update-governance.mjs');
+  })();
+  const { bindUpdateCandidate } = await candidateBinding;
+  bindUpdateCandidate(load(new URL('./update.declarations.json', import.meta.url)));
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const lock = join(root, '.update-lock');
   // Same unique-owner reclamation as judgment-captures: only a proven dead local

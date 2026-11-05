@@ -76,8 +76,9 @@ the 1.x engine unchanged would not. No second ledger or migration service is nee
 CLI, failure before activation, incompatible and compatible older releases, a real
 process exit during a migration, and concurrent update refusal. CLI fixture tests
 replace only the npm source argument with a local path; they use real npm and no network.
-They then invoke the installed command, which needs only Node built-ins for update.
-The TypeScript loader remains specific to setup.
+They then invoke the installed command, including the shipped TypeScript loader
+and constitutional binder. The updater binds its declared exact-match checkpoint
+before its first installation write; missing, retired or weakened declarations refuse.
 
 ## Checking completed migrations
 
@@ -91,8 +92,8 @@ successful update. All postconditions are checked again after the final migratio
 Migrations without a verifier retain their original once-per-id behavior.
 
 The MCP default migration uses this path for an existing installation, including a
-repeat of the current release. A missing file, the known old browser command and
-the shipped snapshot-only read list are repaired using the same installer as setup. Custom
+repeat of the current release. A missing file, the known old browser command with a
+known shipped read list, and the shipped snapshot-only read list are repaired using the same installer as setup. Custom
 browser commands, unrelated accounts, revoked/absent browsers, explicitly recorded
 operator choices and unknown narrowed read lists are retained. Malformed configuration is
 preserved and refused. The runtime's `readRootMcp` reads the file again rather than

@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readlinkSync, existsSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readlinkSync, existsSync, rmSync, chmodSync, symlinkSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync, execFileSync } from 'node:child_process';
 // @ts-expect-error Shipped installer JavaScript.
 import { updateRoot } from '../../scripts/update.mjs';
+// @ts-expect-error Shipped governance adapter uses the real constitutional binder.
+import { bindUpdateCandidate } from '../../scripts/update-governance.mjs';
 const roots: string[] = [];
 const scratch = () => { const p = mkdtempSync(join(tmpdir(), 'instar-update-')); roots.push(p); return p; };
 const originalCache = process.env.npm_config_cache;
@@ -14,11 +16,29 @@ afterEach(() => {
   roots.splice(0).forEach(p => rmSync(p, { recursive: true, force: true }));
 });
 const json = (p: string) => JSON.parse(readFileSync(p, 'utf8'));
+it('binds the actual candidate checkpoint and refuses missing, retired or weakened declarations', () => {
+  const declarations = json('scripts/update.declarations.json');
+  expect(bindUpdateCandidate(declarations)).toBe('update.validateCandidate');
+  expect(() => bindUpdateCandidate([])).toThrow('needs exactly one');
+  for (const mutate of [
+    (d: any) => { d.status = 'retired'; },
+    (d: any) => { d.requiredFacts.failDirection = 'open'; },
+    (d: any) => { d.requiredFacts.decidesAloneBasis = 'spend-past-a-cap'; },
+  ]) {
+    const altered = structuredClone(declarations);
+    mutate(altered.find((d: { id: string }) => d.id === 'update.validateCandidate'));
+    expect(() => bindUpdateCandidate(altered)).toThrow('P3-NF-19');
+  }
+});
 function fixture(version = '0.2.0', body = 'export const migrations = [];', schema = 1) {
   const p = scratch(); mkdirSync(join(p, 'scripts')); mkdirSync(join(p, 'bin'));
-  writeFileSync(join(p, 'package.json'), JSON.stringify({ name: '@instar/constitutional-types', version, type: 'module' }));
+  writeFileSync(join(p, 'package.json'), JSON.stringify({ name: '@instar/constitutional-types', version, type: 'module',
+    dependencies: { typescript: `file:${resolve('node_modules/typescript')}` } }));
+  cpSync('src', join(p, 'src'), { recursive: true });
   writeFileSync(join(p, 'bin/instar2.mjs'), readFileSync('bin/instar2.mjs'));
   writeFileSync(join(p, 'scripts/update.mjs'), readFileSync('scripts/update.mjs'));
+  writeFileSync(join(p, 'scripts/update-governance.mjs'), readFileSync('scripts/update-governance.mjs'));
+  writeFileSync(join(p, 'scripts/update.declarations.json'), readFileSync('scripts/update.declarations.json'));
   writeFileSync(join(p, 'scripts/agent-paths.mjs'), readFileSync('scripts/agent-paths.mjs'));
   writeFileSync(join(p, 'scripts/slice-ts-loader.mjs'), readFileSync('scripts/slice-ts-loader.mjs'));
   writeFileSync(join(p, 'scripts/update-release.mjs'), `export const schemaVersion = ${schema};\nexport const readableSchemas = [1, ${schema}];\n${body}\n`);

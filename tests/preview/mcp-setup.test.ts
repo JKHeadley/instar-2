@@ -201,6 +201,8 @@ it('migration refresh preserves revoked, explicitly selected and unknown narrowe
     { mcpServers: { account: { command: 'chosen' } }, reads: [] },
     { mcpServers: DEFAULT_MCP.mcpServers, reads: [] },
     { mcpServers: DEFAULT_MCP.mcpServers, reads: ['mcp__playwright__browser_tabs'] },
+    { mcpServers: { playwright: { command: 'npx', args: ['-y', '@playwright/mcp@latest'] } }, reads: [] },
+    { mcpServers: { playwright: { command: 'npx', args: ['-y', '@playwright/mcp@latest'] } }, reads: ['mcp__playwright__browser_tabs'] },
     { mcpServers: DEFAULT_MCP.mcpServers, reads: ['mcp__playwright__browser_snapshot'], operatorGrant: { source: 'recorded-choice' } },
   ]) {
     writeFileSync(join(p, 'mcp.json'), JSON.stringify(config));

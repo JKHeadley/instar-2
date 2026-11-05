@@ -39,11 +39,12 @@ export function verifyMcpDefaults(root) {
   if (Object.hasOwn(old, 'operatorGrant')) return true;
   const server = old?.mcpServers?.playwright;
   if (!server) return true;
-  if (same(server, LEGACY_BROWSER)) return false;
+  const browserReads = (old.reads ?? []).filter(tool => tool.startsWith('mcp__playwright__'));
+  if (same(server, LEGACY_BROWSER))
+    return !same(browserReads, ['mcp__playwright__browser_snapshot']) && !same(browserReads, DEFAULT_MCP.reads);
   if (!same(server, DEFAULT_MCP.mcpServers.playwright)) return true;
   // Only the known shipped snapshot-only list is stale. An arbitrary narrower
   // list is an unknown edit and must not silently regain read permissions.
-  const browserReads = (old.reads ?? []).filter(tool => tool.startsWith('mcp__playwright__'));
   return !same(browserReads, ['mcp__playwright__browser_snapshot']);
 }
 /** Installer-only. A per-root lock prevents concurrent merges losing operator entries.
