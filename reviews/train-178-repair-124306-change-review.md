@@ -23,11 +23,7 @@ Deferral: generated/conversion.json:1 | not-a-deferral=generated rule inventory 
 
 Subject (7 paths): docs/01-the-rules.changelog.json, docs/01-the-rules.changelog.md, docs/01-the-rules.md, generated/conversion.json, register-source/bootstrap-anchor.json, scripts/build-register.mjs, tests/e2e/register.test.ts
 
-## Closing block
 
-simplestRobustRoute: This is the simplest robust route: ordinary merge, derive the merged anchor pin using the existing canonical hash, and run existing publication regeneration. No new mechanism, safeguard bypass, or runtime ability restriction.
-80/20: Bound validation to typecheck, relevant register/briefing tests and cheap gate checks; submit full-suite and host-specific evidence to the Studio pipeline.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 1.x first: searched actual JKHeadley/instar origin/main ab256f684cda141db19abe8bba5300b980e1025b src/, docs/specs/ and history. Read src/core/StandardsRegistryParser.ts, docs/specs/06-state-detector-registry.md and history d5b30b1d7; these preserve constitutional article coverage and distinguish provenance from enforcement. The 2.0 conversion-pin conflict has no direct equivalent in those inspected references: reuse the existing 2.0 generator rather than port the 1.x parser. Read ONEX-LESSONS.md section 6 (testing, bounded concurrency, maintenance). Inherit the whole-feature 1.x comparisons recorded in reviews/train-178-change-review.md.
 
@@ -37,3 +33,9 @@ Decision: train-178-repair-publication | Regenerate the register using existing 
 Deferral: generated/register.json:1 | not-a-deferral=source-bound generated publication retains existing rule text without a new deferred task
 
 Publication: Replayed merged source 8320000a499fda5acb116c619257806375bfc05a at the actual clock; 298 entries, 121 rules, 34 terms, 113 prerequisites. No backdated clock or hand-edited generated values.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: ordinary merge, derive the merged anchor pin using the existing canonical hash, and run existing publication regeneration. No new mechanism, safeguard bypass, or runtime ability restriction.
+80/20: Bound validation to typecheck, relevant register/briefing tests and cheap gate checks; submit full-suite and host-specific evidence to the Studio pipeline.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
