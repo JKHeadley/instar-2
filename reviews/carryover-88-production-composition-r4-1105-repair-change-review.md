@@ -34,7 +34,7 @@ Decision: repair-native-renewal | This is the Studio; use inherited guarded cont
 
 Verification: reviewer probes reproduced both origin exceptions and automatic descendant frame count 0 before repair. Both reviewer projection probes now pass; all 25 cases in the two touched files pass, including repeated cancellation identity and lost-fence refusal. Final typecheck and build pass. Exact receipts are recorded in the desk repair PROGRESS. Scope is source composition; no release acceptance, live remote peer, TLS or owner-machine-loss proof is claimed. The inherited 44 unresolved/101 unfinished files and five r3 failures are not cleared by this repair.
 
-Publication: delegated desk rehash found no changed owner artifact pins; desk-repin-chain refreshed twelve existing branch-changed support sources in production-grounding-inventory.json and derived its check-assembly-contracts.mjs digest. No pin was hand-edited. Normal register replay follows the committed source.
+Publication: delegated desk rehash found no changed owner artifact pins; desk-repin-chain refreshed twelve existing branch-changed support sources in production-grounding-inventory.json and derived its check-assembly-contracts.mjs digest. No pin was hand-edited. Normal replay from committed source bd654ae8fa23e41ac37ced61690243fdafc7d179 produced generation sha256:fe78875d0992b1f395c9498e47cc620dc9cc53b0c93f79b449a67658485a4672: 299 entries, branch-specific 120 rules, 34 terms, 48 warnings and 112 prerequisites, shape-only authority. Current main has 121 rules; this publication does not claim otherwise. The same review spans source and generated publication commits.
 
 ## Closing block
 
