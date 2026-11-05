@@ -1,0 +1,30 @@
+# Change review — accepted-input recovery on the exact common base
+
+Subject base: 990678d5996737c1fd13d8a49b4e0c9a1045d196
+Review state: open
+Reviewed content: none
+Outcome: Carry the whole row 14 accepted-input recovery source from e766ffcf849be813d4caeaa898cdd5e82ecfe51f onto the supplied common base. Reuse its full-payload comparison, fresh styled composer checks and Eight-owned durable typed re-press. Preserve the common base's acknowledgement, protocol delivery, startup and replacement paths. Row 14 stays OPEN for installed/live acceptance; this is a source review submission only.
+Affected rules: 1, 4, 14, 26, 29, 30, 34, 36, 37, 42, 46, 49, 55, 60, 61, 63, 70, 74, 95, 101, 102, 111, 113, 116
+Affected floors: secrets — original payload stays in the existing private journal; styled evidence is recorded as a digest; spend cap — no provider call or allowance change; stop — observation and every leaving key check stop; no duplicate sends — original delivery binding and durable one-use ordinals, unknown outcomes inhibit further keys; durable intake — retain original input and journal, no new queue.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Recovery can submit accepted input into an existing harness, so exact identity and durable uncertainty matter.
+Side effects: Both supported composers require full-payload normal-intensity evidence without active work or menus. Joined tmux captures retain soft wraps. Internal continuation and compact commands cannot borrow intake authority. Additive session/delivery fields preserve protocolDeliveries and acknowledgement hooks. No other carryover module, native certificate, installed runtime or release source changes.
+Undo and recovery: Revert this feature's source and publication commits as a unit, retaining journals and uncertain submissions. Removing recovery restores the unrecovered accepted-input gap; do not replay unknown effects. Installation and native recertification remain desk-owned.
+Multi-machine posture: Machine-local pane evidence belongs to the existing exact worker owner; original identity, incarnation, claim, intake and turn deadline are mandatory. No cross-machine retry identity or second source of truth is introduced.
+Layer below: Full purpose/rulebook match origin/main at research time. Read the canonical reconciliation and whole prior brief/report. Searched actual JKHeadley/instar main b80413b4a708599896ea31cc597578a3786bf0a1 src/core/StuckInputSentinel.ts, src/messaging/MessageDelivery.ts, docs/specs/ and history; read stuck-input-sentinel.md and p05-filesinfo-ghosttext.eli16.md. History b4cd2a98c20a09aaf026b5561a60a99a5f41fcda records the refusal-loop/undeliverable repair. Reuse raw 4f88880a45f0a119aae3cfd2ccaf9ace26d405b9 baseline and its repaired 2.x port, not the obsolete shared-prefix authority. ONEX-LESSONS.md was not found in either repository file tree or the local lane filename search. Existing journal, exclusive boundary, owner observation and typed effects ports supply the integration.
+Bug class: unit
+Bug evidence: reproducer=tests/assembly/production-session-pending-input.test.ts
+Hook bypass: none; core.hooksPath unset and common hooks directory contains sample hooks only.
+Convergence: none
+Prompt review: No model prompt, model-output parser or semantic gate changes. This is a terminal composer/effect checkpoint. The copied tests retain the captured 1.x F2 ANSI ghost frame, production conversationSessionPrompt envelopes, and successful/ghost/uncertain neighbors. Summary, Jev and reply-review outputs are not consumed here. No live replay or model completion claim.
+Decision: C14-COMMON-1 | Reuse only row 14 source/test/publication from e766ffcf, retaining the exact common base's acknowledgement and protocol paths; no old accumulated history is merged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-14-common-base-1105-PROGRESS.md
+Decision: C14-COMMON-2 | Preserve full-payload and original-deadline binding, typed durable key ordinals and fresh per-key composer checks through existing journal and ports; uncertain dispatch cannot mint another ordinal. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-14-common-base-1105-PROGRESS.md
+Decision: C14-COMMON-3 | Keep native recertification, combined full gate and live acceptance with the desk; use existing pin tools only, and report host-only findings without changing declarations. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-14-common-base-1105-PROGRESS.md
+
+Validation: Before source application the three focused files fail (48 failed, 3 passed; pending-input module absent). After exact source reuse, 99/99 tests pass. A common-base protocol/acknowledgement preservation regression is added; final results are recorded in the handoff report. No full suite or live probes are run on this remote host.
+
+simplestRobustRoute: This is the simplest robust route: apply the already-tested feature delta to the common base, use the existing owner observation cycle and journal, and keep the original typed Eight/Ten checkpoint. Full payload prevents shared-envelope mistakes, per-key styling/activity/menu checks prevent ghost or raced input, durable ordinals prevent duplicate keys after cuts. Four rungs, five keys, original deadline, exact owner and stop are the limit guards; authenticated turn closure remains the end-state guard. No new service, polling loop, schema or authority is added. No unattended shipped-path completion is claimed.
+80/20: Preserve the prior repaired implementation and exercise the named boundaries plus the common-base integration. Independent review, combined full gate and actual-use proof remain owed; no review convergence is asserted.
+VERDICT: author submission; no independent verdict asserted.
