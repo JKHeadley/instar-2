@@ -7,8 +7,8 @@ export const readableSchemas = [1];
 export const migrations = [{ id: 'mcp-defaults-1024', async run(root) {
   const { register } = await import('node:module');
   register('./slice-ts-loader.mjs', import.meta.url);
-  const { installMcp } = await import('./mcp-setup.mjs');
-  installMcp(root);
+  const { installMcp, verifyMcpDefaults } = await import('./mcp-setup.mjs');
+  if (!verifyMcpDefaults(root)) installMcp(root);
 } }];
 
 // A new id reaches roots which already recorded the snapshot-only migration.

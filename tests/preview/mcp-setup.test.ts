@@ -14,6 +14,8 @@ import { admitToolCallEffect, admitToolCall } from './tool-admission.mjs';
 import { migrations } from '../../scripts/update-release.mjs';
 // @ts-expect-error Real npm installer.
 import { updateRoot } from '../../scripts/update.mjs';
+// @ts-expect-error Real operator revocation consumer.
+import { configureTrust } from './trust-setup.mjs';
 const roots: string[] = [];
 const root = () => { const p = mkdtempSync(join(tmpdir(), 'mcp-setup-')); roots.push(p); return p; };
 afterEach(() => roots.splice(0).forEach(p => rmSync(p, { recursive: true, force: true })));
@@ -182,12 +184,41 @@ it('the installed CLI repairs a stale existing default and the same runtime read
     writeFileSync(join(p, 'mcp.json'), JSON.stringify(customized));
     expect(run().stdout).toContain('Already on this release');
     expect(JSON.parse(bytes(p))).toEqual(customized);
+    configureTrust(p, 'revoke');
+    const revoked = bytes(p);
+    expect(run().stdout).toContain('Already on this release');
+    expect(bytes(p)).toBe(revoked);
     writeFileSync(join(p, 'mcp.json'), '{broken');
     expect(run().status).toBe(1); expect(bytes(p)).toBe('{broken');
   } finally {
     if (cache === undefined) delete process.env.npm_config_cache; else process.env.npm_config_cache = cache;
   }
 }, 120000);
+it('migration refresh preserves revoked, explicitly selected and unknown narrowed defaults', async () => {
+  const p = root();
+  for (const config of [
+    { mcpServers: {}, reads: [] },
+    { mcpServers: { account: { command: 'chosen' } }, reads: [] },
+    { mcpServers: DEFAULT_MCP.mcpServers, reads: [] },
+    { mcpServers: DEFAULT_MCP.mcpServers, reads: ['mcp__playwright__browser_tabs'] },
+    { mcpServers: DEFAULT_MCP.mcpServers, reads: ['mcp__playwright__browser_snapshot'], operatorGrant: { source: 'recorded-choice' } },
+  ]) {
+    writeFileSync(join(p, 'mcp.json'), JSON.stringify(config));
+    expect(verifyMcpDefaults(p)).toBe(true);
+    const before = bytes(p);
+    for (const migration of migrations) await migration.run(p);
+    expect(bytes(p)).toBe(before);
+  }
+});
+it('recognizes the known default despite reordered JSON keys', async () => {
+  const p = root();
+  writeFileSync(join(p, 'mcp.json'), JSON.stringify({ reads: ['mcp__playwright__browser_snapshot'],
+    mcpServers: { playwright: { args: DEFAULT_MCP.mcpServers.playwright.args, command: 'npx' } } }));
+  expect(verifyMcpDefaults(p)).toBe(false);
+  await migrations.at(-1).run(p);
+  expect(readRootMcp(p).reads).toEqual(DEFAULT_MCP.reads);
+  expect(verifyMcpDefaults(p)).toBe(true);
+});
 
 it('starts a bare MCP command beside installation node under a minimal harness PATH', () => {
   const p = root(), bin = join(p, 'installation-bin'); mkdirSync(bin);

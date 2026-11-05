@@ -91,9 +91,10 @@ successful update. All postconditions are checked again after the final migratio
 Migrations without a verifier retain their original once-per-id behavior.
 
 The MCP default migration uses this path for an existing installation, including a
-repeat of the current release. Missing defaults, the known old browser command and
-missing default read tools are repaired using the same installer as setup. Custom
-browser commands and unrelated accounts are retained. Malformed configuration is
+repeat of the current release. A missing file, the known old browser command and
+the shipped snapshot-only read list are repaired using the same installer as setup. Custom
+browser commands, unrelated accounts, revoked/absent browsers, explicitly recorded
+operator choices and unknown narrowed read lists are retained. Malformed configuration is
 preserved and refused. The runtime's `readRootMcp` reads the file again rather than
 keeping a boot snapshot; repaired connector settings reach its next read. This does
 not reload protected installation bindings or authorize additional effects.
@@ -118,7 +119,15 @@ The source reference is Instar 1.x commit
   are not implemented by the MCP-specific verification above.
 - `src/config/LiveConfig.ts` and `AutoUpdater.reloadDynamicConfig`: changes on disk
   must reach the running consumer. MCP already uses uncached reads; that does not
-  establish parity for other runtime settings.
+  establish parity for other runtime settings. `LiveConfig.deepEqual` is copied
+  into the MCP installer with TypeScript annotations removed, so JSON key order
+  does not disguise a known default as a custom configuration.
+
+The CLI is enumerated in `package.json`'s launcher inventory. Its update capability,
+candidate check and local transaction store are declared beside `scripts/update.mjs`;
+the update test is bound as `PREVIEW-UPDATE-POSTCONDITIONS`. Inventorying this actual
+entry point also exposes the existing onboarding and trust writers, whose local
+store declarations accompany it. These declarations do not grant runtime authority.
 
 `tests/preview/update.test.ts` proves wrong-version rejection, missing/broken CLI
 rejection, postcondition failure, repeated-release repair, durable repair intent,

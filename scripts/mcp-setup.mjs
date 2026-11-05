@@ -14,17 +14,37 @@ export const DEFAULT_MCP = { mcpServers: { playwright: { command: 'npx',
   args: [...LEGACY_BROWSER.args, '--headless', '--user-data-dir', '.instar-browser-profile'] } },
   reads: ['navigate', 'snapshot', 'take_screenshot', 'wait_for', 'tabs', 'console_messages', 'network_requests']
     .map(name => `mcp__playwright__browser_${name}`) };
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Copied from 1.x LiveConfig.deepEqual (31c01422), with TypeScript casts removed.
+// Object key order is not a configuration change; array positions still matter.
+function same(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== 'object') return false;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of keys) {
+    if (!same(a[key], b[key])) return false;
+  }
+  return true;
+}
 /** Read the actual installed configuration. Like 1.x's template SHA classifier,
  * known old defaults need repair; operator customizations remain untouched.
  * The runtime reader validates secrets and shape before this can report success. */
 export function verifyMcpDefaults(root) {
   const old = readSetupRecord(join(root, 'mcp.json'));
   readRootMcp(root);
+  if (old === null) return false;
+  // Recorded operator choices and an explicitly absent browser are not damage.
+  // In particular configureTrust(revoke) writes an empty server map.
+  if (Object.hasOwn(old, 'operatorGrant')) return true;
   const server = old?.mcpServers?.playwright;
-  if (!server || same(server, LEGACY_BROWSER)) return false;
+  if (!server) return true;
+  if (same(server, LEGACY_BROWSER)) return false;
   if (!same(server, DEFAULT_MCP.mcpServers.playwright)) return true;
-  return DEFAULT_MCP.reads.every(tool => old.reads?.includes(tool));
+  // Only the known shipped snapshot-only list is stale. An arbitrary narrower
+  // list is an unknown edit and must not silently regain read permissions.
+  const browserReads = (old.reads ?? []).filter(tool => tool.startsWith('mcp__playwright__'));
+  return !same(browserReads, ['mcp__playwright__browser_snapshot']);
 }
 /** Installer-only. A per-root lock prevents concurrent merges losing operator entries.
  * A crash leaves a visible lock; the installer must establish writer death before removing it.

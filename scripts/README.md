@@ -22,6 +22,12 @@ process at its next controlled restart; a standalone status command only proves 
 No passkey setup, new Telegram user or paid phone number is needed for this existing review route.
 The operator still supplies every real approval; the agent never approves as the operator.
 
+## Capabilities
+
+- `installed-update-verification`: The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. It does not authorize runtime activation, restart an agent or claim full automatic-update parity. Details and row-87 evidence: `docs/update.md`.
+
+## Placement
+
 `agent-paths.mjs` implements the operator's Mac placement rule (Rules 4/26/93/103):
 setup, boot, storage/session creation and workspace mounts refuse an agent directory in
 `~/Documents`, `~/Desktop`, `~/Downloads` or `~/Library/Mobile Documents`, including

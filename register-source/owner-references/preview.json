@@ -161,6 +161,14 @@
         "path": "tests/preview/proofs.test.ts",
         "hash": "sha256:b84d1410fd6f663997907d804dd2a01c364a6d3320bc98d22dcad48ed34f72c8"
       }
+    },
+    {
+      "id": "PREVIEW-UPDATE-POSTCONDITIONS",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/update.test.ts",
+        "hash": "sha256:f6b6fa0e686df084bc7b7642ffe888987b5515ec8adbfb74536303d46a9b59f4"
+      }
     }
   ],
   "probes": [],

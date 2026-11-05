@@ -1,0 +1,32 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "installed-update-verification",
+    "kind": "features", "status": "live",
+    "requiredFacts": { "metrics": ["update-state.phase", "update-state.steps.status", "update-result.status"] },
+    "profile": { "type": "Profile", "schemaVersion": 1, "consequence": "data", "reversibility": "reversible", "reach": "internal", "surface": "none", "repeats": { "kind": "no" } },
+    "standards": [26, 34, 39, 42, 44, 45, 69, 78, 84, 95, 113, 116],
+    "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "update.save",
+    "kind": "stores", "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded", "holdsAgentMemory": "yes",
+      "machineScope": { "kind": "machine-local", "reason": "Release files, root backups, lock ownership and migration transaction history describe this machine's installation. No shared intake or authority is restored from them." },
+      "agreesWith": []
+    },
+    "standards": [7, 26, 32, 44, 45, 113], "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "update.validateCandidate",
+    "kind": "blocking sites", "status": "live",
+    "requiredFacts": {
+      "authority": "block", "decidesAlone": "ruled-three", "decidesAloneBasis": "recorded-governed-state",
+      "criticality": "Reject an exact package identity/version mismatch or failed bounded CLI syntax check before candidate promotion. This does not establish runtime health or activation authority.",
+      "failDirection": "closed", "preservesInput": "Failed staging and existing release bytes remain on disk; the current pointer and version stamp are not replaced by a failed candidate.",
+      "inspectedBy": "PREVIEW-UPDATE-POSTCONDITIONS"
+    },
+    "profile": { "type": "Profile", "schemaVersion": 1, "consequence": "control", "reversibility": "reversible", "reach": "internal", "surface": "none", "repeats": { "kind": "no" } },
+    "standards": [4, 26, 42, 66, 95], "holds": []
+  }
+]
