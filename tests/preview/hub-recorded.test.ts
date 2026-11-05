@@ -1,3 +1,5 @@
+import { createHubModelRoute } from './hub-model-route.js';
+import { subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 /** Exact private Studio capture replay. No provider/network calls. Raw authored
  * corpus and outputs stay in the private evidence directory; only hashes ship.
  * Run INSTAR_HUB_CAPTURE_ROOT=<capture directory> vitest ... on either host.
@@ -66,8 +68,26 @@ describe.skipIf(!captureRoot)('Studio 2026-11-05 isolated actual-provider bytes 
       effect: async (_key, effect) => { effects.push(effect); return { kind: 'accepted', id: effect.kind === 'topic' ? 500 + effects.length : effects.length }; } });
     try {
       await hub.surface({ threadId: 'captured', senderName: 'Fixture peer', text: 'Captured authored corpus', warrants: true, hasParentTopic: false });
-      const result = await hub.command({ id, operatorReceipt: 'fixture-verified', text: briefCase ? 'open this' : recorded.case.text!, context: briefCase ? [] : recorded.case.conversationContext ?? [] },
-        async (_id, call) => call.promptId === 'hub-intent-v1' ? (briefCase ? openRaw : raw) : briefRaw, () => rows);
+      const invocations: { maxTokens: number; timeout: number; deadline: number }[] = [];
+      const route = createHubModelRoute({ view: () => journal.view, now: () => 1000, admitted: () => true,
+        replicated: async () => true, append: row => journal.append(row), model: 'claude-sonnet-4-6',
+        policy: subscriptionConversationPolicy('claude-sonnet-4-6'), recordedCall: async (judgment, bytes, bounds) => {
+          invocations.push(bounds);
+          const envelope = JSON.parse(bytes);
+          const expected = judgment === 'hub-intent' ? hubIntentRequest(briefCase ? 'open this' : recorded.case.text!,
+            briefCase ? [] : recorded.case.conversationContext ?? [], topics).request.prompt : briefRequest(rows).prompt;
+          expect(envelope.messages[0].content).toBe(expected);
+          expect(envelope.settings.maxTokens).toBe(bounds.maxTokens);
+          expect(envelope.messages.some((message: { role: string }) => message.role === 'instructions')).toBe(false);
+          return { state: 'complete', bytes: judgment === 'hub-intent' ? (briefCase ? openRaw : raw) : briefRaw,
+            providerOperation: null, retryBlocked: false,
+            usage: { inputTokens: null, outputTokens: null, charge: null, source: 'recorded corpus replay; usage not inferred' } };
+        } });
+      const result = await hub.command({ id, operatorReceipt: 'fixture-verified', text: briefCase ? 'open this' : recorded.case.text!, context: briefCase ? [] : recorded.case.conversationContext ?? [] }, route, () => rows);
+      expect(invocations[0]).toMatchObject({ maxTokens: 200, timeout: 4000, deadline: 5000 });
+      if (briefCase || id === 'open') expect(invocations[1]).toMatchObject({ maxTokens: 320, timeout: 15000, deadline: 16000 });
+      expect(journal.view.calls).toBe(invocations.length);
+      expect(journal.view.collaboration?.modelCalls?.every(call => call.settled)).toBe(true);
       expect(result.handled).toBe(briefCase || recorded.result.isCommand);
       if (id === 'tie') expect(hub.list().threads[0]?.parent).toBe(recorded.result.targetTopicId);
       else if (briefCase || id === 'open') expect(effects.at(-1)).toMatchObject({ kind: 'message', text: brief.result.summary });

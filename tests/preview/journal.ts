@@ -3927,7 +3927,12 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     // Legacy portable rows lack authorization and cannot dispatch in the host.
     const charged = row.action === 'intent' && row.attempt.effect.kind === 'message' && row.attempt.authorization !== undefined;
     if (charged && view.replies >= view.limits.maxReplies - 1) throw Error('collaboration: reply allowance reserved for the operator');
+    if (row.action === 'model-reserve' && (view.calls >= view.limits.maxCalls || row.deadline > view.expires
+      || row.maxInputTokens !== view.limits.maxBytes)) throw Error('collaboration: model call allowance or lifetime exhausted');
     view.collaboration = applyHubRecord(view.collaboration, row);
+    if (row.action === 'model-reserve') {
+      reserveTokens(view, `hub:${row.id}`, 'replyCheck', row.maxInputTokens, row.maxTokens); view.calls++;
+    } else if (row.action === 'model-settle') settleTokens(view, `hub:${row.id}`, row.usage);
     if (charged) view.replies++;
     return;
   }

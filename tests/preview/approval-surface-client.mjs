@@ -4,7 +4,7 @@
 // identity cannot write, and re-verify each act's passkey signature over the exact challenge. The agent
 // holds no key that could produce an approval (Purpose: the agent never administers its own safeguards).
 import { randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync } from 'node:fs';
+import { closeSync, fsyncSync, openSync, chmodSync, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { ACT_RECORD, actChallenge, canonical, check, checkChallenge, nameFor, readOwnedFile, SURFACE, SURFACE_LIMITS, verifyAssertion,
   writeOnce, checkTracking, trackingText, hex } from '../../scripts/approval-surface-core.mjs';
@@ -19,7 +19,7 @@ const success = value => frozen({ type: 'Result', schemaVersion: 1, kind: 'Succe
 const refusal = (detail, preserved) => frozen({ type: 'Result', schemaVersion: 1, kind: 'Refused', reason: 'decode', detail,
   site: 'types.decode', failDirection: 'closed', preserved });
 
-export function createApprovalSurfaceClient({ store, outbox, operatorUid, agentUid = process.getuid(), now }) {
+export function createApprovalSurfaceClient({ store, outbox, operatorUid, agentUid = process.getuid(), now, transport }) {
   const storeDir = resolve(store), outboxDir = resolve(outbox), actsDir = join(storeDir, 'acts');
   const stat = lstatSync(outboxDir);
   check(realpathSync(outboxDir) === outboxDir && stat.isDirectory() && (stat.mode & 0o022) === 0,
@@ -80,6 +80,20 @@ export function createApprovalSurfaceClient({ store, outbox, operatorUid, agentU
   // Tracking verification is deliberately non-consuming. The owner first persists and
   // replicates the queue transition; only then is the existing one-use marker written.
   // A crash in between replays the same signed identity, never a new acknowledgement.
+  const publishTrackingIndex = () => {
+    const requests = readdirSync(outboxDir).filter(name => /^[a-f0-9]{64}\.request\.json$/u.test(name)).filter(name => {
+      try { const c = JSON.parse(readFileSync(join(outboxDir, name), 'utf8')).challenge;
+        return c.action === 'tracking-receipt' && c.expiresAt > now();
+      } catch { return false; }
+    });
+    check(requests.length <= 4 * SURFACE_LIMITS.maxRequests, 'tracking request index capacity');
+    const temporary = `.tracking-index-${randomBytes(8).toString('hex')}`;
+    writeOnce(outboxDir, temporary, canonical({ requests: requests.sort() }), 0o644);
+    renameSync(join(outboxDir, temporary), join(outboxDir, 'tracking-index.json'));
+    const directory = openSync(outboxDir, 'r');
+    try { fsyncSync(directory); } finally { closeSync(directory); }
+  };
+  const remoteActs = new Map();
   const tracking = Object.freeze({
     issue: (subject, installation) => {
       checkTracking(subject);
@@ -87,7 +101,7 @@ export function createApprovalSurfaceClient({ store, outbox, operatorUid, agentU
       const digest = `sha256:${hex(canonical(subject))}`;
       for (const file of readdirSync(outboxDir).filter(name => name.endsWith('.request.json')).slice(0, 4 * SURFACE_LIMITS.maxRequests)) {
         try { const saved = JSON.parse(readFileSync(join(outboxDir, file), 'utf8')).challenge;
-          if (saved.action === 'tracking-receipt' && saved.requestDigest === digest && saved.expiresAt > at) return saved;
+          if (saved.action === 'tracking-receipt' && saved.requestDigest === digest && saved.expiresAt > at) { publishTrackingIndex(); return saved; }
         } catch { /* invalid requests grant nothing */ }
       }
       const result = verifier.issue({ action: 'tracking-receipt', audience: 'attention-tracking',
@@ -97,9 +111,27 @@ export function createApprovalSurfaceClient({ store, outbox, operatorUid, agentU
         operator: page.operator, surface: SURFACE, singleUse: true, scope: 'attention-status-only',
         issuedAt: at, expiresAt: Math.min(at + SURFACE_LIMITS.maxLifetime, installation.expiresAt), tracking: subject });
       check(result.kind === 'Success', result.detail ?? 'tracking challenge refused');
+      publishTrackingIndex();
       return result.value;
     },
     pending: () => {
+      if (transport) return (async () => {
+        const issued = readdirSync(outboxDir).filter(name => /^[a-f0-9]{64}\.request\.json$/u.test(name)
+          && !existsSync(join(outboxDir, `${name.slice(0, 64)}.consumed`))).filter(name => {
+            try { const c = JSON.parse(readFileSync(join(outboxDir, name), 'utf8')).challenge;
+              return c.action === 'tracking-receipt' && c.expiresAt > now();
+            } catch { return false; }
+          }).map(name => `${name.slice(0, 64)}.json`);
+        const rows = await transport.batch('act', issued);
+        remoteActs.clear();
+        for (const row of rows) {
+          try { const record = JSON.parse(row.content), id = nameFor(record.challenge.id);
+            if (row.name === `${id}.json` && record.challenge.action === 'tracking-receipt'
+              && !existsSync(join(outboxDir, `${id}.consumed`))) remoteActs.set(id, row.content);
+          } catch { /* malformed records convey no authority */ }
+        }
+        return [...remoteActs.values()];
+      })();
       if (!existsSync(actsDir)) return [];
       return readdirSync(actsDir).filter(file => /^[a-f0-9]{64}\.json$/u.test(file)
         && !existsSync(join(outboxDir, `${file.slice(0, 64)}.consumed`))).slice(0, SURFACE_LIMITS.maxActs).flatMap(file => {
@@ -115,7 +147,8 @@ export function createApprovalSurfaceClient({ store, outbox, operatorUid, agentU
         && ['approve', 'decline'].includes(record.decision) && /^[a-f0-9]{64}$/u.test(record.nonce), 'tracking act required');
       const saved = JSON.parse(readFileSync(join(outboxDir, `${nameFor(challenge.id)}.request.json`), 'utf8'));
       check(canonical(saved.challenge) === canonical(challenge), 'tracking challenge differs from issued request');
-      check(read(join(actsDir, `${nameFor(challenge.id)}.json`)) === proof, 'tracking act differs from operator store');
+      check((transport ? remoteActs.get(nameFor(challenge.id)) : read(join(actsDir, `${nameFor(challenge.id)}.json`))) === proof,
+        'tracking act differs from operator store');
       check(!existsSync(join(outboxDir, `${nameFor(challenge.id)}.consumed`)), 'tracking act already consumed');
       check(Number.isSafeInteger(record.at) && record.at >= challenge.issuedAt && record.at < challenge.expiresAt
         && record.at <= now(), 'tracking act time differs');

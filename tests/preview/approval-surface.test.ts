@@ -6,6 +6,9 @@ import { afterEach, expect, it } from 'vitest';
 import { createHash, generateKeyPairSync, randomBytes, sign, type KeyObject } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
+// @ts-expect-error Shipped private-service transport is JavaScript.
+import { createApprovalFileTransport } from '../../scripts/approval-surface-transport.mjs';
 import { tmpdir } from 'node:os';
 import { Script } from 'node:vm';
 import type { AddressInfo, Server } from 'node:net';
@@ -53,7 +56,7 @@ const message = (id: number, text: string) => ({ update_id: id,
 // page must still carry the request.
 const liveDependencies = () => ({ ...admittedDependencies(), register: false, lease: false, fence: false, 'replication-peer': false });
 
-function setup() {
+function setup(configurationDigest = genesis.configurationDigest) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'approval-surface-')));
   cleanup.push(() => rmSync(root, { recursive: true, force: true }));
   const store = join(root, 'store'), outbox = join(root, 'outbox');
@@ -84,7 +87,7 @@ function setup() {
     return call('POST', '/act', { name, decision, nonce: start.nonce, assertion: device.get(tamper ? tamper(start) : start.challenge) });
   };
   const sent: string[] = [];
-  const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(7), genesis);
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(7), { ...genesis, configurationDigest });
   const worker = createJournalWorker(journal, { now: () => clock, stopped: () => false, checkOutbound: () => {},
     model: async () => 'ordinary answer', approvalSurface: client,
     minimal: { context: previewTestContext, dependencies: liveDependencies },
@@ -372,4 +375,76 @@ it('tracking signatures bind revision, status, nonce and installation; expiry, s
   expect(() => t.client.tracking.verify(proof)).toThrow(/expired/);
   expect(t.client.verifier.verify(challenge, proof, 'approve').kind).toBe('Refused');
   j.close(); t.journal.close();
+});
+
+it('independent surface caches through the authenticated file service, survives owner endpoint loss and drains signed tracking once', async () => {
+  const t = setup(`sha256:${'c'.repeat(64)}`); expect(t.enrol().status).toBe(200);
+  const independentStore = join(t.root, 'independent-operator'); mkdirSync(independentStore, { mode: 0o755 }); chmodSync(independentStore, 0o755);
+  // Public enrolled keys only; the private passkey remains in the phone fixture.
+  writeFileSync(join(independentStore, 'keys.json'), readFileSync(join(t.store, 'keys.json')), { mode: 0o644 });
+  writeFileSync(join(independentStore, 'surface.json'), readFileSync(join(t.store, 'surface.json')), { mode: 0o644 });
+  let ownerOnline = true, wrongRole = false;
+  const seen: string[] = [];
+  const files = createServer((req, res) => {
+    if (req.headers.authorization !== 'Bearer isolated-existing-service-role' || req.headers['x-instar-agentid'] !== 'echo') {
+      res.writeHead(403); res.end('{}'); return;
+    }
+    const url = new URL(req.url!, 'http://localhost'), path = url.searchParams.get('path')!;
+    const root = path.startsWith('owner/') ? t.outbox : join(independentStore, 'acts');
+    if (path.startsWith('owner/') && !ownerOnline) { req.socket.destroy(); return; }
+    const directory = path.startsWith('owner/') ? 'owner/outbox' : 'independent/acts';
+    if (url.pathname === '/api/files/list' && path === directory) {
+      res.end(JSON.stringify({ path, entries: readdirSync(root).map(name => ({ name, type: 'file', size: readFileSync(join(root, name)).byteLength })) }));
+    } else if (url.pathname === '/api/files/read' && path.startsWith(directory + '/') && /^(?:[a-f0-9]{64}(?:\.request)?|tracking-index)\.json$/u.test(path.slice(directory.length + 1))) {
+      try { res.end(JSON.stringify({ path, content: readFileSync(join(root, path.slice(directory.length + 1)), 'utf8') })); }
+      catch { res.writeHead(404); res.end('{}'); }
+    } else { res.writeHead(404); res.end('{}'); }
+  });
+  files.listen(0, '127.0.0.1'); await new Promise<void>(resolve => files.once('listening', resolve));
+  const port = (files.address() as AddressInfo).port;
+  const source = { endpoint: 'https://isolated-private-service.invalid/', agentId: 'echo', directory: 'owner/outbox', standing: 'isolated-existing-read-role' };
+  // Physical isolated HTTP endpoint. TLS/actual host installation remain separate
+  // acceptance; request path, headers, byte bounds and response identity are real.
+  const network = { credential: () => wrongRole ? 'wrong-role' : 'isolated-existing-service-role',
+    fetch: (url: URL, init: RequestInit) => { seen.push(url.pathname + url.search); return fetch(`http://127.0.0.1:${port}${url.pathname}${url.search}`, init); } };
+  const requests = createApprovalFileTransport(source, network);
+  const config = { ...t.config, store: independentStore, outbox: join(t.root, 'never-mounted-owner'), requestSource: source };
+  let independent = createApprovalSurface(config, t.now, requests);
+  const client = createApprovalSurfaceClient({ store: t.store, outbox: t.outbox, operatorUid: t.config.operatorUid,
+    agentUid: t.config.agentUid, now: t.now,
+    transport: createApprovalFileTransport({ ...source, directory: 'independent/acts' }, network) });
+  const { createAttentionSurface } = await import('./attention-surface.js');
+  const attention = createAttentionSurface(t.journal, { now: t.now, machine: 'owner', admitted: () => ownerOnline,
+    replicated: async () => true, tracking: { ...client.tracking, link: client.link } });
+  try {
+    const item = await attention.create('Review the result', `dashboard:${'a'.repeat(64)}`);
+    const row = attention.list().items.find(x => x.id === item.id)!;
+    const confirmation = await attention.acknowledge(row.id, 'DONE', row.revision, `dashboard:${'b'.repeat(64)}`);
+    expect(confirmation.outcome).toBe('confirmation-required');
+    expect(new URL(confirmation.url!).pathname).toContain(`/${independent.surface.token}/`);
+    wrongRole = true; await expect(independent.synchronize()).rejects.toThrow(/refused/); wrongRole = false;
+    await independent.synchronize(); expect(independent.pending()).toHaveLength(1);
+    ownerOnline = false; // every owner namespace request loses its connection
+    await expect(independent.synchronize()).rejects.toThrow();
+    independent = createApprovalSurface(config, t.now, requests);
+    const independentHttp = serve(independent, 0) as Server;
+    cleanup.push(() => independentHttp.close());
+    await new Promise<void>(resolve => independentHttp.once('listening', resolve));
+    const page = await fetch(`http://127.0.0.1:${(independentHttp.address() as AddressInfo).port}/${independent.surface.token}/`);
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain('Record DONE for attention item');
+    const pending = independent.pending()[0];
+    const begin = independent.begin({ name: pending.name, decision: 'approve' });
+    independent.act({ name: pending.name, decision: 'approve', nonce: begin.nonce, assertion: t.phone.get(begin.challenge) });
+    independent = createApprovalSurface(config, t.now, requests);
+    expect(independent.request(pending.name).decided).toBe(true);
+    await attention.drainTracking(); expect(attention.list().items.find(x => x.id === row.id)?.status).toBe(row.status);
+    ownerOnline = true;
+    await attention.drainTracking(); await attention.drainTracking();
+    expect(attention.list().items.find(x => x.id === row.id)?.status).toBe('DONE');
+    expect(await client.tracking.pending()).toHaveLength(0);
+    expect(t.journal.view.attention!.acknowledgements).toHaveLength(1);
+    expect(seen.some(path => path.includes('/api/files/read?path=owner'))).toBe(true);
+    expect(t.sent).toHaveLength(0);
+  } finally { t.journal.close(); await new Promise<void>(resolve => files.close(() => resolve())); }
 });

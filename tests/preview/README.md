@@ -4619,3 +4619,49 @@ binding consumer. Set `INSTAR_HUB_CAPTURE_ROOT` to the private capture evidence
 directory (with its `repaired/` child). Without that directory the test visibly
 skips; a skipped run is not model evidence. Inputs/outputs stay private, hashes
 are committed. The captures have no live-user Telegram update IDs.
+
+### Carryover 88 optional independent tracking transport
+
+The existing approval surface can read tracking requests through the authenticated
+private file service with `requestSource` in its operator-owned configuration.
+That object has `endpoint` (an exact HTTPS origin), `agentId` (the existing service
+role), `directory` (the fixed relative owner-outbox path) and `standing` (the
+existing read-standing evidence reference). The service process resolves its own
+already-configured `INSTAR_AUTH_TOKEN`; it does not persist or copy that credential.
+The owner runner's optional `--approval-transport /ABS/operator-owned.json` uses
+the same fields for the independent surface's `acts` directory. Existing
+`--approval-store`, `--approval-outbox` and `--approval-operator-uid` remain required;
+public enrolled keys and the approved surface descriptor remain under that
+operator's custody. All other approval classes keep their existing local path.
+
+The owner publishes a bounded `tracking-index.json` in its existing outbox. The
+independent surface caches the exact request in its existing private directory,
+and its passkey signs the exact challenge, decision and nonce. On return the owner
+verifies against its own issued request, installed public keys, current revision,
+expiry and one-use marker before applying a status receipt. The transport reads
+only fixed request or issued-act filenames, refuses redirects, path substitution,
+foreign authentication and oversized bodies, and gives each batch four seconds.
+Neither a path token nor transport authentication is operator identity, and a
+tracking receipt approves no execution or send.
+
+Reviewable installation proposal (not performed by this change): the desk binds
+the existing operator service's `surface.json` origin/rpId/publicBase/operator/
+ingressGrant to its independently hosted store, with the same enrolled public
+keys and currently approved ingress. The owner retains its approved public
+metadata reader; each host uses its own existing service role. Configure only the
+two fixed read namespaces above under established standing, then test complete
+owner-machine unreachability and recovery. A missing host/rpId/ingress binding is
+an installation dependency, never permission to invent a grant, copy an account
+bearer, rotate credentials or generate substitute owner challenges. An absent
+owner outbox is accepted only when the existing matching surface descriptor is
+already present. The isolated HTTP proof does not certify TLS, real independent
+machines, actual serving installation or live usefulness.
+
+The copied hub model questions now pass through the launcher's recorded
+subscription boundary with journal reservations and the original 200/320 answer
+allowances and 4000/15000 ms deadlines. Noncommands and uncertainty use the normal
+answer path. The new envelope preserves each copied question, but the recorded
+six-case corpus predates this envelope; replay proves consumption, not a fresh
+provider invocation. Production delegated Run/Threadline custody, conversation
+routing and full producer/commitment binding are still incomplete, so this row is
+not release-ready.

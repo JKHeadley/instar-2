@@ -14,7 +14,7 @@ export interface TrackingSubject {
 }
 export interface AttentionTrackingPort {
   issue(subject: TrackingSubject, installation: { artifact: string; generation: string; expiresAt: number }): unknown;
-  pending(): string[];
+  pending(): string[] | Promise<string[]>;
   verify(proof: string): { subject: TrackingSubject; artifact: string; generation: string;
     operator: string; decision: string; authority: string; act: null };
   complete(proof: string): void;
@@ -79,7 +79,7 @@ export function createAttentionSurface(journal: ReturnType<typeof openPreviewJou
     // Existing independent custody is the intake store until the legitimate owner
     // returns. Verification consumes nothing until this journal's durable result.
     let pending: string[];
-    try { pending = tracking.pending(); } catch { return; } // independent custody can be temporarily unavailable
+    try { pending = await tracking.pending(); } catch { return; } // independent custody can be temporarily unavailable
     const complete = (proof: string) => {
       try { tracking.complete(proof); } catch { /* retained delivered ack permits later consumption without reapplying */ }
     };

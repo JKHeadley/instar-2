@@ -19,8 +19,11 @@ export type HubOutcome = { kind: 'accepted'; id: number; receipt?: string }
   | { kind: 'refused' | 'unknown'; reason: string };
 export interface HubAttempt { id: string; effect: HubEffect; authorization?: string; dispatched?: true; outcome?: HubOutcome }
 export interface HubInbox { envelope: AgentTransportEnvelope; receipt: EndpointReceipt; handled: boolean }
-export interface HubState { threads: HubThread[]; attempts: HubAttempt[]; inbox: HubInbox[]; openings: { threadId: string; topicName: string; summary: string }[] }
+export interface HubModelCall { id: string; promptId: string; maxTokens: number; deadline: number; settled?: true }
+export interface HubState { modelCalls?: HubModelCall[]; threads: HubThread[]; attempts: HubAttempt[]; inbox: HubInbox[]; openings: { threadId: string; topicName: string; summary: string }[] }
 export type HubRecord = { kind: 'collaboration'; at: number } & (
+  | { action: 'model-reserve'; id: string; promptId: 'hub-intent-v1' | 'open-conversation-brief-v1'; maxTokens: number; deadline: number; maxInputTokens: number }
+  | { action: 'model-settle'; id: string; usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }
   | { action: 'thread'; thread: HubThread }
   | { action: 'intent'; attempt: HubAttempt }
   | { action: 'dispatch'; id: string }
@@ -36,7 +39,18 @@ const need = (yes: unknown, reason: string) => { if (!yes) throw Error(`collabor
 export function applyHubRecord(previous: HubState | undefined, row: HubRecord): HubState {
   const next: HubState = structuredClone({ threads: [], attempts: [], inbox: [], ...previous, openings: previous?.openings ?? [] });
   need(Number.isSafeInteger(row.at) && row.at >= 0, 'invalid time');
-  if (row.action === 'receive') {
+  if (row.action === 'model-reserve') {
+    const calls = next.modelCalls ??= [];
+    const limits = row.promptId === 'hub-intent-v1' ? [200, 4000] : row.promptId === 'open-conversation-brief-v1' ? [320, 15000] : null;
+    need(limits && row.maxTokens === limits[0] && Number.isSafeInteger(row.deadline)
+      && row.deadline > row.at && row.deadline <= row.at + limits[1]!, 'model invocation bounds differ');
+    need(validText(row.id, 1024) && !calls.some(call => call.id === row.id) && calls.length < 8000,
+      'model invocation missing, repeated or capacity exhausted');
+    calls.push({ id: row.id, promptId: row.promptId, maxTokens: row.maxTokens, deadline: row.deadline });
+  } else if (row.action === 'model-settle') {
+    const call = next.modelCalls?.find(item => item.id === row.id);
+    need(call && !call.settled, 'model settlement without unique reservation'); call!.settled = true;
+  } else if (row.action === 'receive') {
     const { envelope: e, receipt: r } = row;
     need(r.key === e.key && r.digest === (e.result?.digest ?? e.digest) && r.durability !== null
       && ['durably-queued', 'delivered-to-worker', 'answered'].includes(r.state), 'no admitted endpoint receipt');
@@ -346,14 +360,26 @@ export function collaborationEndpoint(endpoint: AgentEndpoint, hub: Collaboratio
 /** Operator adapter, invoked only by the existing authenticated PIN/CSRF HTTP
  * boundary. A receipt is live only for this exact call, never supplied by a
  * model, a conversation bearer or retained as reusable effect authority. */
-export function createCollaborationSurface(host: Omit<HubHost, 'operator'>) {
+export function createCollaborationSurface(host: Omit<HubHost, 'operator'>, commands?: {
+  admitted(id: string): boolean;
+  model(id: string, request: HubModelRequest): Promise<string | null>;
+  messages(threadId: string): BriefMessageRow[];
+}) {
   const receipts = new Map<string, number>();
-  const hub = new CollaborationSurfacer({ ...host, operator: receipt => (receipts.get(receipt) ?? 0) > 0 });
+  const hub = new CollaborationSurfacer({ ...host, operator: receipt => (receipts.get(receipt) ?? 0) > 0
+    && (!receipt.startsWith('command:') || commands?.admitted(receipt.slice(8)) === true) });
   const bind = async (input: { threadId?: string; targetTopicId: number }, receipt: string) => {
     if (!/^dashboard:[a-f0-9]{64}$/u.test(receipt)) throw Error('verified operator surface required');
     receipts.set(receipt, (receipts.get(receipt) ?? 0) + 1);
     try { return await hub.bind({ ...input, operatorReceipt: receipt }); }
     finally { const left = receipts.get(receipt)! - 1; if (left) receipts.set(receipt, left); else receipts.delete(receipt); }
   };
-  return Object.freeze({ hub, bind, list: () => ({ threads: hub.list().threads, topics: host.topics() }) });
+  const command = async (input: { id: string; text: string; context: ConversationTurn[] }) => {
+    if (!commands?.admitted(input.id)) return { handled: false as const };
+    const receipt = `command:${input.id}`;
+    receipts.set(receipt, (receipts.get(receipt) ?? 0) + 1);
+    try { return await hub.command({ ...input, operatorReceipt: receipt }, commands.model, commands.messages); }
+    finally { const left = receipts.get(receipt)! - 1; if (left) receipts.set(receipt, left); else receipts.delete(receipt); }
+  };
+  return Object.freeze({ hub, bind, command, list: () => ({ threads: hub.list().threads, topics: host.topics() }) });
 }

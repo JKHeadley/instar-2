@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHubModelRoute } from './hub-model-route.js';
 import { createCollaborationDispatch } from './collaboration-dispatch.mjs';
 import { createCollaborationSurface } from './collaboration-hub.js';
 import { topicNames } from './journal.js';
@@ -82,6 +83,8 @@ import { createLeaseHolder } from './two-machine-serving.js';
 import { adoptReceivedCopy, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, openReplicaStore, serveReplicaStore,
   backupStatusLine, sharedHistoryStatus, takeoverEligibility } from './journal-replication.js';
 import { createApprovalSurfaceClient } from './approval-surface-client.mjs';
+import { createApprovalFileTransport } from '../../scripts/approval-surface-transport.mjs';
+import { readOwnedFile as readApprovalTransportConfig } from '../../scripts/approval-surface-core.mjs';
 import { dashboardSnapshot } from './operator-dashboard.js';
 import { parseExplicitYesInstallation } from './explicit-yes-installation.js';
 import { createGitHubReviewClient } from './github-review-client.js';
@@ -175,10 +178,14 @@ const parse = values => {
 // given; the runner reads the operator's store and writes only its own request outbox.
 const approvalSurfaceOf = options => {
   const given = ['approval-store', 'approval-outbox', 'approval-operator-uid'].filter(name => options[name] !== undefined);
-  if (!given.length) return null;
+  if (!given.length && options['approval-transport'] === undefined) return null;
   if (given.length !== 3) throw Error('preview: --approval-store, --approval-outbox and --approval-operator-uid go together');
+  const operatorUid = number(options['approval-operator-uid'], 'approval-operator-uid', 0);
+  const transport = options['approval-transport'] ? createApprovalFileTransport(
+    JSON.parse(readApprovalTransportConfig(options['approval-transport'], operatorUid, process.getuid())),
+    { credential: () => process.env.INSTAR_AUTH_TOKEN }) : undefined;
   return createApprovalSurfaceClient({ store: options['approval-store'], outbox: options['approval-outbox'],
-    operatorUid: number(options['approval-operator-uid'], 'approval-operator-uid', 0), now: wallNow });
+    operatorUid, now: wallNow, transport });
 };
 // Rules 79, 81 (plan #502): the operator dashboard served READ-ONLY by this runner, with no approval port. Installed only when
 // both are given: where it listens (loopback or this machine's Tailscale address) and the loopback endpoint that checks the
@@ -2151,6 +2158,11 @@ async function main() {
         { chat_id: g.chat }, { ...admissionConfig(), effectPolicy: policy }, wallNow());
       return verdict.admitted === true ? JSON.stringify({ grant: g.grant, chat: g.chat, bot: g.bot, policy, verdict }) : null;
     };
+    const hubModel = createHubModelRoute({ view: () => journal.view, now: wallNow, admitted: collaborationAdmitted,
+      append: row => journal.append(row), model: required(options, 'model'),
+      policy: doorway.policyFor(required(options, 'model'), doorway.conversationFraming),
+      replicated: async () => { if (shared === null) return true; await shared.sync(); return shared.peerCurrent() && ownerHeld(); },
+      recordedCall: (judgment, bytes, bounds) => modelLaunch.run(() => callSubscription(judgment, bytes, bounds.operation, bounds)) });
     const collaborationSurface = createCollaborationSurface({ state: () => journal.view.collaboration,
       append: row => journal.append(row), now: wallNow, admitted: collaborationAdmitted, authorization: collaborationAuthorization,
       replicated: async () => { if (shared === null) return true; await shared.sync(); return shared.peerCurrent() && ownerHeld(); },
@@ -2159,7 +2171,19 @@ async function main() {
         for (const attempt of journal.view.collaboration?.attempts ?? [])
           if (attempt.effect.kind === 'topic' && attempt.outcome?.kind === 'accepted') names.set(attempt.outcome.id, attempt.effect.name);
         return [...names].map(([topicId, topicName]) => ({ topicId, topicName }));
-      }, effect: (id, effect) => dispatchCollaboration(id, effect) });
+      }, effect: (id, effect) => dispatchCollaboration(id, effect) }, {
+      admitted: id => {
+        const turn = journal.view.turns.get(id);
+        const hub = journal.view.collaboration?.attempts.find(attempt => attempt.id === 'hub:create')?.outcome;
+        return collaborationAdmitted() && turn?.accepted === true && operatorWriter(journal.view, turn)
+          && !turn.editOf && hub?.kind === 'accepted' && turn.thread === hub.id;
+      },
+      model: (id, request) => hubModel(id, { ...request,
+        prompt: redact(concealSecretMaterial(request.prompt, heldSecretValues())).text }),
+      messages: threadId => (journal.view.collaboration?.inbox ?? []).filter(item => item.envelope.conversation === threadId)
+        .slice(-10).map(({ envelope }) => ({ direction: 'in', remoteAgentName: envelope.sender,
+          timestamp: new Date(envelope.at).toISOString(), text: envelope.contract?.task.question ?? envelope.result?.result ?? '' }))
+    });
     const attentionSurface = createAttentionSurface(journal, { now: wallNow, machine: ownerMachine,
       ...(approvalSurface ? { tracking: { ...approvalSurface.tracking, link: approvalSurface.link } } : {}),
       admitted: () => {
@@ -2284,6 +2308,18 @@ async function main() {
       model: async ({ id, prepared, question, context: packet }) => {
         try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
+        // Only the exact durably admitted operator turn in the confirmed hub can
+        // request binding. Noncommands and uncertain classifier answers retain
+        // the normal answer path and its already reserved call allowance.
+        const hubTurn = journal.view.turns.get(id);
+        if (hubTurn) {
+          const history = journal.view.order.filter(turn => turn.accepted && turn.thread === hubTurn.thread && turn.update < hubTurn.update)
+            .slice(-6).flatMap(turn => [{ fromUser: true, text: turn.text },
+              ...(turn.answer && turn.sent !== undefined ? [{ fromUser: false, text: turn.answer }] : [])]);
+          const bound = await collaborationSurface.command({ id, text: hubTurn.text, context: history });
+          if (bound.handled) return { state: 'complete', text: bound.result?.outcome === 'bound'
+            ? 'Conversation bound.' : 'Binding saved; confirmation pending.' };
+        }
         if (conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id)) {
           // The journal reserves the one format repair before this call. Its exact packet gets
           // a durable child identity; replaying the original bytes still names the original turn.

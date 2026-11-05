@@ -25,6 +25,10 @@ export const USAGE_EXCEPTIONS: Readonly<Partial<Record<LiveModelRoute, string>>>
  * floors its consumer still enforces whatever the model answers. Each `invalid` states what the
  * consumer actually does, per consumer (Rule 95). */
 export const LIVE_JUDGMENTS = Object.freeze({
+  'hub-intent': { route: 'preview-subscription', actions: ['open', 'tie', 'pass-through'], default: 'pass-through', authority: 'signal',
+    invalid: 'absent, uncertain or below 0.85 confidence passes to ordinary conversation; a command still requires current authenticated operator, topic, effect and owner standing' },
+  'hub-brief': { route: 'preview-subscription', actions: ['brief', 'template'], default: 'template', authority: 'signal',
+    invalid: 'per-field original template fallback; secrets refuse model fields, and no generated brief authorizes an effect' },
   answer: { route: 'preview-subscription', actions: ['work'], default: 'work', authority: 'signal', invalid: 'fixed failure reply (MODEL_FAILURE_REPLY); memory, reminders and grants still pass their source/grant checks' },
   'reply-review': { route: 'preview-subscription', actions: ['object', 'clear'], default: 'clear', authority: 'signal',
     mandatory: 'an objection naming credential, defers_work or unrecorded_blocker, a Jev credential flag, or a runner-refused obligation declaration keeps the candidate held until one bounded correction clears it',

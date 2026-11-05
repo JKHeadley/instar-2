@@ -383,7 +383,8 @@ export function createCodexSubscriptionRoute(input:
           source: 'Codex subscription preview: charge and quiescence unknown; no retry or fallback' }, retryBlocked: false });
       try {
         ensure(bounds.automaticRetries === 0 && bounds.maxCharge === 0 && bounds.timeout > 0 && bounds.timeout <= policy.timeout
-          && Number.isSafeInteger(bounds.timeout) && bounds.maxTokens === policy.maxTokens
+          && Number.isSafeInteger(bounds.timeout) && Number.isSafeInteger(bounds.maxTokens)
+          && bounds.maxTokens > 0 && bounds.maxTokens <= policy.maxTokens
           && bounds.maxOutputBytes === policy.maxOutputBytes
           && Buffer.byteLength(system, 'utf8') + Buffer.byteLength(bytes, 'utf8') <= promptBytes,
         'codex invocation bounds differ');
@@ -401,7 +402,7 @@ export function createCodexSubscriptionRoute(input:
           // Current authority/profile checks can be slow. Compute the model's remaining time
           // AFTER them, at dispatch; a timeout chosen before check() can already be stale.
           const now = config.now();
-          const commandTimeout = stdin.length > 0 ? Math.min(timeout, bounds.deadline - now - 100) : timeout;
+          const commandTimeout = Math.min(timeout, bounds.deadline - now - 100);
           ensure(Number.isSafeInteger(bounds.deadline) && commandTimeout > 0 && now + commandTimeout <= bounds.deadline,
             'codex owner deadline has insufficient command time');
           const result = await config.io.execute({ executable: profile.executable, args,
@@ -449,7 +450,7 @@ export function createCodexSubscriptionRoute(input:
         // is refused: the answer would not account for everything the run did.
         if (frames.malformed || frames.disallowedItems.length > 0 || unadmitted || frames.answer === null
           || !frames.answer.trim() || Buffer.byteLength(frames.answer) > policy.maxOutputBytes
-          || reportedUsage === null || frames.outputTokens === null || frames.outputTokens > policy.maxTokens)
+          || reportedUsage === null || frames.outputTokens === null || frames.outputTokens > bounds.maxTokens)
           return { state: 'rejected', bytes: null, providerOperation: frames.thread,
             usage: reportedUsage ?? { inputTokens: null, outputTokens: null, charge: null,
               source: 'Codex subscription preview: completed turn outside admitted bounds' }, retryBlocked: false };

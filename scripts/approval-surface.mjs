@@ -19,6 +19,7 @@ import { pathToFileURL } from 'node:url';
 import { ACT_RECORD, actChallenge, b64u, canonical, check, checkChallenge, hex, nameFor, renderChallenge, signInChallenge, SURFACE_LIMITS,
   verifyAssertion, verifyRegistration, writeOnce } from './approval-surface-core.mjs';
 import { DASHBOARD_BOUNDS, DASHBOARD_VIEWS, DETAIL_PATH, readSnapshot, renderDashboard, renderSignIn } from './operator-dashboard.mjs';
+import { createApprovalFileTransport } from './approval-surface-transport.mjs';
 export { SURFACE_LIMITS };
 
 const privateDir = directory => { const stat = lstatSync(directory);
@@ -32,7 +33,7 @@ const replace = (directory, name, bytes, mode) => {
 };
 
 /** Validates the operator's configuration and prepares storage. `now` is the surface's own clock. */
-export function createApprovalSurface(configuration, now = () => Date.now()) {
+export function createApprovalSurface(configuration, now = () => Date.now(), transport = undefined) {
   const config = Object.freeze(structuredClone(configuration));
   check(typeof config.operator === 'string' && /^telegram:\d{1,20}$/u.test(config.operator), 'operator identity required');
   check(Number.isSafeInteger(config.operatorUid) && config.operatorUid === process.getuid()
@@ -75,6 +76,27 @@ export function createApprovalSurface(configuration, now = () => Date.now()) {
     check(map.size < SURFACE_LIMITS.maxNonces, 'too many approvals in progress; try again shortly');
     map.set(key, value);
   };
+  const cacheTracking = record => {
+    const challenge = checkChallenge(record?.challenge, { operator: config.operator, maxLifetime: SURFACE_LIMITS.maxLifetime, now: now() });
+    check(challenge.action === 'tracking-receipt', 'remote custody is tracking only');
+    const name = nameFor(challenge.id), cached = join(secret, `${name}.request.json`), bytes = canonical(record);
+    if (existsSync(cached)) check(readFileSync(cached, 'utf8') === bytes, 'cached tracking request differs');
+    else {
+      check(readdirSync(secret).filter(file => /^[a-f0-9]{64}\.request\.json$/u.test(file)).length < SURFACE_LIMITS.maxActs,
+        'tracking request custody capacity exhausted');
+      writeOnce(secret, `${name}.request.json`, bytes, 0o600);
+    }
+  };
+  // Only the configured, authenticated existing service supplies requests. No
+  // browser route accepts cached challenges and this host never invents one.
+  const synchronize = async () => {
+    if (!config.requestSource || !transport) return;
+    for (const row of await transport.batch('request')) {
+      const record = JSON.parse(row.content);
+      check(row.name === `${nameFor(record?.challenge?.id)}.request.json`, 'remote request identity differs');
+      cacheTracking(record);
+    }
+  };
   const request = name => {
     check(/^[a-f0-9]{64}$/u.test(name), 'unknown request');
     const cached = join(secret, `${name}.request.json`);
@@ -87,12 +109,7 @@ export function createApprovalSurface(configuration, now = () => Date.now()) {
     // The existing operator custody retains tracking requests before owner loss.
     // No journal writer or execution authority is created on this host.
     if (challenge.action === 'tracking-receipt') {
-      if (existsSync(cached)) check(readFileSync(cached, 'utf8') === canonical(record), 'cached tracking request differs');
-      else {
-        check(readdirSync(secret).filter(file => /^[a-f0-9]{64}\.request\.json$/u.test(file)).length < SURFACE_LIMITS.maxActs,
-          'tracking request custody capacity exhausted');
-        writeOnce(secret, `${name}.request.json`, canonical(record), 0o600);
-      }
+      cacheTracking(record);
     } else check(path === source, 'only tracking requests have offline custody');
     return { name, challenge, view: renderChallenge(challenge, record.text),
       decided: existsSync(join(secret, `${name}.used`)) };
@@ -185,7 +202,7 @@ export function createApprovalSurface(configuration, now = () => Date.now()) {
   const signedIn = session => typeof session === 'string' && /^[a-f0-9]{64}$/u.test(session)
     && (sessions.get(hex(session))?.expiresAt ?? 0) > now();
   const dashboard = () => readSnapshot(outbox, now());
-  return Object.freeze({ surface, pending, request, begin, act, enrol, enrolBegin, enrolFinish, keys, signInBegin, signInFinish, signedIn, dashboard });
+  return Object.freeze({ surface, synchronize, pending, request, begin, act, enrol, enrolBegin, enrolFinish, keys, signInBegin, signInFinish, signedIn, dashboard });
 }
 
 const escape = text => String(text).replace(/[&<>"']/gu, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -300,7 +317,10 @@ export function serve(surface, port) {
     let body = '', size = 0;
     req.setEncoding('utf8');
     req.on('data', chunk => { size += chunk.length; if (size > SURFACE_LIMITS.maxBody) req.destroy(); else body += chunk; });
-    req.on('end', () => { const out = handle(surface, { method: req.method, path: req.url, body, cookie: req.headers.cookie });
+    req.on('end', async () => {
+      // Loss of the owner machine must not remove already cached requests.
+      try { await surface.synchronize(); } catch { /* retained custody remains usable */ }
+      const out = handle(surface, { method: req.method, path: req.url, body, cookie: req.headers.cookie });
       res.writeHead(out.status, out.headers); res.end(out.body); });
   });
   // Loopback only: the operator's recorded ingress (for example a named HTTPS tunnel) publishes it.
@@ -313,7 +333,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   check(['serve', 'enroll'].includes(command) && file, 'usage: approval-surface.mjs serve|enroll /ABS/config.json');
   const path = realpathSync(file), stat = lstatSync(path);
   check(stat.uid === process.getuid() && (stat.mode & 0o022) === 0, 'operator configuration ownership invalid');
-  const config = JSON.parse(readFileSync(path, 'utf8')), surface = createApprovalSurface(config);
+  const config = JSON.parse(readFileSync(path, 'utf8'));
+  const transport = config.requestSource ? createApprovalFileTransport(config.requestSource,
+    { credential: () => process.env.INSTAR_AUTH_TOKEN }) : undefined;
+  const surface = createApprovalSurface(config, undefined, transport);
   if (command === 'enroll') process.stdout.write(`${surface.enrol()}\n`);
   else { check(Number.isSafeInteger(config.port) && config.port > 0 && config.port < 65536, 'port required'); serve(surface, config.port);
     process.stdout.write(`approval surface for ${config.operator} at ${surface.surface.publicBase}/${surface.surface.token}/\n`); }
