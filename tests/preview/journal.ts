@@ -3322,7 +3322,7 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
 }
 /** Rule 42: the one target-outcome lookup every view reads. A receipt is acceptance; a recorded
  * definite refusal stays a refusal with its reason; anything else (including a legacy intent with
- * no record) is UNKNOWN. None of the three is ever retried. */
+ * no record) is UNKNOWN. Only separately retained proof of non-delivery admits recovery. */
 /** Durable recovery payload, carried in the existing encrypted send-outcome projection. */
 export interface RecoverySend {
   input: { text: string; expectedText: string; formatting?: ReplyFormatting; chat: string; thread?: number; update: number;
@@ -6364,8 +6364,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const at = ports.now(), firstAt = Number(measurements.sendEnteredAt);
         const attempts = Number(measurements.attempt ?? 1), failures = Number(measurements.provedNotSentAttempts ?? 0);
         const delay = recoveryDelay(attempted, failures, firstAt, at);
-        // Ephemeral progress has a current() fence that cannot survive a restart; only durable result sends recover.
-        const recovery = delay !== null && !target.startsWith('delivery-notice:') && !input.current && provenance ? {
+        // Progress and outage notices describe current state; their original eligibility cannot be carried as a saved callback.
+        // Only durable reply/result targets use delayed recovery; failure notices keep their two-attempt bound.
+        const durableResult = /^(?:reply|reply-part|limited|operator-result|retract-request):/u.test(target);
+        const recovery = delay !== null && durableResult && !input.current && provenance ? {
           input: { text: input.text, expectedText: input.expectedText, chat: input.chat, update: input.update,
             ...(input.thread === undefined ? {} : { thread: input.thread }), ...(input.formatting ? { formatting: input.formatting } : {}),
             ...(input.kind ? { kind: input.kind } : {}), ...(input.disposition ? { disposition: input.disposition } : {}),
@@ -8881,6 +8883,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (recoveringTopics.has(topic) || at < (journal.view.lastOutboundAt?.[topic] ?? 0) + 30_000) continue;
         recoveringTopics.add(topic);
         ports.checkOutbound(r.input.text);
+        ports.checkOutbound(r.input.expectedText);
         if (!journal.verifyOutbound(r.provenance, { target: pending.target, chat: r.input.chat,
           ...(r.input.thread === undefined ? {} : { thread: r.input.thread }), body: r.input.text })) continue;
         journal.append({ kind: 'send-recovery', target: pending.target, attempt: r.attempts, action: 'start', at });

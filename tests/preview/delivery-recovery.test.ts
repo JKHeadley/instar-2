@@ -353,3 +353,59 @@ it('claim receipts reject corrupt, conflicting and unsigned evidence and cannot 
     expect(authority.handle({ op: 'claim', fence, key, attempt: 1, subject })).toMatchObject({ ok: false, state: 'sent' });
   } finally { authority.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+it('a recorded long reply recovers only its refused continuation and preserves the delivered first part', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/status-reply-split-live-2026-10-03.json', import.meta.url), 'utf8')) as { statusAnswers: { update: number; answer: string }[] };
+  const answer = recorded.statusAnswers.find(row => row.update === 6232050)!.answer;
+  const dir = mkdtempSync(join(tmpdir(), 'delivery-part-recovery-'));
+  let now = 1000, calls = 0;
+  let journal = openPreviewJournal(join(dir, 'journal'), key, genesis);
+  const inputs: { target?: string; provenance?: unknown; text: string }[] = [];
+  const worker = () => createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {}, model: async () => answer,
+    send: async input => { inputs.push(input); calls++; return calls === 2 ? { kind: 'refused', reason: 'telegram 429', retryAfterMs: 30000 } : calls; } });
+  try {
+    const first = worker(); first.intake([update]); await first.drain();
+    expect(calls).toBe(2); expect(journal.view.order[0]!.sent).toBe(1);
+    expect(journal.view.order[0]!.replyParts?.[0]?.sent).toBeUndefined();
+    journal.close(); journal = openPreviewJournal(join(dir, 'journal'), key, genesis);
+    now = 31000; await worker().drain();
+    expect(calls).toBe(3); expect(inputs[2]?.target).toBe(inputs[1]?.target);
+    expect(inputs[2]?.provenance).toEqual(inputs[1]?.provenance); expect(inputs[2]?.text).toBe(inputs[1]?.text);
+    expect(journal.view.order[0]!.sent).toBe(1); expect(journal.view.order[0]!.replyParts?.[0]?.sent).toBe(3);
+    expect(sendOutcomeCounts(journal.view)).toMatchObject({ accepted: 2, unknown: 0 });
+  } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('rechecks visible reply bytes against current secrets even when transport markup escapes them', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'delivery-secret-recheck-'));
+  let now = 1000, currentSecret = false, calls = 0;
+  const journal = openPreviewJournal(join(dir, 'journal'), key, genesis);
+  const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+    checkOutbound: text => { if (currentSecret && text.includes('<new-secret>')) throw Error('secret refused'); },
+    model: async () => 'Retained <new-secret>', send: async () => { calls++; return { kind: 'refused', reason: 'telegram 429', retryAfterMs: 30000 }; } });
+  try {
+    worker.intake([update]); await worker.drain(); expect(calls).toBe(1);
+    const queued = journal.view.sendOutcomes[0]!.recovery!;
+    expect(queued.input.text).not.toContain('<new-secret>'); expect(queued.input.expectedText).toContain('<new-secret>');
+    now = 31000; currentSecret = true;
+    await expect(worker.drain()).rejects.toThrow('secret refused'); expect(calls).toBe(1);
+    expect(queued.started).toBeUndefined();
+  } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it.each(['not-sent', 'rate-limited'] as const)('a failed %s escalation cannot enter the reply recovery schedule', async failure => {
+  const dir = mkdtempSync(join(tmpdir(), 'delivery-notice-bound-'));
+  let now = 1000, notices = 0;
+  const journal = openPreviewJournal(join(dir, 'journal'), key, genesis);
+  const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {}, model: async () => 'answer',
+    send: async input => {
+      if (!input.target?.startsWith('delivery-notice:')) return { kind: 'refused', reason: 'telegram 403' };
+      notices++; return failure === 'not-sent' ? { kind: 'not-sent', reason: 'connection refused' } : { kind: 'refused', reason: 'telegram 429', retryAfterMs: 30000 };
+    } });
+  try {
+    worker.intake([update]); await worker.drain();
+    expect(notices).toBe(failure === 'not-sent' ? 2 : 1);
+    expect(journal.view.sendOutcomes.every(item => item.recovery === undefined)).toBe(true);
+    now += TTL_MS; await worker.drain(); expect(notices).toBe(failure === 'not-sent' ? 2 : 1);
+  } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
+});
