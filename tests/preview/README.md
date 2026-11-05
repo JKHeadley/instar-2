@@ -3382,8 +3382,15 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
 - **The operator dashboard (Rules 79, 80, 81, 87; Eleven §2; plan #439).** One phone page that shows
   what the agent is doing and what needs the operator: the status (the exact chat `status` answer,
   from `statusAnswer`), the requests waiting for a yes or no with a direct link to where each is
-  answered (the approval page itself, the GitHub review, or the chat), the recent messages and what
-  happened to each, the allowance used, and the stop (a link to the page's own standing Stop). It is
+  answered (the approval page itself, the GitHub review, or the chat), the work in progress right now
+  ("Working now": each accepted message being answered, with its live working-activity line and the
+  machine serving it, and each open delegated session-work edge; answered, held and closed work leaves
+  the list, the 1.x `GET /sessions` active-only hygiene), the recent messages and what happened to each,
+  the allowance used, the process health ("Process health", the 1.x Process Health tab's calm wording
+  re-fed from the journal's own records: refused and unknown deliveries, unusable model answers, failed
+  summaries, held and checked replies, connection problems and refused promises, each with its status,
+  count and first time; the kinds seen more than once as patterns; which of the three self-checks have
+  run; the totals; awareness only, with no action on the page), and the stop (a link to the page's own standing Stop). It is
   a page of the independent approval page above, served by that process at `/TOKEN/dashboard`
   (linked from the approvals index), never by the agent. Nothing from the agent shows until the
   operator's enrolled passkey signs in: one assertion over a fresh nonce whose signed bytes are a
@@ -3411,13 +3418,19 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   and the same snapshot as above (`scripts/operator-dashboard.mjs`, rebuilt at most every 15
   seconds from the journal and the chat status answer, kept in the runner's memory, never
   written): status, the requests waiting with their existing links (the GitHub review page, or
-  the chat), recent messages, allowance and spend, and the stop, which says to send `/stop` in the
+  the chat), work in progress, recent messages, allowance and spend, process health, and the stop, which says to send `/stop` in the
   chat and tap Approve. It has no approval port: no approve, decline, stop or passkey route
   exists, it sets no `approvalSurface`, and raises and stops keep their adopted routes; so it
   changes no safeguard. Its sign-in is the operator's EXISTING dashboard PIN, checked by the
   server that already holds it: `URL` is a loopback `http://127.0.0.1` endpoint that answers 200
   for the PIN (an Instar 1.x host's `POST /dashboard/unlock`); the answer's body, which carries
-  that server's token, is never read, and the PIN never leaves the machine. Nothing from the agent
+  that server's token, is never read, and the PIN never leaves the machine. On an installation with
+  no such host (row 89, the installed mobile path), `URL` is instead the absolute path of the
+  operator's PIN file on this machine: a regular file, not a link, closed to other local accounts
+  (mode 0600 or 0640), holding the PIN on one line. The runner compares it the way the 1.x unlock
+  did (the SHA-256 of each side under a constant-time comparison) and reads the file on every check,
+  so a changed PIN applies at once; a missing, empty, open or oversized file makes sign-in
+  unavailable (503), never open. Nothing from the agent
   shows before sign-in (every view answers 401 with the sign-in page). A session is a random value
   held hashed in the runner's memory for 30 minutes (at most 64), as an HttpOnly, SameSite=Strict
   cookie on `/dashboard`; a runner restart signs everyone out. Five wrong PINs in five minutes

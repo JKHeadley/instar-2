@@ -13,14 +13,18 @@ export const DASHBOARD_FILE = 'dashboard.json';
 export const DASHBOARD_TYPE = 'PreviewOperatorDashboard';
 /** Bounds the page holds independently of the runner (Rule 60), the session lifetime, and when a snapshot reads as stale. */
 export const DASHBOARD_BOUNDS = Object.freeze({ maxBytes: 262144, statusLines: 40, lineChars: 4000, turns: 10, textChars: 500, stateChars: 200,
-  requests: 10, staleMs: 120_000, sessionMs: 1_800_000 });
+  requests: 10, staleMs: 120_000, sessionMs: 1_800_000,
+  // Row 89: work in progress and process health (tests/preview/operator-dashboard.ts DASHBOARD_LIMITS, the 1.x bounds).
+  sessions: 16, labelChars: 120, activityChars: 280, noticed: 10, patterns: 10, summaryChars: 240 });
 /** Every registered view: the navigation lists all of them on every page (floor F2). */
 export const DASHBOARD_VIEWS = Object.freeze([
   { id: 'overview', path: '', title: 'Your agent', purpose: 'What your agent is doing, and anything that needs you, at a glance.' },
   { id: 'waiting', path: 'waiting', title: 'Waiting for you', purpose: 'Requests that need your yes or no, each with a direct link to answer it.' },
+  { id: 'sessions', path: 'sessions', title: 'Working now', purpose: 'What your agent is working on right now, and where each piece of work runs.' },
   { id: 'messages', path: 'messages', title: 'Recent messages', purpose: 'Your latest messages to your agent and what it did with each one.' },
   { id: 'status', path: 'status', title: 'Status', purpose: 'The same report your agent sends when you write "status" in your chat.' },
   { id: 'allowance', path: 'allowance', title: 'Allowance and spend', purpose: "How much of this installation's allowance your agent has used so far." },
+  { id: 'health', path: 'health', title: 'Process health', purpose: 'What your agent has noticed going wrong in its own work, and what it keeps an eye on.' },
   { id: 'stop', path: 'stop', title: 'Stop', purpose: 'Stop your agent at once. After you confirm, nothing more is sent or spent.' },
 ]);
 const DETAIL = Object.freeze({
@@ -30,7 +34,8 @@ const DETAIL = Object.freeze({
 });
 const GITHUB_REVIEW = /^https:\/\/github\.com\/[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}\/pull\/[1-9]\d{0,9}\/files$/u;
 const CHAT = /^[A-Za-z0-9_]{5,32}$/u;
-const FIELDS = 'allowance,asOf,chat,counts,requests,schemaVersion,state,status,tokens,turns,type,until,zone';
+const FIELDS = 'allowance,asOf,chat,counts,health,requests,schemaVersion,sessions,state,status,tokens,turns,type,until,zone';
+const HEALTH_STATUS = ['open', 'attributed', 'resolved'];
 
 const text = (value, limit) => { check(typeof value === 'string' && value.length <= limit, 'dashboard text field invalid'); return value; };
 const count = value => { check(Number.isSafeInteger(value) && value >= 0, 'dashboard count invalid'); return value; };
@@ -66,6 +71,21 @@ export function checkSnapshot(value) {
     check(['you', 'scheduled'].includes(item.from), 'dashboard sender invalid'); text(item.state, B.stateChars);
   }
   check(s.chat === null || typeof s.chat === 'string' && CHAT.test(s.chat), 'dashboard chat invalid');
+  // Row 89: work in progress (starting or running only) and process health, both closed and bounded like the rest.
+  for (const item of list(s.sessions, B.sessions)) {
+    closed(item, 'activity,id,kind,label,machine,since,state,update'); text(item.id, 1024); text(item.label, B.labelChars); text(item.since, 32);
+    check(['conversation', 'delegated'].includes(item.kind) && ['starting', 'running'].includes(item.state), 'dashboard session invalid');
+    check(item.machine === null || typeof item.machine === 'string' && item.machine.length <= 64, 'dashboard session machine invalid');
+    check(item.activity === null || typeof item.activity === 'string' && item.activity.length <= B.activityChars, 'dashboard session activity invalid');
+    check(item.update === null ? item.kind === 'delegated' : item.kind === 'conversation' && isDashboardUpdate(item.update), 'dashboard session update invalid');
+  }
+  closed(s.health, 'noticed,patterns,totals,watch');
+  for (const item of list(s.health.noticed, B.noticed)) { closed(item, 'category,count,status,summary,when'); text(item.category, B.labelChars);
+    text(item.summary, B.summaryChars); text(item.when, 32); count(item.count); check(HEALTH_STATUS.includes(item.status), 'dashboard health status invalid'); }
+  for (const item of list(s.health.patterns, B.patterns)) { closed(item, 'status,summary,timesSeen'); text(item.summary, B.summaryChars);
+    count(item.timesSeen); check(HEALTH_STATUS.includes(item.status), 'dashboard health status invalid'); }
+  closed(s.health.watch, 'checking,recording,reviewing'); for (const flag of Object.values(s.health.watch)) check(typeof flag === 'boolean', 'dashboard health watch invalid');
+  closed(s.health.totals, 'known,noticed'); Object.values(s.health.totals).forEach(count);
   return s;
 }
 
@@ -89,6 +109,49 @@ export function readSnapshot(outbox, now) {
 }
 
 const escape = value => String(value).replace(/[&<>"']/gu, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+// ── Carried from Instar 1.x dashboard/process-health.js (f3f94826a): the Process Health tab's load-bearing display contract
+// (tab spec §4.6). The presentation glyphs below are the renderer's own static literals and are stripped from every
+// dynamic value, so a record field can never impersonate a marker; every dynamic value is NFKC-folded, stripped of
+// control and bidi characters, and capped grapheme-safely before it is escaped into the page.
+export const CHROME = Object.freeze({ sep: ' · ', stageDone: '●', stageFuture: '○' });
+// \p{So} (other-symbol) + arrows U+2190–21FF + geometric U+25A0–25FF + box-drawing U+2500–257F + dingbats U+2700–27BF
+// + variation selectors U+FE00–FE0F + the bullet/middot set, by explicit code points (no invisible source characters).
+const CHROME_GLYPH_RE = new RegExp('[\\p{So}\\u2190-\\u21FF\\u25A0-\\u25FF\\u2500-\\u257F\\u2700-\\u27BF\\uFE00-\\uFE0F\\u2022\\u00B7\\u2027\\u2043]', 'gu');
+const CONTROL_RE = new RegExp('[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u009F]', 'g');
+const BIDI_RE = new RegExp('[\\u202A-\\u202E\\u2066-\\u2069]', 'g');
+/** 1.x sanitizeForDisplay: 1 null-coerce; 2 NFKC-fold; 3 strip C0/C1 controls (keep newline and tab); 4 strip bidi
+ * controls; 5 collapse newlines and cap whitespace runs; 8 strip the chrome-glyph class; 6 grapheme-safe cap. */
+export function sanitizeForDisplay(value, max = DASHBOARD_BOUNDS.summaryChars) {
+  let s = value == null ? '' : String(value);
+  s = s.normalize('NFKC');
+  s = s.replace(CONTROL_RE, '');
+  s = s.replace(BIDI_RE, '');
+  s = s.replace(/\n{2,}/g, '\n').replace(/[ \t]{5,}/g, '    ');
+  s = s.replace(CHROME_GLYPH_RE, '');
+  return capGraphemes(s, max);
+}
+function capGraphemes(s, max) {
+  if (s.length <= max) return s; // UTF-16 length ≥ grapheme count → safe fast path
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    const arr = Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s), x => x.segment);
+    if (arr.length <= max) return s;
+    return arr.slice(0, max - 1).join('') + '…';
+  }
+  let cut = max - 1; // Fallback: never cut between surrogate halves.
+  const c = s.charCodeAt(cut - 1);
+  if (c >= 0xd800 && c <= 0xdbff) cut -= 1;
+  return s.slice(0, cut) + '…';
+}
+/** 1.x STATUS_WORDS: the value carries the state, the "Status" label carries the noun (tab spec §4.2c). */
+const HEALTH_STATUS_WORDS = { open: 'Still looking into this', attributed: 'We know what caused it', resolved: 'Worked out' };
+const healthStatus = status => HEALTH_STATUS_WORDS[status] ?? 'Not set';
+/** 1.x STAGES, re-keyed to the three self-checks this journal records (each a recorded fact, never a rollout flag). */
+const WATCH_ROWS = [
+  ['recording', 'Quietly recording what comes up', 'Every message, answer, delivery and hold is recorded as it happens, so nothing noticed is lost.'],
+  ['checking', 'Checking each reply before it goes out', 'Each reply is checked against the rules and against what was said earlier before it is sent.'],
+  ['reviewing', 'Reviewing patterns in retrospect', 'Earlier conversations are reviewed later as a whole, so a pattern is judged with its history, not one message at a time.'],
+];
 const ago = ms => { const minutes = Math.floor(ms / 60_000);
   return minutes < 1 ? 'less than a minute ago' : minutes < 120 ? `${minutes} minute${minutes === 1 ? '' : 's'} ago`
     : `${Math.floor(minutes / 60)} hours ago`; };
@@ -157,6 +220,38 @@ const row = item => `<a class="row" href="${escape(item.href)}">${escape(item.ti
 const tile = (token, view, label, value, stop = false) =>
   `<a class="tile${stop ? ' stop' : ''}" href="${dashboardPath(token, VIEW[view].path)}"><span class="label">${escape(label)}</span><span class="value">${escape(value)}</span></a>`;
 
+/** Work in progress (1.x Sessions tab: each row names its state, how long it has run and the machine it runs on). A
+ * conversation session opens the message it answers; delegated work has no next layer, so it is a plain fact line. */
+function sessionsBody(token, s) {
+  const conversations = s.sessions.filter(item => item.kind === 'conversation'), delegated = s.sessions.filter(item => item.kind === 'delegated');
+  const meta = item => [item.state === 'running' ? 'Working on it' : 'Starting', `since ${item.since}`, ...(item.machine ? [`on ${sanitizeForDisplay(item.machine, 64)}`] : []),
+    ...(item.activity ? [sanitizeForDisplay(item.activity, DASHBOARD_BOUNDS.activityChars)] : [])].join(CHROME.sep);
+  if (!s.sessions.length) return '<p class="note">Nothing is running right now. A new message starts work within seconds of arriving.</p>';
+  return conversations.map(item => row({ href: dashboardPath(token, `messages/${String(item.update)}`), title: sanitizeForDisplay(item.label, DASHBOARD_BOUNDS.labelChars), meta: meta(item) })).join('')
+    + (delegated.length ? `<h2>Delegated work</h2><ul class="facts">${delegated.map(item => `<li>${escape(`${sanitizeForDisplay(item.label, DASHBOARD_BOUNDS.labelChars)}${CHROME.sep}${meta(item)}`)}</li>`).join('')}</ul>` : '');
+}
+/** Process health (the 1.x tab's four sections, flattened: floor F1 keeps nothing collapsed). The headline is
+ * informational, never a verdict (§4.2a); a pattern card and a noticed item share one fixed label vocabulary in one
+ * order (§4.2b/c): Status · Times seen · First noticed. */
+function healthBody(health) {
+  const n = health.totals.noticed, open = health.totals.noticed - health.totals.known;
+  const headline = n === 0 ? 'Keeping an eye out — all quiet so far' : `Keeping an eye out — ${plural(n, 'thing', 'things')} noticed so far`;
+  const subline = n === 0 ? "Nothing has come up yet. We're just quietly watching — no alerts."
+    : open === 0 ? 'We know what caused each one. Just quietly watching — no alerts yet.' : `Still looking into ${String(open)} of them. Just quietly watching — no alerts yet.`;
+  const fact = (label, value) => `${label}: ${value}`;
+  const patterns = health.patterns.length ? `<ul class="facts">${health.patterns.map(item => `<li>${escape([sanitizeForDisplay(item.summary),
+    fact('Status', healthStatus(item.status)), fact('Times seen', `${String(item.timesSeen)} times so far`)].join(CHROME.sep))}</li>`).join('')}</ul>`
+    : '<p class="note">Nothing to flag yet. We need to see a few more different problems before a real pattern shows up — totally normal this early.</p>';
+  const noticed = health.noticed.length ? `<ul class="facts">${health.noticed.map(item => `<li>${escape([`${sanitizeForDisplay(item.category, DASHBOARD_BOUNDS.labelChars)}: ${sanitizeForDisplay(item.summary)}`,
+    fact('Status', healthStatus(item.status)), fact('Times seen', item.count > 1 ? `${String(item.count)} times so far` : 'Just once'),
+    fact('First noticed', item.when || 'time not recorded')].join(CHROME.sep))}</li>`).join('')}</ul>`
+    : '<p class="note">Nothing yet — that just means nothing has come up since your agent started.</p>';
+  const watch = `<ul class="facts">${WATCH_ROWS.map(([key, label, description]) => `<li>${escape(`${health.watch[key] ? CHROME.stageDone : CHROME.stageFuture} ${label}${CHROME.sep}${
+    health.watch[key] ? 'on' : 'not seen yet'}${CHROME.sep}${description}`)}</li>`).join('')}</ul>`;
+  const totals = `<ul class="facts"><li>${escape(fact('Total noticed', String(health.totals.noticed)))}</li><li>${escape(fact('Ones we know the cause of', String(health.totals.known)))}</li></ul>`;
+  return `<p class="headline">${escape(headline)}</p><p class="note">${escape(subline)}</p><h2>Patterns</h2>${patterns}<h2>What has come up</h2>${noticed}<h2>What is watched</h2>${watch}<h2>In numbers</h2>${totals}`;
+}
+
 /** The read-only page's stop view: it never stops anything itself; it says how, and opens the chat where /stop is confirmed. */
 const readOnlyStop = (s, state) => s?.state === 'stopped'
   ? `<p class="headline">${state.kind === 'stale' ? 'Your agent was stopped when it last reported.' : 'Your agent is already stopped.'}</p>`
@@ -170,11 +265,14 @@ export function renderDashboard({ token, view, state, pending, readOnly = false 
   if (view === 'overview') {
     const headline = !s ? (state.kind === 'missing' ? 'Your agent has not shared its status yet.' : "Your agent's status could not be read.")
       : state.kind === 'stale' ? `Your agent has not updated this page for ${ago(state.age).replace(' ago', '')}.`
-        : `${s.state === 'running' ? 'Your agent is running.' : s.state === 'stopped' ? 'Your agent is stopped.' : 'This trial has ended.'} ${
+        : `${s.state === 'running' ? `Your agent is running${s.sessions.length ? `, working on ${plural(s.sessions.length, 'thing', 'things')} right now` : ''}.`
+          : s.state === 'stopped' ? 'Your agent is stopped.' : 'This trial has ended.'} ${
           waiting.length ? `${plural(waiting.length, 'request is', 'requests are')} waiting for you.` : 'Nothing is waiting for you.'}`;
     const calls = s?.allowance[0];
     const tiles = [tile(token, 'waiting', 'Waiting for you', String(waiting.length)),
-      ...(s ? [tile(token, 'messages', 'Messages today', String(s.counts.turnsToday)),
+      // Five tiles at most (floor F10): what is being worked on now takes the place a message count held, since from a phone
+      // the first question is what the agent is doing; the messages view stays one tap away in the menu.
+      ...(s ? [tile(token, 'sessions', 'Working now', s.sessions.length ? plural(s.sessions.length, 'thing', 'things') : 'Nothing right now'),
         tile(token, 'status', 'Status', s.state === 'running' ? `Running until ${s.until}` : s.state === 'stopped' ? 'Stopped' : 'Ended'),
         tile(token, 'allowance', 'Allowance used', calls ? `${calls.used} of ${calls.max} model calls` : 'Not recorded')]
         : [tile(token, 'status', 'Status', 'Not available')]),
@@ -185,6 +283,8 @@ export function renderDashboard({ token, view, state, pending, readOnly = false 
     : '<p class="note">Nothing is waiting for you.</p>')
     + (s && s.requests.some(item => !item.open) ? `<h2>Earlier requests</h2>${s.requests.map((item, index) => item.open ? ''
       : row({ href: dashboardPath(token, `requests/${index}`), title: item.title, meta: requestMeta(item) })).join('')}` : ''));
+  if (view === 'sessions') return page(token, 'sessions', VIEW.sessions, state, !s ? '' : sessionsBody(token, s));
+  if (view === 'health') return page(token, 'health', VIEW.health, state, !s ? '' : healthBody(s.health));
   if (view === 'messages') return page(token, 'messages', VIEW.messages, state, !s ? '' : (s.turns.length
     ? s.turns.map(turn => row({ href: dashboardPath(token, `messages/${turn.update}`),
       title: turn.message.length > 90 ? `${turn.message.slice(0, 89)}…` : turn.message || '(no text)',

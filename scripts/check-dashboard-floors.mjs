@@ -97,6 +97,8 @@ export function floorVerdicts({ pages, fetch, states, script = DASHBOARD_APP, st
     : [`${state} ${path}: this view does not say the status is ${state}`]),
   ...(visible(states.emptyWaiting ?? '').includes('Nothing is waiting for you.') ? [] : ['empty: the waiting list does not say it is empty']),
   ...(visible(states.emptyMessages ?? '').includes('No messages yet') ? [] : ['empty: the message list does not say it is empty']),
+  ...(visible(states.emptySessions ?? '').includes('Nothing is running right now') ? [] : ['empty: the working-now list does not say it is empty']),
+  ...(visible(states.emptyHealth ?? '').includes('all quiet so far') ? [] : ['empty: process health does not say it is quiet']),
   ...pages.flatMap(({ state, path, html }) => RAW_ERROR.test(visible(html)) ? [`${state} ${path}: raw error text`] : [])],
   'missing, unreadable, stale and empty states each say plainly what is going on');
   const defined = new Set([...style.matchAll(/\.([a-z][\w-]*)/gu)].map(match => match[1]));
@@ -173,8 +175,17 @@ export function fixtureSnapshots(recorded, now) {
     turns: recorded.turns.map((turn, index) => ({ update: turn.update, time: `2026-10-0${index + 1} 14:0${index}`, from: 'you',
       message: turn.message.slice(0, DASHBOARD_BOUNDS.textChars), reply: turn.reply.slice(0, DASHBOARD_BOUNDS.textChars),
       state: index === 1 ? 'Held: summary faithfulness: full-context review found loss' : 'Answered' })),
-    chat: 'example_agent_bot' };
-  return { full, empty: { ...full, status: recorded.statusNormal.text.split('\n'), counts: { turnsToday: 0, held: 0, waiting: 0 }, requests: [], turns: [] },
+    chat: 'example_agent_bot',
+    // Row 89: work in progress and process health, in the shapes the runner publishes (tests/preview/operator-dashboard.ts).
+    sessions: [{ id: 'turn-1', kind: 'conversation', label: recorded.turns[0].message.slice(0, 120), state: 'running', since: '2026-10-01 14:00',
+      machine: 'studio', activity: 'Status: reading the saved notes', update: recorded.turns[0].update },
+    { id: 'edge-1', kind: 'delegated', label: 'A background check of the saved notes', state: 'running', since: '2026-10-01 14:02', machine: 'studio', activity: null, update: null }],
+    health: { noticed: [{ category: 'A reply held for review', summary: '1 reply is held: summary faithfulness: full-context review found loss.', status: 'open', when: '2026-10-02 14:01', count: 1 },
+      { category: 'A message that could not be delivered', summary: '2 messages were refused by the chat service; none is sent again.', status: 'attributed', when: '2026-10-01 14:00', count: 2 }],
+    patterns: [{ summary: 'A message that could not be delivered keeps coming up: the same kind of problem 2 times.', timesSeen: 2, status: 'attributed' }],
+    watch: { recording: true, checking: true, reviewing: false }, totals: { noticed: 3, known: 2 } } };
+  const quiet = { noticed: [], patterns: [], watch: { recording: true, checking: false, reviewing: false }, totals: { noticed: 0, known: 0 } };
+  return { full, empty: { ...full, status: recorded.statusNormal.text.split('\n'), counts: { turnsToday: 0, held: 0, waiting: 0 }, requests: [], turns: [], sessions: [], health: quiet },
     stale: { ...full, asOf: now - 7 * 60_000 }, stopped: { ...full, state: 'stopped' },
     invalid: { ...full, requests: [{ ...full.requests[0], link: 'https://approvals.example.org.evil.test/pull/1/files' }] } };
 }
@@ -216,6 +227,7 @@ async function readOnlyChecks({ fixtures, recorded, secret, statusLine, shown })
   }
   const pageOf = (state, view) => pages.find(item => item.state === state && item.path === `/dashboard/${view}`)?.html;
   states.emptyWaiting = pageOf('empty', 'waiting'); states.emptyMessages = pageOf('empty', 'messages');
+  states.emptySessions = pageOf('empty', 'sessions'); states.emptyHealth = pageOf('empty', 'health');
   const signInPage = get('/dashboard', null);
   pages.push({ state: 'signed-out', path: '/dashboard', status: signInPage.status, html: signInPage.body, signIn: true });
   text = canonical(fixtures.full);
@@ -332,6 +344,7 @@ export async function runDashboardChecks({ fixture = resolve('tests/fixtures/das
     }
     const pageOf = (state, view) => pages.find(item => item.state === state && item.path === `/${token}/dashboard/${view}`)?.html;
     states.emptyWaiting = pageOf('empty', 'waiting'); states.emptyMessages = pageOf('empty', 'messages');
+  states.emptySessions = pageOf('empty', 'sessions'); states.emptyHealth = pageOf('empty', 'health');
     pages.push({ state: 'signed-out', path: `/${token}/dashboard`, status: 200, html: signInPage, signIn: true });
     // Links are followed against the full state, the one published from here on.
     publish(fixtures.full);

@@ -223,7 +223,9 @@ it('the page treats the snapshot as untrusted: closed shape, bounded, links only
     status: recorded.statusNormal.text.split('\n'), counts: { turnsToday: 1, held: 0, waiting: 1 },
     allowance: [{ label: 'Model calls', used: 1, max: 4 }], tokens: { input: 1, output: 1, unknownCalls: 0 },
     requests: [{ title: 'Extend this installation', state: 'Waiting for your answer', open: true, route: 'github-review', link: 'https://github.com/a/b/pull/1/files', sharedAccess: null }],
-    turns: [{ update: 1, time: '2026-10-03 14:00', from: 'you', message: '<script>alert(1)</script>', reply: null, state: 'Waiting for my answer' }], chat: null };
+    turns: [{ update: 1, time: '2026-10-03 14:00', from: 'you', message: '<script>alert(1)</script>', reply: null, state: 'Waiting for my answer' }], chat: null,
+    sessions: [{ id: 't1', kind: 'conversation', label: '<script>alert(2)</script>', state: 'running', since: '2026-10-03 14:00', machine: 'studio', activity: null, update: 1 }],
+    health: { noticed: [], patterns: [], watch: { recording: true, checking: false, reviewing: false }, totals: { noticed: 0, known: 0 } } };
   const write = (value: unknown, mode = 0o644) => { writeFileSync(join(outbox, DASHBOARD_FILE), JSON.stringify(value), { mode }); chmodSync(join(outbox, DASHBOARD_FILE), mode); };
   expect(readSnapshot(outbox, now)).toEqual({ kind: 'missing' });
   write(good);
@@ -235,7 +237,11 @@ it('the page treats the snapshot as untrusted: closed shape, bounded, links only
   for (const bad of [{ ...good, extra: 1 }, { ...good, requests: [{ ...good.requests[0], link: 'javascript:alert(1)' }] },
     { ...good, requests: [{ ...good.requests[0], link: 'https://github.com.evil.test/a/b/pull/1/files' }] },
     { ...good, requests: [{ ...good.requests[0], route: 'chat' }] }, { ...good, chat: 'x' },
-    { ...good, status: Array(DASHBOARD_BOUNDS.statusLines + 1).fill('line') }, { ...good, turns: [{ ...good.turns[0], from: 'operator' }] }]) {
+    { ...good, status: Array(DASHBOARD_BOUNDS.statusLines + 1).fill('line') }, { ...good, turns: [{ ...good.turns[0], from: 'operator' }] },
+    // Row 89: the work and health shapes are closed too: a finished state, a delegated row claiming a message, an unknown health status.
+    { ...good, sessions: [{ ...good.sessions[0], state: 'completed' }] }, { ...good, sessions: [{ ...good.sessions[0], kind: 'delegated' }] },
+    { ...good, health: { ...good.health, noticed: [{ category: 'x', summary: 'y', status: 'verified', when: '', count: 1 }] } },
+    { ...good, health: { ...good.health, extra: 1 } }]) {
     write(bad);
     expect(readSnapshot(outbox, now)).toEqual({ kind: 'invalid' });
   }
