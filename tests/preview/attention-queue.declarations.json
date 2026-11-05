@@ -12,7 +12,7 @@
         "preview.attention.acknowledgements.exhausted"
       ],
       "gate": {
-        "test": "ATTENTION-QUEUE-INSTALLED",
+        "test": "PREVIEW-ATTENTION-QUEUE-INSTALLED",
         "deadline": 1794096000000
       }
     },
