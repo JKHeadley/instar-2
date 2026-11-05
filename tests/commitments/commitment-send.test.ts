@@ -57,8 +57,9 @@ function world(start: { policy?: unknown } = {}, hostPorts: Partial<CommitmentHo
     close() { bound.stop(); journal.close(); } };
 }
 const openTopic = async (w: ReturnType<typeof world>, thread = TOPIC) => { w.worker.intake([update(1, thread)] as never); await w.worker.drain(); };
-const dueCheckIn = (w: ReturnType<typeof world>, topicId = TOPIC) => {
+const dueCheckIn = async (w: ReturnType<typeof world>, topicId = TOPIC) => {
   w.host.tick();
+  await w.host.settle();
   return w.host.tracker().record({ type: 'one-time-action', userRequest: 'the benchmark', agentResponse: 'ok', topicId, checkInAt: new Date(w.clock.now).toISOString() });
 };
 const commitmentSends = (w: ReturnType<typeof world>) => w.sends.filter(send => send.target.startsWith('commitment-send:'));
@@ -74,7 +75,7 @@ it('no grant: a due check-in refuses before transport and spends no attempt, ove
     const w = world({ policy });
     try {
       await openTopic(w);
-      const c = dueCheckIn(w);
+      const c = await dueCheckIn(w);
       await w.host.runCheckIns();
       // The doorway itself refuses too, in case the grant is withdrawn between the pass's check and the send.
       expect(await w.worker.commitmentDoorway(topic => admitCommitmentSend({ operations: OPERATIONS, effectPolicy: policy }, topic, w.clock.now)).send(TOPIC, 'text', { logicalSendId: 'x:0' }))
@@ -113,12 +114,12 @@ it('withdrawn grant: a later send refuses before transport, the row waits unspen
   const w = world({ policy: policyFor() });
   try {
     await openTopic(w);
-    const first = dueCheckIn(w);
+    const first = await dueCheckIn(w);
     await w.host.runCheckIns();
     expect(commitmentSends(w)).toHaveLength(1);
     expect(w.host.tracker().get(first.id)?.checkInReminderSentAt).toBeDefined();
     w.state.policy = { type: UNAVAILABLE_EFFECT_POLICY, reason: 'it does not decode' };
-    const second = dueCheckIn(w);
+    const second = await dueCheckIn(w);
     expect((await w.host.runCheckIns()).heldNoGrant).toBe(1);
     expect(commitmentSends(w)).toHaveLength(1);
     expect(w.host.tracker().get(second.id)?.checkInReminderAttempts ?? 0).toBe(0);
@@ -155,7 +156,7 @@ it('authorized check-in: signed intent bound to chat, topic and grant, then the 
   try {
     await openTopic(w);
     const before = w.journal.view.replies;
-    const c = dueCheckIn(w);
+    const c = await dueCheckIn(w);
     expect((await w.host.runCheckIns()).sent).toBe(1);
     const [send] = commitmentSends(w);
     expect(send).toMatchObject({ chat: genesis.chat, thread: TOPIC, target: commitmentSendTarget(0), disposition: 'result' });
@@ -201,7 +202,7 @@ it.each<[string, Transport]>([['an unknown outcome', { kind: 'unknown', reason: 
     try {
       await openTopic(w);
       w.state.transport.push(result);
-      const c = dueCheckIn(w);
+      const c = await dueCheckIn(w);
       expect((await w.host.runCheckIns()).unknown).toBe(1);
       const row = () => w.host.tracker().get(c.id)!;
       expect(row().checkInReminderSendStartedAt).toBeDefined();
@@ -243,7 +244,7 @@ it('a definite refusal sent nothing: it may try again under the same logical id,
   try {
     await openTopic(w);
     w.state.transport.push({ kind: 'refused', reason: 'chat not found' });
-    const c = dueCheckIn(w);
+    const c = await dueCheckIn(w);
     expect((await w.host.runCheckIns()).failed).toBe(1);
     expect(w.host.tracker().get(c.id)?.checkInReminderSendStartedAt).toBeUndefined();
     await w.host.runCheckIns();
@@ -259,7 +260,7 @@ it('restart: a crash after the intent and before any outcome never sends again; 
   const w = world({ policy: policyFor() });
   try {
     await openTopic(w);
-    const c = dueCheckIn(w);
+    const c = await dueCheckIn(w);
     // The process dies inside the transport: the intent is durable, nothing after it was written.
     w.state.transport.push('throw');
     const pass = w.host.runCheckIns();
@@ -277,7 +278,7 @@ it('restart: a crash after the receipt and before the row stamp settles delivere
   const w = world({ policy: policyFor() });
   try {
     await openTopic(w);
-    const c = dueCheckIn(w);
+    const c = await dueCheckIn(w);
     const doorway = w.worker.commitmentDoorway(() => ({ admitted: true, grant: 'commitment-send-grant' }));
     await w.host.tracker().mutate(c.id, row => ({ ...row, checkInReminderAttempts: 1, checkInReminderSendStartedAt: new Date(w.clock.now).toISOString() }));
     expect(await doorway.send(TOPIC, 'text', { logicalSendId: `${c.id}:check-in` })).toMatchObject({ delivered: true });
@@ -293,7 +294,7 @@ it('restart: a crash after the start and before any intent proves nothing reache
   const w = world({ policy: policyFor() });
   try {
     await openTopic(w);
-    const c = dueCheckIn(w);
+    const c = await dueCheckIn(w);
     await w.host.tracker().mutate(c.id, row => ({ ...row, checkInReminderAttempts: 1, checkInReminderSendStartedAt: new Date(w.clock.now).toISOString() }));
     w.reopen(); w.host.tick();
     await w.host.runCheckIns();
