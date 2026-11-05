@@ -169,6 +169,7 @@ export interface SessionWorkPort {
   readonly owner: 'part-eight';
   /** Whether another step may run at all: not stopped, nothing in flight, steps left. */
   available(): boolean;
+  /** Reconcile a recorded operation before dispatch; its existing result or uncertainty is never replayed. */
   run(request: SessionWorkRequest): Promise<SessionWorkOutcome>;
   /** Collect only an exactly closed result. Never launches, sends, or clears a result file. */
   collect(operation: string): SessionWorkOutcome | null;
@@ -316,6 +317,14 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
     const run = async (request: SessionWorkRequest): Promise<SessionWorkOutcome> => {
       ensure(safeName.test(request.operation), 'exact session work identity required');
       ensure(request.question.trim().length > 0 && request.authority.trim().length > 0, 'session work task and authority required');
+      ensure(!config.stopped() && !inFlight, 'session work unavailable: stopped or in flight');
+      // 1.x ResumeQueue.reconcileFromReapLog / ResumeQueueDrainer.validateReality:
+      // re-read stable work identity before respawning. The 2.0 durable edge is the
+      // queue record: collect its proven result, or retain uncertainty without another
+      // launch. Even a no-child refusal keeps its identity; the schedule may issue a
+      // distinct bounded step. No new queue, timer, or model decision is needed.
+      const recorded = collect(request.operation);
+      if (recorded !== null) return recorded;
       ensure(available(), 'session work unavailable: stopped, in flight, or at its step ceiling');
       inFlight = true;
       try {

@@ -9,7 +9,7 @@ import { afterEach, expect, it } from 'vitest';
 import { createSessionWorkPort, nestedSessionWorkEdge, SESSION_WORK_EXIT_TEST, sessionWorkEffect, sessionWorkPrompt } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error physical host is plain JavaScript
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
-import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkIO } from '../../src/assembly/production-session-work.js';
+import type { SessionWorkConfig, SessionWorkEdge, SessionWorkEdgeClose, SessionWorkIO } from '../../src/assembly/production-session-work.js';
 import { createProductionSessionDriver, type SessionIO, type SessionJournal } from '../../src/assembly/production-session-driver.js';
 import type { NativeHarnessDriverPort } from '../../src/assembly/harness.js';
 import { openPreviewJournal, validateSessionWorkRow } from '../preview/journal.js';
@@ -68,7 +68,7 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
     },
     stop: () => { stops += 1; return options.stopFails ? { kind: 'Refused' } as never : f.success(['instar20-stopped']); },
   };
-  const port = value(createSessionWorkPort({
+  const config: SessionWorkConfig = {
     createDriver: resolveIntake => { (driver as unknown as { resolve: typeof resolveIntake }).resolve = resolveIntake; return driver; },
     io, context: f.c, now: () => clock, stopped: () => stopped,
     resources: { admit: async () => options.admit === 'refuse' ? null : {
@@ -79,11 +79,13 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
     transport: 'tmux session on this machine', workingScope: scope, resultDirectory: scope,
     artifact: 'doorway:synthetic', incarnation: 'incarnation-1',
     deadlineMs: options.deadlineMs ?? 60_000, pollMs: 500,
-    maxResultBytes: options.maxResultBytes ?? 65536, maxSteps: options.maxSteps ?? 2, maxCalls: options.maxCalls ?? 24 }));
+    maxResultBytes: options.maxResultBytes ?? 65536, maxSteps: options.maxSteps ?? 2, maxCalls: options.maxCalls ?? 24 };
+  const reopen = () => value(createSessionWorkPort(config));
+  const port = reopen();
   const request = (operation = 'obligation-commitment-1-2') => ({ operation,
     question: 'Do the one due step.', context: '{"obligation":{"kind":"request"}}',
     authority: 'a test-only grant naming one bounded step' });
-  return { port, rows, scope, io, request, driver, prepared, edges, admissionsClosed: () => admissionsClosed,
+  return { port, reopen, rows, scope, io, request, driver, prepared, edges, admissionsClosed: () => admissionsClosed,
     resultPath: (operation = 'obligation-commitment-1-2') =>
       join(scope, `work-${createHash('sha256').update(operation).digest('hex').slice(0, 32)}.json`),
     /** The child's result, written when its turn closes. `null` means the child wrote nothing. */
@@ -163,6 +165,83 @@ it('collects the recorded work result after exact child closure without another 
   expect(f.counts()).toEqual(before);
 });
 
+it('resumes a recorded operation to its result after host loss without launching or clearing it again', async () => {
+  const f = fixture({ maxSteps: 1 });
+  f.answers(recordedWork.workOutput);
+  await f.port.run(f.request());
+  const before = f.counts(), rows = [...f.rows], delivered = [...f.delivered];
+  const restored = f.reopen(); // Same durable history, fresh host-local counters.
+  for (const port of [restored, restored, f.port]) {
+    expect(await port.run(f.request())).toMatchObject({ state: 'complete', text: recordedWork.workOutput,
+      detail: 'collected the durably closed child result' });
+  }
+  expect(restored.stepsUsed()).toBe(0);
+  expect(f.counts()).toEqual(before);
+  expect(f.rows).toEqual(rows);
+  expect(f.delivered).toEqual(delivered);
+  expect(readFileSync(f.resultPath(), 'utf8')).toBe(recordedWork.workOutput);
+});
+
+it.each(['open', 'uncertain', 'foreign', 'unconfirmed', 'changed-result', 'duplicate-close'] as const)(
+  'retains %s recorded work at the run boundary without replaying uncertain effects', async kind => {
+    const f = fixture();
+    f.answers(recordedWork.workOutput);
+    await f.port.run(f.request());
+    if (kind === 'open') f.rows.pop();
+    if (kind === 'uncertain') f.rows[1] = { ...f.rows[1] as SessionWorkEdgeClose, state: 'uncertain' };
+    if (kind === 'foreign') f.rows[0] = { ...f.rows[0] as SessionWorkEdge, owner: 'another-machine' };
+    if (kind === 'unconfirmed') {
+      const { cleanupConfirmed: _cleanup, ...close } = f.rows[1] as SessionWorkEdgeClose;
+      f.rows[1] = close;
+    }
+    if (kind === 'changed-result') f.writeNow(recordedWork.workOutput + ' ');
+    if (kind === 'duplicate-close') f.rows.push(f.rows[1]!);
+    const before = f.counts(), rows = [...f.rows], text = readFileSync(f.resultPath(), 'utf8');
+    const restored = f.reopen();
+    expect(await restored.run(f.request())).toMatchObject({ state: 'uncertain' });
+    expect(restored.stepsUsed()).toBe(0);
+    expect(f.counts()).toEqual(before);
+    expect(f.rows).toEqual(rows);
+    expect(readFileSync(f.resultPath(), 'utf8')).toBe(text);
+  });
+
+it('refuses recovery while stopped or busy and preserves the saved result', async () => {
+  const f = fixture();
+  f.answers(recordedWork.workOutput);
+  await f.port.run(f.request());
+  f.stop();
+  await expect(f.reopen().run(f.request())).rejects.toThrow(/stopped/u);
+  expect(readFileSync(f.resultPath(), 'utf8')).toBe(recordedWork.workOutput);
+  expect(f.counts().launches).toBe(1);
+
+  const busy = fixture();
+  const prepare = busy.io.prepareAdmission;
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  busy.io.prepareAdmission = async (claim, edge) => { prepare(claim, edge); await pending; };
+  busy.answers(recordedWork.workOutput);
+  const first = busy.port.run(busy.request());
+  try {
+    await expect(busy.port.run(busy.request())).rejects.toThrow(/in flight/u);
+  } finally { release(); }
+  expect(await first).toMatchObject({ state: 'complete' });
+  expect(busy.counts().launches).toBe(1);
+});
+
+it('keeps a proven no-child refusal under its original identity and permits a distinct bounded step', async () => {
+  const f = fixture();
+  const prepare = f.io.prepareAdmission;
+  f.io.prepareAdmission = () => { throw Error('admission unavailable'); };
+  expect(await f.port.run(f.request())).toMatchObject({ state: 'failed' });
+  f.io.prepareAdmission = prepare;
+  const restored = f.reopen();
+  expect(await restored.run(f.request())).toMatchObject({ state: 'failed', child: null });
+  expect(f.counts().launches).toBe(0);
+  f.answers(recordedWork.workOutput, 'next-bounded-step');
+  expect(await restored.run(f.request('next-bounded-step'))).toMatchObject({ state: 'complete' });
+  expect(f.counts().launches).toBe(1);
+});
+
 it('never treats recorded conversation retirement, foreign ownership or unconfirmed cleanup as permission to replay work', async () => {
   const f = fixture({ admit: 'unreleased' });
   f.answers('{"outcome":"continue","note":"one step remains"}');
@@ -221,11 +300,14 @@ it('clears a leftover result first, so a stale file is never read as this step\'
   f.answers('{"outcome":"report","report":"from an earlier step"}');
   expect((await f.port.run(f.request())).state).toBe('complete');
   expect(f.io.readResult(f.resultPath(), 65536)).not.toBe(null);
-  // The next step on the same operation starts with the destination cleared; this child writes
-  // nothing, so the step fails rather than returning the earlier step's answer again.
-  f.answers(null);
-  expect(await f.port.run(f.request())).toMatchObject({ state: 'failed' });
-  expect(f.io.readResult(f.resultPath(), 65536)).toBe(null);
+  // A distinct step has no recorded result. Even if old bytes are planted at its
+  // destination, they cannot count as that step's answer.
+  const next = 'obligation-commitment-1-3';
+  f.writeNow(readFileSync(f.resultPath(), 'utf8'), next);
+  f.answers(null, next);
+  expect(await f.port.run(f.request(next))).toMatchObject({ state: 'failed' });
+  expect(f.io.readResult(f.resultPath(next), 65536)).toBe(null);
+  expect(f.port.collect(f.request().operation)).toMatchObject({ state: 'complete' });
 });
 it('a result present before the step is cleared, not read', async () => {
   const f = fixture();
@@ -692,7 +774,7 @@ it('replays recorded summary, Jev, review and reply bytes without treating uncer
     const f = fixture();
     f.answers(sample.output);
     const outcome = await f.port.run(f.request());
-    const recovered = f.port.collect(f.request().operation)!;
+    const recovered = await f.reopen().run(f.request());
     if (typeof sample.output === 'string' && sample.output.trim()) {
       // Complete here means transport of bytes only, not acceptance of the model's judgment.
       expect(recovered, sample.id).toMatchObject({ state: 'complete', text: sample.output });
