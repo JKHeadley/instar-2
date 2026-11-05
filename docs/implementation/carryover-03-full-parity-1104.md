@@ -86,3 +86,49 @@ Remaining after round 2 (not READY): shipped-host wiring of the `notice`, `audit
 ports; harness-adapter transcript observation for the stall and error-loop detectors and the
 30-minute context-wall ceiling on the production compact path; a complete proof from every
 lost-worker origin to dirty-worktree recovery; live channel, framework and host proof (desk-owned).
+
+## Round 3 (fix/carryover-03-full-parity-r2-1104, continued): production wiring
+
+Base b15a3184. This round binds the remaining 1.x behavior to the shipped path. No 1.x line is
+newly copied; the carried modules are unchanged. All new lines are 2.0 wiring and tests.
+
+| File | Change | Lines |
+|---|---|---|
+| `scripts/production-session-io.mjs` | `readTranscriptTail`: bounded tail read, partial first line skipped, timestamps to epoch ms, Claude Code only, O_NOFOLLOW regular file | +45 |
+| `src/assembly/contracts.ts` | `HarnessTranscriptObservation`; optional `observeTranscript` on the continuing adapter contract | +14 |
+| `src/assembly/production-session-driver.ts` | `SessionIO.readTranscriptTail?`; `observeTranscript(identity)` resolving the Stop-hook session id, else the launch id | +17/−1 |
+| `src/assembly/production-session-work.ts` | driver type carries `observeTranscript?` | +5/−1 |
+| `src/assembly/conversation-harness-adapter.ts` | passthrough | +1 |
+| `src/assembly/production-conversation-session.ts` | `SessionRecovery` in the port: transcript observation at the 30-second cadence, detectors keyed per conversation, kill-to-queued-revival behind the shared `revivalFloor`, child-work veto, exhausted/cooldown notice, context-wall latch bound to compact-then-replace, `workerRecoveryState` durable, `revivalStatus` on the port surface | +170/−23 |
+| `src/assembly/conversation-topics.ts` | `revivalStatus()` pull lines from the durable topic records | +9 |
+| `tests/preview/journal-agent.mjs` | `revivalAttention` (sidecar + audit log), `revivalSanityCheck` over `jev-revival-sanity`, `notice`/`audit`/`sanityCheck` on the topic config, `observeTranscript` on the driver wrapper, revival notices in `replyNotices`, revival status in the status pull | +23 |
+| `tests/preview/revival-attention.mjs` | the attention and audit binding | 63 (new) |
+| `tests/preview/revival-sanity.ts` | question and verdict interpreter | 21 (new) |
+| `tests/preview/model-call-boundary.ts` | registers `jev-revival-sanity` (route typesafe-jev, `record-verdict` only, signal) | +2 |
+| `tests/preview/self-state.ts` | `appendLine` shared by the run log and the audit log | +4/−1 |
+| `tests/assembly/production-conversation-recovery.test.ts` | twelve can-fail boundary cases | 268 (new) |
+| `tests/preview/journal-conversation-session.test.ts` | five live-path wiring cases (source extraction and a consumer-level stalled transcript) | +105 |
+| `tests/assembly/production-session-driver.test.ts` | `observeTranscript` case | +26 |
+| `tests/preview/production-session-io-transcript.test.ts`, `tests/preview/revival-attention.test.ts` | reader, sidecar, audit and verdict cases | 59 + 79 (new) |
+
+| Imported behavior | Round-3 status | Evidence |
+|---|---|---|
+| Aggregated notices | Bound: the host's one reply-notice surface carries each revival notice once in its own topic's next answer; the sidecar is bounded (64) and durable; an identical open line is one notice, a later occurrence after delivery is a new one; lines are scrubbed. | `revival-attention.test.ts`; `journal-conversation-session.test.ts` "binds the revival notice, audit and sanity-check ports" |
+| Audit | Bound: scrubbed JSON lines in `revival-audit.jsonl` (topic, clock, event); a failed append changes nothing. | `revival-attention.test.ts` audit case |
+| Tier-1 sanity check | Bound: `jev-revival-sanity` registered (Rule 57), carried prompt as the judged state, one `noul` question, verdict audited by the drainer, never a gate; a malformed or unavailable answer is shed. Jev's two-second bound lies inside the drainer's five-second deadline. | "revival sanity check is the registered jev-revival-sanity judgment"; `model-call-boundary.test.ts` |
+| Stall / error-loop detectors in production | Bound: adapter transcript tail every 30 s while the turn is open; stall (per-tool thresholds) and error loop (3 identical failures) retire the worker behind the exit path's floor and queue the revival; child work vetoes; the 3-attempt/15-minute ladder keyed per conversation, durable across restart; exhausted ladder tells the operator once. Without a transcript observer no detector runs. | `production-conversation-recovery.test.ts` stall, floor, loop, veto, ladder, no-observer, cadence cases; consumer-level "stalled transcript on the shipped consumer" |
+| Crash detector | The crash origin in production is the adapter's exact exit observation (drainer ladder); the pure detector is wired and never reached while the worker is alive. | existing exit-path cases |
+| Context-wall latch and ceiling | Bound to compact-then-replace: first observation and transcript growth defer with zero attempts; 30-minute ceiling forces action; compaction in place; a recorded failed compaction admits the grounded replacement; a refused or uncertain compaction settles uncertain; an exhausted ladder settles uncertain instead of looping. The 2.0 one-recovery-per-input floor stays as the tighter brake. | "defers compaction on its first observation", "keeps growing … 30-minute ceiling", "failed compaction kills", "refused compaction", "after the ladder is exhausted" |
+| Status | `revivalStatus()` on the topics port, in the host status pull beside idle cleanup. | "revival status pull line" |
+| Lost-worker origins to dirty-worktree recovery | Exit, stall, error-loop and context-wall origins all enter the one queue; worktree recovery (`worktree-recovery.ts`, `onWorktreeRevival`) remains a separate owner. | — |
+
+Not carried in this round, by the same rules as round 2: the free-text recovery prompt is not
+injected into the harness (the driver's grounded continuation carries the pending input; the
+prompt is audited only); the in-flight reply port answers null because the worker never sends
+to the operator itself (Rules 42/63). The check cadence (30 seconds) is this port's tick
+choice, not a 1.x threshold; the detector thresholds, ladder, cooldown, ceiling and deadlines
+are the source values.
+
+Remaining after round 3: a complete proof from every lost-worker origin to dirty-worktree
+recovery (the worktree owner is separate); register regeneration for the trailing source pins
+(desk-owned); live channel, framework and host proof (desk-owned).

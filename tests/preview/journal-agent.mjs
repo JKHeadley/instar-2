@@ -142,6 +142,9 @@ import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/p
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 import { stepQuestions } from './step-check.js';
+import { createRevivalAttention } from './revival-attention.mjs';
+import { interpretRevivalSanity, revivalSanityQuestions } from './revival-sanity.js';
+import { buildResumeSanityPrompt } from '../../src/assembly/revival-drainer.js';
 import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, retroAnswerBudget, standingGrantCandidates } from './retrospective.js';
 
 
@@ -2013,6 +2016,11 @@ async function main() {
       }
     };
     // model-call-boundary:end
+    // Carryover row 03: the observe-only Tier-1 resume sanity check (1.x DP_RESUME_SANITY_CHECK) is the registered
+    // jev-revival-sanity judgment: the drainer audits its verdict and never gates a revival on it. The drainer's
+    // five-second deadline bounds the call from outside; Jev's own two-second bound lies inside it.
+    const revivalSanityCheck = async entry => interpretRevivalSanity(
+      (await callJev('jev-revival-sanity', buildResumeSanityPrompt(entry), revivalSanityQuestions, 2000, entry.sessionName)).value);
     /** A refused review verdict's defect, kept only until that review's one format re-ask reads it (content-free protocol text). */
     const reviewDefects = new Map();
     const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt, toolTurn, selectedLogin) => {
@@ -2115,6 +2123,7 @@ async function main() {
       ...(loginPool ? [loginPool.status()] : []),
       ...(sessionLoginObservations.size ? [sessionLoginStatus([...sessionLoginObservations.values()], wallNow())] : []),
       ...(sessionWork?.port.idleCleanupStatus?.() ?? []),
+      ...(sessionWork?.port.revivalStatus?.() ?? []),
       ...(harness ? [harnessStatusLine(harness.state)] : identityRefusal !== null ? [harnessStatusLine({ ready: false, reason: identityRefusal })] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options), readOnly = readOnlyDashboardOf(options);
@@ -2169,6 +2178,10 @@ async function main() {
       }, after: (ms, run) => { const timer = setTimeout(run, ms); timer.unref(); return () => clearTimeout(timer); } });
     const workingActivities = createWorkingActivities({ now: wallNow, read: claim => readWorkingAdmission(
       harness ? harnessSessionLayout(root).admission : join(root, 'session-work-state', 'admission'), claim) });
+    // Carryover row 03: the carried revival queue's ONE aggregated attention surface and its audit log, host-owned
+    // and durable: a notice rides its topic's next answer once (reply-notice keys); audit lines are appended scrubbed.
+    const revivalAttention = createRevivalAttention({ path: join(root, 'revival-notices.json'),
+      auditPath: join(root, 'revival-audit.jsonl'), now: wallNow, scrub: text => redact(text).text });
     worker = createJournalWorker(journal, { ...(conversationSession ? { topicConcurrency: sessionLimits.maxSessions } : {}), ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, ...(conversationSession ? { workingActivity: id => workingActivities.current(id) } : {}), elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       groupDisclosure: verifiedActionAudience,
       presenceNotes: sentinelFamilies.has('presence'),
@@ -2221,6 +2234,8 @@ async function main() {
         const noticeTurn = turn === undefined ? undefined : journal.view.turns.get(turn);
         if (noticeTurn) notices.push(...reapNotices(journal.view.reapHistory, journal.view.order, turn,
           noticeTurn.thread === undefined ? 'main' : String(noticeTurn.thread)));
+        // Carryover row 03: a lost-worker revival notice rides this topic's next answer once (Rules 52/87/89).
+        if (noticeTurn) notices.push(...revivalAttention.notices(noticeTurn.thread === undefined ? 'main' : String(noticeTurn.thread), journal.view.order, turn));
         return notices;
       },
       // Rules 9, 96, 114: this runner's current work and the other owned runners beside it, read at each operator turn.
@@ -2744,6 +2759,12 @@ async function main() {
           currentActionFacts: async operation => JSON.stringify(currentActionFacts(journal.view, wallNow(),
             journal.view.genesis.forum !== true || await verifiedActionAudience(),
             String(journal.view.turns.get(operation)?.thread ?? 'main'), timeZoneOf(options))),
+          // Carryover row 03: the revival queue's attention, audit and observe-only Tier-1 ports (1.x
+          // raiseAggregated, audit, tier1Check) bound to this host's one attention surface, its audit log and
+          // its registered Jev judgment; the drainer's durable markers decide when each is raised.
+          notice: (kind, detail) => revivalAttention.raise(String(topic ?? 'main'), kind, detail),
+          audit: event => revivalAttention.audit(String(topic ?? 'main'), event),
+          sanityCheck: entry => revivalSanityCheck(entry),
           ...(handoff ? { prepareTurn: handoff.prepareTurn } : {}) } : {}),
         createDriver: resolveIntake => {
           const create = () => createProductionSessionDriver(driverConfiguration(resolveIntake));
@@ -2753,6 +2774,8 @@ async function main() {
           return { owner: driver.owner, launch: input => { handoff?.bindClaim(input.claim); driver = create(); const result = driver.launch(input);
               if (result.kind === 'Success') handoff?.launched(); return result; },
             continuationReady: identity => driver.continuationReady(identity),
+            // Carryover row 03: the live worker's transcript tail for the carried stall and error-loop detectors.
+            observeTranscript: identity => driver.observeTranscript(identity),
             deliver: input => driver.deliver(input), recoverContext: (identity, pending) => driver.recoverContext(identity, pending), observe: input => {
               const observed = driver.observe(input);
               if (conversationSession) workingActivities.observeSession(

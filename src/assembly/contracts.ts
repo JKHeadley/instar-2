@@ -254,6 +254,16 @@ export type HarnessNormalizedObservation =
   | Readonly<{ kind: 'reply'; delivery: string; text: string; digest: string }>
   | Readonly<{ kind: 'turn-end'; delivery: string; state: 'completed' | 'no-reply' | 'uncertain' }>
   | Readonly<{ kind: 'exit' | 'paused'; evidence: string; reason?: string; safetyDeadline?: number }>;
+/** One parsed transcript entry and the tail that carries it (1.x stall-detector/crash-detector tail reads);
+ * timestamps are already epoch milliseconds, converted once by the adapter that owns the file. */
+export interface HarnessTranscriptEntry {
+  readonly type: string; readonly timestampMs?: number;
+  readonly message?: Readonly<{ stop_reason?: string; content?: unknown }>;
+}
+export interface HarnessTranscriptObservation {
+  readonly sessionUuid: string; readonly path: string; readonly size: number; readonly mtime: number;
+  readonly entries: readonly HarnessTranscriptEntry[];
+}
 interface ContinuingHarnessAdapterPort {
   describe(): Readonly<{ version: 2; subsequentInput: true; output: 'reply-and-turn-end'; resume: boolean }>;
   launch(input: Readonly<{ operation: string; claim: string; artifact: string; incarnation: string; workingScope: string; restore?: { operation: string; digest: string; deadline: number } }>): Promise<HarnessWorkerHandle>;
@@ -262,6 +272,10 @@ interface ContinuingHarnessAdapterPort {
     observations: readonly HarnessNormalizedObservation[]; cursor: number; complete: boolean }>>;
   /** Fresh affirmative idle fingerprint; null or an absent observer keeps the worker. */
   observeIdle?(input: HarnessWorkerHandle): Promise<string | null>;
+  /** Carryover row 03: the parsed tail of the worker's own transcript with its size and mtime receipt, for the
+   * pure stall, crash and error-loop detectors and the context-wall transcript-growth latch. Null or an absent
+   * observer means no transcript is known: the host runs no detector and keeps the worker. Observation only. */
+  observeTranscript?(input: HarnessWorkerHandle): Promise<HarnessTranscriptObservation | null>;
   control(input: HarnessWorkerHandle & Readonly<{ idleEvidence?: string; action: 'interrupt' | 'close' | 'compact'; authority: string; reason: string; delivery?: HarnessInputDelivery; deadline?: number }>): Promise<Readonly<{
     state: 'closed' | 'refused' | 'uncertain' | 'resumed' | 'replace-required'; evidence: string }>>;
 }

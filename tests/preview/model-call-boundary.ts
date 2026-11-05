@@ -41,6 +41,8 @@ export const LIVE_JUDGMENTS = Object.freeze({
     invalid: 'undecided (unsure band, unavailable, or evidence past its bound): escalates once to summary-review, whose pass alone accepts; when that review cannot be admitted (no route, stopped, call cap) or does not pass, the summary is not recorded; an unanswered Jev call keeps its reserved charge UNKNOWN' },
   retrospective: { route: 'preview-subscription', actions: ['record-review', 'discard'], default: 'discard', authority: 'signal', invalid: 'pass failed: no grade, finding or candidate is recorded and every case stays owed' },
   'jev-step-check': { route: 'typesafe-jev', actions: ['record-verdict'], default: 'record-verdict', authority: 'signal', invalid: 'unavailable verdict recorded; observation only, no effect' },
+  'jev-revival-sanity': { route: 'typesafe-jev', actions: ['record-verdict'], default: 'record-verdict', authority: 'signal',
+    invalid: 'unavailable, timed out or malformed: the revival drainer records the check as shed and the revival proceeds on its own gates; observation only, no effect' },
 } as const);
 export type LiveJudgment = keyof typeof LIVE_JUDGMENTS;
 

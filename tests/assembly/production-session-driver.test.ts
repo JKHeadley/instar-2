@@ -1551,3 +1551,29 @@ it('replays recorded summary, uncertain, Jev, review and empty reply shapes besi
     expect(f.sends).toBe(sends);
   }
 });
+
+it('observes the transcript tail by the recorded session id, preferring the Stop hook id; null without a reader or for codex', () => {
+  const f = fixture('claude-code'), identity = f.launch();
+  expect(value(f.driver.observeTranscript(identity))).toBeNull();
+  const reads: string[][] = [];
+  Object.assign(f.config.io, { readTranscriptTail: (framework: string, id: string, cwd: string, configHome: string) => {
+    reads.push([framework, id, cwd, configHome]);
+    return { sessionUuid: id, path: `/t/${id}.jsonl`, size: 1, mtime: 2, entries: [{ type: 'user' }] };
+  } });
+  const launched = f.journal.sessions[0]!.resumeId!;
+  expect(launched).toMatch(/^[0-9a-f-]{36}$/u);
+  expect(value(f.driver.observeTranscript(identity))).toMatchObject({ sessionUuid: launched, entries: [{ type: 'user' }], size: 1, mtime: 2 });
+  expect(reads[0]).toEqual(['claude-code', launched, '/work', f.homes.a]);
+  // A recorded Stop hook session id names the transcript the worker actually writes.
+  f.deliver(identity); f.hook(1000);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('output-observed');
+  expect(value(f.driver.observeTranscript(identity))?.sessionUuid).toBe('12345678-1234-1234-1234-123456789abc');
+  expect(reads.at(-1)?.[1]).toBe('12345678-1234-1234-1234-123456789abc');
+  // An unreadable transcript is unknown, never an empty tail.
+  Object.assign(f.config.io, { readTranscriptTail: () => null });
+  expect(value(f.driver.observeTranscript(identity))).toBeNull();
+  expect(() => value(f.driver.observeTranscript('instar20-000000000000000000000000:1:1'))).toThrow();
+  const codex = fixture('codex-cli'), other = codex.launch();
+  Object.assign(codex.config.io, { readTranscriptTail: () => ({ sessionUuid: 'x', path: '/x', size: 0, mtime: 0, entries: [] }) });
+  expect(value(codex.driver.observeTranscript(other))).toBeNull();
+});

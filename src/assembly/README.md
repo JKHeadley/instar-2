@@ -165,6 +165,27 @@ over observation ports; the stall, crash and error-loop detectors judge adapter-
 transcript entries. Transcript rewind and the 7-second in-flight reply poll are not
 carried: the host's send receipts answer exactly, and a rewound action is never replayed.
 
+In production the conversation port runs that ladder itself (`workerRecoveryState` in the
+same host record). The continuing adapter contract gained an optional `observeTranscript`:
+the production driver resolves the live worker's own transcript (the Stop hook's recorded
+session id, else the launch id) and the session IO reads its bounded tail (partial first
+line skipped, timestamps in epoch milliseconds; Claude Code only, null otherwise). While a
+turn stays open the port observes that tail every 30 seconds and judges it with the pure
+stall and error-loop detectors, keyed per conversation because a replacement worker has a
+new transcript. A detected loss is this port's exact retirement, taken only after the
+exit path's no-replay floor was read from the still-open admission, and its respawn is
+the same queued revival through the drainer; open child work vetoes the kill (the 1.x
+P1/P2 cross-check); an exhausted or cooling ladder keeps the worker and tells the operator
+once. The crash origin is the adapter's exact exit observation. At a context wall the
+carried latch decides the tick: the first observation and a still-growing transcript
+defer with zero attempts spent, the 30-minute ceiling forces action, compaction runs in
+place first, and only a recorded failed compaction admits the grounded replacement; a
+refused or uncertain compaction retains the input as uncertain, as before. The shipped
+host binds the queue's attention port to its one reply-notice surface (a bounded durable
+sidecar, one line in the topic's next answer, keys consumed by the existing funnel), the
+audit port to a scrubbed append-only log, and the Tier-1 check to the registered
+observe-only `jev-revival-sanity` judgment.
+
 ## Bounded grounding packet (R5, `production-context-sampler.ts`)
 
 Evidence tier: offline ahead unit. It is not exported from the barrel or wired into

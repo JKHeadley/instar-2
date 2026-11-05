@@ -3,7 +3,7 @@ import { createSessionConversationAdapter } from './conversation-harness-adapter
 import type { SessionProtocolIO } from '../harness-adapters/index.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { boundary, ensure, take } from './boundary.js';
-import type { AssemblyDecodeContext, HarnessObservation } from './contracts.js';
+import type { AssemblyDecodeContext, HarnessObservation, HarnessTranscriptObservation } from './contracts.js';
 import type { NativeHarnessDriverPort } from './harness.js';
 import type { Result } from '../index.js';
 import type { SubscriptionToolTurn } from './production-provider.js';
@@ -55,6 +55,9 @@ export interface SessionIO {
   readTerminal?(name: string): Readonly<{ code: number | null; signal: string | null;
     workerExitClaim: Readonly<{ workerPid: number; code: number | null; signal: string | null }> | null }> | null;
   transcriptExists(framework: SessionFramework, id: string, cwd: string, configHome: string): boolean;
+  /** Carryover row 03: the parsed tail of a session transcript (bounded bytes, partial first line skipped,
+   * timestamps in epoch ms) or null when none is readable. Absent on older IO: no detector runs. */
+  readTranscriptTail?(framework: SessionFramework, id: string, cwd: string, configHome: string, maxBytes?: number): HarnessTranscriptObservation | null;
   armDeadline(name: string, identity: string, deadline: number): void;
 }
 /** Adapter-owned observations, never terminal content or authority to interrupt a worker. */
@@ -547,6 +550,18 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     owner: 'part-eight' as const,
     continuationReady,
     observeIdle: (identity: string) => lockedBoundary('ProductionSessionIdle', identity, () => idleFingerprint(identity)),
+    /** Carryover row 03: the live worker's own transcript tail for the pure detectors. The transcript identity
+     * is the Stop hook's recorded session id when one was received, else the launch's session id. Null when
+     * this framework keeps no such transcript, the IO has no reader or the file is not readable. */
+    observeTranscript(identity: string): Result<HarnessTranscriptObservation | null> {
+      return lockedBoundary('ProductionSessionTranscript', identity, () => {
+        if (!config.io.readTranscriptTail || config.framework !== 'claude-code') return null;
+        const session = loadSession(identity);
+        const id = config.io.load().resumes[session.claim] ?? session.resumeId;
+        if (!id || !uuid.test(id)) return null;
+        return config.io.readTranscriptTail(config.framework, id, config.cwd, config.configHome);
+      });
+    },
     launch(input: { operation: string; claim: string; artifact: string; incarnation: string; workingScope: string; handles: readonly string[]; restore?: { operation: string; digest: string; deadline: number } }) {
       return boundary('ProductionSessionLaunch', input, config.context, () => {
         const identity = config.io.exclusive(() => {

@@ -255,6 +255,51 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
       } catch { return 'unavailable'; }
       finally { if (temporary) try { unlinkSync(temporary); } catch { /* Retain a failed temporary copy; never remove a destination. */ } }
     },
+    /**
+     * Carryover row 03: the parsed tail of a Claude Code session transcript for the pure stall,
+     * crash and error-loop detectors (1.x stall-detector/crash-detector tail reads: the last
+     * bytes of the JSONL with a partial first line skipped; timestamps converted here, once, to
+     * epoch milliseconds). Null when the framework keeps no such transcript, the id is not a
+     * session uuid, or the file is absent, a symlink, not regular or unreadable: an unreadable
+     * transcript is unknown, never an empty one. The entries are observation input only.
+     */
+    readTranscriptTail(framework, id, project, directory, maxBytes = 128 * 1024) {
+      if (framework !== 'claude-code') return null;
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
+      if (!Number.isSafeInteger(maxBytes) || maxBytes < 1024 || maxBytes > 4 * 1024 * 1024) return null;
+      const path = join(directory, 'projects', project.replace(/[\/.]/g, '-'), `${id}.jsonl`);
+      let fd;
+      try { fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); } catch { return null; }
+      try {
+        const info = fstatSync(fd);
+        if (!info.isFile()) return null;
+        const start = Math.max(0, info.size - maxBytes);
+        const buffer = Buffer.alloc(Math.min(info.size, maxBytes));
+        let read = 0;
+        while (read < buffer.length) {
+          const count = readSync(fd, buffer, read, buffer.length - read, start + read);
+          if (count === 0) break;
+          read += count;
+        }
+        let text = buffer.subarray(0, read).toString('utf8');
+        // A tail that starts mid-line drops that partial line; the first complete line follows it.
+        if (start > 0) { const newline = text.indexOf('\n'); text = newline < 0 ? '' : text.slice(newline + 1); }
+        const entries = [];
+        for (const line of text.split('\n')) {
+          if (!line.trim()) continue;
+          let row;
+          try { row = JSON.parse(line); } catch { continue; }
+          if (!row || typeof row !== 'object' || typeof row.type !== 'string') continue;
+          const at = typeof row.timestamp === 'string' ? Date.parse(row.timestamp) : NaN;
+          const message = row.message && typeof row.message === 'object'
+            ? { ...(typeof row.message.stop_reason === 'string' ? { stop_reason: row.message.stop_reason } : {}),
+              ...(row.message.content !== undefined ? { content: row.message.content } : {}) } : undefined;
+          entries.push({ type: row.type, ...(Number.isFinite(at) ? { timestampMs: at } : {}), ...(message ? { message } : {}) });
+        }
+        return { sessionUuid: id, entries, path, size: info.size, mtime: info.mtimeMs };
+      } catch { return null; }
+      finally { closeSync(fd); }
+    },
     transcriptExists(framework, id, project, directory) {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return false;
       if (framework === 'claude-code') {

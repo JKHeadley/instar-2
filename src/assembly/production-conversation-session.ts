@@ -9,6 +9,11 @@ import { ResumeQueue } from './revival-queue.js';
 import type { ResumeQueueConfig, ResumeQueueEntry, RevivalQueueState } from './revival-queue.js';
 import { ResumeQueueDrainer } from './revival-drainer.js';
 import type { ResumeQueueDrainerConfig, RevivalDrainerBrakes } from './revival-drainer.js';
+import { SessionRecovery } from './worker-recovery.js';
+import type { SessionRecoveryConfig, TranscriptProbe, WorkerRecoveryState } from './worker-recovery.js';
+import { detectToolCallStall } from './stall-detector.js';
+import { detectCrashedSession, detectErrorLoop } from './crash-detector.js';
+import type { HarnessTranscriptObservation } from './contracts.js';
 
 /** One conversation, one admission and one reserved allowance. Turns do not replenish it.
  * The host must close this port at its lifecycle boundary, including while it is idle. */
@@ -30,6 +35,8 @@ export interface ConversationSessionPort {
   retireIdle(reason?: 'pressure' | 'idle'): Promise<boolean>;
   /** Carryover row 03: the 1.x revival queue's operator levers and pull-only status (R2.7/R2.10). */
   readonly revival?: RevivalControl;
+  /** Pull-only status lines of queued, paused or breaker-held revivals across the topics this port owns. */
+  revivalStatus?(): readonly string[];
 }
 export interface RevivalControl {
   /** Queue-global pause: entries keep their states and their TTL clocks freeze. Only an explicit resume clears it. */
@@ -79,6 +86,8 @@ export interface ConversationState {
    * notice markers, durable in this same host-owned record: no second store, timer or owner. */
   readonly revivalQueue?: RevivalQueueState;
   readonly revivalBrakes?: RevivalDrainerBrakes;
+  /** The 1.x SessionRecovery ladder (attempts, cooldowns) and the durable context-wall latch. */
+  readonly workerRecoveryState?: WorkerRecoveryState;
 }
 export interface ConversationSessionStore {
   /** Host-owned, atomic, durable before return; corrupt state must throw, never look empty.
@@ -132,6 +141,10 @@ export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'crea
   readonly revivalGate?: () => boolean;
   /** Tuned 1.x thresholds, overridable only downward by a reviewed host; defaults are the source values. */
   readonly revival?: Partial<ResumeQueueConfig & ResumeQueueDrainerConfig & { settlingMs: number }>;
+  /** Carryover row 03: the 1.x SessionRecovery thresholds (3 attempts, 15-minute cooldown, 30-minute
+   * context-wall ceiling) and the cadence at which a live worker's transcript tail is observed for the
+   * stall and error-loop detectors (30 seconds). Defaults are the source values. */
+  readonly recovery?: Partial<SessionRecoveryConfig & { checkIntervalMs: number }>;
 }
 
 /** Exact identity validation only; meaning and each answer's declarations stay with their existing reader. */
@@ -312,6 +325,116 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     const outcome = (detail: string): SessionWorkOutcome => freeze({ state: 'uncertain', detail,
       edge: state.edge?.id ?? 'no-edge', child: state.worker?.launch ?? null,
       ...(state.halt ? { safetyCeiling: state.halt.reason } : {}) });
+    // Carryover row 03: the 1.x SessionRecovery ladder over the adapter's transcript observation.
+    // The stall and error-loop detectors judge the parsed tail of the live worker's own transcript
+    // at the check cadence; the crash origin in 2.0 is the adapter's exact exit observation, which
+    // runs through the drainer ladder above. A detector-driven kill is this port's exact retirement
+    // and its respawn is the same queued revival every lost worker takes, behind the same no-replay
+    // floor. The context-wall latch defers compaction while the transcript still grows, spends no
+    // attempt on a deferral, and its 30-minute ceiling forces the compact-then-replace rung.
+    const checkIntervalMs = config.recovery?.checkIntervalMs ?? 30_000;
+    ensure(Number.isSafeInteger(checkIntervalMs) && checkIntervalMs >= 1_000 && checkIntervalMs <= 600_000, 'bounded recovery check cadence required');
+    let transcript: HarnessTranscriptObservation | null = null, transcriptAt = -Infinity;
+    const observeTranscript = async () => {
+      transcriptAt = config.now();
+      // An unreadable transcript is unknown: no detector runs over it and the worker is kept.
+      try { transcript = state.worker && adapter.observeTranscript ? await adapter.observeTranscript(state.worker) : null; }
+      catch { transcript = null; }
+    };
+    // The ladder keys on the conversation: a replacement worker has a new transcript, the loop it bounds does not.
+    const tail = () => transcript ? { sessionUuid: config.conversation, entries: transcript.entries } : null;
+    const probe = (): TranscriptProbe => transcript
+      ? { resolved: true, path: transcript.path, size: transcript.size, mtime: transcript.mtime }
+      : { resolved: false, path: '', size: 0, mtime: 0 };
+    /** The turn a mechanical check is deciding; its closures read and update this record. */
+    let recovering: { id: string; request: SessionWorkRequest; delivery: ConversationDelivery; deadline: number;
+      wall: string | null; compaction: string | null; cause: string | null; lost: ConversationWorker; queued: string | null; floor: string | null } | null = null;
+    const exhaustedNotified = new Set<string>();
+    /** Observability only: detector payloads lose the raw tool input; their text fields are already bounded. */
+    const summarize = (payload: Record<string, unknown>): Record<string, unknown> => {
+      const copy: Record<string, unknown> = { ...payload, ...(transcript ? { transcript: transcript.sessionUuid } : {}) };
+      for (const key of ['stall', 'crash', 'loop']) {
+        const detail = copy[key];
+        if (detail && typeof detail === 'object') copy[key] = Object.fromEntries(Object.entries(detail).filter(([name]) => name !== 'lastToolInput'));
+      }
+      return copy;
+    };
+    const recovery = new SessionRecovery({ ...config.recovery }, {
+      now: config.now, wait: ms => config.io.wait(ms),
+      // The record is frozen once persisted; the ladder keeps working on its own copy.
+      store: { load: () => structuredClone(state.workerRecoveryState ?? null), save: next => persist({ workerRecoveryState: structuredClone(next) }) },
+      logEvent: event => audit({ event: 'recovery', ...event }),
+      onEvent: (name, payload) => audit({ event: name, ...summarize(payload) }),
+      isSessionAlive: () => state.worker !== null && state.claim !== null,
+      // Open child work is the 1.x P1/P2 cross-check: the worker is producing real work; keep it.
+      hasActiveProcesses: () => (state.claim ? config.io.admissionState(state.claim)?.openDelegations.length ?? 0 : 0) > 0,
+      detectStall: () => {
+        const entries = tail(), found = entries ? detectToolCallStall(entries, config.now()) : null;
+        if (found && recovering) recovering.cause = `stall on ${found.lastToolName} for ${Math.round(found.stallDurationMs / 60_000)} min`;
+        return found;
+      },
+      detectErrorLoop: () => {
+        const entries = tail(), found = entries ? detectErrorLoop(entries, config.now()) : null;
+        if (found && recovering) recovering.cause = `error loop: ${found.loopCount} identical failures`;
+        return found;
+      },
+      detectCrash: () => { const entries = tail(); return entries ? detectCrashedSession(entries, state.worker !== null, config.now()) : null; },
+      // Transcript growth is positive proof of work only through an adapter that observes the transcript.
+      ...(adapter.observeTranscript ? { probeTranscript: () => probe() } : {}),
+      // The driver's exact idle-prompt classification is the 1.x detectContextExhaustion over captured output.
+      captureSessionOutput: () => recovering?.wall ?? null,
+      detectContextExhaustion: output => ({ matched: output === 'context-too-long' || output === 'context-wedge', pattern: output }),
+      // The worker never sends to the operator itself; no reply can be in flight (Rules 42/63).
+      inFlightReply: async () => null,
+      killSession: async () => {
+        const turn = recovering; ensure(turn !== null, 'recovery kill outside a turn');
+        if (turn.wall === null) {
+          // A detector-driven loss takes the exit path's exact floor BEFORE retirement, so the
+          // verdict is read from the still-open admission; the kill itself is always allowed.
+          try {
+            revivalFloor(turn.id, state.claim!);
+            update(turn.id, { workerRecovery: 'restoring' });
+            const decision = queue.considerEnqueue({ sessionName: turn.id, tmuxSession: turn.lost.launch, topicId: config.conversation,
+              cwd: config.workingScope, reason: `lost worker: ${turn.cause ?? 'mechanical recovery'}`, disposition: 'terminal', origin: 'autonomous',
+              workEvidence: ['pending-injection'] });
+            if (!decision.enqueued) {
+              settle(turn.id, { ...outcome(`lost worker revival refused: ${decision.why}; input retained`),
+                ...(decision.why === 'resurrection-cap' ? { state: 'failed' as const } : {}) });
+              turn.floor = `revival refused: ${decision.why}`;
+            } else turn.queued = decision.entry!.id;
+          } catch (error) { turn.floor = error instanceof Error ? error.message : 'lost worker floor failed'; }
+        }
+        await retire();
+      },
+      respawnSession: async () => {
+        const turn = recovering; ensure(turn !== null && !state.worker && !state.claim, 'detector revival requires confirmed retirement');
+        ensure(turn.floor === null && turn.queued !== null, turn.floor ?? 'queued revival entry missing');
+        queueRevival(turn.id, turn.request.authority, turn.delivery, turn.deadline, turn.queued, config.now());
+      },
+      attemptCompaction: async () => {
+        const turn = recovering; ensure(turn !== null && turn.wall !== null, 'compaction outside a context wall');
+        update(turn.id, { contextRecovery: 'compacting' }); // durable before any control input
+        let compact: Awaited<ReturnType<typeof adapter.control>>;
+        try {
+          compact = await adapter.control({ ...state.worker!, action: 'compact', authority: turn.request.authority,
+            reason: turn.wall, delivery: turn.delivery, deadline: turn.deadline });
+          guard();
+        } catch (error) { turn.compaction = `threw: ${error instanceof Error ? error.message : 'compaction failed'}`; throw error; }
+        turn.compaction = compact.state;
+        if (compact.state === 'resumed') { update(turn.id, { delivery: turn.delivery, contextRecovery: 'continued', cursor: 0 }); return { cleared: true }; }
+        if (compact.state === 'replace-required') { update(turn.id, { contextRecovery: 'restoring' }); return { cleared: false, reason: compact.evidence }; }
+        return { cleared: false, reason: compact.evidence };
+      },
+      respawnSessionFresh: async () => {
+        const turn = recovering; ensure(turn !== null && turn.wall !== null, 'context replacement outside a context wall');
+        // Only a recorded failed compaction admits the grounded replacement; a refused or uncertain
+        // compaction settles the input uncertain, exactly as before this ladder was carried.
+        ensure(turn.compaction === 'replace-required', `compaction ${turn.compaction ?? 'not attempted'}; no automatic replacement`);
+        ensure(await replace(turn.request, { operation: turn.id, digest: turn.delivery.digest, deadline: turn.deadline }), 'context replacement admission unavailable');
+        turn.delivery = { ...turn.delivery, ...state.worker! };
+        update(turn.id, { delivery: turn.delivery, contextRecovery: 'continued', cursor: 0 });
+      },
+    });
     // Persist the safety cause before closing admission or touching the worker. Never an operator stop.
     const recordHalt = (reason: 'deadline' | 'calls', limit: number) => {
       ensure(Number.isSafeInteger(limit) && limit > 0, 'safety ceiling evidence invalid');
@@ -479,6 +602,23 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     // Its 60-second drain cadence is retained; the original lifetime is the brake.
     // Existing durable input custody and the owner's tick supply persistence/scheduling.
     const drainIntervalMs = (config.revival?.drainIntervalSec ?? 60) * 1000;
+    /** The no-replay floor every lost-worker revival passes before retirement, read from the
+     * still-open admission (Rules 4/26/63): known sends, no tool preparation since dispatch, no
+     * unknown effect, no open child work, lifetime and allowance remaining, first recovery. */
+    const revivalFloor = (id: string, claim: string) => {
+      guard();
+      ensure(config.now() < state.deadline, 'lost worker deadline exhausted; input retained');
+      ensure(!row(id).workerRecovery && !row(id).contextRecovery && (row(id).batch?.length ?? 1) === 1,
+        'lost worker recovery already attempted or batched input requires reconciliation');
+      const recoveryAdmission = config.io.admissionState(claim);
+      ensure(recoveryAdmission !== null && !recoveryAdmission.refused, 'lost worker admission unavailable; input retained');
+      ensure(config.contextRecoveryAllowed?.() === true, 'lost worker has unknown outward sends; no automatic replay');
+      ensure(recoveryAdmission.uncertainEffects === 0, 'lost worker has unknown tool effects; no automatic replay');
+      ensure(Number.isSafeInteger(row(id).effectsAtDispatch) && recoveryAdmission.toolPreparations === row(id).effectsAtDispatch,
+        'lost worker prepared tools since dispatch; reconcile their outcomes before continuing');
+      ensure(recoveryAdmission.openDelegations.length === 0, 'lost worker has pending child work; no duplicate revival');
+      ensure(calls() < config.maxCalls, 'lost worker allowance exhausted; input retained');
+    };
     const queueRevival = (id: string, authority: string, delivery: ConversationDelivery, deadline: number, entry: string, retryAt?: number) => {
       ensure(!state.worker && !state.claim, 'revival requires confirmed retirement and no replacement claim');
       const capacityRefusals = (row(id).revival?.capacityRefusals ?? 0) + (retryAt === undefined ? 1 : 0);
@@ -620,18 +760,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           const exit = batch.observations.find(event => event.kind === 'exit');
           if (exit?.kind === 'exit') {
             if (exit.safetyDeadline !== undefined) halt('deadline', exit.safetyDeadline);
-            guard();
-            ensure(config.now() < state.deadline, 'lost worker deadline exhausted; input retained');
-            ensure(!row(id).workerRecovery && !row(id).contextRecovery && ids.length === 1,
-              'lost worker recovery already attempted or batched input requires reconciliation');
-            const recoveryAdmission = config.io.admissionState(state.claim!);
-            ensure(recoveryAdmission !== null && !recoveryAdmission.refused, 'lost worker admission unavailable; input retained');
-            ensure(config.contextRecoveryAllowed?.() === true, 'lost worker has unknown outward sends; no automatic replay');
-            ensure(recoveryAdmission.uncertainEffects === 0, 'lost worker has unknown tool effects; no automatic replay');
-            ensure(Number.isSafeInteger(row(id).effectsAtDispatch) && recoveryAdmission.toolPreparations === row(id).effectsAtDispatch,
-              'lost worker prepared tools since dispatch; reconcile their outcomes before continuing');
-            ensure(recoveryAdmission.openDelegations.length === 0, 'lost worker has pending child work; no duplicate revival');
-            ensure(calls() < config.maxCalls, 'lost worker allowance exhausted; input retained');
+            ensure(ids.length === 1, 'batched input requires reconciliation');
+            revivalFloor(id, state.claim!);
             // 1.x ResumeQueue/AutonomousLivenessReconciler: durable intent, fresh limits,
             // one existing respawn funnel. PendingInjectStore custody is preserved;
             // its historical at-least-once replay is not permission for tool effects.
@@ -664,18 +794,35 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
               && Number.isSafeInteger(row(id).effectsAtDispatch) && recoveryAdmission.toolPreparations === row(id).effectsAtDispatch
               && recoveryAdmission.openDelegations.length === 0 && calls() < config.maxCalls,
             'context recovery requires known sends, no tool effects since dispatch, no child work and remaining allowance');
-            updateBatch({ contextRecovery: 'compacting' }); // durable before any control input
-            const deadline = state.deadline;
-            const compact = await adapter.control({ ...state.worker!, action: 'compact', authority: request.authority,
-              reason: pause.reason, delivery, deadline });
-            guard();
-            if (compact.state === 'replace-required') {
-              updateBatch({ contextRecovery: 'restoring' });
-              ensure(await replace(request, { operation: id, digest: delivery.digest, deadline }), 'context replacement admission unavailable');
-              delivery = { ...delivery, ...state.worker! };
-            } else ensure(compact.state === 'resumed', compact.evidence);
-            updateBatch({ delivery, contextRecovery: 'continued', cursor: 0 });
+            // Carryover row 03: the 1.x context-wall latch decides this tick. The first observation
+            // and a still-growing transcript defer (zero attempts spent) until the 30-minute ceiling;
+            // then compaction in place, and only a recorded failed compaction admits the grounded
+            // replacement. The durable contextRecovery markers are written by the rungs themselves.
+            await observeTranscript();
+            recovering = { id, request, delivery, deadline: state.deadline, wall: pause.reason, compaction: null, cause: null, lost: state.worker!, queued: null, floor: null };
+            let wall: Awaited<ReturnType<SessionRecovery['checkAndRecover']>>;
+            try { wall = await recovery.checkAndRecover(config.conversation, config.conversation); }
+            finally { delivery = recovering.delivery; recovering = null; }
+            if (wall.deferred) { await config.io.wait(config.pollMs); continue; }
+            ensure(wall.recovered, wall.message);
             continue;
+          }
+          // Carryover row 03: while the turn stays open, the stall and error-loop detectors judge the
+          // worker's transcript tail at the check cadence; a mechanical loss becomes a queued revival.
+          if (batch.observations.length === 0 && config.now() - transcriptAt >= checkIntervalMs) {
+            await observeTranscript();
+            recovering = { id, request, delivery, deadline: state.deadline, wall: null, compaction: null, cause: null, lost: state.worker!, queued: null, floor: null };
+            let check: Awaited<ReturnType<SessionRecovery['checkAndRecover']>>;
+            try { check = await recovery.checkAndRecover(config.conversation, config.conversation); }
+            finally { recovering = null; }
+            if (check.recovered) return true;
+            if (row(id).state === 'settled') return false;
+            if (check.failureType !== null && !check.deferred) {
+              const key = `${check.failureType}:${state.worker?.launch ?? ''}`;
+              // The ladder is exhausted or cooling down: the worker is kept and the operator is told once.
+              ensure(/exhausted or in cooldown/u.test(check.message), check.message);
+              if (!exhaustedNotified.has(key)) { exhaustedNotified.add(key); notice('recovery-exhausted', `The worker for ${id} looks stuck (${check.failureType.replace('_', ' ')}) and its automatic recovery is exhausted or cooling down; it is kept as is. Message the topic or ask me to retry it.`); }
+            }
           }
           let reply = row(id).reply, ended = false, completed = false;
           for (const event of batch.observations) {

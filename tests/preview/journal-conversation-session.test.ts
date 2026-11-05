@@ -11,6 +11,11 @@ import { readAnswer } from './answer-reading.js';
 import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
+import { buildResumeSanityPrompt } from '../../src/assembly/revival-drainer.js';
+// @ts-expect-error -- host composition module is JavaScript, exercised at runtime.
+import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
+import { assertLiveJudgment } from './model-call-boundary.js';
+import { interpretRevivalSanity, revivalSanityQuestions } from './revival-sanity.js';
 import { createConversationTopicsPort, type ConversationTopicsState } from '../../src/assembly/conversation-topics.js';
 import { parseReplyReviewVerdict, type ReplyCheckResult } from './reply-check.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
@@ -27,6 +32,7 @@ const optionsBody = host.split('const conversationSessionOf = options => {')[1]!
 const mode = Function(`return options => {${optionsBody.replace(/;\s*$/u, '')}`)() as (options: Record<string, string>) => boolean;
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+const fixtureRoot = () => { const root = realpathSync(mkdtempSync(join(tmpdir(), 'conversation-wiring-io-'))); roots.push(root); return root; };
 const usage = { inputTokens: null, outputTokens: null, charge: null };
 const update = (id: number, text: string) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
@@ -1017,5 +1023,104 @@ it('the shipped journal consumer keeps a capacity-held revival and sends its col
     expect(f.counts().launches).toBe(2);
     expect(await f.replay()).toBeDefined();
     expect(f.sent).toEqual(['A useful answer.']);
+  } finally { await f.close(); }
+});
+
+// Carryover row 03: the shipped host binds the carried revival queue's attention, audit and Tier-1 ports, the
+// transcript observation for the stall and error-loop detectors, and the revival status pull lines.
+it('the shipped host binds the revival notice, audit and sanity-check ports to its attention surface, audit log and registered judgment', () => {
+  const lines = {
+    notice: /\n {10}notice: (\(kind, detail\) => [^\n]+),\n/u.exec(host)?.[1],
+    audit: /\n {10}audit: (event => [^\n]+),\n/u.exec(host)?.[1],
+    sanity: /\n {10}sanityCheck: (entry => [^\n]+),\n/u.exec(host)?.[1],
+  };
+  expect(lines).toEqual({ notice: "(kind, detail) => revivalAttention.raise(String(topic ?? 'main'), kind, detail)",
+    audit: "event => revivalAttention.audit(String(topic ?? 'main'), event)", sanity: 'entry => revivalSanityCheck(entry)' });
+  const raised: unknown[][] = [], audited: unknown[][] = [], checked: unknown[] = [];
+  const attention = { raise: (...args: unknown[]) => { raised.push(args); return 'key'; }, audit: (...args: unknown[]) => { audited.push(args); } };
+  const bind = (line: string, topic: string | undefined) => Function('revivalAttention', 'revivalSanityCheck', 'topic', `return ${line};`)(attention, (entry: unknown) => { checked.push(entry); return 'verdict'; }, topic);
+  expect(bind(lines.notice!, undefined)('gave-up', 'detail')).toBe('key');
+  bind(lines.notice!, '42')('breaker', 'held');
+  expect(raised).toEqual([['main', 'gave-up', 'detail'], ['42', 'breaker', 'held']]);
+  bind(lines.audit!, undefined)({ event: 'tier1-verdict' });
+  expect(audited).toEqual([['main', { event: 'tier1-verdict' }]]);
+  expect(bind(lines.sanity!, '7')({ id: 'rq-1' })).toBe('verdict');
+  expect(checked).toEqual([{ id: 'rq-1' }]);
+  // The attention surface is constructed once per launch on host-owned paths and scrubbed by the one redactor.
+  expect(host).toContain("const revivalAttention = createRevivalAttention({ path: join(root, 'revival-notices.json'),\n      auditPath: join(root, 'revival-audit.jsonl'), now: wallNow, scrub: text => redact(text).text });");
+  // A revival notice rides this topic's next answer through the existing reply-notice funnel.
+  expect(host).toContain("if (noticeTurn) notices.push(...revivalAttention.notices(noticeTurn.thread === undefined ? 'main' : String(noticeTurn.thread), journal.view.order, turn));");
+  // The status pull reads the durable revival status beside idle cleanup.
+  expect(host).toContain('...(sessionWork?.port.idleCleanupStatus?.() ?? []),\n      ...(sessionWork?.port.revivalStatus?.() ?? []),');
+});
+
+it('the revival sanity check is the registered jev-revival-sanity judgment over the carried prompt, bounded and shed on a malformed answer', async () => {
+  const body = /\n {4}const revivalSanityCheck = (async entry => interpretRevivalSanity\(\n[^\n]+\n)/u.exec(host)?.[1];
+  expect(body).toBeDefined();
+  const calls: unknown[][] = [];
+  const check = Function('interpretRevivalSanity', 'callJev', 'buildResumeSanityPrompt', 'revivalSanityQuestions', `return ${body!.trim().replace(/;$/u, '')};`)(
+    interpretRevivalSanity, async (...args: unknown[]) => { calls.push(args); return { value: { model: 'jev-1.13.0', answers: { restart_not_sensible: { type: 'noul', noul: 0.05 } } } }; },
+    buildResumeSanityPrompt, revivalSanityQuestions) as (entry: unknown) => Promise<{ sensible: boolean }>;
+  const entry = { id: 'rq-1', sessionName: 'telegram:1:update:9', reason: 'lost worker: stall on Read for 1 min', workEvidence: ['pending-injection'], queuedAt: 5, attempts: 1 };
+  expect(await check(entry)).toMatchObject({ sensible: true });
+  expect(calls[0]![0]).toBe('jev-revival-sanity');
+  expect(calls[0]![1]).toBe(buildResumeSanityPrompt(entry as never));
+  expect(calls[0]![2]).toBe(revivalSanityQuestions);
+  expect(calls[0]![3]).toBe(2000);
+  expect(calls[0]![4]).toBe('telegram:1:update:9');
+  expect(() => assertLiveJudgment('jev-revival-sanity', 'typesafe-jev')).not.toThrow();
+  const malformed = Function('interpretRevivalSanity', 'callJev', 'buildResumeSanityPrompt', 'revivalSanityQuestions', `return ${body!.trim().replace(/;$/u, '')};`)(
+    interpretRevivalSanity, async () => ({ value: { model: 'other' } }), buildResumeSanityPrompt, revivalSanityQuestions) as (entry: unknown) => Promise<unknown>;
+  await expect(malformed(entry)).rejects.toThrow('malformed');
+});
+
+it('the shipped driver wrapper forwards the transcript observation to the live driver', () => {
+  expect(host).toContain('observeTranscript: identity => driver.observeTranscript(identity),');
+  const io = createProductionSessionIO({ stateDirectory: join(fixtureRoot(), 'state'), home: fixtureRoot(), configHome: fixtureRoot(), cwd: fixtureRoot() }) as Record<string, unknown>;
+  expect(typeof io.readTranscriptTail).toBe('function');
+});
+
+it('a stalled transcript on the shipped consumer retires the worker, queues its revival and sends the collected answer once', async () => {
+  const f = fixture();
+  Object.assign(f.config, { contextRecoveryAllowed: () => true, deadlineMs: 900000 });
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  let launches = 0, stops = 0, startedAt = 0;
+  const stall = () => ({ sessionUuid: 'transcript-1', path: '/t.jsonl', size: 10, mtime: 10, entries: [
+    { type: 'assistant', timestampMs: startedAt, message: { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'tool-1', name: 'Read', input: { file_path: '/x' } }] } }] });
+  const base = f.config.createDriver;
+  Object.assign(f.config, { createDriver: (resolve: Parameters<typeof base>[0]) => {
+    const inner = base(resolve);
+    return { ...inner,
+      launch: (input: Parameters<typeof inner.launch>[0]) => { launches++; if (launches === 1) startedAt = f.config.now(); return inner.launch(input); },
+      observeTranscript: () => ({ kind: 'Success', value: stall() }),
+      observe: (input: Parameters<typeof inner.observe>[0]) => launches < 2 ? { kind: 'Success', value: { phase: 'launched', evidence: 'live', detail: 'turn still open' } } : inner.observe(input),
+      stop: (target: Parameters<typeof inner.stop>[0]) => { stops++; return inner.stop(target); } };
+  } });
+  try {
+    await f.restart(true);
+    f.worker.intake([update(74001, 'Keep this question through a stalled tool call')]);
+    await f.worker.drain();
+    expect(f.sent).toEqual(['A useful answer.']);
+    expect(f.counts().launches).toBe(2); expect(launches).toBe(2); expect(stops).toBeGreaterThanOrEqual(1);
+    expect(f.state().inputs[0]).toMatchObject({ state: 'settled', workerRecovery: 'continued' });
+    expect(f.state().revivalQueue?.entries[0]).toMatchObject({ status: 'respawned', reason: expect.stringContaining('stall on Read') });
+    expect(f.state().workerRecoveryState?.attempts['stall:operator:main']).toMatchObject({ count: 1 });
+    expect(f.port.revivalStatus?.()).toEqual([]);
+    expect(await f.replay()).toBeDefined();
+    expect(f.sent).toEqual(['A useful answer.']);
+  } finally { await f.close(); }
+});
+
+it('the revival status pull line names a queued lost-worker revival while it is held', async () => {
+  const f = fixture();
+  Object.assign(f.config, { contextRecoveryAllowed: () => true, deadlineMs: 900000 });
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  try {
+    await f.restart(true);
+    f.loseWorker();
+    f.worker.intake([update(74002, 'Keep this question through worker loss')]);
+    await f.worker.drain();
+    expect(f.state().inputs[0]?.state).toBe('revival-queued');
+    expect(f.port.revivalStatus?.()).toEqual(['Topic main: 1 queued lost-worker revival.']);
   } finally { await f.close(); }
 });

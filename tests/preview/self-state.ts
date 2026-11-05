@@ -38,7 +38,9 @@ export interface RunLog { launches: ({ at: number; pid?: number; exit?: number; 
   readFailed?: true }
 
 /** Appends one line and fsyncs it before returning; the first write also fsyncs the directory. */
-export function appendRun(path: string, record: RunRecord): void {
+export function appendRun(path: string, record: RunRecord): void { appendLine(path, record); }
+/** The same append for any host-owned JSON line log (the carried revival audit uses it). */
+export function appendLine(path: string, record: unknown): void {
   const fresh = !existsSync(path);
   const fd = openSync(path, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW, 0o600);
   try {

@@ -287,6 +287,15 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
         return [...(lost ? [`Idle cleanup: ${lost} warm worker(s) closed; the next message needs a worker start. Conversation history and accepted messages are retained.`] : []),
           ...(inhibited ? ['Idle cleanup is paused after an unconfirmed closure; capacity release is uncertain and needs repair.'] : [])];
       },
+      // Carryover row 03 (R2.10): pull-only revival status from the durable topic records.
+      revivalStatus: () => Object.entries(state.topics).flatMap(([topic, row]) => {
+        const open = (row.revivalQueue?.entries ?? []).filter(entry => entry.status === 'queued' || entry.status === 'starting').length;
+        const paused = row.revivalQueue?.paused === true, breaker = (row.revivalBrakes?.breakerOpenUntil ?? 0) > config.now();
+        if (!open && !paused && !breaker) return [];
+        return [`Topic ${topic}: ${open} queued lost-worker revival${open === 1 ? '' : 's'}`
+          + `${paused ? `; revival queue paused${row.revivalQueue?.pauseReason ? ` (${row.revivalQueue.pauseReason})` : ''}` : ''}`
+          + `${breaker ? '; revival breaker open after repeated failed restarts' : ''}.`];
+      }),
       collect: async (operation: string) => {
         await recover();
         const topic = config.topicOf(operation);

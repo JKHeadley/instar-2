@@ -58,6 +58,7 @@ export function createSessionConversationAdapter(config: Readonly<{
       return { observations: batch, cursor: input.cursor + batch.length, complete: true };
     },
     observeIdle: async input => driver.observeIdle ? take(driver.observeIdle(input.launch)) : null,
+    observeTranscript: async input => driver.observeTranscript ? take(driver.observeTranscript(input.launch)) : null,
     control: async input => {
       if (input.action === 'compact') {
         if (!driver.recoverContext || !input.delivery || input.deadline === undefined)
