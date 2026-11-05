@@ -34,7 +34,7 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label groundin
 
 Decision: AQ88-r3-publication | Regenerate the existing source roster and capabilities from the pushed implementation; retain shape-only authority and the genuine native-certificate mismatch. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-host-offline-r3-1105-PROGRESS.md
 
-Publication: source 9bf6b4489dc93be35675b89234f15d76e6f99e0e, generation sha256:375081c2fc702a6226caaccf624ed3d2a2f935c0af6a3494da89c8f5045f0c90; 297 entries, 118 rules, 34 terms, 48 warnings, 110 prerequisites. Replay is shape-only, never an activation. The native macOS certificate is unchanged and requires the Studio's real contract run.
+Publication: source d7cd67175465090423bb6281dbca28cc20a6eba2, generation sha256:9cabf29bc753fa881f9238f4812ec5116f291bffc311774eb5e3b8ef09ff3244; 297 entries, 118 rules, 34 terms, 48 warnings, 110 prerequisites. Replay is shape-only, never an activation. The native macOS certificate is unchanged and requires the Studio's real contract run.
 
 Rule 42 refinement: preserve the bridge's explicit sent:false proof as a refused topic effect; only ambiguous dispatch/receipt remains UNKNOWN. No retry is introduced.
 
