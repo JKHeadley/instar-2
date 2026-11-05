@@ -3,7 +3,7 @@
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 // @ts-expect-error Physical host adapter is JavaScript.
 import { createResourceOwner, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
 import { createHostResourceAllocation } from './six-host-resources.js';
@@ -16,9 +16,12 @@ const reserve = (allocation: ReturnType<typeof createHostResourceAllocation>, la
   if (!result.ok) throw Error(result.reason);
   return result.handle;
 };
-let seed: ReturnType<typeof seedFixture> | undefined;
+let seed: Awaited<ReturnType<typeof seedFixture>> | undefined;
+// Build the shared signed history outside the first recovery case's 30s budget.
+// Yield between complete launches so the runner can acknowledge its task updates.
+beforeAll(async () => { seed = await seedFixture(); }, 90_000);
 afterAll(() => { if (seed) rmSync(seed.root, { recursive: true, force: true }); });
-function seedFixture() {
+async function seedFixture() {
   const root = mkdtempSync(join(tmpdir(), 'deadset-seed-'));
   let incarnation = 0;
   const open = () => createHostResourceAllocation({ root, machine: 'machine:test', ceilings: RESOURCE_CEILINGS,
@@ -28,6 +31,7 @@ function seedFixture() {
   for (let n = 0; n < 19; n++) {
     const handle = reserve(allocation, `done-${n}`);
     expect(allocation.close(handle.set, `cleanup-verified:${handle.launch}`).ok).toBe(true);
+    await new Promise<void>(done => setImmediate(done));
   }
   expect(allocation.generation()).toBe(0);
   expect(allocation.open()).toEqual([{ set: dead.set, launch: 'dead' }]);
@@ -38,7 +42,7 @@ function seedFixture() {
   return { root, dead };
 }
 function fixture() {
-  seed ??= seedFixture();
+  if (!seed) throw Error('shared signed history was not prepared');
   const root = mkdtempSync(join(tmpdir(), 'deadset-recovery-')); roots.push(root);
   cpSync(seed.root, root, { recursive: true });
   let incarnation = 1;

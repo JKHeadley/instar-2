@@ -14,7 +14,7 @@ const fenced = value => `\`\`\`json\n${value}\n\`\`\``;
 // The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride the answer as its own line, as in journal-agent.test.ts.
 // The answer itself stays exact, and nothing else may be appended.
-const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
+const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Reminder: your activation expires in (?:[0-9]+ days?(?: [0-9]+ h)?|[0-9]+ h(?: [0-9]+ min)?|[0-9]+ min)\. Smallest step for you: approve a renewed activation record\.|Model route check: .+\.)$/u;
 const answerOf = text => {
   const [answer, ...notices] = text.split('\n\n');
   for (const notice of notices) {

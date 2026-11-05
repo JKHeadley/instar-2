@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
 import { createClaudeCodeSubscriptionRoute, createSubscriptionVersionCheck, subscriptionInvocationPolicy, subscriptionConversationPolicy,
   SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
@@ -207,8 +207,11 @@ it('refuses managed helpers and path swaps before dispatch', async () => {
 });
 it('bounds a pending physical child and never retries', async () => {
   const f = fixture({ pending: true });
+  // Count at dispatch: a child can time out before Node reaches its own log write.
+  // Absence of that write is not evidence that no physical invocation occurred.
+  const executed = vi.spyOn(f.input.io, 'execute');
   expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', { ...f.bounds, timeout: 100 })).state).toBe('uncertain');
-  expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+  expect(executed.mock.calls.filter(([command]) => command.args.includes('--print'))).toHaveLength(1);
 });
 
 for (const size of [16384, 16385]) it(`checks extracted Decision ${size} at the byte boundary independently of schema`, async () => {

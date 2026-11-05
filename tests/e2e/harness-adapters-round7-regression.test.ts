@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { expect, it } from 'vitest';
+import { runChild } from './async-child.js';
 // @ts-expect-error The exact filesystem host is JavaScript outside pure core compilation.
 import { createHarnessAdapterFileState } from '../../scripts/slice-p13-state-storage.mjs';
 
@@ -128,39 +129,37 @@ it('A2-E2E A2-R6-02 P13-NF-24 P13-NF-28 P13-NF-39 torn owner pending bytes stay 
   expect(readFileSync(pendingPath, 'utf8')).toBe(torn);
 }, 30_000);
 
-it('A2-E2E R7-A2-R5-02 P13-NF-25 P13-NF-28 P13-NF-38 P13-NF-51 poison evidence loss stays unresolved after final-fsync SIGKILL and older-prefix reconstruction', () => {
+it.each(['none', 'final-fsync'] as const)('A2-E2E R7-A2-R5-02 P13-NF-25 P13-NF-28 P13-NF-38 P13-NF-51 poison evidence loss stays unresolved after final-fsync SIGKILL and older-prefix reconstruction (%s)', async cut => {
   const script = 'tests/harness-adapters/a2-round7-poison-cut-worker.ts';
   let scenarios = 0;
-  for (const cut of ['none', 'final-fsync'] as const) {
-    const directory = mkdtempSync(join(tmpdir(), `p13-a2-r7-poison-${cut}-`));
-    const seeded = spawnSync(worker, [script, 'seed', cut, directory, 'control', 'full'], {
-      cwd: process.cwd(), encoding: 'utf8', timeout: 30_000,
-    });
-    expect(seeded.signal, seeded.stderr).toBe(cut === 'final-fsync' ? 'SIGKILL' : null);
-    expect(seeded.status, seeded.stderr).toBe(cut === 'final-fsync' ? null : 0);
+  const directory = mkdtempSync(join(tmpdir(), `p13-a2-r7-poison-${cut}-`));
+  const seeded = await runChild(worker, [script, 'seed', cut, directory, 'control', 'full'], {
+    cwd: process.cwd(), timeout: 30_000,
+  });
+  expect(seeded.signal, seeded.stderr).toBe(cut === 'final-fsync' ? 'SIGKILL' : null);
+  expect(seeded.status, seeded.stderr).toBe(cut === 'final-fsync' ? null : 0);
 
-    for (const history of ['full', 'older'] as const) for (const loss of ['control', 'conflict', 'nine-witness'] as const) {
-      const recovered = spawnSync(worker, [script, 'recover', cut, directory, loss, history], {
-        cwd: process.cwd(), encoding: 'utf8', timeout: 30_000,
-      });
-      if (cut === 'final-fsync') {
-        expect(recovered.status).toBe(1);
-        expect(recovered.stderr).toContain('Part Two harness state append is uncertain');
-        scenarios++;
-        continue;
-      }
-      expect(recovered.status, recovered.stderr).toBe(0);
-      const result = JSON.parse(recovered.stdout);
-      if (history === 'full' && loss === 'control') {
-        expect(result.before).toMatchObject({ state: 'poisoned' });
-        expect(result.after).toMatchObject({ state: 'poisoned' });
-      } else {
-        expect(result.after, `${cut}/${history}/${loss}`).toMatchObject({ state: 'unknown' });
-      }
-      expect(result.reconnect, `${cut}/${history}/${loss}`)
-        .toMatchObject({ disposition: 'refused', handle: null });
+  for (const history of ['full', 'older'] as const) for (const loss of ['control', 'conflict', 'nine-witness'] as const) {
+    const recovered = await runChild(worker, [script, 'recover', cut, directory, loss, history], {
+      cwd: process.cwd(), timeout: 30_000,
+    });
+    if (cut === 'final-fsync') {
+      expect(recovered.status).toBe(1);
+      expect(recovered.stderr).toContain('Part Two harness state append is uncertain');
       scenarios++;
+      continue;
     }
+    expect(recovered.status, recovered.stderr).toBe(0);
+    const result = JSON.parse(recovered.stdout);
+    if (history === 'full' && loss === 'control') {
+      expect(result.before).toMatchObject({ state: 'poisoned' });
+      expect(result.after).toMatchObject({ state: 'poisoned' });
+    } else {
+      expect(result.after, `${cut}/${history}/${loss}`).toMatchObject({ state: 'unknown' });
+    }
+    expect(result.reconnect, `${cut}/${history}/${loss}`)
+      .toMatchObject({ disposition: 'refused', handle: null });
+    scenarios++;
   }
-  expect(scenarios).toBe(12);
+  expect(scenarios).toBe(6);
 }, 60_000);

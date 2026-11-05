@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { runChild } from '../e2e/async-child.js';
 import { createSecretCustody, dueCredentialReminders, REMINDER_OFFSETS_MS, secretRef } from './secret-custody.js';
 // @ts-expect-error Installer JavaScript.
 import { installMcp, DEFAULT_MCP } from '../../scripts/mcp-setup.mjs';
@@ -12,8 +13,6 @@ import { readRootMcp, prepareMcpLaunch, prepareToolTurn } from './tool-turn.mjs'
 import { admitToolCallEffect, admitToolCall } from './tool-admission.mjs';
 // @ts-expect-error Release migration manifest.
 import { migrations } from '../../scripts/update-release.mjs';
-// @ts-expect-error Real npm installer.
-import { updateRoot } from '../../scripts/update.mjs';
 const roots: string[] = [];
 const root = () => { const p = mkdtempSync(join(tmpdir(), 'mcp-setup-')); roots.push(p); return p; };
 afterEach(() => roots.splice(0).forEach(p => rmSync(p, { recursive: true, force: true })));
@@ -129,16 +128,19 @@ it('the registered release migration reaches an existing root with no MCP file',
   expect(readFileSync(join(p, 'operator.json'), 'utf8')).toBe('untouched');
 });
 it('the production npm install carries the loader dependency and migrates before switching', async () => {
-  const p = root(), cache = process.env.npm_config_cache;
-  process.env.npm_config_cache = root();
-  try {
-    const result = await updateRoot(p, { release: 'mcp-connect-proof', source: `file:${process.cwd()}` });
-    expect(result.status).toBe('updated');
-    expect(readRootMcp(p).servers).toEqual(DEFAULT_MCP.mcpServers);
-    expect(JSON.parse(readFileSync(join(p, 'version.json'), 'utf8')).migrations).toContain('mcp-defaults-1024');
-  } finally {
-    if (cache === undefined) delete process.env.npm_config_cache; else process.env.npm_config_cache = cache;
-  }
+  const p = root();
+  // npm installation and durable tree flush are synchronous in the installer.
+  // Keep them in a child so a slow cold-cache install cannot starve Vitest's RPC.
+  const installed = await runChild(process.execPath, ['--input-type=module', '-e', `
+    import { updateRoot } from './scripts/update.mjs';
+    const result = await updateRoot(process.argv[1], { release: 'mcp-connect-proof', source: process.argv[2] });
+    process.stdout.write(JSON.stringify(result));
+  `, p, `file:${process.cwd()}`], { cwd: process.cwd(), timeout: 110_000,
+    env: { ...process.env, npm_config_cache: root() } });
+  expect(installed.status, installed.stderr).toBe(0);
+  expect(JSON.parse(installed.stdout).status).toBe('updated');
+  expect(readRootMcp(p).servers).toEqual(DEFAULT_MCP.mcpServers);
+  expect(JSON.parse(readFileSync(join(p, 'version.json'), 'utf8')).migrations).toContain('mcp-defaults-1024');
 }, 120000);
 it('real setup installs defaults and the add CLI consumes secrets only from stdin', () => {
   const p = root();
