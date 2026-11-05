@@ -91,8 +91,10 @@ Nested source/consumer closure: a Threadline-origin commitment is open only whil
 
 Decision: AQ88-r4-nested-provenance | Use authenticated parent receipts for nested open work and bounded work metadata for model awareness; never invent a turn or quoted utterance. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-production-composition-r4-1105-PROGRESS.md
 
+Final publication source: 2c5f37adb1d5e61a255974c1f1797398550cd9d0; generation sha256:b5f0d3b376793bb33ec5128510e511cb1bf33e4ba61f7e23afa45a5e804a9606, 299 entries, 120 rules, 34 terms, 48 warnings and 112 prerequisites. Normal shape-only replay preserves the native certificate hold. All 16 production cases have bounded foreground pass receipts; final nested recorded-shape assertions and final source typecheck pass. Exact pushed-head gate outputs are recorded in the desk PROGRESS report.
+
 ## Closing block
 
-simplestRobustRoute: Use one recorded model boundary and existing journal reservations, and fixed reads through the existing private file API. Cache exact owner-issued requests in the existing operator store; verify passkey acts against the owner challenge on return. A batch-wide deadline bounds offline service waits.
+simplestRobustRoute: Compose the canonical Four/Five/Six/Seven/Eight/Nine owners, preserve authenticated custody and current fences, and project their results into the existing journal consumers. Use one recorded model boundary and existing journal reservations, and fixed reads through the existing private file API. Cache exact owner-issued requests in the existing operator store; verify passkey acts against the owner challenge on return. A batch-wide deadline bounds offline service waits.
 80/20: Targeted changed-file and consumer tests, real recorded replay, physical isolated endpoints, no broad sweep. Preserve the previous 44 unresolved and 101 unfinished files plus five r3 failures, without attributing them to the separate row07 dash/ulimit cause.
 VERDICT: author submission only; no independent verdict, full-suite result or release acceptance asserted
