@@ -17,8 +17,9 @@ const update = (id: number) => ({ update_id: id, message: { chat: { id: 7654321,
   from: { id: 7654321 }, text: 'What time is sunset in Denver?' } });
 const key = new Uint8Array(32).fill(42);
 
-it('pins the new notice to actual unchanged Jev questions and candidate-only full-context review', () => {
-  expect(UNKNOWN_ANSWER_NOTICE).toBe(capture.notice);
+it('retains the historical notice and its actual Jev and full-context review evidence', () => {
+  expect(capture.notice).toBe('The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.');
+  expect(UNKNOWN_ANSWER_NOTICE).toContain('Completion of your request is unconfirmed.');
   expect(capture.provenance.update).toBe(969390396);
   expect(interpretJev(parseJevResponse(capture.recordedJevOutput), 193)).toMatchObject({ verdict: 'unsure', ruleIds: ['parks_on_user'] });
   expect(interpretJev(parseJevResponse(capture.freshJevOutput), 201).verdict).toBe('pass');
@@ -41,19 +42,19 @@ for (const mode of ['recorded', 'fresh'] as const) {
       checkOutbound: () => {}, send: async (input: { expectedText: string }) => { sent.push(input.expectedText); return 1; },
       replyCheck: { elapsedMs: () => 0,
         jev: async () => ({ value: parseJevResponse(mode === 'recorded' ? capture.recordedJevOutput : capture.freshJevOutput), latencyMs: 201 }),
-        escalate: async (text: string) => { reviews++; expect(text).toBe(capture.notice); return { ...review, confidence: null, latencyMs: 1 }; },
+        escalate: async (text: string) => { reviews++; expect(text).toBe(UNKNOWN_ANSWER_NOTICE); return { ...review, confidence: null, latencyMs: 1 }; },
         revise: async () => { revisions++; throw Error('unexpected revision'); } } };
     try {
       const worker = createJournalWorker(journal, ports);
       worker.intake([update(capture.provenance.update)]);
       await worker.drain(); await worker.drain();
       expect({ models, reviews, revisions }).toEqual({ models: 1, reviews: 0, revisions: 0 });
-      expect(sent).toEqual([capture.notice]);
+      expect(sent).toEqual([UNKNOWN_ANSWER_NOTICE]);
       expect(journal.view.order[0]).toMatchObject({ modelState: 'uncertain', noticeClass: 'unknown-answer', sent: 1 });
       expect(journal.view.order[0]?.answer).toBeUndefined();
       journal.close(); journal = openPreviewJournal(path, key);
       await createJournalWorker(journal, ports).drain();
-      expect(sent).toEqual([capture.notice]); expect(models).toBe(1); expect(revisions).toBe(0);
+      expect(sent).toEqual([UNKNOWN_ANSWER_NOTICE]); expect(models).toBe(1); expect(revisions).toBe(0);
     } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
   });
 }
