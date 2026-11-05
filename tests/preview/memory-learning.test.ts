@@ -274,6 +274,21 @@ describe('Part 21 §16 (P21-NF-25/27, P21-NEG-32/33): what a report may carry, b
     } finally { v.close(); }
   }, 120_000);
 
+  it('counts one operator occurrence once when correction and reminder signals name the same failed answer', async () => {
+    const forgot = decoded(recorded('P2').calls[0]!.raw);
+    const w = world(text => text === REMINDER ? reminderReport() : text === question.message ? forgot : 'Noted.');
+    try {
+      await w.say(question.message);
+      await w.say(REMINDER);
+      const [failure] = memoryFailures(w.journal.view, operator(w.journal.view));
+      const duplicate = { ...failure!, signal: 'operator-correction' as const };
+      expect(memoryLessons(w.journal.view, [failure!, duplicate]).pinned).toEqual([]);
+      // A genuinely later correction still crosses the existing two-occurrence threshold.
+      const later = { ...duplicate, trigger: 'later-operator-turn', triggerUpdate: failure!.triggerUpdate + 1 };
+      expect(memoryLessons(w.journal.view, [failure!, duplicate, later]).pinned).toEqual([factId]);
+    } finally { w.close(); }
+  }, 120_000);
+
   it('teaches nothing from a fact the operator has since forgotten', async () => {
     const forgot = decoded(recorded('P2').calls[0]!.raw);
     const w = world(text => text === REMINDER ? reminderReport() : text === question.message ? forgot : 'Noted.');
@@ -295,12 +310,15 @@ describe('Part 21 §16 (P21-NF-25, P21-NEG-31): an operator correction of a fact
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 30, maxReplies: 20, maxTurns: 20, maxBytes: 8000, cursor: 0 };
   const small = async (model: (input: { id: string; question: string; context: string }) => string, messages: string[]) => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memlearn-correct-')));
-    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), new Uint8Array(32).fill(29), genesis);
+    const path = join(dir, 'journal.encrypted');
+    let journal = openPreviewJournal(path, new Uint8Array(32).fill(29), genesis);
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false, checkOutbound: () => {},
       summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
       send: async (input: { update: number }) => input.update, model: async input => model(input) });
     for (const [index, text] of messages.entries()) { worker.intake([update(index + 1, text)]); await worker.drain(); }
-    return { journal, close: () => { journal.close(); rmSync(dir, { recursive: true, force: true }); } };
+    return { get journal() { return journal; }, reopen: () => {
+      journal.close(); journal = openPreviewJournal(path, new Uint8Array(32).fill(29));
+    }, close: () => { journal.close(); rmSync(dir, { recursive: true, force: true }); } };
   };
 
   it('records the agent\'s own wrong statement, corrected by the operator, as a failure (the in:"reply" shape)', async () => {
@@ -319,6 +337,33 @@ describe('Part 21 §16 (P21-NF-25, P21-NEG-31): an operator correction of a fact
       expect(failures).toHaveLength(1);
       expect(failures[0]).toMatchObject({ signal: 'operator-correction', asked: { update: 1, question: 'When was the review?' },
         returned: { reply: 'The review was Monday.' }, truth: { quote: 'it was Tuesday.' }, cause: 'source-unresolved' });
+      // Carryover 32: the correction itself holds the truth even if no earlier source did.
+      const hints = () => memoryLessons(r.journal.view, memoryFailures(r.journal.view, operator(r.journal.view))).hints;
+      expect(hints().get(sourceId(2))).toEqual(learnedCues('When was the review?'));
+      r.reopen();
+      expect(hints().get(sourceId(2))).toEqual(learnedCues('When was the review?'));
+      // Consumer proof: move both turns behind a summary that carries no cue for
+      // the answer, then recall through a fresh worker after another restart.
+      for (let n = 3; n <= 6; n++) {
+        const id = sourceId(n), text = n === 3 ? 'Garden log: basil needs water. '.repeat(400) : `The basil row ${String(n)} needs water.`;
+        r.journal.append({ kind: 'intake', id, update: n, text, raw: JSON.stringify(update(n, text)),
+          accepted: true, cursor: n + 1, at: 1790000000002 + n });
+        r.journal.append({ kind: 'reserve', id, at: 1790000000002 + n });
+        r.journal.append({ kind: 'answer', id, text: 'Noted.', state: 'complete', at: 1790000000002 + n });
+        if (n === 3) {
+          r.journal.append({ kind: 'summary-reserve', through: 3, at: 1790000000005 });
+          r.journal.append({ kind: 'summary', through: 3, text: 'Routine scheduling discussion.', at: 1790000000005 });
+        }
+      }
+      r.reopen();
+      const worker = createJournalWorker(r.journal, { now: () => 1790000000010, stopped: () => false,
+        checkOutbound: () => {}, send: async input => input.update, model: async () => 'Noted.' });
+      const recalled = worker.probe('When was the review?');
+      if ('reason' in recalled) throw Error(recalled.reason);
+      expect((JSON.parse(recalled.context) as Packet).recalled?.map(item => item.id)).toContain(sourceId(2));
+      const withdrawn = { ...r.journal.view, memory: [...r.journal.view.memory,
+        { mode: 'forget' as const, source: sourceId(2), quote: 'it was Tuesday.', trigger: sourceId(3) }] };
+      expect(memoryLessons(withdrawn, failures).hints.has(sourceId(2))).toBe(false);
     } finally { r.close(); }
   });
 
