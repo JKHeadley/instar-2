@@ -72,7 +72,7 @@ describe('test worker limit', () => {
     const macos = readFileSync('tests/platform/macos-only.txt', 'utf8').split('\n')
       .map(line => line.replace(/#.*/, '').trim()).filter(Boolean);
     const { serialFixtureFiles } = await loadRunnerConfig();
-    expect(serialFixtureFiles).toHaveLength(14);
+    expect(serialFixtureFiles).toHaveLength(15);
     for (const split of ['', 'only-macos', 'exclude-macos']) {
       const result = await runChild(process.execPath, ['node_modules/vitest/vitest.mjs', 'list',
         '--filesOnly', '--json', '--maxWorkers', '1'], { timeout: 20_000,
@@ -86,6 +86,25 @@ describe('test worker limit', () => {
         expect(row.projectName, file).toBe(serialFixtureFiles.includes(file) ? file : 'parallel');
       }
     }
+  });
+
+  it('applies CLI exclusions to ordinary and serial projects without losing the Studio half', async () => {
+    const list = async (args: string[]) => {
+      const result = await runChild(process.execPath, ['node_modules/vitest/vitest.mjs', 'list',
+        '--filesOnly', '--json', '--maxWorkers', '1', ...args], { timeout: 20_000,
+        env: { ...process.env, INSTAR_TEST_PLATFORM_SPLIT: '' } });
+      expect(result.status, result.stderr).toBe(0);
+      return (JSON.parse(result.stdout) as { file: string }[]).map(row => relative(process.cwd(), row.file)).sort();
+    };
+    const studio = [...new Set([...readFileSync('tests/platform/macos-only.txt', 'utf8').split('\n')
+      .map(line => line.replace(/#.*/, '').trim()).filter(Boolean),
+      'tests/preview/media-understanding.test.ts', 'tests/preview/trust-setup.test.ts',
+      'tests/e2e/register.test.ts'])].sort();
+    const all = await list([]);
+    const remote = await list(studio.flatMap((file, i) => i % 2 ? [`--exclude=${file}`] : ['--exclude', file]));
+    expect(remote).toEqual(all.filter(file => !studio.includes(file)));
+    expect(await list(studio)).toEqual(studio);
+    expect([...remote, ...studio].sort()).toEqual(all);
   });
 
   it('the shipped projects overlap ordinary files but serialize each heavy fixture in a fresh process', async () => {

@@ -78,3 +78,26 @@ must use different process ids. Discovery checks compare the actual runner inven
 all tracked test files in unsplit, macOS-only and non-macOS modes. Full-suite qualification
 and repeated real-fixture runs are recorded in the builder's absolute lanes progress record;
 this defect remains open until that evidence establishes zero runner errors.
+
+## train-171 repair, 2026-11-05
+
+The supplied M5 Pro gate excerpt at `b932b7f716a64998a782b4aff94d23107b59e55f`
+records the intake-owner manifest matrix at 94,553 ms against its 60 s test bound,
+a later intake-owner afterEach at 11,037 ms against its 10 s hook bound, and one
+unattributed `onTaskUpdate` error. The original run remains red. Intake-owner
+now joins the existing ordered fixture lane, retaining all 24 cases and their
+bounds. Its manifest matrix caches exact bytes read by `git show` from one
+immutable fixture commit through the existing loader port, avoiding repeated
+subprocesses for the same artifacts. Hash checks and hostile manifests still run
+on every load; neither working-tree bytes nor prior validation results are cached.
+This addresses repeated work and within-suite contention, not unrelated host load.
+The unattributed RPC error still needs the pipeline's full-run qualification.
+
+The same gate ran three Studio-dependent preview files on both hosts despite
+the remote command's CLI exclusions. Vitest 3.2.7's inline-project option
+forwarding omits `cliExclude`; actual file discovery reproduced the leak with
+`--exclude tests/preview/trust-setup.test.ts`. Each project now applies the root's
+parsed exclusions through Vitest's public `configureVitest` hook before discovery.
+The inventory regression exercises ordinary and serial files, both CLI spellings,
+and the positive Studio selection, proving an exact disjoint union with the full
+inventory. No test is quarantined and no assertion or product ability is removed.

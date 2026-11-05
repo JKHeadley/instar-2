@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
-import { configDefaults, defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig, type Plugin } from 'vitest/config';
 import { resolveTestWorkerLimit } from './tests/setup/worker-limit.js';
 
 // Bound ordinary file parallelism as before the train-159 serial-all workaround.
@@ -40,7 +40,17 @@ export const serialFixtureFiles = [
   'tests/conversation/telegram.round24.integration.test.ts',
   'tests/assembly/provider-response-evidence.test.ts',
   'tests/assembly/fixed-installation-peer.test.ts',
+  'tests/register/intake-owner.test.ts',
 ];
+// Vitest 3 forwards CLI exclusions to the root but not inline projects. The M5
+// gate uses --exclude to leave installed Studio tools to the other half. Apply
+// those same parsed globs at the public project hook, before file discovery.
+const projectPlugins: Plugin[] = [{
+  name: 'instar-project-cli-exclusions',
+  configureVitest({ project, vitest }) {
+    project.config.exclude.push(...(vitest.config.cliExclude ?? []));
+  },
+}];
 const include = split === 'only-macos' ? macosOnly : ['tests/**/*.test.ts'];
 const exclude = split === 'exclude-macos' ? [...configDefaults.exclude, ...macosOnly] : [...configDefaults.exclude];
 const shared = {
@@ -84,9 +94,9 @@ export default defineConfig({
     minWorkers: 1,
     maxWorkers: serialGate ? 1 : workerLimit,
     projects: [
-      { test: { ...shared, name: 'parallel', include, exclude: [...exclude, ...serialFixtureFiles],
+      { plugins: projectPlugins, test: { ...shared, name: 'parallel', include, exclude: [...exclude, ...serialFixtureFiles],
         sequence: { groupOrder: 0 } } },
-      ...serialFixtureFiles.map((file, index) => ({ test: { ...shared, name: file,
+      ...serialFixtureFiles.map((file, index) => ({ plugins: projectPlugins, test: { ...shared, name: file,
         include: split === 'only-macos' && !macosOnly.includes(file) ? [] : [file], exclude,
         sequence: { groupOrder: index + 1 } } })),
     ],
