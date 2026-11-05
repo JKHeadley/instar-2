@@ -21,6 +21,11 @@ Hook bypass: none
 Convergence: none
 Prompt review: No model prompt or call added. Historical captured Jev/review verdicts remain historical evidence, not a claim that the new wording was model-reviewed. Independent review judges the notice wording.
 
+Prompt finding: 4106b49fff07 | protocol-literal | Existing text-only capability instructions describe the actual lack of tool execution on that route. The fixture checks that delivered capability boundary; this patch neither adds the instruction nor copies a trigger from the fixture.
+Prompt finding: 85544c20941f | protocol-literal | Existing login-outage notice is an exact fixed protocol output tested by its session consumer. It is separate from the UNKNOWN notice changed here; no login-outage promise or decision rule is added.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing recall guidance asks for evidence citations and unknown-source disclosure; its fixture verifies prompt delivery. No literal-match decision or prompted verdict is introduced by this notice repair.
+Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory-list response and its recognition prefix are exact output protocol text exercised by the memory-list test. They are unchanged, not new semantic triggers or expected model answers.
+
 Decision: RESULT-NOTICE-1105-1 | Render only facts supported by the current durable turn; do not promote the desk's PR2750 or disk observations into universal task outcomes. State a prerequisite for resumption, never a new promise or retry assignment. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-result-notice-1105-PROGRESS.md
 Decision: RESULT-NOTICE-1105-2 | Keep old notice bytes recognized during history replay while new unsent UNKNOWN attempts use the clearer text; replay the supplied projection and success neighbors without inventing raw journal frames. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-result-notice-1105-PROGRESS.md
 
