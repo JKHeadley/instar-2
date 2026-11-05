@@ -41,6 +41,8 @@ Decision: AQ88-review-invalidation | Reopen the two prior frozen browser review 
 
 Publication checkpoint: generated outputs bind source 746cab6150b5a04e21ae5059a0ad15696fa10deb, generation sha256:36b94132f8408253805d398c995a5310828bb888143ed4e463d625bd57b07585. Authority remains shape-only; the hub feature remains dark.
 
+Worker isolation: the wrapper retains the original endpoint.work function by identity. Hub recovery runs at composition and explicit recoverCollaboration maintenance; a full attention projection cannot become a new worker execution gate. The targeted transport test checks this identity.
+
 ## Closing block
 
 simplestRobustRoute: Adapt the existing surfacer's routing to the existing journal and transport endpoint. One serialized consumer prevents concurrent duplicate hub creation. A replicated dispatch fence prevents duplicate effects after owner loss; retained prepared state distinguishes work that can still drain. No new provider, timer, store or execution owner. Physical deployment and unattended shipped-path completion are not claimed by the portable component tests.

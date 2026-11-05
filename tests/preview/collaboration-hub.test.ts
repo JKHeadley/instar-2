@@ -78,7 +78,9 @@ it('unknown creation and sends never retry after restart; stopped, expired and u
 it('actual encrypted transport/custody feeds the bound consumer only after endpoint admission; uncertain judgment retains input', async () => {
   const f = fixture(), hub = f.make(), network = createNetwork('threadline');
   const sender = network.add('sender', ['code'], () => null), receiver = network.add('receiver', ['code'], () => null);
+  const originalWork = receiver.endpoint.work;
   receiver.endpoint = collaborationEndpoint(receiver.endpoint, hub, receiver.ledger);
+  expect(receiver.endpoint.work).toBe(originalWork); // Attention is not an execution gate.
   try {
     network.relay.duplicate = true;
     const contract = network.delegate(sender, network.request(network.rootAuthority('sender'), 'receiver'));

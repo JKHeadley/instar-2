@@ -306,12 +306,12 @@ export class CollaborationSurfacer {
 }
 
 /** Bind to the existing endpoint AND its durable ledger. Reconstruct admitted
- * offers/results at boot and before work: a crash between endpoint custody and
+ * offers/results at boot and explicit maintenance: a crash between endpoint custody and
  * hub capture must not depend on the sender submitting again (lookup stays pure).
  * Cancellation is lifecycle housekeeping, supplied through notify, not content.
  */
 export function collaborationEndpoint(endpoint: AgentEndpoint, hub: CollaborationSurfacer,
-  ledger: Pick<DelegationLedger, 'view'>): AgentEndpoint {
+  ledger: Pick<DelegationLedger, 'view'>): AgentEndpoint & { recoverCollaboration(): void } {
   const capture = (envelope: AgentTransportEnvelope, receipt: EndpointReceipt) => {
     if ((envelope.kind === 'offer' || envelope.kind === 'result') && receipt.durability !== null
       && ['durably-queued', 'delivered-to-worker', 'answered'].includes(receipt.state)) hub.capture(envelope, receipt);
@@ -325,13 +325,11 @@ export function collaborationEndpoint(endpoint: AgentEndpoint, hub: Collaboratio
     }
   };
   recover();
-  return Object.freeze({ ...endpoint, receive(envelope: AgentTransportEnvelope, at: number, from: string) {
+  return Object.freeze({ ...endpoint, recoverCollaboration: recover, receive(envelope: AgentTransportEnvelope, at: number, from: string) {
     const receipt = endpoint.receive(envelope, at, from);
     // Use the admitted contract's routing fields, never the transport wrapper's
     // conversation claim. A valid signature alone is not parent-topic authority.
     if (receipt.durability !== null && ['durably-queued', 'delivered-to-worker', 'answered'].includes(receipt.state)) recover();
     return receipt;
-  }, work(worker: Parameters<AgentEndpoint['work']>[0], at: number) {
-    recover(); return endpoint.work(worker, at);
   } });
 }

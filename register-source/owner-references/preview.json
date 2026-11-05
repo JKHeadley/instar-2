@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/collaboration-hub.test.ts",
-        "hash": "sha256:7b2f59f784de4473c7e7378a2291f8bd8af9f8400ab80d62751d781f2363630b"
+        "hash": "sha256:79da9b9daf8d1ad6e440406a4a5889fb51f9692954806ac683efc30778848cd7"
       }
     },
     {
