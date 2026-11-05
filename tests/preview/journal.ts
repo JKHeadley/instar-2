@@ -59,6 +59,7 @@ import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type SettledSendOutcome, type Speaker } from './outbound-provenance.js';
 import { acceptedMemoryFailure, memoryFailureOffer, memoryFailures, memoryLearningLine, memoryLessons, validStoredMemoryFailure, withLearnedCues,
   MEMORY_FAILURE_DECISION, type MemoryFailureProposal } from './memory-learning.js';
+import { correctionStatusClause, type PresentedCorrection } from './correction-loop-driver.js';
 import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, RETRO_DUTY_FOLLOWUP_QUESTION,
   dutiesLeftUninspected, dutyFollowUpPacket, mergeDutyFollowUp, retroCallReserve, retroFollowUpReason, RETROSPECTIVE_DUTIES,
   type RetroPass, type RetroSiblingEvidence, type RetrospectiveDuty } from './retrospective.js';
@@ -994,7 +995,10 @@ export interface ReplyGrounding { packetSha256: string; summaryThrough: number |
   /** The reachability floor's set-aside frontier: older history neither summarized nor shown (absent when none). */
   setAsideThrough?: number; history: string[]; recalled: string[];
   people: string[]; commitments: number[]; channelItems: string[]; corrections: string[];
-  memoryChanges: number[]; memoryCandidates: string[] }
+  memoryChanges: number[]; memoryCandidates: string[];
+  /** Carryover row 32: the sources of the standing preferences this packet carried (absent on rows written
+   * before it was recorded, which read as not carried). The correction lifecycle's delivery evidence. */
+  preferences?: string[] }
 /** Rule 110: the frontier below which this context lost verbatim history, and how. The set-aside floor always lies
  * above a summary's frontier (it only removes history the summary left verbatim), so the higher one is the account. */
 export const continuityFrontier = (grounding: Pick<ReplyGrounding, 'compactedThrough' | 'setAsideThrough'> | undefined):
@@ -1412,7 +1416,10 @@ export type JournalRecord =
     /** What the plan estimated this pass's answer would cost. Kept so that, if the answer runs over the route's
      * output cap, the next ask is sized from what this estimate really cost. Absent on rows written before it
      * was recorded, which fall back to the halving. */
-    estimatedAnswerBytes?: number; at: number }
+    estimatedAnswerBytes?: number;
+    /** Carryover row 32: the gate-crossing correction clusters this pass's packet presented to the review (the
+     * loop's durable route event). Absent when none, and on rows written before it was recorded. */
+    corrections?: PresentedCorrection[]; at: number }
   | { kind: 'retro'; pass: number; state: 'complete' | 'failed' | 'unknown'; result?: RetroPass['result']; reason?: string; usage?: ModelUsage; at: number }
   /** One bounded benchmark rerun of a promoted case under the current reply configuration, inside its pass. */
   | { kind: 'retro-rerun-reserve'; pass: number; index: number; case: string; contextDigest: string; at: number }
@@ -4655,7 +4662,8 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     view.calls++;
     view.retroPasses.push({ pass: row.pass, at: row.at, turnsSeen: row.turnsSeen, cases: row.cases, omitted: row.omitted, eligible: row.eligible,
       packetSha256: row.packetSha256, contextDigest: row.contextDigest,
-      ...(row.estimatedAnswerBytes === undefined ? {} : { estimatedAnswerBytes: row.estimatedAnswerBytes }) });
+      ...(row.estimatedAnswerBytes === undefined ? {} : { estimatedAnswerBytes: row.estimatedAnswerBytes }),
+      ...(row.corrections === undefined ? {} : { corrections: row.corrections }) });
     return;
   }
   if (row.kind === 'commitment-store') {
@@ -8524,7 +8532,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const packet = JSON.parse(context) as { summary?: { through: number }; memorySummary?: { text: string }; history?: unknown[];
               historySetAside?: { through: number };
               recalled?: unknown[]; people?: unknown[]; commitments?: { items: { id: number }[] }[];
-              channelMemory?: unknown[]; corrections?: unknown[]; memory?: unknown[]; memoryCandidates?: { id: string }[] };
+              channelMemory?: unknown[]; corrections?: unknown[]; memory?: unknown[]; memoryCandidates?: { id: string }[];
+              preferences?: { source: string }[] };
             const shownPeople = named.filter((_, index) => has('person', index));
             const shownOpen = open.filter((_, index) => has('commitment', index));
             const grounding: ReplyGrounding = { packetSha256: createHash('sha256').update(context).digest('hex'),
@@ -8541,7 +8550,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 || change.mode === 'remember' && !selectedFacts.includes(change)
                 || preferenceState().lineage.has(JSON.stringify([change.source, change.quote]))
                 || change.mode === 'correct' && supersededCorrection(change)
-                ? [] : [index]), memoryCandidates: packet.memoryCandidates?.map(item => item.id) ?? [] };
+                ? [] : [index]), memoryCandidates: packet.memoryCandidates?.map(item => item.id) ?? [],
+              ...(packet.preferences ? { preferences: packet.preferences.map(item => item.source) } : {}) };
             if ((packet.history?.length ?? 0) !== grounding.history.length || (packet.recalled?.length ?? 0) !== grounding.recalled.length
               || (packet.people?.length ?? 0) !== grounding.people.length || (packet.commitments?.reduce((n, item) => n + item.items.length, 0) ?? 0) !== grounding.commitments.length
               || (packet.channelMemory?.length ?? 0) !== grounding.channelItems.length || (packet.memory?.length ?? 0) !== grounding.memoryChanges.length)
@@ -9153,7 +9163,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         }
         if (turn.answer === undefined && !turn.reserved && !turn.noticeClass && isStatusCommand(turn.text)) {
           const answer = statusAnswer(journal.view, ports.now(), ports.timeZone ?? 'UTC',
-            [...ports.statusExtra?.() ?? [], memoryLearningLine(journal.view, fromOperator)], ports.statusLines?.() ?? []);
+            [...ports.statusExtra?.() ?? [], memoryLearningLine(journal.view, fromOperator),
+              `Learned ${correctionStatusClause(journal.view, fromOperator, ports.now())}.`], ports.statusLines?.() ?? []);
           const packet = { ...JSON.parse(packetFor(before(turn.update), true, [], [], [], turn.thread, false, [], [], false, turn)) as object,
             statusFacts: answer };
           const prompt = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet }) },
@@ -12249,7 +12260,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       gate();
       const pass = journal.view.retroPasses.length;
       journal.append({ kind: 'retro-reserve', pass, turnsSeen: journal.view.order.length, cases: plan.cases.map(item => item.id), omitted: plan.omitted,
-        eligible: plan.eligible, packetSha256: plan.packetSha256, contextDigest, estimatedAnswerBytes: plan.estimatedAnswerBytes, at: ports.now() });
+        eligible: plan.eligible, packetSha256: plan.packetSha256, contextDigest, estimatedAnswerBytes: plan.estimatedAnswerBytes,
+        ...(plan.corrections.length ? { corrections: plan.corrections } : {}), at: ports.now() });
       // Benchmark reruns: the promoted case's original question through the live reply assembly, as of that turn.
       for (const [index, target] of plan.reruns.entries()) {
         const id = `retrospective:${String(pass)}:rerun:${String(index)}`;
