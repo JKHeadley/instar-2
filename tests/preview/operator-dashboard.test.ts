@@ -224,6 +224,7 @@ it('the page treats the snapshot as untrusted: closed shape, bounded, links only
     allowance: [{ label: 'Model calls', used: 1, max: 4 }], tokens: { input: 1, output: 1, unknownCalls: 0 },
     requests: [{ title: 'Extend this installation', state: 'Waiting for your answer', open: true, route: 'github-review', link: 'https://github.com/a/b/pull/1/files', sharedAccess: null }],
     turns: [{ update: 1, time: '2026-10-03 14:00', from: 'you', message: '<script>alert(1)</script>', reply: null, state: 'Waiting for my answer' }], chat: null,
+    sessionTurns: [],
     sessions: [{ id: 't1', kind: 'conversation', label: '<script>alert(2)</script>', state: 'running', since: '2026-10-03 14:00', machine: 'studio', activity: null, update: 1 }],
     health: { noticed: [], patterns: [], watch: { recording: true, checking: false, reviewing: false }, totals: { noticed: 0, known: 0 } } };
   const write = (value: unknown, mode = 0o644) => { writeFileSync(join(outbox, DASHBOARD_FILE), JSON.stringify(value), { mode }); chmodSync(join(outbox, DASHBOARD_FILE), mode); };
@@ -241,6 +242,10 @@ it('the page treats the snapshot as untrusted: closed shape, bounded, links only
     // Row 89: the work and health shapes are closed too: a finished state, a delegated row claiming a message, an unknown health status.
     { ...good, sessions: [{ ...good.sessions[0], state: 'completed' }] }, { ...good, sessions: [{ ...good.sessions[0], kind: 'delegated' }] },
     { ...good, health: { ...good.health, noticed: [{ category: 'x', summary: 'y', status: 'verified', when: '', count: 1 }] } },
+    { ...good, sessionTurns: Array(DASHBOARD_BOUNDS.sessions + 1).fill(good.turns[0]) },
+    { ...good, sessionTurns: [{ ...good.turns[0], extra: true }] },
+    { ...good, sessionTurns: [{ ...good.turns[0], message: 'x'.repeat(DASHBOARD_BOUNDS.textChars + 1) }] },
+    { ...good, sessions: [{ ...good.sessions[0], update: 2 }] },
     { ...good, health: { ...good.health, extra: 1 } }]) {
     write(bad);
     expect(readSnapshot(outbox, now)).toEqual({ kind: 'invalid' });

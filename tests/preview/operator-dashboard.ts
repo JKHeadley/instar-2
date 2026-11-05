@@ -31,6 +31,7 @@ export interface DashboardHealth {
   watch: { recording: boolean; checking: boolean; reviewing: boolean };
   totals: { noticed: number; known: number };
 }
+export interface DashboardTurn { update: number; time: string; from: 'you' | 'scheduled'; message: string; reply: string | null; state: string }
 
 export interface DashboardSnapshot {
   type: typeof DASHBOARD_SNAPSHOT; schemaVersion: 1; asOf: number; zone: string;
@@ -45,7 +46,9 @@ export interface DashboardSnapshot {
   requests: { title: string; state: string; open: boolean; route: 'chat' | 'github-review'; link: string | null;
     sharedAccess: { account: string; disclosure: string } | null }[];
   /** `update` is the journal's update domain (`isJournalUpdate`): a scheduled turn's synthetic update is fractional. */
-  turns: { update: number; time: string; from: 'you' | 'scheduled'; message: string; reply: string | null; state: string }[];
+  turns: DashboardTurn[];
+  /** Details for every selected active conversation, independently of the recent-ten window (Rules 81, 106). */
+  sessionTurns: DashboardTurn[];
   /** The bot's username, for a direct link into the operator's chat; null when the runner was not told it. */
   chat: string | null;
   /** Row 89: work in progress right now, newest first (starting or running only), and this runner's process health. */
@@ -86,9 +89,10 @@ export function turnOutcome(view: JournalView, turn: Turn): { state: string; rep
   // first message without a receipt, named by its place.
   if (turn.intent !== undefined) {
     const whole = replyOutcomeOf(view, turn);
-    if (whole.outcome.kind === 'accepted') return { reply: turn.intent, state: 'Answered' };
-    return { reply: turn.intent, state: delivery(view, whole.target, undefined, 'Answered',
-      whole.part === 1 ? 'My reply' : `Part ${String(whole.part)} of ${String(whole.of)} of my reply`) };
+    const done = turn.heldReview ? 'Reply held for review; holding notice delivered' : 'Answered';
+    if (whole.outcome.kind === 'accepted') return { reply: turn.intent, state: done };
+    return { reply: turn.intent, state: delivery(view, whole.target, undefined, done,
+      whole.part === 1 ? turn.heldReview ? 'My holding notice' : 'My reply' : `Part ${String(whole.part)} of ${String(whole.of)} of my reply`) };
   }
   if (turn.limited !== undefined) {
     const lead = view.turns.get(turn.limited.lead);
@@ -108,11 +112,15 @@ export function dashboardSnapshot(view: JournalView, input: { now: number; zone:
     title: REQUEST_TITLES[item.action] ?? 'A request from your agent', state: REQUEST_STATES[item.state] ?? item.state,
     open: item.state === 'open', route: item.route, link: item.route === 'github-review' ? item.link ?? null : null,
     sharedAccess: item.sharedAccess ? { account: item.sharedAccess.account, disclosure: item.sharedAccess.disclosure } : null }));
-  const turns = view.order.filter(turn => turn.accepted && !retractedTurn(view, turn.id)).slice(-L.turns).reverse().map(turn => {
+  const detail = (turn: Turn): DashboardTurn => {
     const outcome = turnOutcome(view, turn);
     return { update: turn.update, time: stamp(messageTime(turn) ?? turn.at, zone), from: turn.writer?.kind === 'system' ? 'scheduled' as const : 'you' as const,
       message: clip(turn.text, L.textChars), reply: outcome.reply === null ? null : clip(outcome.reply, L.textChars), state: outcome.state };
-  });
+  };
+  const turns = view.order.filter(turn => turn.accepted && !retractedTurn(view, turn.id)).slice(-L.turns).reverse().map(detail);
+  const sessions = sessionsNow(view, input);
+  const conversationIds = new Set(sessions.filter(item => item.kind === 'conversation').map(item => item.id));
+  const sessionTurns = view.order.filter(turn => conversationIds.has(turn.id)).map(detail);
   const bot = input.bot?.replace(/^@/u, '') ?? null;
   return { type: DASHBOARD_SNAPSHOT, schemaVersion: 1, asOf: now, zone,
     state: input.stopped || view.stop !== null ? 'stopped' : now >= view.expires ? 'ended' : 'running', until: stamp(view.expires, zone),
@@ -126,7 +134,7 @@ export function dashboardSnapshot(view: JournalView, input: { now: number; zone:
     tokens: Object.values(view.tokenTotals).reduce((total, kind) => ({ input: total.input + kind.inputTokens,
       output: total.output + kind.outputTokens, unknownCalls: total.unknownCalls + kind.unknownCalls }), { input: 0, output: 0, unknownCalls: 0 }),
     requests, turns, chat: bot !== null && /^[A-Za-z0-9_]{5,32}$/u.test(bot) ? bot : null,
-    sessions: sessionsNow(view, input), health: healthNow(view, zone) };
+    sessions, sessionTurns, health: healthNow(view, zone) };
 }
 
 /** Work in progress (1.x `GET /sessions` default view: active only). A conversation session is an accepted message whose
@@ -175,10 +183,14 @@ export function healthNow(view: JournalView, zone: string): DashboardHealth {
   const summaryFailures = [...view.summaryFailures.values()].reduce((a, b) => a + b, 0);
   add('A memory summary that did not pass', summaryFailures, `${times(summaryFailures, 'attempt', 'attempts')} to summarise earlier messages did not pass the faithfulness check; the earlier messages stay as they are.`,
     'attributed', view.lastSummaryFailure?.at ?? null);
-  add('A reply held back by its own check', view.replyCheckCounts.violation, `${times(view.replyCheckCounts.violation, 'reply was', 'replies were')} held or revised after the reply check found a problem before sending.`,
-    'resolved', null);
-  add('A reply check that could not run', view.replyCheckCounts.unavailable, `${times(view.replyCheckCounts.unavailable, 'reply check', 'reply checks')} could not run; those replies were held rather than sent unchecked.`,
+  // Check events can include advisory objections and outages followed by delivery; they prove no hold or resolution.
+  add('A reply check that found a problem', view.replyCheckCounts.violation, `${times(view.replyCheckCounts.violation, 'reply check', 'reply checks')} reported a problem. Each message records what happened to its reply.`,
     'open', null);
+  add('A reply check that could not run', view.replyCheckCounts.unavailable, `${times(view.replyCheckCounts.unavailable, 'reply check', 'reply checks')} could not run. Each message records what happened to its reply.`,
+    'open', null);
+  const heldDrafts = view.order.filter(turn => turn.heldReview !== undefined);
+  add('A draft held by its reply check', heldDrafts.length, `${times(heldDrafts.length, 'draft was', 'drafts were')} withheld after review. Each message records what happened to its holding notice.`,
+    'open', heldDrafts.at(-1)?.intentAt ?? null);
   const incoherent = view.order.filter(turn => (turn.checked?.length ?? 0) > 0);
   add('A reply that disagreed with earlier messages', incoherent.length, `${times(incoherent.length, 'reply', 'replies')} disagreed with what was said earlier; ${view.corrections.length ? `${String(view.corrections.length)} still to correct in a later reply` : 'each was corrected in a later reply'}.`,
     view.corrections.length ? 'open' : 'resolved', incoherent.at(-1)?.intentAt ?? incoherent.at(-1)?.at ?? null);

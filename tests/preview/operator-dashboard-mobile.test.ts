@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { REPLY_RULES } from './reply-check.js';
 import { dashboardSnapshot, healthNow, sessionsNow } from './operator-dashboard.js';
 // @ts-expect-error The operator-run page is JavaScript.
 import { checkSnapshot, renderDashboard, sanitizeForDisplay, snapshotState } from '../../scripts/operator-dashboard.mjs';
@@ -242,4 +243,98 @@ it("row 89: process health speaks in the 1.x tab's calm wording from the journal
   expect(calm).toContain("Nothing has come up yet. We're just quietly watching — no alerts.");
   expect(calm).toContain('Nothing to flag yet. We need to see a few more different problems before a real pattern shows up — totally normal this early.');
   expect(calm).toContain('Nothing yet — that just means nothing has come up since your agent started.');
+});
+
+it.each(['advisory', 'outage', 'held'] as const)('row 89 repair: check events do not invent reply outcomes (%s)', async mode => {
+  const root = temp('dashboard-check-outcome-');
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  cleanup.push(() => journal.close());
+  const rule = mode === 'held' ? 'credential' : 'config_key';
+  const draft = 'The setting is notifications.email.enabled.';
+  const sends: string[] = [];
+  const worker = createJournalWorker(journal, { now: () => at, timeZone: zone, stopped: () => false,
+    model: async () => draft, checkOutbound: () => {},
+    replyCheck: { elapsedMs: () => 0,
+      jev: async () => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(Object.keys(REPLY_RULES)
+        .filter(id => id !== 'incoherent_remainder').map(id => [id, { type: 'noul', noul: id === rule ? 0.91 : 0.01 }])) }, latencyMs: 0 }),
+      escalate: async () => {
+        if (mode === 'outage') throw Error('reviewer unavailable');
+        return { verdict: 'violation' as const, ruleIds: [rule], confidence: null, latencyMs: 0, reason: 'Review found a problem.' };
+      } },
+    send: async input => { sends.push(input.expectedText); return sends.length; } });
+  worker.intake([update(1, 'What is the notification setting?')]);
+  await worker.drain();
+  const turn = journal.view.order[0]!;
+  const held = mode === 'held';
+  expect(sends.some(text => text.includes(draft))).toBe(!held);
+  if (held) expect(turn.heldReview).toBeTruthy();
+  else expect(turn.release).toMatchObject({ review: mode === 'outage' ? 'unavailable' : 'violation' });
+  const snapshot = dashboardSnapshot(journal.view, { now: at, zone, statusText: 'Status', bot: null, stopped: false });
+  expect(checkSnapshot(snapshot)).toBeTruthy();
+  expect(snapshot.counts.held).toBe(0); // No pending turn hold: a reviewed hold sends a content-free notice.
+  expect(snapshot.turns[0]!.state).toMatch(held ? /^Reply held for review; holding notice delivered$/u : /^Answered$/u);
+  const checks = snapshot.health.noticed.filter(item => item.category.startsWith('A reply check'));
+  expect(checks.length).toBeGreaterThan(0);
+  for (const check of checks) {
+    expect(check.status).toBe('open');
+    expect(check.summary).not.toMatch(/held|revised|resolved/u);
+  }
+  expect(snapshot.health.noticed.some(item => item.category === 'A draft held by its reply check')).toBe(held);
+  const health = visible(renderDashboard({ token: null, view: 'health', state: { kind: 'ok', snapshot, age: 0 }, pending: [], readOnly: true }) as string);
+  expect(health).not.toContain('Worked out');
+  expect(health).not.toContain('held rather than sent');
+  expect(health).toContain(mode === 'outage' ? 'could not run' : 'reported a problem');
+  const detail = visible(renderDashboard({ token: null, view: 'messages/1', state: { kind: 'ok', snapshot, age: 0 }, pending: [], readOnly: true }) as string);
+  expect(detail).toContain(held ? 'Reply held for review; holding notice delivered' : 'Answered');
+});
+
+it('row 89 repair: every active conversation link resolves beyond the recent-ten window, with bounded redacted details', async () => {
+  const root = temp('dashboard-active-details-');
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxTurns: 40 });
+  cleanup.push(() => journal.close());
+  const worker = createJournalWorker(journal, { now: () => at, timeZone: zone, stopped: () => false,
+    model: async () => 'an answer', checkOutbound: () => {}, send: async () => 1 });
+  const input = { now: at, zone, statusText: 'Status', bot: null, stopped: false };
+  const secret = 'sk-' + 'a'.repeat(48);
+  // Eleven accepted, pending messages reproduce the first advertised link missing from Recent messages.
+  for (let id = 1; id <= 11; id++) worker.intake([update(id, `Active question ${id}: <script>unsafe()</script> ${secret} ${'notes '.repeat(100)}`)]);
+  let snapshot = dashboardSnapshot(journal.view, input);
+  expect(snapshot.turns).toHaveLength(10);
+  expect(snapshot.turns.some(turn => turn.update === 1)).toBe(false);
+  expect(snapshot.sessions).toHaveLength(11);
+  expect(snapshot.sessionTurns).toHaveLength(11);
+  expect(JSON.stringify(snapshot)).not.toContain(secret);
+  const dash = createReadOnlyDashboard({ state: () => snapshotState(JSON.stringify(snapshot), at), now: () => at, checkPin: async () => true });
+  const signedIn = await handleReadOnly(dash, { method: 'POST', path: '/dashboard/sign-in', body: 'pin=246810' });
+  const cookie = (signedIn.headers['set-cookie'] as string).split(';')[0]!;
+  const get = (path: string) => handleReadOnly(dash, { method: 'GET', path, cookie });
+  const sessions = await get('/dashboard/sessions');
+  expect(sessions.status).toBe(200);
+  expect(sessions.body).toContain('href="/dashboard/messages/1"');
+  for (const session of snapshot.sessions) {
+    const detail = await get(`/dashboard/messages/${session.update}`);
+    expect(detail.status).toBe(200);
+    expect(visible(detail.body)).toContain(`Active question ${session.update}:`);
+    expect(visible(detail.body)).toContain('Waiting for my answer');
+    expect(detail.body).not.toContain('not in the recent list');
+    expect(detail.body).not.toContain('<script>unsafe()');
+  }
+  // The same renderer serves the passkey page's prefixed routes.
+  expect(renderDashboard({ token: 'a'.repeat(32), view: 'sessions', state: { kind: 'ok', snapshot, age: 0 }, pending: [] }))
+    .toContain(`href="/${'a'.repeat(32)}/dashboard/messages/1"`);
+  expect(visible(renderDashboard({ token: 'a'.repeat(32), view: 'messages/1', state: { kind: 'ok', snapshot, age: 0 }, pending: [] }) as string))
+    .toContain('Active question 1:');
+  for (let id = 12; id <= 30; id++) worker.intake([update(id, `Active question ${id}`)]);
+  snapshot = dashboardSnapshot(journal.view, input);
+  expect(checkSnapshot(snapshot)).toBeTruthy();
+  expect(snapshot.sessions).toHaveLength(16);
+  expect(snapshot.sessionTurns).toHaveLength(16);
+  for (const session of snapshot.sessions) expect(snapshot.sessionTurns.some(turn => turn.update === session.update)).toBe(true);
+  expect(snapshot.sessionTurns.every(turn => turn.message.length <= 500)).toBe(true);
+  for (const turn of journal.view.order) journal.append({ kind: 'hold', id: turn.id, reason: 'stopped', at });
+  snapshot = dashboardSnapshot(journal.view, input);
+  expect(snapshot.sessions).toEqual([]);
+  expect(snapshot.sessionTurns).toEqual([]);
+  expect(snapshot.health.noticed).toContainEqual(expect.objectContaining({ category: 'A reply held for review', count: 30, status: 'open' }));
+  expect(snapshot.turns.every(turn => turn.state === 'Held: stopped')).toBe(true);
 });

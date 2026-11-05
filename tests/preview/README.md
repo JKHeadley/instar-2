@@ -3390,7 +3390,11 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   re-fed from the journal's own records: refused and unknown deliveries, unusable model answers, failed
   summaries, held and checked replies, connection problems and refused promises, each with its status,
   count and first time; the kinds seen more than once as patterns; which of the three self-checks have
-  run; the totals; awareness only, with no action on the page), and the stop (a link to the page's own standing Stop). It is
+  run; the totals; awareness only, with no action on the page), and the stop (a link to the page's own standing Stop).
+  The snapshot retains up to sixteen active conversation details separately from the latest ten
+  messages, so every Working now message link opens its detail. Reply-check counters describe check
+  events: advisory objections and outages can precede delivery. Actual holds and delivery outcomes
+  come from each turn's record, including a withheld draft whose holding notice was delivered. It is
   a page of the independent approval page above, served by that process at `/TOKEN/dashboard`
   (linked from the approvals index), never by the agent. Nothing from the agent shows until the
   operator's enrolled passkey signs in: one assertion over a fresh nonce whose signed bytes are a

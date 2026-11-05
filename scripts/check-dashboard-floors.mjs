@@ -177,6 +177,7 @@ export function fixtureSnapshots(recorded, now) {
       state: index === 1 ? 'Held: summary faithfulness: full-context review found loss' : 'Answered' })),
     chat: 'example_agent_bot',
     // Row 89: work in progress and process health, in the shapes the runner publishes (tests/preview/operator-dashboard.ts).
+    sessionTurns: [],
     sessions: [{ id: 'turn-1', kind: 'conversation', label: recorded.turns[0].message.slice(0, 120), state: 'running', since: '2026-10-01 14:00',
       machine: 'studio', activity: 'Status: reading the saved notes', update: recorded.turns[0].update },
     { id: 'edge-1', kind: 'delegated', label: 'A background check of the saved notes', state: 'running', since: '2026-10-01 14:02', machine: 'studio', activity: null, update: null }],

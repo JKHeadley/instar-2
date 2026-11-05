@@ -34,7 +34,7 @@ const DETAIL = Object.freeze({
 });
 const GITHUB_REVIEW = /^https:\/\/github\.com\/[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}\/pull\/[1-9]\d{0,9}\/files$/u;
 const CHAT = /^[A-Za-z0-9_]{5,32}$/u;
-const FIELDS = 'allowance,asOf,chat,counts,health,requests,schemaVersion,sessions,state,status,tokens,turns,type,until,zone';
+const FIELDS = 'allowance,asOf,chat,counts,health,requests,schemaVersion,sessionTurns,sessions,state,status,tokens,turns,type,until,zone';
 const HEALTH_STATUS = ['open', 'attributed', 'resolved'];
 
 const text = (value, limit) => { check(typeof value === 'string' && value.length <= limit, 'dashboard text field invalid'); return value; };
@@ -65,7 +65,7 @@ export function checkSnapshot(value) {
     check(item.route === 'github-review' ? typeof item.link === 'string' && GITHUB_REVIEW.test(item.link) : item.link === null,
       'dashboard request link is not a GitHub review page');
   }
-  for (const item of list(s.turns, B.turns)) {
+  for (const item of [...list(s.turns, B.turns), ...list(s.sessionTurns, B.sessions)]) {
     closed(item, 'from,message,reply,state,time,update'); check(isDashboardUpdate(item.update), 'dashboard update invalid'); text(item.time, 32); text(item.message, B.textChars);
     check(item.reply === null || typeof item.reply === 'string' && item.reply.length <= B.textChars, 'dashboard reply invalid');
     check(['you', 'scheduled'].includes(item.from), 'dashboard sender invalid'); text(item.state, B.stateChars);
@@ -78,6 +78,7 @@ export function checkSnapshot(value) {
     check(item.machine === null || typeof item.machine === 'string' && item.machine.length <= 64, 'dashboard session machine invalid');
     check(item.activity === null || typeof item.activity === 'string' && item.activity.length <= B.activityChars, 'dashboard session activity invalid');
     check(item.update === null ? item.kind === 'delegated' : item.kind === 'conversation' && isDashboardUpdate(item.update), 'dashboard session update invalid');
+    check(item.kind === 'delegated' || [...s.turns, ...s.sessionTurns].some(turn => turn.update === item.update), 'dashboard session detail missing');
   }
   closed(s.health, 'noticed,patterns,totals,watch');
   for (const item of list(s.health.noticed, B.noticed)) { closed(item, 'category,count,status,summary,when'); text(item.category, B.labelChars);
@@ -305,7 +306,7 @@ export function renderDashboard({ token, view, state, pending, readOnly = false 
         s?.chat ? `<a class="button danger" href="${chatLink(s.chat)}">Open your chat and send /stop</a>` : ''}`);
   const [kind, key] = view.split('/');
   if (kind === 'messages' && DETAIL_PATH.test(view)) {
-    const turn = s?.turns.find(item => String(item.update) === key);
+    const turn = s?.turns.find(item => String(item.update) === key) ?? s?.sessionTurns.find(item => String(item.update) === key);
     return page(token, 'messages', DETAIL.message, state, !turn ? (s ? '<p class="note">That message is not in the recent list any more.</p>' : '')
       : `<p class="meta">${escape(`${turn.time} · ${turn.from === 'you' ? 'From you' : 'Scheduled'}`)}</p><p class="quote">${escape(turn.message || '(no text)')}</p>
 <h2>Reply</h2>${turn.reply === null ? '<p class="note">No reply yet.</p>' : `<p class="quote">${escape(turn.reply)}</p>`}<p class="note">${escape(turn.state)}</p>`);
