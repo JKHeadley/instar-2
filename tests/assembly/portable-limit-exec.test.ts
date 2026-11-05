@@ -51,9 +51,9 @@ it.runIf(process.platform === 'linux')('real Linux Node, own worker and DNS fit 
   const code = `const fs=require('node:fs'), {Worker}=require('node:worker_threads'), cp=require('node:child_process');
 const status=()=>fs.readFileSync('/proc/self/status','utf8').split('\\n').filter(x=>/^(Uid|CapEff|Threads|NSpid):/.test(x));
 const first={limits:process.report.getReport().userLimits,status:status()};
-const w=new Worker('require("node:worker_threads").parentPort.postMessage("ready");Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,200)',{eval:true});
+const w=new Worker('const {parentPort}=require("node:worker_threads");const timeout=setTimeout(()=>process.exit(3),2000);parentPort.once("message",()=>{clearTimeout(timeout);parentPort.close();});parentPort.postMessage("ready")',{eval:true});
 w.once('message',()=>{const extra=cp.spawnSync('/bin/true',[],{timeout:1000});
-first.workerStatus=status();first.extraFork={status:extra.status,error:extra.error?.code};});
+first.workerStatus=status();first.extraFork={status:extra.status,error:extra.error?.code};w.postMessage("finish");});
 w.once('exit',code=>{first.workerExit=code;require('node:dns').lookup('localhost',(error)=>{
 first.dnsError=error?.code??null;first.finalStatus=status();console.log(JSON.stringify(first));});});`;
   const child = run(limitedFileArgv({ label: 'finite-node-proof', ...limits, handles: 256, cpuSeconds: 8,
@@ -108,4 +108,17 @@ it('an unreadable UID census refuses both invoke and poll without dispatch', asy
     expect(await io.poll(request, 'offline')).toMatchObject({ stage: 'launch-refused', sent: false });
     expect(dispatches).toBe(0);
   } finally { Object.assign(cp, original); syncBuiltinESMExports(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('the fixed backend retains a stricter inherited hard and soft process fence', () => {
+  const observed = execFileSync('/bin/ps', uidLimitQuery(process.getuid()), { encoding: 'utf8', timeout: 2000 })
+    .trim().split(/\s+/u).length;
+  const inherited = observed + 4;
+  const args = limitedArgv({ ...limits, processLimit: inherited + 1, executable: '/bin/bash',
+    args: ['-p', '-c', 'ulimit -S -u; ulimit -H -u'] });
+  const child = spawnSync('/bin/bash', ['-p', '-c',
+    'ulimit -S -u "$1"; ulimit -H -u "$1"; shift; exec "$@"', 'inherited', String(inherited), LIMIT_SHELL, ...args],
+    { encoding: 'utf8', timeout: 5000, env });
+  expect(child.status, child.stderr).toBe(0);
+  expect(child.stdout.trim().split('\n')).toEqual([String(inherited), String(inherited)]);
 });
