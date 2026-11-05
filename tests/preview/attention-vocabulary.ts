@@ -1,4 +1,4 @@
-/** Carryover row 88: verbatim 1.x wire vocabulary; aliases are explicit API tokens, never intent inference. */
+/** Carryover row 88: 1.x wire vocabulary with own-key alias validation; aliases are explicit API tokens, never intent inference. */
 export interface AttentionItem {
   id: string; title: string; summary: string; description?: string; category: string;
   priority: 'URGENT' | 'HIGH' | 'NORMAL' | 'LOW';
@@ -65,7 +65,8 @@ export function normalizeAttentionStatus(value: unknown): AttentionItem['status'
   if ((ATTENTION_STATUSES as readonly string[]).includes(token)) {
     return token as AttentionItem['status'];
   }
-  return STATUS_ALIASES[token.toLowerCase()] ?? null;
+  const key = token.toLowerCase();
+  return Object.hasOwn(STATUS_ALIASES, key) ? STATUS_ALIASES[key]! : null;
 }
 
 export function normalizeAttentionPriority(value: unknown): AttentionItem['priority'] | null {
@@ -75,6 +76,7 @@ export function normalizeAttentionPriority(value: unknown): AttentionItem['prior
   if ((ATTENTION_PRIORITIES as readonly string[]).includes(token)) {
     return token as AttentionItem['priority'];
   }
-  return PRIORITY_ALIASES[token.toLowerCase()] ?? null;
+  const key = token.toLowerCase();
+  return Object.hasOwn(PRIORITY_ALIASES, key) ? PRIORITY_ALIASES[key]! : null;
 }
 

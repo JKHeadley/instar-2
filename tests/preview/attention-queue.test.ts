@@ -118,3 +118,37 @@ it('a failed durable append cannot return a successful creation', () => {
   const queue = new AttentionQueue({ state: () => undefined, append: () => { throw Error('disk failed'); } }, () => 1000);
   expect(() => queue.createAttentionItem(item)).toThrow('disk failed'); expect(queue.getAttentionItems()).toEqual([]);
 });
+
+it('revalidates ownership after replication before applying a durable intent', async () => {
+  const h = world(); try {
+    h.queue.createAttentionItem(item);
+    const surface = createAttentionSurface(h.journal, { now: () => h.clock.now, machine: 'studio',
+      admitted: () => h.host.admitted, replicated: async () => { h.host.admitted = false; return true; } });
+    expect(await surface.acknowledge(item.id, 'DONE', 1, authority)).toEqual({ outcome: 'pending' });
+    expect(h.queue.getAttentionItem(item.id)?.status).toBe('OPEN');
+    h.reopen(); expect(h.queue.remoteAcks.size).toBe(1);
+    h.host.admitted = true; await h.surface().drain();
+    expect(h.queue.getAttentionItem(item.id)?.status).toBe('DONE');
+  } finally { h.close(); }
+});
+it('rejects a recorded actor on drain and retains the refusal across restart', () => {
+  const h = world(); try {
+    h.queue.createAttentionItem(item);
+    h.queue.remoteAcks.enqueue({ itemId: item.id, targetMachineId: 'studio', status: 'DONE', operatorUid: genesis.operator, authority, revision: 1 });
+    expect(h.queue.drain(() => false)).toEqual({ delivered: 0, pending: 0, rejected: 1 });
+    h.reopen(); expect(h.queue.getAttentionItem(item.id)?.status).toBe('OPEN');
+    expect(h.journal.view.attention?.acknowledgements[0]?.lastOutcome).toBe('rejected');
+  } finally { h.close(); }
+});
+it('refuses expired authority and requires an explicit health lane when reopening', async () => {
+  const h = world(); try {
+    expect(() => h.queue.createOrReopenAgentHealthAttentionItem(item)).toThrow(/lane/);
+    h.queue.createOrReopenAgentHealthAttentionItem({ ...item, lane: 'agent-health' });
+    await h.surface().acknowledge(item.id, 'DONE', 1, authority);
+    h.queue.createOrReopenAgentHealthAttentionItem({ ...item, lane: 'agent-health' });
+    expect(h.queue.getAttentionItem(item.id)).toMatchObject({ status: 'OPEN', revision: 3, lane: 'agent-health' });
+    h.clock.now = genesis.expires; const size = h.journal.size;
+    await expect(h.surface().create('expired', authority)).rejects.toThrow(/grant/);
+    expect(h.journal.size).toBe(size);
+  } finally { h.close(); }
+});

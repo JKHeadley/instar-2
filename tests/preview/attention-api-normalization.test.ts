@@ -33,5 +33,9 @@ describe('attention API vocabulary normalization', () => {
   it('rejects unknown status and priority values', () => {
     expect(normalizeAttentionStatus('archived')).toBeNull();
     expect(normalizeAttentionPriority('later')).toBeNull();
+    for (const inherited of ['__proto__', 'constructor', 'toString']) {
+      expect(normalizeAttentionStatus(inherited)).toBeNull();
+      expect(normalizeAttentionPriority(inherited)).toBeNull();
+    }
   });
 });
