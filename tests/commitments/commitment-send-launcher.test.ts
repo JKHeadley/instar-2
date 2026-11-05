@@ -16,7 +16,7 @@ const policy = (grants: unknown[]) => JSON.stringify({ type: 'PreviewEffectPolic
 const grant = { id: 'commitment-send-grant', effect: 'telegram:ordinary-reply', target: `commitment-send:${String(TOPIC)}`, approves: ['scope'],
   source: 'operator message', custodian: 'operator', recovery: 'unknown-never-retry' };
 
-it.each([['with its exact grant', [grant], 1], ['with no grant', [], 0]])('the launcher tick drives a due check-in %s', async (_name, grants, expected) => {
+it.each([['with its exact grant', [grant], 0], ['with no grant', [], 0]])('the launcher keeps a due-only check-in pull-visible %s', async (_name, grants, expected) => {
   const world = successiveWorld(), root = join(world.directory, 'commitment-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), effectPolicy = join(world.directory, 'effect-policy.json');

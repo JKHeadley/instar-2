@@ -73,6 +73,7 @@ import { reviewLink, type ReviewYesSource } from './review-yes-source.js';
 import { applyCommitmentSendIntent, applyCommitmentSendReceipt, applyCommitmentStatusReserve, applyCommitmentStatusSettled, applyCommitmentStoreRecord, checkCommitmentSendIntent, checkCommitmentStoreRecord,
   commitmentSendTarget, commitmentStatusId, type CommitmentSendIntentRecord, type CommitmentSendSentRecord, type CommitmentStatusReserveRecord, type CommitmentStatusSettledRecord,
   type CommitmentStoreRecord, type CommitmentStoreView } from './commitment-record.js';
+import type { CommitmentNoticeProducer } from './commitment-notice-contract.js';
 import { createCommitmentDoorway, type CommitmentSendAdmission, type CommitmentStatusModel } from './commitment-send.js';
 import { applySentinelRecord, checkSentinelRecord, retainedSentinelEvidence, presenceNoteDue, type SentinelRecord, type SentinelView } from './sentinel-record.js';
 import { taskFields } from './answer-reading.js';
@@ -608,10 +609,10 @@ export const GROUP_DISCLOSURE_HOLD_NOTICE = 'PREVIEW — I\'m holding a reply un
 /** Rule 87: every push is classified at the one send boundary. `status` is pull-only (status,
  * self-state, digest) and is never pushed; a limited answer to an incoming message is its result. */
 export type OutboundDisposition = 'result' | 'action-needed' | 'status';
-export type OutboundKind = 'reply' | 'held-notice' | 'reminder' | 'limited-answer' | 'incident' | 'approval' | 'request-result' | 'commitment';
+export type OutboundKind = 'reply' | 'held-notice' | 'reminder' | 'limited-answer' | 'incident' | 'approval' | 'request-result' | 'commitment' | 'commitment-notice' | 'commitment-result';
 export const OUTBOUND_DISPOSITIONS: Readonly<Record<OutboundKind, OutboundDisposition>> = Object.freeze({ reply: 'result', 'request-result': 'result',
-  // Provisional, and unreachable without an exact grant: part 18 section 6 decides whether a heartbeat or a date alone may push (Rule 87).
-  commitment: 'result',
+  // Part 18 §6: an observation is pull-only; a separately admitted notice is action/result-bearing.
+  commitment: 'status', 'commitment-notice': 'action-needed', 'commitment-result': 'result',
   // An unchanged held status is pull-only (Rule 87): it stays in `status`, never a push.
   'held-notice': 'status', reminder: 'result', 'limited-answer': 'action-needed', incident: 'action-needed', approval: 'action-needed' });
 
@@ -10582,8 +10583,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     catch { /* stays UNKNOWN; never repeated */ }
   };
   /** Row 01: commitment sends and status lines through this worker's one outbound boundary and its model port. */
-  const commitmentDoorway = (admit: CommitmentSendAdmission) => createCommitmentDoorway({ journal, admit, now: ports.now, stopped: ports.stopped, checkOutbound: ports.checkOutbound,
-    push: (target, provenance, input) => push('commitment', target, provenance, input),
+  const commitmentDoorway = (admit: CommitmentSendAdmission, noticeProducer?: CommitmentNoticeProducer) => createCommitmentDoorway({ journal, admit, ...(noticeProducer ? { noticeProducer } : {}), now: ports.now, stopped: ports.stopped, checkOutbound: ports.checkOutbound,
+    push: (target, provenance, input) => push(input.noticeKind === 'concrete-result' ? 'commitment-result' : 'commitment-notice', target, provenance, input),
     ...(ports.commitmentStatus ? { model: ports.commitmentStatus } : {}) });
   /** A raise request exists only with a challenge the independent verifier issued for its exact subject. */
   const issueRaise = (lead: Turn, reason: RaiseReason): ApprovalRequest | undefined => {

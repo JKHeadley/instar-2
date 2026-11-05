@@ -7,8 +7,8 @@
  * - A reply promise stays the journal's. Each open note is mirrored one way under `commitment:<id>`: the journal's
  *   closure closes the mirror, the mirror never closes the note (Rules 33, 83).
  * - Sending goes through the `send` port only (commitment-send.ts binds it to the outbound boundary). Without one, every
- *   send is a definite refusal and retained as such. Beacon output stays off unless a live send grant or an explicit
- *   option enables it (Rule 87), and check-ins run only while a grant is live, so none spends an attempt without one.
+ *   send is a definite refusal and retained as such. The bound runner observes without pushing: a date or
+ *   heartbeat supplies no delivery contract (Part 18 §6, Rule 87). Separate requested replies stay with Five/Eight.
  * - What a tick starts settles inside the same admitted job: `tick` requests `settle` as one of its steps. */
 import { CommitmentTracker, type Commitment, type CommitmentStore, type CommitmentTrackerConfig } from '../../src/commitments/CommitmentTracker.js';
 import { PromiseBeacon, type PromiseBeaconConfig, type ReviveRequest, type ReviveResult } from '../../src/commitments/PromiseBeacon.js';
@@ -82,7 +82,9 @@ export function createBoundCommitmentHost(journal: Parameters<typeof createCommi
   worker: { commitmentDoorway(admit: CommitmentSendAdmission): CommitmentDoorway }, grant: { admit: CommitmentSendAdmission; any(): boolean }) {
   const doorway = worker.commitmentDoorway(grant.admit);
   return createCommitmentHost(journal, { ...ports, send: doorway.send, resolveDelivery: doorway.resolveDelivery, resolveOriginDelivery: doorway.resolveOrigin,
-    sendGranted: grant.any, sendAdmits: topic => grant.admit(topic).admitted, generateStatusLine: doorway.statusLine });
+    // The carried heartbeat/check-in text is observational. Explicit replies use Five's
+    // source-bound requested-result path; eligible notices need a separate producer contract.
+    sendGranted: () => false, sendAdmits: () => false, generateStatusLine: doorway.statusLine });
 }
 
 export function createCommitmentHost(journal: { readonly view: JournalView; append(row: JournalRecord): void }, ports: CommitmentHostPorts) {
@@ -191,12 +193,13 @@ export function createCommitmentHost(journal: { readonly view: JournalView; appe
     return { tracker, beacon, checkIns, frames: stored().frames };
   };
   let live = build(), started = false;
+  let lastCheckInPass: CheckInReminderPassReport | null = null;
   let passing: Promise<CheckInReminderPassReport> | null = null, passCancel: { cancel(): void } | null = null;
-  const runCheckIns = (): Promise<CheckInReminderPassReport> => passing ??= track(live.checkIns.runPass()).finally(() => { passing = null; });
+  const runCheckIns = (): Promise<CheckInReminderPassReport> => passing ??= track(live.checkIns.runPass()).then(report => { lastCheckInPass = report; return report; }).finally(() => { passing = null; });
   const start = () => { live.tracker.start(); live.beacon.start(); started = true;
     passCancel?.cancel();
     // Once on the first tick, so a restart settles what it can at once, then at the 1.x cadence.
-    const pass = () => { if (ports.sendGranted?.()) void runCheckIns().catch(error => ports.log('[check-in]', (error as Error).message)); };
+    const pass = () => { void runCheckIns().catch(error => ports.log('[check-in]', (error as Error).message)); };
     passCancel = ports.sendGranted ? timers.every(CHECK_IN_PASS_MS, pass) : null;
     if (ports.sendGranted) timers.after(0, pass); };
 
@@ -243,7 +246,7 @@ export function createCommitmentHost(journal: { readonly view: JournalView; appe
     tickFailures += failures.length;
     return { ran: ready.length, failures };
   };
-  const report = () => ({ ...commitmentStoreReport(journal.view), health: live.tracker.getHealth(), tickFailures });
+  const report = () => ({ ...commitmentStoreReport(journal.view), health: live.tracker.getHealth(), tickFailures, checkIns: lastCheckInPass });
   /** Holds the admitted job open until everything this host started has ended. */
   const settle = async () => { while (inFlight.size) await Promise.all(inFlight); };
   return { tick, settle, report, tracker: () => live.tracker, beacon: () => live.beacon,

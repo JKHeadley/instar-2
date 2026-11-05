@@ -1,6 +1,7 @@
 /** The durable record of the commitment and beacon modules (src/commitments): one journal frame per
  * write, carrying the changed rows. The projection is the only store; a snapshot carries it verbatim, a
  * replay rebuilds it and replication ships the frames like any other. Nothing here decides anything. */
+import { validCommitmentNotice, type CommitmentNoticeContract } from './commitment-notice-contract.js';
 import type { Commitment } from '../../src/commitments/CommitmentTracker.js';
 import type { ForwardDeclaration } from './journal.js';
 import type { OutboundProvenance } from './outbound-provenance.js';
@@ -15,14 +16,14 @@ export type CommitmentStoreRecord = { kind: 'commitment-store'; forward: Forward
   refusal?: { logicalSendId: string; reason: string } };
 /** A commitment send's durable signed intent, before the transport; its attempt is `commitment-send:<ordinal>`. */
 export type CommitmentSendIntentRecord = { kind: 'commitment-send-intent'; forward: ForwardDeclaration; ordinal: number;
-  logicalSendId: string; text: string; chat: string; thread: number; grant: string; effectGrant: string; provenance: OutboundProvenance; at: number };
+  contract?: CommitmentNoticeContract; logicalSendId: string; text: string; chat: string; thread: number; grant: string; effectGrant: string; provenance: OutboundProvenance; at: number };
 /** The exact receipt of one attempt. Only this makes it delivered. */
 export type CommitmentSendSentRecord = { kind: 'commitment-send-sent'; forward: ForwardDeclaration; ordinal: number; message: number; at: number };
 /** A status line's model call, reserved against the journal's call cap before it starts. */
 export type CommitmentStatusReserveRecord = { kind: 'commitment-status-reserve'; forward: ForwardDeclaration; ordinal: number; at: number };
 export type CommitmentStatusSettledRecord = { kind: 'commitment-status-settled'; forward: ForwardDeclaration; ordinal: number;
   state: 'complete' | 'failed' | 'unknown'; usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true }; at: number };
-export interface CommitmentSendRow { ordinal: number; logicalSendId: string; text: string; thread: number; effectGrant: string; at: number; sent?: number; sentAt?: number }
+export interface CommitmentSendRow { contract?: CommitmentNoticeContract; ordinal: number; logicalSendId: string; text: string; thread: number; effectGrant: string; at: number; sent?: number; sentAt?: number }
 export interface CommitmentStoreView {
   /** Frames applied; the host rebuilds from this view when another owner advanced it. */
   frames: number;
@@ -63,6 +64,8 @@ export function checkCommitmentSendIntent(view: { genesis: { chat: string; grant
   // The no-duplicate floor, held on replay too: another attempt only after each earlier one definitely reached nobody.
   const open = sends.filter(item => item.logicalSendId === row.logicalSendId).some(item => item.sent !== undefined
     || view.sendOutcomes.find(outcome => outcome.target === commitmentSendTarget(item.ordinal))?.outcome !== 'refused');
+  if (row.contract && !validCommitmentNotice(row.contract, row.logicalSendId, row.thread, row.text, row.at))
+    throw Error('preview journal: commitment notice contract refused');
   if (!forwardOk(row.forward) || open || row.ordinal !== sends.length || view.stop || row.at >= view.expires || view.replies >= view.limits.maxReplies
     || row.chat !== view.genesis.chat || row.grant !== view.genesis.grant || !Number.isSafeInteger(row.thread) || row.thread <= 0
     || typeof row.logicalSendId !== 'string' || !row.logicalSendId || row.logicalSendId.length > 256
@@ -72,7 +75,7 @@ export function checkCommitmentSendIntent(view: { genesis: { chat: string; grant
 }
 export function applyCommitmentSendIntent(current: CommitmentStoreView | undefined, row: CommitmentSendIntentRecord): CommitmentStoreView {
   const view = current ?? emptyCommitmentStore();
-  view.sends.push({ ordinal: row.ordinal, logicalSendId: row.logicalSendId, text: row.text, thread: row.thread, effectGrant: row.effectGrant, at: row.at });
+  view.sends.push({ ...(row.contract ? { contract: row.contract } : {}), ordinal: row.ordinal, logicalSendId: row.logicalSendId, text: row.text, thread: row.thread, effectGrant: row.effectGrant, at: row.at });
   return view;
 }
 export function applyCommitmentSendReceipt(view: { commitmentStore?: CommitmentStoreView; sendOutcomes: readonly { target: string; outcome: string }[] }, row: CommitmentSendSentRecord): void {

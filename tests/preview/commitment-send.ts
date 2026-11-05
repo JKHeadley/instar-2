@@ -6,6 +6,7 @@
  *   Only that receipt reads as delivered. A definite refusal may be tried again under the same logical id; anything
  *   that may have reached the person is held under its operation, never repeated, and closes nothing.
  * - A status line is a reserved call on the journal's cap, through the runner's recorded model boundary (Rule 41). */
+import { validCommitmentNotice, type CommitmentNoticeProducer, type CommitmentNoticeContract } from './commitment-notice-contract.js';
 import type { DeliveryOutcome } from '../../src/commitments/ports.js';
 import { COMMITMENT_STORE_GENERATION, commitmentSendTarget, commitmentStatusId, type CommitmentSendRow } from './commitment-record.js';
 import type { JournalRecord, JournalView } from './journal.js';
@@ -24,10 +25,12 @@ export type CommitmentStatusModel = (input: { id: string; question: string; cont
 export interface CommitmentDoorwayPorts {
   journal: { readonly view: JournalView; append(row: JournalRecord): void; signOutbound(speaker: Speaker, subject: OutboundSubject): OutboundProvenance };
   admit: CommitmentSendAdmission;
+  /** Separate owner-approved finding and declared alerts route. Dates and grants cannot mint this. */
+  noticeProducer?: CommitmentNoticeProducer;
   now(): number;
   stopped(): boolean;
   checkOutbound(text: string): void;
-  push(target: string, provenance: OutboundProvenance, input: { text: string; expectedText: string; chat: string; thread: number; update: number }): Promise<SettledSendOutcome>;
+  push(target: string, provenance: OutboundProvenance, input: { text: string; expectedText: string; chat: string; thread: number; update: number; noticeKind: 'concrete-result' | 'human-required-action'; current(): boolean }): Promise<SettledSendOutcome>;
   model?: CommitmentStatusModel;
 }
 const refused = (reason: string, more: { permanent?: true; standDown?: true } = {}): DeliveryOutcome =>
@@ -52,6 +55,14 @@ export function createCommitmentDoorway(ports: CommitmentDoorwayPorts) {
     if (!Number.isSafeInteger(topic) || topic <= 0 || !view.order.some(turn => turn.accepted && turn.thread === topic)) return refused('unknown-topic', { permanent: true });
     const admission = ports.admit(topic);
     if (!admission.admitted) return refused('no-send-grant', { standDown: true });
+    let contract: CommitmentNoticeContract | undefined;
+    try {
+      contract = ports.noticeProducer?.read(identity.logicalSendId);
+      if (!contract) return refused('no-delivery-contract', { standDown: true });
+      if (ports.noticeProducer?.alerts()?.topic !== topic) return refused('not-alerts-destination');
+      if (!validCommitmentNotice(contract, identity.logicalSendId, topic, text, ports.now())) return refused('notice-ineligible');
+      contract = structuredClone(contract);
+    } catch { return refused('notice-authority-unavailable'); }
     if (view.replies >= view.limits.maxReplies) return refused('reply-cap');
     try { ports.checkOutbound(text); } catch { return refused('outbound-refused', { permanent: true }); }
     const ordinal = sends().length, chat = view.genesis.chat, target = commitmentSendTarget(ordinal);
@@ -59,14 +70,27 @@ export function createCommitmentDoorway(ports: CommitmentDoorwayPorts) {
     try {
       provenance = journal.signOutbound('infrastructure', { target, chat, thread: topic, body: text });
       journal.append({ kind: 'commitment-send-intent', forward, ordinal, logicalSendId: identity.logicalSendId, text, chat, thread: topic,
-        grant: view.genesis.grant, effectGrant: admission.grant, provenance, at: ports.now() });
+        grant: view.genesis.grant, effectGrant: admission.grant, contract, provenance, at: ports.now() });
     } catch { return refused('journal-refused'); }
-    const outcome = await ports.push(target, provenance, { text, expectedText: text, chat, thread: topic, update: 0 });
+    // Re-resolve at the worker's dispatch check too, including a proved-not-sent retry.
+    // A new finding or grant is a new admission, never a mutation of the durable cause.
+    const current = () => {
+      try {
+        const live = ports.noticeProducer?.read(identity.logicalSendId), admitted = ports.admit(topic);
+        return journal.view.stop === null && !ports.stopped() && ports.now() < journal.view.expires
+          && admitted.admitted && admitted.grant === admission.grant && ports.noticeProducer?.alerts()?.topic === topic
+          && !!live && JSON.stringify(live) === JSON.stringify(contract)
+          && validCommitmentNotice(live, identity.logicalSendId, topic, text, ports.now());
+      } catch { return false; }
+    };
+    let outcome: SettledSendOutcome;
+    try { outcome = await ports.push(target, provenance, { text, expectedText: text, chat, thread: topic, update: 0, noticeKind: contract.evidence.kind, current }); }
+    catch { return unknown(sends()[ordinal]!, 'transport threw after intent'); }
     if (outcome.kind === 'refused') return refused(outcome.reason);
     const row = sends()[ordinal]!;
     if (outcome.kind === 'unknown') return unknown(row, outcome.reason);
     // Accepted, and said so; if the receipt cannot be written, a later run reads this attempt as UNKNOWN and never repeats it.
-    try { journal.append({ kind: 'commitment-send-sent', forward, ordinal, message: outcome.message, at: ports.now() }); } catch { /* retained as UNKNOWN */ }
+    try { journal.append({ kind: 'commitment-send-sent', forward, ordinal, message: outcome.message, at: ports.now() }); } catch { return unknown(row, 'receipt not durable'); }
     return { delivered: true, outcome: 'delivered' };
   };
   return { send,
