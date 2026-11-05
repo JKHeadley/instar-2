@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:e8d061a1960fdd85485ba2dea6ea91697e17a83bb0559761556860dd9b3df020",
-  "commit": "e1fa0b86cba8384fed901bab99ad83e9b763bd89",
+  "generation": "sha256:95daa20fdd4ef8046d59e94946f89b58431df14de0fb638845b8a24c8b014520",
+  "commit": "f6fb0f7138555cc63b5f647996321440a3a78e60",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -82,6 +82,14 @@
         "availability": "not-loaded",
         "userFacing": false,
         "text": "checks each reply against remembered earlier turns without a model call."
+      },
+      {
+        "id": "preview.relationship-awareness",
+        "status": "live",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "knows who a mentioned person is across topics, the granted group, restarts and machines, from the journal's own people rows."
       },
       {
         "id": "preview.rolling-summary",
@@ -214,6 +222,14 @@
         "text": "checks each reply against remembered earlier turns without a model call."
       },
       {
+        "id": "preview.relationship-awareness",
+        "status": "live",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "knows who a mentioned person is across topics, the granted group, restarts and machines, from the journal's own people rows."
+      },
+      {
         "id": "preview.rolling-summary",
         "status": "live",
         "module": "tests/preview",
@@ -342,6 +358,14 @@
         "availability": "not-loaded",
         "userFacing": false,
         "text": "checks each reply against remembered earlier turns without a model call."
+      },
+      {
+        "id": "preview.relationship-awareness",
+        "status": "live",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "knows who a mentioned person is across topics, the granted group, restarts and machines, from the journal's own people rows."
       },
       {
         "id": "preview.rolling-summary",
@@ -474,6 +498,14 @@
         "text": "checks each reply against remembered earlier turns without a model call."
       },
       {
+        "id": "preview.relationship-awareness",
+        "status": "live",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "knows who a mentioned person is across topics, the granted group, restarts and machines, from the journal's own people rows."
+      },
+      {
         "id": "preview.rolling-summary",
         "status": "live",
         "module": "tests/preview",
@@ -602,6 +634,14 @@
         "availability": "available",
         "userFacing": false,
         "text": "checks each reply against remembered earlier turns without a model call."
+      },
+      {
+        "id": "preview.relationship-awareness",
+        "status": "live",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": false,
+        "text": "knows who a mentioned person is across topics, the granted group, restarts and machines, from the journal's own people rows."
       },
       {
         "id": "preview.rolling-summary",
