@@ -99,6 +99,8 @@ Decision: AQ88-r4-pinned-gate-repair | Keep generated capability summaries withi
 
 Post-gate publication: source 9fa73ae79f330cf0a4d7dcc5d219de7916e063b8; generation sha256:aedc4c3661fa99233cad7105728f5b3e34132343a3fc9857f5d8e1ec297919cd. Normal replay retains 299 entries/120 rules/34 terms/48 warnings/112 prerequisites and shape-only authority. Final pushed-head receipts follow in the desk report; the failed earlier gate remains recorded.
 
+The recorded-shape consumer replay also supplies the actual generated capability note through the normal sourcePacket boundary and asserts that the revised collaboration description reaches every raw historical response callback. This covers the final briefing text repair without a live model call.
+
 ## Closing block
 
 simplestRobustRoute: Compose the canonical Four/Five/Six/Seven/Eight/Nine owners, preserve authenticated custody and current fences, and project their results into the existing journal consumers. Use one recorded model boundary and existing journal reservations, and fixed reads through the existing private file API. Cache exact owner-issued requests in the existing operator store; verify passkey acts against the owner challenge on return. A batch-wide deadline bounds offline service waits.

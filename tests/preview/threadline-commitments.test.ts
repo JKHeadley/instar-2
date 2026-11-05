@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openPreviewJournal, obligationSchedule, projectionDigest, commitmentOpen, currentActionFacts } from './journal.js';
 import { createJournalWorker } from './journal-test-worker.js';
+import { sourcePacket, SOURCE_PINS } from './briefing.js';
 import { openLoops } from './obligations.js';
 import { CollaborationSurfacer, collaborationEndpoint, type HubEffect } from './collaboration-hub.js';
 import { offerEnvelope } from '../../src/rungraph/index.js';
@@ -92,11 +93,16 @@ it('an authenticated parent Threadline receipt keeps a nested promise visible wi
     expect(currentActionFacts(journal.view, 1000, true).items).toContainEqual(expect.objectContaining({
       kind: 'delegated-work', topic: '42', state: 'open; awaiting external result delivery' }));
     const corpus = JSON.parse(readFileSync('tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', 'utf8'));
+    const capabilityNote = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
+      { providerAttempts: 20, expiresAt: 10000000 }).sources.find(source => source.id === 'capability-note')!;
+    const capabilities = JSON.parse(readFileSync('generated/capabilities.json', 'utf8'));
+    const description = capabilities.launchers['tests/preview/journal-agent.mjs'].find((item: { id: string }) => item.id === 'preview-collaboration-hub').text;
+    expect(capabilityNote.text).toContain(description);
     for (const [index, shape] of corpus.otherShapes.entries()) {
       let invoked = false;
-      let packet: { actionFacts: { items: { kind: string }[] }; commitments: unknown[] } | undefined;
+      let packet: { actionFacts: { items: { kind: string }[] }; commitments: unknown[]; sources: { id: string; text: string }[] } | undefined;
       const worker = createJournalWorker(journal, { now: () => 2000 + index, stopped: () => false,
-        groupDisclosure: async () => true,
+        groupDisclosure: async () => true, sources: [capabilityNote],
         model: async ({ context }) => {
           invoked = true;
           packet = JSON.parse(context) as typeof packet;
@@ -106,6 +112,7 @@ it('an authenticated parent Threadline receipt keeps a nested promise visible wi
         from: { id: 7654321 }, message_thread_id: 42, text: 'Report the state of this delegated task.', date: 2 } }]);
       await worker.drain();
       expect(invoked, shape.id).toBe(true);
+      expect(packet?.sources.find(source => source.id === 'capability-note')?.text, shape.id).toContain(description);
       expect(packet?.actionFacts.items.some(item => item.kind === 'delegated-work'), shape.id).toBe(true);
       expect(packet?.commitments ?? []).toEqual([]); // A task is not a quote from an earlier agent reply.
       expect(commitmentOpen(journal.view, 0), shape.id).toBe(true);
