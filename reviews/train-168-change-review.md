@@ -28,6 +28,8 @@ Decision: train-168-desk | Use existing repin/build/rehash/replay chain; derive 
 
 Decision: train-168-review-rounds | Reopen the two frozen browser rounds because this integration changes their covered generated register; preserve their old exact-head history and require new desk review, never refresh a frozen digest as if already reviewed | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-168-p2-PROGRESS.md
 
+Decision: train-168-destination | origin/train-168 already contains another candidate and rejected a normal push; preserve it and publish this retry to the explicitly assigned train-168-p2 branch through an ordinary fast-forward merge | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-168-p2-PROGRESS.md
+
 Prompt review: No model-facing excerpt, parser or dispatch change. Main adds rules outside the selected briefing excerpts; constitution pin/floor tests verify this. Member changes only deterministic recorded installer requests. No new live acceptance claimed.
 1.x reuse: Member retains the existing PID-addressed Apple Event adapter lineage and extends the 2.0 standing-trust writer, as its reviewed record explains. This merge adds no implementation replacement.
 
