@@ -85,6 +85,8 @@ Publication refresh: the first replay correctly refused stale owner artifact has
 
 Decision: AQ88-r4-owner-reference-refresh | Derive existing reference hashes from exact current canonical bytes before ordinary replay; preserve declarations and runtime holds. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-production-composition-r4-1105-PROGRESS.md
 
+Final health boundary: absence of the optional canonical delegation owner leaves prior conditions unknown; only an available ledger can report recovery. The real installed consumer test verifies no append/false DONE after owner absence. An additional physical lifecycle case checks cancellation after work returned, exact checked outcome retention, no second physical response and positive health closure. Its injected execution clock and charge limits remain unchanged; the physical test yields between synchronous phases so test-runner RPC receipts can be consumed.
+
 ## Closing block
 
 simplestRobustRoute: Use one recorded model boundary and existing journal reservations, and fixed reads through the existing private file API. Cache exact owner-issued requests in the existing operator store; verify passkey acts against the owner challenge on return. A batch-wide deadline bounds offline service waits.

@@ -10,7 +10,7 @@ import type { AttentionQueue } from './attention-queue.js';
 import type { EdgeView } from '../../src/rungraph/delegation.js';
 
 export function produceAttentionHealth(view: JournalView, queue: AttentionQueue, now: number,
-  delegations: readonly EdgeView[] = []): void {
+  delegations?: readonly EdgeView[]): void {
   const health = loopHealth(view, now);
   const observations = [
     { conditionType: 'backlog-overdue', active: health.backlogOverdue, title: 'Accepted work is overdue',
@@ -21,12 +21,13 @@ export function produceAttentionHealth(view: JournalView, queue: AttentionQueue,
       summary: `${health.deliveryUnknown} result delivery outcome(s) are unknown. No automatic resend is authorized.` },
     { conditionType: 'recovery-unknown', active: health.recoveryUnknown > 0, title: 'Earlier work needs reconciliation',
       summary: `${health.recoveryUnknown} interrupted work step(s) may already have acted. They remain held without replay.` },
-    { conditionType: 'delegation-conflict', active: delegations.some(edge => edge.conflicts.length > 0),
+    // An absent owner is unknown, not an empty ledger or positive recovery.
+    ...(delegations ? [{ conditionType: 'delegation-conflict', active: delegations.some(edge => edge.conflicts.length > 0),
       title: 'Delegated work has conflicting custody', summary: 'The canonical delegation owner retains conflicting evidence. No replacement execution is authorized.' },
     { conditionType: 'delegation-overdue', active: delegations.some(edge => edge.owned && !edge.result && edge.contract.expiresAt <= now),
       title: 'Delegated work is overdue', summary: 'Expired work remains owned until its actual result and accounting are checked. Expiry is not completion.' },
     { conditionType: 'delegation-cancel-pending', active: delegations.some(edge => edge.owned && !edge.result && edge.cancellation !== 'none'),
-      title: 'Delegated cancellation is unconfirmed', summary: 'Cancellation was requested; no checked terminal result has returned. The original work remains owned.' },
+      title: 'Delegated cancellation is unconfirmed', summary: 'Cancellation was requested; no checked terminal result has returned. The original work remains owned.' }] : []),
   ];
   // Journal grant identifiers have no short-text bound. Hash the complete binding
   // so valid long/unicode identifiers cannot overflow the Attention item bound.

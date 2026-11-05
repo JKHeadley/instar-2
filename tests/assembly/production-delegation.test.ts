@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setImmediate as yieldToRunner } from 'node:timers/promises';
 import { expect, it } from 'vitest';
 import { delegationFactSchema, placeDelegation } from '../../src/rungraph/index.js';
 import { createThreadlineKeyCustody, threadlineIdentityFromSeeds, threadlineParserDeclarationId,
@@ -314,6 +315,10 @@ it('the installed journal consumer binds only the real Four parent, restores cus
     await attention.maintain();
     expect(attention.list().items.find(item => item.id.includes('delegation-cancel-pending'))).toMatchObject({ status: 'OPEN' });
     const size = journal.size; await attention.maintain(); expect(journal.size).toBe(size);
+    const withoutOwner = createAttentionSurface(journal, { now: () => 100, machine: 'machine-a', admitted: () => true,
+      replicated: async () => true });
+    await withoutOwner.maintain();
+    expect(journal.size).toBe(size); // Missing owner evidence cannot report recovery.
     expect(sent).toHaveLength(0);
   } finally { journal.close(); f.close(); }
 }, 60000);
@@ -432,3 +437,40 @@ it('an otherwise passing recorded exit check cannot close a different unbound re
     expect(h.composition.ledger.view().get(contract.id)).toMatchObject({ owned: true, result: null });
   } finally { h.close(); }
 }, 60000);
+
+it('cancellation collects already performed and checked work without replacing its actual terminal result', async () => {
+  const h = fixture(true);
+  const journal = openPreviewJournal(join(h.root, 'cancellation-health'), new Uint8Array(32).fill(82), {
+    kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'isolated-cancellation',
+    configurationDigest: 'sha256:offline', expires: 100000, maxCalls: 10, maxReplies: 10, maxTurns: 10, maxBytes: 32768, cursor: 0 });
+  const attention = createAttentionSurface(journal, { now: () => 100, machine: 'machine-a', admitted: () => true,
+    replicated: async () => true, delegations: () => [...h.composition.ledger.view().values()] });
+  try {
+    // Physical fixture phases are synchronous; let Vitest consume its RPC
+    // receipts between phases without changing the injected product clock.
+    await yieldToRunner();
+    const contract = value(h.composition.delegate(h.parent, h.request)); h.composition.pump();
+    const localRun = h.composition.ledger.view().get(contract.id).acceptance.localRun;
+    expect(await h.composition.workAsync()).toEqual([]);
+    await yieldToRunner();
+    const { outcome } = completeRecordedWork(h, localRun);
+    await yieldToRunner();
+    const responses = () => value(h.built.f.effects.api.inspect()).filter(row => row.record.type === 'OperationObservation'
+      && row.record.stage === 'response').length;
+    const before = responses();
+    value(h.composition.cancel(contract.id, 'cancel after actual work returned'));
+    await yieldToRunner();
+    await attention.maintain();
+    expect(attention.list().items.find(item => item.id.includes('delegation-cancel-pending'))?.status).toBe('OPEN');
+    expect(await h.composition.workAsync()).toHaveLength(1);
+    await yieldToRunner();
+    expect(value(h.composition.authority.collect(contract, localRun)).outcome).toEqual(outcome);
+    expect(h.composition.ledger.view().get(contract.id).cancellation).toBe('confirmed');
+    await attention.maintain();
+    expect(attention.list().items.find(item => item.id.includes('delegation-cancel-pending'))?.status).toBe('DONE');
+    expect(await h.composition.workAsync()).toEqual([]);
+    expect(responses()).toBe(before);
+  } finally { journal.close(); h.close(); }
+// Native signed-store verification is physical I/O. This wall-clock test bound
+// is separate from the unchanged injected clock and execution/charge ceilings.
+}, 120000);

@@ -2189,7 +2189,7 @@ export async function runJournalAgent(application, args = process.argv.slice(2))
           timestamp: new Date(envelope.at).toISOString(), text: envelope.contract?.task.question ?? envelope.result?.result ?? '' }))
     });
     const attentionSurface = createAttentionSurface(journal, { now: wallNow, machine: ownerMachine,
-      delegations: () => [...(application?.owners.delegation?.ledger.view().values() ?? [])],
+      ...(application?.owners.delegation ? { delegations: () => [...application.owners.delegation.ledger.view().values()] } : {}),
       ...(approvalSurface ? { tracking: { ...approvalSurface.tracking, link: approvalSurface.link } } : {}),
       admitted: () => {
         if (!attentionReady || workerStop.value || existsSync(stopPath) || !ownerHeld()) return false;
