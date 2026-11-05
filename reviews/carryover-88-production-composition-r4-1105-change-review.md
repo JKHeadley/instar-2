@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Connect the copied hub classifier and brief to the existing recorded subscription doorway and journal call accounting; add the independent surface read transport using existing private service custody. Whole row 88 remains incomplete: canonical production delegated Run/Threadline custody, conversation-topic binding, and complete producer/commitment parity remain source work.
 Affected rules: 1, 4, 7, 10, 12, 14, 28, 31, 32, 36, 41, 46, 49, 52, 53, 57, 63, 67, 74, 75, 79, 81, 87, 95, 101, 102, 105, 113, 114, 115, 116, 119, 120
-Affected floors: secrets — ; spend cap — ; stop — ; no duplicate sends — ; durable intake — 
+Affected floors: secrets — existing credential custody, prompt concealment, copied secret regex and outbound guard; spend cap — durable bounded invocation reservations with lost outcomes retained; stop — current owner, peer, grant and stop checks before dispatch; no duplicate sends — existing dispatch fence and immutable identities; durable intake — exact tracking requests and signed acts retained in existing operator storage
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
@@ -54,3 +54,7 @@ Decision: AQ88-r4-independent-transport | Read fixed authenticated namespaces an
 simplestRobustRoute: Use one recorded model boundary and existing journal reservations, and fixed reads through the existing private file API. Cache exact owner-issued requests in the existing operator store; verify passkey acts against the owner challenge on return. A batch-wide deadline bounds offline service waits.
 80/20: Targeted changed-file and consumer tests, real recorded replay, physical isolated endpoints, no broad sweep. Preserve the previous 44 unresolved and 101 unfinished files plus five r3 failures, without attributing them to the separate row07 dash/ulimit cause.
 VERDICT: author submission only; incomplete whole feature, no independent verdict or release acceptance asserted
+
+Decision: AQ88-r4-combined-anchor | Reuse c23e892d0601d29c2fc5f6f6810a8fb247ca698d because both anchor and shape are byte-identical to this combined tree. Ordinary cherry-pick 5ff66e749cebfc4d215441747e23751e89df8041, then normal current-source replay; no hand pin. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-production-composition-r4-1105-PROGRESS.md
+Publication: source 5ff66e749cebfc4d215441747e23751e89df8041; generation sha256:5d294a10a3eb07d200634cf610184eced5737841c7bfd810134b5d914a8a2f1d; 299 entries, 120 rules, 34 terms, 48 warnings, 112 prerequisites. Shape-only replay grants no runtime authority. Native macOS certificate remains unchanged and requires the desk's actual contract run.
+Verification checkpoint: 134 complete provider tests, 8 physical hub tests, 2 installed attention tests, 14 final surface/transport tests, 32 hub/model-boundary/capture tests passed. Build and typecheck passed. Six genuine private corpus cases and the existing provider recorded-shape replay were used without provider calls. Earlier failed runs and the unchanged capability-text failure are preserved in the desk progress; final check results are recorded there.
