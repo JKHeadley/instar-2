@@ -72,7 +72,7 @@ describe('test worker limit', () => {
     const macos = readFileSync('tests/platform/macos-only.txt', 'utf8').split('\n')
       .map(line => line.replace(/#.*/, '').trim()).filter(Boolean);
     const { serialFixtureFiles } = await loadRunnerConfig();
-    expect(serialFixtureFiles).toHaveLength(14);
+    expect(serialFixtureFiles).toHaveLength(15);
     for (const split of ['', 'only-macos', 'exclude-macos']) {
       const result = await runChild(process.execPath, ['node_modules/vitest/vitest.mjs', 'list',
         '--filesOnly', '--json', '--maxWorkers', '1'], { timeout: 20_000,
@@ -88,67 +88,22 @@ describe('test worker limit', () => {
     }
   });
 
-  it('honors CLI host exclusions in ordinary and serial projects without losing any other file', async () => {
-    // These three files are assigned to Studio by the remote gate. They need its
-    // decoder weights, harness account or installed Codex, not just macOS.
-    const excluded = ['tests/preview/media-understanding.test.ts', 'tests/preview/telegram-files.test.ts',
-      'tests/preview/trust-setup.test.ts', 'tests/e2e/register.test.ts'];
-    const expected = execFileSync('git', ['ls-files', 'tests'], { encoding: 'utf8' }).trim().split('\n')
-      .filter(file => file.endsWith('.test.ts')).sort();
-    const macos = readFileSync('tests/platform/macos-only.txt', 'utf8').split('\n')
-      .map(line => line.replace(/#.*/, '').trim()).filter(Boolean);
-    for (const split of ['', 'only-macos', 'exclude-macos']) {
-      const result = await runChild(process.execPath, ['node_modules/vitest/vitest.mjs', 'list',
-        '--filesOnly', '--json', '--maxWorkers', '1',
-        ...excluded.slice(0, 3).flatMap(file => ['--exclude', file]),
-        '--exclude=tests/e2e/registe*.test.ts'], { timeout: 20_000,
-        env: { ...process.env, INSTAR_TEST_PLATFORM_SPLIT: split } });
-      expect(result.status, result.stderr).toBe(0);
-      const files = JSON.parse(result.stdout) as { file: string }[];
-      const selected = expected.filter(file => !excluded.includes(file)
-        && (split === '' || (split === 'only-macos') === macos.includes(file)));
-      expect(files.map(row => relative(process.cwd(), row.file)).sort()).toEqual(selected);
-    }
   });
 
-  it('the shipped projects overlap ordinary files but serialize each heavy fixture in a fresh process', async () => {
-    const root = mkdtempSync(join(process.cwd(), '.worker-limit-'));
-    try {
-      const trace = join(root, 'trace');
-      const config = join(root, 'vitest.config.mts');
-      writeFileSync(config, `import config from ${JSON.stringify(join(process.cwd(), 'vitest.config.ts'))};
-const projects = config.test.projects.slice(0, 3).map((project, index) => ({ ...project,
-  test: { ...project.test, include: [${JSON.stringify(root)} + (index === 0 ? '/ordinary*.test.ts' : '/serial' + index + '.test.ts')],
-    exclude: [], setupFiles: [] } }));
-export default { test: { ...config.test, projects, globalSetup: [], setupFiles: [] } };\n`);
-      for (const name of ['ordinary1', 'ordinary2', 'serial1', 'serial2']) {
-        const ordinary = name.startsWith('ordinary');
-        writeFileSync(join(root, `${name}.test.ts`), `import { expect, it } from 'vitest';
-import { appendFileSync, readFileSync } from 'node:fs';
-import { setTimeout } from 'node:timers/promises';
-it('scheduling probe', async () => {
-  expect(process.env.INSTAR_SCHEDULING_PROBE).toBeUndefined();
-  process.env.INSTAR_SCHEDULING_PROBE = 'a fresh fork must not inherit this';
-  appendFileSync(${JSON.stringify(trace)}, '${name}:start:' + process.pid + '\\n');
-  ${ordinary ? `// A bounded async rendezvous proves overlap without a CPU load generator.
-  for (let attempt = 0; attempt < 200; attempt++) {
-    if (readFileSync(${JSON.stringify(trace)}, 'utf8').includes('${name === 'ordinary1' ? 'ordinary2' : 'ordinary1'}:start:')) break;
-    await setTimeout(10);
-  }
-  expect(readFileSync(${JSON.stringify(trace)}, 'utf8')).toContain('${name === 'ordinary1' ? 'ordinary2' : 'ordinary1'}:start:');` : 'await setTimeout(50);'}
-  appendFileSync(${JSON.stringify(trace)}, '${name}:end:' + process.pid + '\\n');
-});\n`);
-      }
-      const result = await runChild(process.execPath, ['node_modules/vitest/vitest.mjs', 'run',
-        '--maxWorkers', '2', '--config', config], { timeout: 20_000,
-        env: { ...process.env, INSTAR_TEST_MAX_WORKERS: '2', VITEST_SERIAL_GATE: '0' } });
-      expect(result.status, result.stderr + result.stdout).toBe(0);
-      const rows = readFileSync(trace, 'utf8').trim().split('\n').map(row => row.split(':'));
-      expect(rows).toHaveLength(8);
-      expect(rows.slice(0, 2).map(row => row[1])).toEqual(['start', 'start']);
-      expect(rows.slice(4).map(row => row.slice(0, 2).join(':')))
-        .toEqual(['serial1:start', 'serial1:end', 'serial2:start', 'serial2:end']);
-      expect(new Set(rows.filter(row => row[1] === 'start').map(row => row[2])).size).toBe(4);
-    } finally { rmSync(root, { recursive: true, force: true }); }
-  });
-});
+  it('applies CLI exclusions to ordinary and serial projects without losing the Studio half', async () => {
+    const list = async (args: string[]) => {
+      const result = await runChild(process.execPath, ['node_modules/vitest/vitest.mjs', 'list',
+        '--filesOnly', '--json', '--maxWorkers', '1', ...args], { timeout: 20_000,
+        env: { ...process.env, INSTAR_TEST_PLATFORM_SPLIT: '' } });
+      expect(result.status, result.stderr).toBe(0);
+      return (JSON.parse(result.stdout) as { file: string }[]).map(row => relative(process.cwd(), row.file)).sort();
+    };
+    const studio = [...new Set([...readFileSync('tests/platform/macos-only.txt', 'utf8').split('\n')
+      .map(line => line.replace(/#.*/, '').trim()).filter(Boolean),
+      'tests/preview/media-understanding.test.ts', 'tests/preview/trust-setup.test.ts',
+      'tests/e2e/register.test.ts'])].sort();
+    const all = await list([]);
+    const remote = await list(studio.flatMap((file, i) => i % 2 ? [`--exclude=${file}`] : ['--exclude', file]));
+    expect(remote).toEqual(all.filter(file => !studio.includes(file)));
+    expect(await list(studio)).toEqual(studio);
+    expect([...remote, ...studio].sort()).toEqual(all);

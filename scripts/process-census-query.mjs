@@ -2,7 +2,7 @@
 // Ten already retains only the first4096 normalized command characters per row.
 import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
-export const PROCESS_CENSUS_COLUMNS = 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=';
+export const PROCESS_CENSUS_COLUMNS = 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,comm=';
 export function readProcessCensus(file, args, { timeoutMs = 2000, maxBytes = 1024 * 1024, onFailure = () => {}, spawnProcess = spawn } = {}) {
   return new Promise(resolve => {
     const started = performance.now(), decoder = new StringDecoder('utf8');

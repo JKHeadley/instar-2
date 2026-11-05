@@ -137,14 +137,25 @@ it('leaves a dependency a step actually recorded on the operator\'s next message
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
 
-it('still schedules nothing for a promise the reply declared with no loop at all', async () => {
+it('gives a promise with no declared loop a revisit while a later recorded dependency still holds work', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-declared-wait-promise-')));
   try {
-    const w = world(root, JSON.stringify({ reply: REPLY, memory: [], promises: [{ quote: SENTENCE }] }));
+    const w = world(root, JSON.stringify({ reply: REPLY, memory: [], promises: [{ quote: SENTENCE }] }),
+      [{ outcome: 'waiting', waitsOn: 'operator', note: NEED }]);
     await w.say(D1R);
     const id = noteId(w.journal);
-    expect(w.journal.view.commitments[id]!.waitsOn).toBeUndefined();
-    expect(obligationSchedule(w.journal.view).some(item => item.key === `commitment:${String(id)}`)).toBe(false);
+    expect(w.journal.view.commitments[id]).toMatchObject({ owner: 'agent', waitsOn: 'nothing' });
+    const key2 = `commitment:${String(id)}`;
+    const source = w.journal.view.turns.get(w.journal.view.commitments[id]!.source)!;
+    expect(obligationSchedule(w.journal.view).find(item => item.key === key2)?.slot).toBe(source.at + REVISIT);
+    w.clock.now = source.at + REVISIT;
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(w.journal.view.obligationWork[key2]).toMatchObject({ outcome: 'waiting', waitsOn: 'operator', note: NEED });
+    const calls = w.workQuestions.length;
+    w.clock.now += 2 * REVISIT;
+    expect(dueObligationWork(w.journal.view, w.clock.now).some(item => item.key === key2)).toBe(false);
+    expect(await w.worker.workObligations()).toBe(false);
+    expect(w.workQuestions).toHaveLength(calls);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60_000);

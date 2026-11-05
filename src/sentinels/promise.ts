@@ -1,7 +1,7 @@
 /**
  * Promise sentinel — the 2.0 port of 1.x PromiseBeacon's follow-through arm, reduced to one pure decision.
  *
- * It consumes the owner's durable population of open promises that carry an absolute due instant (Part 18 §6:
+ * It consumes the owner's durable population of scheduled promises, dated or undated (Part 18 §6:
  * this part creates no competing commitment schema). When an agent-owned promise reaches its instant without a
  * definite work result at or after it, the sentinel asks the owner once to act (the owner's own bounded
  * obligation step). If the promise is still unacted `reportAfterMs` later, it is reported: a pull-visible finding,
@@ -21,6 +21,8 @@ export interface PromiseObservation {
   readonly waitsOn: string;
 }
 export interface PromiseEntry {
+  /** The owner's durable schedule slot. Absent on older journal rows. */
+  readonly dueAt?: number;
   readonly dueSeenAt: number;
   readonly workRequestedAt: number | null;
   readonly reportedAt: number | null;
@@ -47,23 +49,33 @@ export function decidePromises(input: Readonly<{ now: number; stopped: boolean; 
   const actions: PromiseAction[] = [];
   const open = new Set<string>();
   for (const item of input.promises) {
-    if (!Number.isSafeInteger(item.dueAt) || item.dueAt > input.now) continue;
     open.add(item.id);
+    // A future or unknown observation is not a closure. Only leaving the
+    // owner's open population closes this observer's episode (Rules 8/26).
+    if (!Number.isSafeInteger(item.dueAt) || item.dueAt < 0 || item.dueAt > input.now) continue;
     const entry = next[item.id];
-    if (entry?.closedAt != null) continue;
-    const base: PromiseEntry = entry ?? { dueSeenAt: input.now, workRequestedAt: null, reportedAt: null, closedAt: null, outcome: 'open' };
-    if (item.actedAt !== null && item.actedAt >= item.dueAt) {
-      if (base.outcome !== 'acted') {
-        next[item.id] = { ...base, outcome: 'acted' };
-        actions.push({ kind: 'signal', id: item.id, event: 'acted', detail: 'a definite work result exists at or after the due instant' });
-      }
-      continue;
-    }
+    // PromiseBeacon re-arms from the durable anchor after each check. The
+    // owner here already selects that anchor; retain it so a later work slot
+    // does not inherit the previous slot's one-shot request/report markers.
+    let base: PromiseEntry = !entry || entry.closedAt !== null || entry.dueAt !== undefined && entry.dueAt !== item.dueAt
+      ? { dueAt: item.dueAt, dueSeenAt: input.now, workRequestedAt: null, reportedAt: null, closedAt: null, outcome: 'open' }
+      : { ...entry, dueAt: item.dueAt };
+    // Adopt the anchor on older rows even when this tick has no new action.
+    // Otherwise an already-reported legacy episode would never learn its slot.
+    next[item.id] = base;
     if (item.owner === 'operator' || waitsOnOthers(item.waitsOn)) {
-      if (base.reportedAt === null) {
+      if (base.outcome !== 'waiting') {
         const detail = `due and waiting on ${item.owner === 'operator' ? 'the operator' : item.waitsOn}`;
         next[item.id] = { ...base, reportedAt: input.now, outcome: 'waiting' };
         actions.push({ kind: 'report', id: item.id, detail }, { kind: 'signal', id: item.id, event: 'waiting-reported', detail });
+      }
+      continue;
+    }
+    if (base.outcome === 'waiting') base = { ...base, outcome: 'open', workRequestedAt: null, reportedAt: null };
+    if (item.actedAt !== null && item.actedAt >= item.dueAt) {
+      if (base.outcome !== 'acted') {
+        next[item.id] = { ...base, outcome: 'acted', reportedAt: null };
+        actions.push({ kind: 'signal', id: item.id, event: 'acted', detail: 'a definite work result exists at or after the due instant' });
       }
       continue;
     }

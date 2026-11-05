@@ -69,6 +69,7 @@ export function checkSentinelRecord(row: SentinelRecord, turnExists: (id: string
     if (!record(row.promise)) bad();
     for (const [id, entry] of Object.entries(row.promise!))
       if (!short(id) || ![entry.dueSeenAt, entry.workRequestedAt, entry.reportedAt, entry.closedAt].every(time)
+        || entry.dueAt !== undefined && (entry.dueAt === null || !time(entry.dueAt))
         || !['open', 'acted', 'reported', 'waiting', 'closed'].includes(entry.outcome as string)) bad();
   }
 }

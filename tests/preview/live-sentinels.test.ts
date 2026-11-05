@@ -1,12 +1,12 @@
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
-import { durableProjection } from './journal.js';
+import { durableProjection, loopRevisitMs, obligationSchedule } from './journal.js';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, limitedAnswerText, openPreviewJournal, openRequests } from './journal-test-worker.js';
 import { statusReply } from './status-command.js';
-import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, sentinelStatusLines, workSilenceObservations, WORK_SILENCE_MS, type LiveSentinelPorts } from './live-sentinels.js';
+import { createLiveSentinels, promiseObservations, createOrdinaryLane, sentinelCycle, sentinelReport, sentinelStatusLines, workSilenceObservations, WORK_SILENCE_MS, type LiveSentinelPorts } from './live-sentinels.js';
 import { SENTINEL_FAMILIES, type SentinelFamily } from './sentinel-record.js';
 import { defaultSentinelConfig } from '../../src/awareness/sentinel.js';
 import { defaultPresenceConfig } from '../../src/sentinels/presence.js';
@@ -28,6 +28,60 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
 const update = (id: number, text: string) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, date: Math.floor(START / 1000) + id, text } });
 const summaryAnswer = JSON.stringify({ summary: 'The operator asked a few ordinary questions.', people: [], memory: [], commitments: [], questions: [] });
+
+it.each([false, true])('schedules the recorded undated reply promise without a second loop declaration (older snapshot=%s)', async legacySnapshot => {
+  // Recorded delivered bytes: update 715676157, message 7234. The declaration
+  // envelope is constructed; the final quote is the captured model reply.
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/rule10-a5a-revision-2026-10-14.json', import.meta.url), 'utf8')) as {
+    revisedDelivered: string };
+  const quote = fixture.revisedDelivered;
+  const world = harness({ families: ['promise'], model: () => JSON.stringify({ reply: quote, promises: [{ quote }] }) });
+  try {
+    world.worker.intake([update(715676157, 'Please answer the request.')]);
+    await world.worker.drain();
+    expect(world.sent).toEqual([quote]);
+    const slot = START + loopRevisitMs(world.journal.view);
+    expect(obligationSchedule(world.journal.view)).toMatchObject([{ key: 'commitment:0', slot }]);
+    if (legacySnapshot) {
+      // The previous writer compacted the admitted promise without these
+      // projection defaults. Its retained source facts are unchanged.
+      const projection = structuredClone(durableProjection(world.journal.view));
+      delete projection.commitments[0]!.owner;
+      delete projection.commitments[0]!.waitsOn;
+      world.close();
+      writeLegacySnapshot(world.path, projection);
+    }
+    world.reopen();
+    expect(obligationSchedule(world.journal.view)).toMatchObject([{ key: 'commitment:0', slot }]);
+    world.clock.now = slot - 1;
+    world.sentinels.tick();
+    expect(world.effects).toEqual([]);
+    world.clock.now = slot;
+    world.sentinels.tick();
+    expect(world.effects).toEqual(['promise commitment:0']);
+    world.reopen();
+    world.sentinels.tick();
+    expect(world.effects).toEqual(['promise commitment:0']);
+    expect(world.sent).toEqual([quote]);
+  } finally { world.close(); }
+});
+
+/** Encode the older writer's projection directly; current compaction deliberately
+ * verifies current projection equality and cannot produce an older schema. */
+function writeLegacySnapshot(path: string, projection: ReturnType<typeof durableProjection>, retained: readonly unknown[] = []): void {
+  const data = Buffer.from(JSON.stringify({ view: projection, retained }));
+  let offset = 0;
+  const packets = [projection.genesis, { kind: 'snapshot-start', version: 1, chunks: 1, bytes: data.length,
+    digest: createHash('sha256').update(data).digest('hex') }, { kind: 'snapshot-chunk', data: data.toString('base64') }].map(row => {
+    const nonce = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, nonce);
+    cipher.setAAD(Buffer.from(`preview-journal:${offset}`));
+    const body = Buffer.concat([cipher.update(JSON.stringify(row)), cipher.final()]);
+    const bytes = Buffer.concat([nonce, cipher.getAuthTag(), body]), prefix = Buffer.alloc(4);
+    prefix.writeUInt32BE(bytes.length); offset += 4 + bytes.length;
+    return Buffer.concat([prefix, bytes]);
+  });
+  writeFileSync(path, Buffer.concat(packets));
+}
 
 function harness(options: { families?: SentinelFamily[]; workActivity?: LiveSentinelPorts['workActivity']; model?: (input: { id: string; question: string }) => unknown } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-sentinels-'))); roots.push(root);
@@ -513,19 +567,8 @@ it('rebuilds active children from an older compacted work history without reserv
     w.journal.append(rows[0]!);
     const projection = durableProjection(w.journal.view), calls = projection.calls;
     delete projection.activeSessionWork;
-    const data = Buffer.from(JSON.stringify({ view: projection, retained: rows }));
     w.close();
-    let offset = 0;
-    const packets = [projection.genesis, { kind: 'snapshot-start', version: 1, chunks: 1, bytes: data.length,
-      digest: createHash('sha256').update(data).digest('hex') }, { kind: 'snapshot-chunk', data: data.toString('base64') }].map(row => {
-      const nonce = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, nonce);
-      cipher.setAAD(Buffer.from(`preview-journal:${offset}`));
-      const body = Buffer.concat([cipher.update(JSON.stringify(row)), cipher.final()]);
-      const bytes = Buffer.concat([nonce, cipher.getAuthTag(), body]), prefix = Buffer.alloc(4);
-      prefix.writeUInt32BE(bytes.length); offset += 4 + bytes.length;
-      return Buffer.concat([prefix, bytes]);
-    });
-    writeFileSync(w.path, Buffer.concat(packets)); w.reopen();
+    writeLegacySnapshot(w.path, projection, rows); w.reopen();
     expect(w.journal.view.activeSessionWork).toEqual({ 'open-edge': edge });
     expect(w.journal.view.calls).toBe(calls);
     w.sentinels.observeWork();
@@ -602,4 +645,38 @@ it('corroborates recorded active and idle frames before reporting silence, with 
       work: { work: { ...prior.work!.work!, activity: 'invented' as never } }, at: w.clock.now }))
       .toThrow('sentinel record refused');
   } finally { w.close(); }
+});
+
+
+it('promise: undated follow-through observes every durable work slot and preserves dependency waits across restart', async () => {
+  const quote = 'I will compare the two garden plans.';
+  let outcome = 'continue';
+  const world = harness({ families: ['promise'], model: input => input.id.startsWith('obligation:')
+    ? JSON.stringify(outcome === 'waiting' ? { outcome, waitsOn: 'external', note: 'Awaiting the soil report.' }
+      : { outcome, note: 'Compared the first plan; the second is next.' })
+    : JSON.stringify({ reply: quote, promises: [{ quote }], openLoops: [{ kind: 'promise', quote, waitsOn: 'nothing' }] }) });
+  try {
+    world.worker.intake([update(1, 'Compare the two garden plans.')]); await world.worker.drain();
+    const first = obligationSchedule(world.journal.view)[0]!;
+    expect(promiseObservations(world.journal.view)).toEqual([expect.objectContaining({ id: first.key, dueAt: first.slot })]);
+    world.clock.now = first.slot - 1;
+    world.sentinels.tick(); expect(world.effects).toEqual([]);
+    world.clock.now++;
+    world.sentinels.tick(); expect(world.effects).toEqual(['promise commitment:0']);
+    expect(await world.worker.workObligations()).toBe(true);
+    world.sentinels.tick();
+    expect(world.journal.view.sentinels?.promise['commitment:0']?.closedAt).toBeNull();
+    world.reopen();
+    world.clock.now += loopRevisitMs(world.journal.view);
+    world.sentinels.tick(); expect(world.effects).toEqual(['promise commitment:0', 'promise commitment:0']);
+    outcome = 'waiting';
+    expect(await world.worker.workObligations()).toBe(true);
+    world.sentinels.tick();
+    expect(sentinelReport(world.journal.view).promise.waiting).toEqual(['commitment:0']);
+    expect(sentinelReport(world.journal.view).promise.acted).toBe(0);
+    const saved = JSON.stringify(world.journal.view.sentinels);
+    world.reopen();
+    expect(JSON.stringify(world.journal.view.sentinels)).toBe(saved);
+    expect(world.sent).toHaveLength(1); // watching did not push a status message
+  } finally { world.close(); }
 });
