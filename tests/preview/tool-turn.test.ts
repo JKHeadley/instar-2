@@ -609,11 +609,16 @@ it('a Codex tool turn runs only through the admission checkpoint: no checkpoint 
   const parent = { type: 'SessionWorkEdge', schemaVersion: 1, id: `tool-turn:${id}:0`, parent: id, child: `tool-turn:${id}`, scope: '/ws',
     owner: 'machine-a', authority: 'a', budget: { steps: 1, deadline: 5, maxResultBytes: 8, calls: 8, tokens: null }, exitTest: 'x',
     placement: 'p', transport: 't', resultDestination: 'r', openedAt: 1 } as SessionWorkEdge;
-  state = { ...state, openDelegations: [nestedSessionWorkEdge(parent, { id: 'call_lost', tool: 'collaborationspawn_agent' }, 2)] };
+  const lostEdge = nestedSessionWorkEdge(parent, { id: 'call_lost', tool: 'collaborationspawn_agent' }, 2);
+  state = { ...state, openDelegations: [lostEdge] };
   const lostRoot = dir(), lost = journalAt(lostRoot, 50), rows: { kind: string; record?: { type: string; state?: string } }[] = [];
+  // The real checkpoint journals the delegation's edge when it admits it (admission-gate.mjs); the journal closes only an
+  // edge it opened, so this fake records that step too.
+  lost.append({ kind: 'session-work', record: lostEdge, at: 2 });
   const spied = { get view() { return lost.view; }, append: (row: never) => { rows.push(row); return lost.append(row); } } as unknown as typeof lost;
   await expect(runToolTurn(base(spied, lostRoot, async () => 'answer'))).rejects.toThrow(/delegated agent did not return/u);
-  expect(rows.find(row => row.kind === 'session-work')?.record).toMatchObject({ type: 'SessionWorkEdgeClose', state: 'uncertain' });
+  expect(rows.find(row => row.kind === 'session-work')?.record).toMatchObject({ type: 'SessionWorkEdgeClose', state: 'uncertain', edge: lostEdge.id });
+  expect(lost.view.activeSessionWork?.[lostEdge.id]).toBeUndefined();
   // A model call refused at the allowance: the answer is refused.
   state = { calls: 8, refused: true, closed: false, openDelegations: [] };
   await expect(runToolTurn(base(journalAt(dir(), 50), dir(), async () => 'answer'))).rejects.toThrow(/reserved allowance was refused/u);
