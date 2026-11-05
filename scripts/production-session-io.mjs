@@ -22,7 +22,13 @@ export function createSessionControlPlaneObserver({ now, resourceObservation }) 
     ageMs: openedAt === null ? 0 : Math.max(0, now() - openedAt), escalations,
     windowSize: ring.length, ringCount: count, totalSamples, slowCallCount, killedClientCount, unavailableCount,
     unreachable, unreachableEpisode });
-  return Object.freeze({ status,
+  /** 1.x DegradedTmuxGuard raise: one deduplicated agent-health line per episode, re-raised with its age at the
+   * inherited thirty-minute cadence (the key changes only then), closed by a clean cycle. A refresh is the
+   * operator's explicit act; nothing here touches the shared server. */
+  const notices = () => state !== 'degraded' || openedAt === null ? [] : [{ key: `degraded-tmux:${episode}:${escalations}`,
+    line: `Shared terminal control plane degraded (episode ${episode}${escalations ? `, raised again after ${Math.round((now() - openedAt) / 60_000)} min` : ''}; `
+      + `recent calls average ${Math.round(ewmaMs ?? 0)} ms over ${cycles} slow cycles). A tmux refresh is your explicit action; no worker is killed for this.` }];
+  return Object.freeze({ status, notices,
     reachability(reachable) {
       if (!reachable && !unreachable) unreachableEpisode++;
       unreachable = !reachable;

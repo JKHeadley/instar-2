@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { prepareStallReview, interpretStallReview, stallSample } from './stall-review.js';
+import { prepareStallReview, interpretStallDecision, stallSample } from './stall-review.js';
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
 import { nextObligationAt } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
@@ -1532,7 +1532,7 @@ async function main() {
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
   let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsResolution = null, toolsOff = null,
-    sessionWork = null, gate = null;
+    sessionWork = null, gate = null, sessionControlPlane = null;
   const workActivity = new Map();
   const conversationSession = conversationSessionOf(options);
   const accountActions = conversationAccountActions(options);
@@ -2108,6 +2108,12 @@ async function main() {
         : 'Past a cap: each kept message gets one limited answer from the reserve.'];
     };
     // The chat "status" answer's host lines; the operator dashboard reads the very same ones (statusAnswer).
+    /** One bounded line per supervised conversation that has a worker, an episode or a non-healthy state (Rule 52). */
+    const stallStatusLines = rows => rows.filter(row => row.worker || row.episode || row.responsiveness.state !== 'healthy').slice(0, 8).map(row =>
+      `Supervision ${row.conversation}: ${row.responsiveness.state}${row.responsiveness.userWaitMs === null ? '' : ` (${Math.round(row.responsiveness.userWaitMs / 60_000)} min unanswered)`}`
+      + (row.episode ? `; ${row.episode.phase} episode on ${row.episode.operation}, ${Math.round(row.episode.silentMs / 60_000)} min quiet`
+        + (row.episode.nudge ? `, nudge ${row.episode.nudge}` : '') + (row.episode.notice ? `; ${row.episode.notice}` : '') : '')
+      + `; nudges ${row.counts.nudges}, reviews ${row.counts.reviews}, redeliveries ${row.counts.reinjections}, restarts ${row.counts.restarts} in 10 min, interventions ${row.counts.interventions}`);
     const statusPullLines = () => [...installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
       installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
       ...toolStatusLines(journal.view, toolsActive(), toolsOff ?? (toolsRecord
@@ -2116,6 +2122,9 @@ async function main() {
       ...(loginPool ? [loginPool.status()] : []),
       ...(sessionLoginObservations.size ? [sessionLoginStatus([...sessionLoginObservations.values()], wallNow())] : []),
       ...(sessionWork?.port.idleCleanupStatus?.() ?? []),
+      // Carryover 02: 1.x SessionMonitor/silence-sentinel population metrics and the DegradedTmuxGuard episode, pull-only.
+      ...stallStatusLines(sessionWork?.port.stallStatus?.() ?? []),
+      ...(sessionControlPlane?.notices() ?? []).map(notice => notice.line),
       ...(harness ? [harnessStatusLine(harness.state)] : identityRefusal !== null ? [harnessStatusLine({ ready: false, reason: identityRefusal })] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options), readOnly = readOnlyDashboardOf(options);
@@ -2216,6 +2225,8 @@ async function main() {
           notices.push({ key: `harness:${turn}`, line: harnessRefusedNotice(identityRefusal) });
         notices.push(...(loginPool?.notices() ?? []));
         notices.push(...sessionLoginNotices([...sessionLoginObservations.values()], now));
+        // Carryover 02: one deduplicated line per unanswered message under supervision and per degraded control-plane episode.
+        notices.push(...(sessionWork?.port.stallStatus?.() ?? []).flatMap(row => row.notices), ...(sessionControlPlane?.notices() ?? []));
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
         try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
         // Reply-only delivery: the historical closure survives relaunch; the journal spends its key once.
@@ -2675,7 +2686,7 @@ async function main() {
         if (attachSessionVolume(root, layout ? { at: layout.mount } : {}) !== project) throw Error('preview: the session volume is not the working scope');
         if (identity) grantVolume(project, identity.user, identity.runner);
       };
-      const sessionControlPlane = createSessionControlPlaneObserver({ now: wallNow, resourceObservation: () => hostResources.hostObservation() });
+      sessionControlPlane = createSessionControlPlaneObserver({ now: wallNow, resourceObservation: () => hostResources.hostObservation() });
       const physicalFor = () => createProductionSessionIO({ controlPlaneObserver: sessionControlPlane, resourceObservation: () => hostResources.hostObservation(),
         resourceProgress: identity => hostResources.sessionProgress(identity),
           retainedExposure: identity => hostResources.retainedSessionExposure(identity), stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
@@ -2753,7 +2764,7 @@ async function main() {
               writer: occurrence => envelopeWriter(journal.systemWriter('stall-triage', occurrence, wallNow())),
               prepare: modelEnvelope
               });
-              return request ? interpretStallReview(await invokeSubscription(request.prepared, request.id, undefined, request.deadline)) : 'unknown';
+              return request ? interpretStallDecision(await invokeSubscription(request.prepared, request.id, undefined, request.deadline)) : 'unknown';
             }
           },
           authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
@@ -2853,7 +2864,7 @@ async function main() {
               protect: text => redact(concealSecretMaterial(text, heldSecretValues())).text,
               writer: occurrence => envelopeWriter(journal.systemWriter('stall-triage', occurrence, wallNow())), prepare: modelEnvelope,
             });
-            return request ? interpretStallReview(await invokeSubscription(request.prepared, request.id, undefined, request.deadline)) : 'unknown';
+            return request ? interpretStallDecision(await invokeSubscription(request.prepared, request.id, undefined, request.deadline)) : 'unknown';
           },
         } } : {}),
         append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),

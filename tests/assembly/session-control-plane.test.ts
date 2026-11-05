@@ -246,3 +246,25 @@ it('shares one socket episode and an eight-client coalescing ceiling across obse
   completions.forEach(complete => complete()); await Promise.all([first, ...others]);
   expect(await observer.coalesce('ninth-command', () => 'recovered')).toBe('recovered');
 });
+
+// Carryover 02 r4: 1.x DegradedTmuxGuard's raise lifecycle as deduplicated pull notices: one per episode,
+// re-raised with its age at the thirty-minute cadence, closed by a clean cycle, never a kill.
+it('a degraded episode yields one deduplicated notice, re-raised at the inherited cadence, and none once healthy', () => {
+  let now = 0;
+  const observer = createSessionControlPlaneObserver({ now: () => now,
+    resourceObservation: () => ({ state: 'available', at: now, freshForMs: 1000 }) });
+  expect(observer.notices()).toEqual([]);
+  observer.observe(9000, 'killed-client'); observer.observe(9000, 'killed-client');
+  expect(observer.notices()).toEqual([]);
+  observer.observe(9000, 'killed-client');
+  const [first] = observer.notices();
+  expect(first).toMatchObject({ key: 'degraded-tmux:1:0' });
+  expect(first.line).toContain('episode 1'); expect(first.line).toContain('refresh is your explicit action'); expect(first.line).not.toContain('raised again');
+  now = 60_000; observer.observe(9000, 'killed-client');
+  expect(observer.notices()[0].key).toBe('degraded-tmux:1:0');
+  now = 1_800_000; observer.observe(9000, 'killed-client');
+  const [raised] = observer.notices();
+  expect(raised.key).toBe('degraded-tmux:1:1'); expect(raised.line).toContain('raised again after 30 min');
+  observer.observe(0, 'success');
+  expect(observer.status().state).toBe('healthy'); expect(observer.notices()).toEqual([]);
+});

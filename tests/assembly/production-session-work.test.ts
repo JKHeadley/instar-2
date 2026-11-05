@@ -855,3 +855,90 @@ it('one-shot collection binds exact request question, context and authority befo
     await expect(f.port.run({ ...f.request(), ...patch })).rejects.toThrow('request bytes or authority differ');
   expect(f.counts().launches).toBe(1);
 });
+
+// Carryover 02 r4: 1.x StaleSessionBackstop/ResumeQueue restoration of the original open worker after a host
+// restart, the nurse's typed-but-unsubmitted nudge and the orchestrator's typed actions on one-shot work.
+const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+function dyingHost(f: ReturnType<typeof fixture>, polls: number) {
+  const liveWait = f.io.wait; let count = 0;
+  f.io.wait = async ms => { if (++count >= polls) return new Promise<void>(() => {}); return liveWait(ms); };
+  return { restore: () => { f.io.wait = liveWait; }, polled: () => count };
+}
+it('after a host restart mid-step the live original worker is adopted under the original edge, deadline and allowance, and its result keeps the original identity', async () => {
+  const f = fixture({ phases: ['launched'] }); const rt = assemblyRuntimeFixture();
+  const host = dyingHost(f, 2);
+  void f.port.run(f.request());
+  for (let i = 0; i < 50 && host.polled() < 2; i++) await settle();
+  expect(host.polled()).toBe(2);
+  const [edge] = f.rows as [SessionWorkEdge]; expect(f.rows).toHaveLength(1); expect(edge.type).toBe('SessionWorkEdge');
+  expect(f.counts()).toMatchObject({ launches: 1, stops: 0 }); expect(f.delivered).toHaveLength(1);
+  const identity = f.counts().attached[0]!;
+  // Host B shares the journal. The physical worker is still live under the registered claim with the exact intake.
+  host.restore(); f.advance(5_000);
+  Object.assign(f.driver, {
+    recoverWorker: (input: { operation: string; claim: string }) => rt.success(input.claim === edge.child && input.operation === 'obligation-commitment-1-2'
+      ? { identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! } : null),
+    observe: () => { f.writeNow(recordedWork.workOutput); return rt.success({ phase: 'output-observed', evidence: 'evidence:restored', detail: 'idle prompt fallback; turn close not independently verified' }); } });
+  const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart' }));
+  expect(restarted.stepsUsed()).toBe(1);
+  const outcome = await restarted.run(f.request());
+  expect(outcome).toMatchObject({ state: 'complete', text: recordedWork.workOutput, edge: edge.id, child: identity });
+  expect(f.counts()).toMatchObject({ launches: 1, stops: 1, released: 1 }); expect(f.delivered).toHaveLength(1);
+  expect(f.prepared).toEqual([edge.child, edge.child]);
+  expect(restarted.status()).toMatchObject({ inFlight: false, steps: 1, restored: 1, nudges: 0, reinjections: 0 });
+  const close = f.rows[1] as SessionWorkEdgeClose;
+  expect(close).toMatchObject({ edge: edge.id, state: 'complete', child: identity, cleanupConfirmed: true, resultDigest: digestOf(recordedWork.workOutput), reserved: 24 });
+  expect(close.closedAt).toBeGreaterThan(edge.openedAt);
+  expect(restarted.collect('obligation-commitment-1-2')).toMatchObject({ state: 'complete', edge: edge.id, child: identity });
+  for (const row of f.rows) expect(() => validateSessionWorkRow(row)).not.toThrow();
+  // The restored step consumed the original deadline, never a fresh one: the recorded edge still names it.
+  expect(f.rows[0]).toBe(edge);
+});
+
+it.each(['absent', 'substituted-intake', 'deadline-passed', 'stopped', 'ambiguous'])('restoration refuses %s and the open step stays uncertain without a launch, delivery or replay', async mode => {
+  const f = fixture({ phases: ['launched'] }); const rt = assemblyRuntimeFixture();
+  const host = dyingHost(f, 2);
+  void f.port.run(f.request());
+  for (let i = 0; i < 50 && host.polled() < 2; i++) await settle();
+  host.restore();
+  const [edge] = f.rows as [SessionWorkEdge]; const identity = f.counts().attached[0]!;
+  if (mode === 'deadline-passed') f.advance(60_001);
+  if (mode === 'stopped') f.stop();
+  Object.assign(f.driver, { recoverWorker: () => mode === 'ambiguous' ? (() => { throw Error('ambiguous worker lookup'); })()
+    : rt.success(mode === 'absent' ? null : { identity, incarnation: 'incarnation-1', deliveryDigest: mode === 'substituted-intake' ? digestOf('other') : f.delivered[0]! }) });
+  const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart' }));
+  if (mode === 'ambiguous') await expect(restarted.run(f.request())).rejects.toThrow('ambiguous');
+  else expect(await restarted.run(f.request())).toMatchObject({ state: 'uncertain', detail: 'child closure is not established; no automatic replay', edge: edge.id });
+  expect(f.counts()).toMatchObject({ launches: 1, stops: 0 }); expect(f.delivered).toHaveLength(1); expect(f.rows).toHaveLength(1);
+  expect(restarted.status().restored).toBe(0);
+});
+
+it('a typed-but-unsubmitted frame requests the driver nudge once per step, and the step still ends on its own deadline', async () => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 5_000 }); const rt = assemblyRuntimeFixture();
+  const nudges: string[] = [];
+  Object.assign(f.driver, { nudge: (input: { reason: string }) => { nudges.push(input.reason); return rt.success({ state: 'nudged', evidence: 'nudge:fixture' }); } });
+  const port = value(createSessionWorkPort({ ...f.config, workRecovery: {
+    observe: worker => ({ ...worker, at: f.now(), progress: 'typed-frame', activity: 'idle', waiting: false, typedUnsubmitted: true }),
+    reserve: () => {}, allowed: () => true, record: () => {}, review: async () => 'unknown' } }));
+  expect(await port.run(f.request())).toMatchObject({ state: 'uncertain', detail: expect.stringContaining('deadline exceeded') });
+  expect(nudges).toEqual(['stall-triage:obligation-commitment-1-2:typed-unsubmitted']);
+  expect(port.status()).toMatchObject({ nudges: 1, reviews: 0 });
+  expect(f.counts()).toMatchObject({ launches: 1, stops: 1 });
+});
+
+it('a message-lost judgment redelivers the exact step intake at most once and schedules the follow-up at or above the nurse cooldown', async () => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 30_000 }); const rt = assemblyRuntimeFixture();
+  // The replay fence needs the checkpoint's effect counts: none uncertain and none prepared since dispatch.
+  f.io.admissionState = () => ({ refused: false, refusalReason: null, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  const redeliveries: string[] = []; let reviews = 0;
+  Object.assign(f.driver, { redeliver: (input: { operation: string; digest: string }) => { redeliveries.push(`${input.operation}:${input.digest}`);
+    return rt.success({ state: 'redelivered', evidence: 'tmux-input:redelivered' }); } });
+  const port = value(createSessionWorkPort({ ...f.config, workRecovery: {
+    observe: worker => ({ ...worker, at: f.now(), progress: 'idle-frame', activity: 'idle', waiting: false, stale: { state: 'stalled', lastProgressAt: 1, windowMs: 1 } }),
+    reserve: () => {}, allowed: () => true, record: () => {},
+    review: async () => { reviews++; return { kind: 'triage', classification: 'message-lost', action: 'reinject', confidence: 0.95, followUpMs: 4 * 60_000, reason: 'prompt idle with the step unsubmitted' }; } } }));
+  expect(await port.run(f.request())).toMatchObject({ state: 'uncertain', detail: expect.stringContaining('deadline exceeded') });
+  expect(redeliveries).toEqual([`obligation-commitment-1-2:${f.delivered[0]}`]);
+  // The four-minute follow-up lies past this step's deadline, so the review ceiling is never spent on it.
+  expect(reviews).toBe(1); expect(port.status()).toMatchObject({ reinjections: 1, reviews: 1 });
+});

@@ -106,3 +106,55 @@ it('passes recorded stale progress and protected status into the same owner supe
   expect(stallSample({ ...sample, stale }, worker)).toMatchObject({ stale, progress: 'pane-hash:10' });
   expect(stallSample({ ...sample, stale: { ...stale, state: 'protected' } }, worker)?.stale?.state).toBe('protected');
 });
+
+// Carryover 02 r4: the typed 1.x TriageOrchestrator vocabulary, asked by meaning and parsed into the owner's
+// closed decision; the legacy decision field keeps its meaning; every recorded real shape stays unknown.
+import { interpretStallDecision } from './stall-review.js';
+describe('typed stall triage decision', () => {
+  const typed = (fields: Record<string, unknown>) => interpretStallDecision({ state: 'complete',
+    value: JSON.stringify({ classification: 'stuck_on_tool', action: 'suggest_interrupt', confidence: 0.7, followUpMinutes: 5, reason: 'A build has produced no output.', ...fields }) });
+  it('maps the six classifications and six actions into the owner vocabulary with a bounded follow-up', () => {
+    expect(typed({})).toEqual({ kind: 'triage', classification: 'stuck-on-tool', action: 'suggest-interrupt', confidence: 0.7, followUpMs: 300_000, reason: 'A build has produced no output.' });
+    expect(typed({ classification: 'message_lost', action: 'reinject_message', followUpMinutes: null })).toMatchObject({ classification: 'message-lost', action: 'reinject', followUpMs: null });
+    expect(typed({ classification: 'actively_working', action: 'none', followUpMinutes: 2.5 })).toMatchObject({ classification: 'actively-working', action: 'none', followUpMs: 150_000 });
+    expect(typed({ classification: 'crashed', action: 'auto_restart', confidence: 0.9 })).toMatchObject({ action: 'auto-restart', confidence: 0.9 });
+    expect(typed({ reason: undefined, reasoning: 'from the reasoning field' })).toMatchObject({ reason: 'from the reasoning field' });
+    expect(typed({ followUpMinutes: -3 })).toMatchObject({ followUpMs: null });
+    expect(typed({ followUpMinutes: 'soon' })).toMatchObject({ followUpMs: null });
+  });
+  it('refuses anything outside the closed vocabularies, without confidence or reason, or not complete', () => {
+    expect(typed({ classification: 'stuck_on_nothing' })).toBe('unknown');
+    expect(typed({ action: 'kill' })).toBe('unknown');
+    expect(typed({ action: 'auto-restart' })).toBe('unknown');
+    expect(typed({ confidence: 1.5 })).toBe('unknown');
+    expect(typed({ reason: '' })).toBe('unknown');
+    expect(interpretStallDecision({ state: 'uncertain', value: JSON.stringify({ classification: 'crashed', action: 'auto_restart', confidence: 1, reason: 'x' }) })).toBe('unknown');
+    expect(interpretStallDecision({ state: 'complete', value: '[1]' })).toBe('unknown');
+  });
+  it('keeps the legacy decision field and projects typed judgments back to the narrow legacy reading', () => {
+    expect(interpretStallDecision({ state: 'complete', value: JSON.stringify({ decision: 'recover', confidence: 0.8, reason: 'frozen' }) })).toBe('recover');
+    expect(interpretStallDecision({ state: 'complete', value: JSON.stringify({ decision: 'wait', confidence: 0.1, reason: 'busy' }) })).toBe('wait');
+    expect(interpretStallDecision({ state: 'complete', value: JSON.stringify({ decision: 'recover', confidence: 0.79, reason: 'frozen' }) })).toBe('unknown');
+    expect(interpretStallReview({ state: 'complete', value: JSON.stringify({ classification: 'crashed', action: 'auto_restart', confidence: 0.9, reason: 'dead' }) })).toBe('recover');
+    expect(interpretStallReview({ state: 'complete', value: JSON.stringify({ classification: 'crashed', action: 'auto_restart', confidence: 0.5, reason: 'dead' }) })).toBe('unknown');
+    expect(interpretStallReview({ state: 'complete', value: JSON.stringify({ classification: 'actively_working', action: 'none', confidence: 0.9, followUpMinutes: 5, reason: 'working' }) })).toBe('wait');
+    expect(interpretStallReview({ state: 'complete', value: JSON.stringify({ classification: 'message_lost', action: 'reinject_message', confidence: 0.95, reason: 'lost' }) })).toBe('unknown');
+  });
+  it('replays every recorded real summary, Jev, review and reply shape through the typed parser as unknown', () => {
+    const fixture = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+    for (const recorded of fixture.negativeOutputs) {
+      const parsed = recorded.output ? readAnswer(recorded.output, { wrapped: 'refuse', evidence: [recorded.id], object: true }) : null;
+      expect(interpretStallDecision({ state: recorded.output === null ? 'uncertain' : 'complete',
+        value: parsed?.ok ? parsed.value : recorded.output ?? undefined }), `${recorded.shape}: ${recorded.id}`).toBe('unknown');
+    }
+    expect(interpretStallDecision({ state: 'complete', value: fixture.workOutput })).toBe('unknown');
+  });
+  it('the question asks for the typed vocabulary and the runner consumes the typed parser on both owners', () => {
+    for (const word of ['actively_working', 'message_lost', 'reinject_message', 'auto_interrupt', 'followUpMinutes', 'confidence at least 0.8']) expect(stallReviewQuestion).toContain(word);
+    const source = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
+    expect(source.match(/interpretStallDecision\(await invokeSubscription\(/gu)).toHaveLength(2);
+    expect(source).not.toContain('interpretStallReview(');
+    expect(stallSample({ subject: 'claim', incarnation: 'incarnation', launch: 'exact:123:456', at: 100, progress: 'pane-hash', wait: null, activity: 'idle', typedUnsubmitted: true },
+      { claim: 'claim', incarnation: 'incarnation', launch: 'exact:123:456' })).toMatchObject({ typedUnsubmitted: true });
+  });
+});

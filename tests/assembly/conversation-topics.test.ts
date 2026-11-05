@@ -858,3 +858,15 @@ it('supervision charges the same parent allowance without consuming the worker c
   f.failSave(); expect(() => f.port.reserveReview(claim)).toThrow('disk');
   expect(f.calls.map(row => row.ordinal)).toEqual([1, 2, 3]);
 });
+
+// Carryover 02 r4: 1.x SessionMonitor walked every topic session; the registered population answers here
+// through each topic's own owner, pull-only.
+it('reports the supervision status of every recorded topic through its own owner', async () => {
+  const f = fixture();
+  expect(f.port.stallStatus!()).toEqual([]);
+  await f.port.run(f.request('7:a')); await f.port.run(f.request('8:b'));
+  const rows = f.port.stallStatus!();
+  expect(rows.map(row => row.conversation)).toEqual(['operator:7', 'operator:8']);
+  for (const row of rows) expect(row).toMatchObject({ worker: true, responsiveness: { state: 'healthy', userWaitMs: null }, episode: null, notices: [], counts: { nudges: 0, reviews: 0, restarts: 0 } });
+  await f.port.close();
+});

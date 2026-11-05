@@ -270,6 +270,9 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     return Object.freeze({ owner: 'part-eight' as const,
       available: () => !stopped && !config.stopped() && config.authorized() && config.now() < parentDeadline(),
       run, runBatch, maintain, close,
+      // 1.x SessionMonitor/ActiveWorkSilenceSentinel walked every registered session; here every recorded
+      // topic custody answers through its own owner. Pull-only; no send and no authority.
+      stallStatus: () => Object.keys(state.topics).flatMap(topic => hostFor(topic).stallStatus?.() ?? []),
       idleCleanupStatus: () => {
         const rows = Object.values(state.topics);
         const lost = rows.filter(row => !row.worker && row.idleCleanup?.lastClosure).length;

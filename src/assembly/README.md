@@ -496,4 +496,59 @@ intervention port; durable intent precedes dispatch, and uncertain outcomes are
 observed without replay. The one-shot work owner exposes the same supervised
 port and shares its original call allowance. Its default deadline still precedes
 the inherited stale-job threshold; installed frozen-job recovery is not claimed.
-The production runner's current review parser does not install process intervention.
+The production runner's typed review parser (`interpretStallDecision`) returns the
+1.x TriageOrchestrator vocabulary; it still installs no process intervention, so an
+`auto_interrupt` judgment is at most a notice until the Eight/Six/Ten/Nine
+composition names the accepted supervision result, the governed process
+operation definition and version, the current fence/generation/stop, the exact
+registered worker root and target incarnation, and an independent
+occurrence/quiescence/charge observer.
+
+### Carried supervision lifecycle (1.x seven-module carryover, row 02)
+
+The conversation owner (`production-conversation-session.ts`) holds the whole
+ordinary lifecycle in its existing custody, with the inherited tuned values in
+`STALL_RECOVERY_LIMITS`:
+
+- Neutral nudge first (ActiveWorkSilenceSentinel): when an episode is due, one
+  bare Enter goes to the exact live worker through the adapter's `nudge` control
+  (the driver records intent before the keystroke and refuses while the frame
+  generates, shows a menu or a wait signature, and after one per turn). A frame
+  that changes inside the thirty-second verification window is the recovery and
+  spends no judgment; a silent one is recorded `verified-silent` and the bounded
+  review follows. Adapters without the primitive review as before.
+- Responsiveness (SessionMonitor): an operator message unanswered for ten minutes
+  while the frame sits idle or indeterminate and unchanged for the nurse cooldown
+  is a trigger; an active frame keeps the ninety-minute frozen-indicator backstop;
+  fifteen minutes idle after a reply is normal. `stallStatus()` projects the state,
+  the user wait, the episode, the funnel counts and one deduplicated notice per
+  unanswered message (thirty-minute cooldown), pull-only.
+- Typed-but-unsubmitted fast path (StallTriageNurse): the driver's structural
+  `classifyTypedUnsubmitted` signal nudges after the cooldown, before any review.
+- Typed judgment (TriageOrchestrator): six classifications, six actions. The owner
+  validates every action: `auto-restart` needs the confidence floor, the confirmed
+  frozen frame and the replay fences and then runs the existing fenced replacement;
+  `reinject` redelivers the exact accepted delivery once through the driver's
+  `redeliver` (the existing `redeliveries` bound) only with no effect since dispatch;
+  `suggest-*` and an uncomposed `auto-interrupt` are notices; `followUpMinutes`
+  schedules the next review at or above the cooldown, within the three-review
+  ceiling, cancelled with the episode when the turn ends.
+- Pressure (nurse/orchestrator): three worker replacements within ten minutes end
+  automatic restart for supervised and lost workers alike; five auto actions per
+  hour bound nudges, redeliveries and restarts. Fifty history rows per conversation.
+
+The one-shot owner (`production-session-work.ts`) adopts the original live worker
+after a host restart (StaleSessionBackstop/ResumeQueue): the open edge's exact
+intake digest and registered claim are matched through the driver's
+`recoverWorker`; the step resumes under the original edge id, deadline, allowance
+and result destination, with no launch, delivery or replay, and closes once with
+the original identity. Honest limit: the installed admission checkpoint listens on
+a per-launch port and secret, so a restored worker's further model calls cannot
+reach the new host's gate; restoration recovers a result the worker already wrote
+or finishes without further calls. The step's 600 000 ms lifetime still ends
+before the inherited 1 800 000 ms stale window by design; the conversation
+watcher is the longer-lived registered watcher.
+
+The host session IO's control-plane observer (DegradedTmuxGuard) now also yields
+one deduplicated notice per degraded episode, re-raised at the thirty-minute
+cadence and closed by a clean cycle; it never touches the shared server.

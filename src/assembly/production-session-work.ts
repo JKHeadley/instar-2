@@ -188,6 +188,8 @@ export interface SessionWorkPort {
   /** Closes every child this port launched. The driver's own stop authority, surfaced. */
   stop(): Result<readonly string[]>;
   readonly stepsUsed: () => number;
+  /** 1.x funnel counters for the pull surface: restored original workers, nudges, redeliveries, reviews. */
+  status(): Readonly<{ inFlight: boolean; steps: number; restored: number; nudges: number; reinjections: number; reviews: number }>;
 }
 /** The fixed bounds of one delegated step, bound into the reviewed grant's policy digest so an
  * activation names exactly the ceilings it admits. */
@@ -289,6 +291,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
     let steps = new Set((config.recoveryEdges?.() ?? []).filter(record => record.type === 'SessionWorkEdge'
       && record.parent === config.parent && record.drawsOn === undefined).map(record => record.id)).size;
     let inFlight = false;
+    const counters = { restored: 0, nudges: 0, reinjections: 0, reviews: 0 };
     const available = () => !config.stopped() && !inFlight && steps < config.maxSteps;
     const resultPathOf = (operation: string) => `${config.resultDirectory}/work-${slug(operation)}.json`;
     const collect = (operation: string): SessionWorkOutcome | null => {
@@ -333,6 +336,11 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
     const run = async (request: SessionWorkRequest): Promise<SessionWorkOutcome> => {
       ensure(safeName.test(request.operation), 'exact session work identity required');
       ensure(request.question.trim().length > 0 && request.authority.trim().length > 0, 'session work task and authority required');
+      // 1.x StaleSessionBackstop/ResumeQueue restoration: after a host restart mid-step, the original
+      // worker that is still live under its registered claim, holding the exact accepted intake, is
+      // adopted under the ORIGINAL edge, deadline, allowance and result destination. Nothing is
+      // launched, delivered or replayed; its result keeps the original identity.
+      let adopt: Readonly<{ edge: SessionWorkEdge; identity: string }> | null = null;
       {
         // Custody is mandatory even when diagnosis is disconnected. A missing
         // triage supplier cannot turn an UNKNOWN original effect into a new run.
@@ -342,89 +350,104 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
             && record.id === previous.edge && record.drawsOn === undefined);
           ensure(edges.length === 1 && edges[0]!.requestDigest === digestOf(JSON.stringify(request))
             && edges[0]!.authority === request.authority, 'recorded work request bytes or authority differ; no replay');
-          return previous;
+          const open = edges[0]!;
+          if (previous.state === 'uncertain' && previous.detail === 'child closure is not established; no automatic replay'
+            && driver.recoverWorker && !config.stopped() && !inFlight && config.now() < open.budget.deadline) {
+            const worker = take(driver.recoverWorker({ operation: request.operation, claim: open.child }));
+            if (worker && worker.deliveryDigest === digestOf(sessionWorkPrompt(request, open.resultDestination)))
+              adopt = { edge: open, identity: worker.identity };
+          }
+          if (!adopt) return previous;
         }
       }
-      ensure(available(), 'session work unavailable: stopped, in flight, or at its step ceiling');
+      ensure(adopt !== null || available(), 'session work unavailable: stopped, in flight, or at its step ceiling');
       inFlight = true;
       try {
-        steps += 1;
-        const openedAt = config.now();
-        const deadline = openedAt + config.deadlineMs;
-        const resultPath = resultPathOf(request.operation);
-        const edgeId = `session-work-edge:${request.operation}:${steps}`;
+        if (!adopt) steps += 1;
+        const openedAt = adopt ? adopt.edge.openedAt : config.now();
+        const deadline = adopt ? adopt.edge.budget.deadline : openedAt + config.deadlineMs;
+        const resultPath = adopt ? adopt.edge.resultDestination : resultPathOf(request.operation);
+        const edgeId = adopt ? adopt.edge.id : `session-work-edge:${request.operation}:${steps}`;
         // Each step is its own child: a claim derived from its operation, so a later step never
         // finds an earlier step's session and needs no continuation of it.
-        const claim = `session-work-${slug(request.operation)}`;
+        const claim = adopt ? adopt.edge.child : `session-work-${slug(request.operation)}`;
         // Rule 2 and the purpose's durable-cause rule: the edge (with its reserved call liability)
         // is recorded before the child exists, so a crash between here and the launch leaves a
         // delegation that is visible and unsettled rather than a session nobody owns.
-        const edge: SessionWorkEdge = freeze({ type: 'SessionWorkEdge' as const, schemaVersion: 1 as const, id: edgeId,
+        const edge: SessionWorkEdge = adopt ? adopt.edge : freeze({ type: 'SessionWorkEdge' as const, schemaVersion: 1 as const, id: edgeId,
           parent: config.parent, child: claim, scope: config.workingScope, owner: config.owner,
           authority: request.authority,
           budget: { steps: 1 as const, deadline, maxResultBytes: config.maxResultBytes, calls: config.maxCalls, tokens: null },
           exitTest: SESSION_WORK_EXIT_TEST, placement: config.placement, transport: config.transport,
           resultDestination: resultPath, openedAt, requestDigest: digestOf(JSON.stringify(request)) });
-        config.append(edge);
-        let child: string | null = null, launched = false, lease: SessionWorkLease | null = null;
+        if (!adopt) config.append(edge);
+        let child: string | null = adopt?.identity ?? null, launched = adopt !== null, lease: SessionWorkLease | null = null;
         let observedCalls: number | null = null, reviewCalls = 0, unresolvedIntervention = false;
         const settled = await (async (): Promise<Settled> => {
           try {
-            if (config.stopped()) return settledAs('failed', 'stop authority active before the launch', 'no-child');
+            if (config.stopped()) return adopt ? settledAs('uncertain', 'stop authority active before the restored step resumed', child!)
+              : settledAs('failed', 'stop authority active before the launch', 'no-child');
             lease = await config.resources.admit();
-            if (lease === null) return settledAs('failed', 'the host resource owner refused a session step: no capacity', 'no-child');
+            if (lease === null) return adopt ? settledAs('uncertain', 'the host resource owner refused to re-admit the restored step', child!)
+              : settledAs('failed', 'the host resource owner refused a session step: no capacity', 'no-child');
             try { await config.io.prepareAdmission(claim, edge); }
-            catch { return settledAs('failed', 'the admission state could not be prepared before the launch', 'no-child'); }
-            try { config.io.clearResult(resultPath); }
-            catch { return settledAs('failed', 'a leftover result could not be cleared before the launch', 'no-child'); }
-            if (config.io.readResult(resultPath, config.maxResultBytes) !== null)
-              return settledAs('failed', 'a leftover result is still present at the destination', 'no-child');
+            catch { return adopt ? settledAs('uncertain', 'the admission state could not be prepared for the restored step', child!)
+              : settledAs('failed', 'the admission state could not be prepared before the launch', 'no-child'); }
             const text = sessionWorkPrompt(request, resultPath);
             intakes.set(request.operation, text);
-            launched = true;
-            child = take(driver.launch({ operation: request.operation, claim, artifact: config.artifact,
-              incarnation: config.incarnation, workingScope: config.workingScope, handles: [] }));
-            await lease.attach(child);
-            if (driver.continuationReady) while (!take(driver.continuationReady(child))) {
+            if (!adopt) {
+              try { config.io.clearResult(resultPath); }
+              catch { return settledAs('failed', 'a leftover result could not be cleared before the launch', 'no-child'); }
+              if (config.io.readResult(resultPath, config.maxResultBytes) !== null)
+                return settledAs('failed', 'a leftover result is still present at the destination', 'no-child');
+              launched = true;
+              child = take(driver.launch({ operation: request.operation, claim, artifact: config.artifact,
+                incarnation: config.incarnation, workingScope: config.workingScope, handles: [] }));
+            } else counters.restored += 1;
+            await lease.attach(child!);
+            if (!adopt && driver.continuationReady) while (!take(driver.continuationReady(child!))) {
               ensure(!config.stopped() && config.now() < deadline, 'session stopped or deadline during restoration');
               await config.io.wait(100);
             }
             const initialAdmission = config.io.admissionState(claim);
             const initialPreparations = initialAdmission?.toolPreparations;
-            take(driver.deliver({ operation: request.operation, processIdentity: child, intake: request.operation,
+            if (!adopt) take(driver.deliver({ operation: request.operation, processIdentity: child!, intake: request.operation,
               digest: digestOf(text), incarnation: config.incarnation }));
             // The previous poll's present result, or null; and whether the child's turn has closed.
             let seen: string | null = null, turnClosed: string | null = null, emptyAfterClose = 0;
             let reviewedAt: number | null = null, reviewAttempts = 0, interventionAttempted = false;
+            let nudgeRequested = false, reinjected = false, nextReviewAt = 0;
+            const identity: string = child!;
+            const worker = { claim, incarnation: config.incarnation, launch: identity };
             for (;;) {
-              if (config.stopped()) return settledAs('uncertain', 'stop authority active while the step was open', child);
-              if (config.now() >= deadline) return settledAs('uncertain', 'session work deadline exceeded', child);
+              if (config.stopped()) return settledAs('uncertain', 'stop authority active while the step was open', identity);
+              if (config.now() >= deadline) return settledAs('uncertain', 'session work deadline exceeded', identity);
               const returned = config.io.readResult(resultPath, config.maxResultBytes);
               if (returned !== null && Buffer.byteLength(returned) > config.maxResultBytes)
-                return settledAs('failed', 'the result exceeds its declared byte bound', child, Buffer.byteLength(returned));
+                return settledAs('failed', 'the result exceeds its declared byte bound', identity, Buffer.byteLength(returned));
               const present = returned !== null && returned.trim().length > 0 ? returned : null;
               // Accounting first: a result is accepted only with the ceiling unbreached and the calls known.
               const admission = config.io.admissionState(claim);
-              if (admission === null) return settledAs('uncertain', 'the child\'s admission state could not be read', child);
+              if (admission === null) return settledAs('uncertain', 'the child\'s admission state could not be read', identity);
               if (admission.refused) return settledAs('uncertain',
                 admission.refusalReason === 'calls'
                   ? `a model call past the reserved allowance (${config.maxCalls}) was refused before dispatch`
-                  : 'model call reservation unavailable; nothing dispatched', child);
+                  : 'model call reservation unavailable; nothing dispatched', identity);
               const measured = config.io.modelCalls(openedAt);
               const calls = measured === null ? null : measured + reviewCalls;
               observedCalls = calls;
-              if (calls === null) return settledAs('uncertain', 'the child\'s model-call meter could not be read', child);
+              if (calls === null) return settledAs('uncertain', 'the child\'s model-call meter could not be read', identity);
               if (calls > config.maxCalls)
-                return settledAs('uncertain', `the child's transcript shows ${calls} model calls, past the reserved ${config.maxCalls}`, child);
+                return settledAs('uncertain', `the child's transcript shows ${calls} model calls, past the reserved ${config.maxCalls}`, identity);
               // The declared exit test, and the only way a step completes.
               if (present !== null && present === seen)
                 return settledAs('complete', `the result was unchanged across two reads${turnClosed ? ` (${turnClosed})` : ''}`,
                   `result-stable:${request.operation}`, Buffer.byteLength(present), present);
               if (present === null && turnClosed !== null && ++emptyAfterClose > 1)
-                return settledAs('failed', `the turn closed with no result at the destination (${turnClosed})`, child);
+                return settledAs('failed', `the turn closed with no result at the destination (${turnClosed})`, identity);
               seen = present;
               if (turnClosed === null) {
-                const observationInput = { operation: request.operation, processIdentity: child, resultAvailable: present !== null };
+                const observationInput = { operation: request.operation, processIdentity: identity, resultAvailable: present !== null };
                 let observation;
                 try { observation = take(driver.observeAsync ? await driver.observeAsync(observationInput) : driver.observe(observationInput)); }
                 catch { await config.io.wait(config.pollMs); continue; }
@@ -432,13 +455,25 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                 else if (observation.phase === 'exit-observed')
                   return settledAs('uncertain', `the child ended before a result (${observation.detail})`, observation.evidence);
                 const recovery = config.workRecovery;
-
+                // 1.x StallTriageNurse fast path through the driver's bounded neutral nudge: the delivery sits
+                // typed at a quiet prompt, never submitted. One request per step here; the driver records the
+                // intent before the keystroke and refuses a second for the same turn.
+                if (driver.nudge && recovery && !nudgeRequested && present === null && observation.phase === 'launched') {
+                  let sample: ReturnType<typeof recovery.observe> = null;
+                  try { sample = recovery.observe(worker); } catch { /* unknown stays observation only */ }
+                  if (sample?.typedUnsubmitted === true && sample.claim === claim && sample.launch === identity && sample.incarnation === config.incarnation
+                    && sample.activity !== 'active' && Number.isSafeInteger(sample.at) && sample.at <= config.now() && config.now() - sample.at <= 5000) {
+                    nudgeRequested = true;
+                    try { if (take(driver.nudge({ processIdentity: identity, claim, incarnation: config.incarnation,
+                      reason: `stall-triage:${request.operation}:typed-unsubmitted` })).state === 'nudged') counters.nudges += 1; }
+                    catch { /* uncertain: never a second keystroke from this step */ }
+                  }
+                }
                 if (recovery && present === null && !interventionAttempted && reviewAttempts < 3
-                  && (reviewedAt === null || config.now() - reviewedAt >= 180_000)) {
-                  const worker = { claim, incarnation: config.incarnation, launch: child };
+                  && (reviewedAt === null || config.now() - reviewedAt >= 180_000) && config.now() >= nextReviewAt) {
                   let sample = null;
                   try { sample = recovery.observe(worker); } catch { /* UNKNOWN remains observation only. */ }
-                  const validSample = sample && sample.claim === claim && sample.incarnation === config.incarnation && sample.launch === child
+                  const validSample = sample && sample.claim === claim && sample.incarnation === config.incarnation && sample.launch === identity
                     && Number.isSafeInteger(sample.at) && sample.at <= config.now() && config.now() - sample.at <= 5000
                     && typeof sample.progress === 'string' && sample.progress.length > 0
                     && ['active', 'idle', 'indeterminate'].includes(sample.activity) && !sample.waiting && sample.stale?.state !== 'protected' && sample.stale?.state !== 'unknown';
@@ -451,7 +486,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                       delivery: { ...worker, operation: request.operation, text, digest: digestOf(text), resultPath, maxBytes: config.maxResultBytes },
                       progress: sample.progress, silentSince: sample.stale?.lastProgressAt ?? sample.at,
                       observedAt: sample.at, deadline, observation: sample };
-                    reviewedAt = config.now(); reviewAttempts++;
+                    reviewedAt = config.now(); reviewAttempts++; counters.reviews += 1;
                     try {
                       recovery.reserve(claim); reviewCalls++;
                       const decision = await recovery.review(evidence);
@@ -464,7 +499,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                       const fresh = recovery.observe(worker);
                       if (typeof decision === 'object' && decision.kind === 'process-control' && recovery.intervention && safe()
                         && (afterReview.phase === 'launched' || afterReview.phase === 'pause-observed')
-                        && fresh && fresh.launch === child && fresh.claim === claim && fresh.incarnation === config.incarnation
+                        && fresh && fresh.launch === identity && fresh.claim === claim && fresh.incarnation === config.incarnation
                         && fresh.progress === sample.progress && fresh.activity === sample.activity && !fresh.waiting
                         && fresh.stale?.state !== 'protected' && fresh.stale?.state !== 'unknown'
                         && Number.isSafeInteger(fresh.at) && fresh.at >= sample.at && fresh.at <= config.now() && config.now() - fresh.at <= 5000
@@ -486,6 +521,19 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                           happened: () => false, 'did-not-happen': () => false, uncertain: () => true });
                         if (!unresolvedIntervention) recovery.record(sessionWorkEffect({ id, edge: edge.id, operation: payload.id,
                           digest: settlement.digest, state: 'observed', detail: settlement.id, at: config.now() }));
+                      } else if (typeof decision === 'object' && decision.kind === 'triage') {
+                        // 1.x TriageOrchestrator typed actions on one-shot work: an exact redelivery of the lost
+                        // step input at most once, and a scheduled follow-up at or above the nurse cooldown. A
+                        // restart of a one-shot step is its deadline's business; auto-interrupt stays uncomposed.
+                        if (decision.action === 'reinject' && driver.redeliver && !reinjected && safe()
+                          && (afterReview.phase === 'launched' || afterReview.phase === 'pause-observed')
+                          && fresh && fresh.launch === identity && fresh.activity !== 'active' && !fresh.waiting
+                          && config.io.readResult(resultPath, config.maxResultBytes) === null) {
+                          reinjected = true;
+                          if (take(driver.redeliver({ operation: request.operation, processIdentity: identity, intake: request.operation,
+                            digest: digestOf(text), incarnation: config.incarnation })).state === 'redelivered') counters.reinjections += 1;
+                        }
+                        if (decision.followUpMs !== null) nextReviewAt = config.now() + Math.min(Math.max(decision.followUpMs, 180_000), 1_800_000);
                       }
                     } catch { /* No heuristic action or replay after supervision/receipt failure. */ }
                   }
@@ -549,6 +597,6 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
       } finally { inFlight = false; intakes.delete(request.operation); }
     };
     return Object.freeze({ owner: 'part-eight' as const, available, run, collect, stop: () => driver.stop(),
-      stepsUsed: () => steps });
+      stepsUsed: () => steps, status: () => Object.freeze({ inFlight, steps, ...counters }) });
   });
 }
