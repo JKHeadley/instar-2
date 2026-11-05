@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:31880aac952f5597eb7aca00068de3ed7648ea34c117efeed087d4403b07b937",
-  "commit": "d29cc9b667f515e8a31e9feb9fbc3ba6d935d3b1",
+  "generation": "sha256:8c70b243b427751fc2e7cc07345106e5f1afc4fce48f209f9948503af94a18c3",
+  "commit": "e5001a8189b16cb5acb67fe376167f94c8c5cc7b",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -33,7 +33,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -41,7 +41,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "keeps messages, summaries and memory encrypted across restarts; the operator can correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -57,7 +57,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -65,7 +65,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -89,7 +89,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "knows who a mentioned person is across topics, the granted group, restarts and machines, from the journal's own people rows."
+        "text": "remembers people across topics, granted groups, restarts and machines."
       },
       {
         "id": "preview.rolling-summary",
@@ -171,7 +171,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -179,7 +179,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "keeps messages, summaries and memory encrypted across restarts; the operator can correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -195,7 +195,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -203,7 +203,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -227,7 +227,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "knows who a mentioned person is across topics, the granted group, restarts and machines, from the journal's own people rows."
+        "text": "remembers people across topics, granted groups, restarts and machines."
       },
       {
         "id": "preview.rolling-summary",
@@ -309,7 +309,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -317,7 +317,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "keeps messages, summaries and memory encrypted across restarts; the operator can correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -333,7 +333,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -341,7 +341,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -365,7 +365,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "knows who a mentioned person is across topics, the granted group, restarts and machines, from the journal's own people rows."
+        "text": "remembers people across topics, granted groups, restarts and machines."
       },
       {
         "id": "preview.rolling-summary",
@@ -447,7 +447,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -455,7 +455,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "keeps messages, summaries and memory encrypted across restarts; the operator can correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -471,7 +471,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -479,7 +479,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -503,7 +503,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "knows who a mentioned person is across topics, the granted group, restarts and machines, from the journal's own people rows."
+        "text": "remembers people across topics, granted groups, restarts and machines."
       },
       {
         "id": "preview.rolling-summary",
@@ -585,7 +585,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -593,7 +593,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "keeps messages, summaries and memory encrypted across restarts; the operator can correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -609,7 +609,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -617,7 +617,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -641,7 +641,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "knows who a mentioned person is across topics, the granted group, restarts and machines, from the journal's own people rows."
+        "text": "remembers people across topics, granted groups, restarts and machines."
       },
       {
         "id": "preview.rolling-summary",
