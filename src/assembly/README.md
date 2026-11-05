@@ -455,8 +455,9 @@ a shared prologue as identity. Dim, mixed, truncated, raced or menu evidence nev
 
 The original delivery journal retains each typed request, its styled observation digest and its
 key outcome. A lost outcome remains uncertain across restart and cannot advance to another rung.
-Key acceptance is not consumption: the existing result and authenticated turn receipt still close
-the work. The four-rung budget, original deadline and undelivered observation remain. No text is
+The existing authenticated input acknowledgement stops pending recovery, even if a stale frame
+still shows the text; it is rechecked before each key. It does not close the turn. Key acceptance
+is not consumption: the existing result and authenticated turn receipt still close the work. The four-rung budget, original deadline and undelivered observation remain. No text is
 resent, and no new store, timer or operator prompt is introduced. Internal continuation and compact
 commands keep their existing owner paths; they cannot borrow an accepted intake's recovery authority.
 Design: D18 §4/§8/§13 and P14-NF-56; inventory:

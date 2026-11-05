@@ -72,7 +72,7 @@ function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', text = 
     get styledCaptures() { return styledCaptures; },
     at: (value: number) => { now = value; }, pane: (value: string) => { pane = value; }, styled: (value: string | null | (() => string)) => { styled = value; },
     failNextKey: () => { failNextKey = true; }, stop: () => { stopped = true; }, restart: () => { driver = createProductionSessionDriver(config); },
-    ack: (at: number) => { hooks = [...hooks, { kind: 'input-acknowledged', sessionId: '12345678-1234-1234-1234-123456789abc', at, receiptId: `ack-${hooks.length + 1}` }]; },
+    ack: (at: number, sessionId = journal.sessions[0]!.resumeId!, receiptId = `ack-${hooks.length + 1}`) => { hooks = [...hooks, { kind: 'input-acknowledged', sessionId, at, receiptId }]; },
     hook: (at: number) => { hooks = [...hooks, { kind: 'turn-closed', sessionId: '12345678-1234-1234-1234-123456789abc', at, receiptId: `receipt-${hooks.length + 1}` }]; } };
 }
 
@@ -300,11 +300,36 @@ it('preserves protocol delivery bindings and never closes a turn on input acknow
   f.changeJournal(j => ({ ...j, protocolDeliveries }));
   f.ack(1100); f.at(1100); f.pane(PENDING); f.styled(PENDING_REAL);
   expect(value(f.observe()).phase).toBe('launched');
-  f.at(1500); expect(value(f.observe()).detail).toBe('pending input recovery rung 0 sent');
+  f.at(1500); expect(value(f.observe()).phase).toBe('launched');
+  expect(f.recoveryKeys()).toEqual([]);
+  expect(f.session.pendingInput).toBeNull();
   expect(f.journal.protocolDeliveries).toEqual(protocolDeliveries);
   expect(f.session.closedAt).toBeNull();
   f.pane(EMPTY); f.at(1600); expect(value(f.observe()).phase).toBe('launched');
   expect(f.session.closedAt).toBeNull();
   f.hook(1700); f.at(1700); expect(value(f.observe()).phase).toBe('output-observed');
   expect(f.journal.protocolDeliveries).toEqual(protocolDeliveries);
+});
+
+it.each(['other-session', 'old-time', 'future-time', 'old-receipt'] as const)(
+  'does not let an unrelated acknowledgement suppress authentic pending input: %s', change => {
+    const f = fixture(); value(f.deliver()); f.pane(PENDING); f.styled(PENDING_REAL);
+    if (change === 'other-session') f.ack(1100, 'other-session');
+    if (change === 'old-time') f.ack(999);
+    if (change === 'future-time') f.ack(2000);
+    if (change === 'old-receipt') {
+      f.ack(1100, undefined, 'old');
+      f.changeJournal(j => ({ ...j, sessions: j.sessions.map(row => ({ ...row, turnReceiptIds: ['old'] })) }));
+    }
+    f.at(1100); value(f.observe()); f.at(1500); value(f.observe());
+    expect(f.recoveryKeys()).toEqual(['Enter']);
+  });
+it('rechecks input acknowledgement before the final rung second key', () => {
+  const f = fixture(); value(f.deliver()); f.pane(PENDING); f.styled(PENDING_REAL);
+  f.at(1100); value(f.observe());
+  for (const at of [1500, 2500, 4500]) { f.at(at); value(f.observe()); }
+  f.onSleep(() => f.ack(7500)); f.at(7500); refused(f.observe(), 'already acknowledged');
+  expect(f.recoveryKeys()).toEqual(['Enter', 'Enter', 'C-m', 'Enter']);
+  f.at(7600); value(f.observe()); expect(f.session.pendingInput).toBeNull();
+  expect(f.session.closedAt).toBeNull();
 });

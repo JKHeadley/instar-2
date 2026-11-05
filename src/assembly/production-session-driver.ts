@@ -399,6 +399,18 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     closedAt: at, turnDeadline: null, promptWait: null, pendingInput: null,
     ...(session.continuation?.state === 'accepted'
       ? { continuation: { ...session.continuation, state: 'completed' as const } } : {}) });
+  // The existing authenticated input receipt is stronger than a stale composer frame,
+  // but proves only consumption, never turn completion.
+  const inputAcknowledgedAt = (session: SessionRecord, operation: string): number | null => {
+    const delivery = config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1);
+    if (!delivery || delivery.operation !== operation || delivery.identity !== session.identity
+      || delivery.state !== 'accepted' || session.turnStartedAt === null) return null;
+    const ack = config.io.readInbox(session.name).filter(row => row.kind === 'input-acknowledged'
+      && row.sessionId === session.resumeId && typeof row.receiptId === 'string'
+      && !session.turnReceiptIds?.includes(row.receiptId) && Number.isSafeInteger(row.at)
+      && row.at >= session.turnStartedAt! && row.at <= config.now()).at(-1);
+    return ack?.at ?? null;
+  };
   const sendText = (session: SessionRecord, text: string) => {
     verifyLive(session); checkStop();
     const target = literalTarget(session.name);
@@ -682,14 +694,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     acknowledgement(input: { operation: string; processIdentity: string }) {
       return boundary('ProductionSessionAcknowledgement', null, config.context, () => {
         const session = loadSession(input.processIdentity);
-        const delivery = config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1);
-        if (!delivery || delivery.operation !== input.operation || delivery.identity !== session.identity
-          || delivery.state !== 'accepted' || session.turnStartedAt === null) return null;
-        const ack = config.io.readInbox(session.name).filter(row => row.kind === 'input-acknowledged'
-          && row.sessionId === session.resumeId && typeof row.receiptId === 'string'
-          && !session.turnReceiptIds?.includes(row.receiptId) && Number.isSafeInteger(row.at)
-          && row.at >= session.turnStartedAt! && row.at <= config.now()).at(-1);
-        return ack?.at ?? null;
+        return inputAcknowledgedAt(session, input.operation);
       });
     },
     observe(input: { operation: string; processIdentity: string; resultAvailable?: boolean }): Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string; safetyDeadline?: number }>> {
@@ -839,6 +844,10 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
             return { phase: 'uncertain' as const, evidence: session.identity, detail: 'pending input delivery identity unavailable; input preserved' };
           if (pending.pressing || delivery.submissions?.some(entry => entry.state !== 'accepted'))
             return { phase: 'uncertain' as const, evidence: delivery.operation, detail: 'pending input submission uncertain; observation only' };
+          if (inputAcknowledgedAt(session, delivery.operation) !== null) {
+            config.io.save(replaceSession(config.io.load(), { ...loadSession(session.identity), pendingInput: null }));
+            return { phase: 'launched' as const, evidence: delivery.operation, detail: 'input acknowledged; turn still open' };
+          }
           const blocked = (frame: string) => classifyPaneActive(frame)
             || classifyPaneReadiness(frame) === 'menu' || classifyBlockingMenu(frame);
           const decided = pendingInputStep(pending, pane, blocked(pane), config.now(), true);
@@ -869,6 +878,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
                   && current.closedAt === null && current.pendingInput?.operation === pending.operation,
                 'pending input worker context changed');
                 ensure(current.turnDeadline !== null && config.now() < current.turnDeadline, 'pending input deadline exhausted');
+                ensure(inputAcknowledgedAt(current, pending.operation) === null, 'pending input already acknowledged');
                 ensure(original?.state === 'accepted' && original.identity === current.identity
                   && original.incarnation === current.incarnation && original.intake === delivery.intake
                   && original.digest === delivery.digest && digestOf(original.text) === original.digest
