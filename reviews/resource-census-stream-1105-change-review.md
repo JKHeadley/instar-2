@@ -32,3 +32,5 @@ Subject (8 paths): register-source/owner-references/preview.json, tests/register
 simplestRobustRoute: Retain the existing census population, metadata and first4096 normalized command characters while streaming away tails already omitted by its decoder. Preserve2second and1MiB materialized bounds. Reuse current owner and Six settlement at admission pressure rather than add a recovery daemon or enlarge capacity.
 80/20: Author runs focused physical and semantic tests, typecheck/build and register/source checks. Normal full, independent Astra and pre/post release gates remain desk-owned and required.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+
+Publication: Fixture reference uses the existing owner canonical content hash; replay output is shape-only and does not certify native compatibility or delivered alarms.
