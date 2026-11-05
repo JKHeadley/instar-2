@@ -32,21 +32,14 @@ Layer below: Read exact failed proof snapshots, owned launches and Six facts; di
 Bug class: none
 Bug evidence: none
 Hook bypass: none
-Convergence: Resource-pressure retry is single flight on the existing waiter wake, at existing sample cadence; failed, stale, unreadable or live-member evidence retains the debit. Status remains a passive projection.
+Convergence: none
+Convergence note: Resource-pressure retry is single flight on the existing waiter wake, at existing sample cadence; failed, stale, unreadable or live-member evidence retains the debit. Status remains a passive projection.
 Prompt review: No model prompt or parser behavior changed.
-Decision: sampling-order-fence | Independent review found and actual fault-order reproduction confirmed raw-ledger recovery could settle before late membership publication; defer while sampling and exclude/recheck pending membership before settlement. | reported=.instar/lanes/resource-census-stream-1105-PROGRESS.md
-Decision: census-stream | Preserve the existing command projection and full population before materialization; direct comm substitution would change the Ten command contract. | reported=.instar/lanes/train168-first-memory-model-start-1105.md
-Decision: same-owner-settlement | Existing crash recovery skips a live owner; use bounded nonsignalling current-owner completed-row re-observation on admission pressure and retain unknown/survivor allocations. | reported=.instar/lanes/train168-first-memory-model-start-1105.md
+Decision: sampling-order-fence | Independent review found and actual fault-order reproduction confirmed raw-ledger recovery could settle before late membership publication; defer while sampling and exclude/recheck pending membership before settlement. | reported=docs/release-evidence/train-174-p2-report.md
+Decision: census-stream | Preserve the existing command projection and full population before materialization; direct comm substitution would change the Ten command contract. | reported=docs/release-evidence/train-174-p2-report.md
+Decision: same-owner-settlement | Existing crash recovery skips a live owner; use bounded nonsignalling current-owner completed-row re-observation on admission pressure and retain unknown/survivor allocations. | reported=docs/release-evidence/train-174-p2-report.md
 Migration parity: Static import closure carries the new physical helper through the existing install/update path; no config default, hook, template, installed-agent file or grant format changed. Register is regenerated from the committed source.
 Conformance boundary: Actual fixtures prove the named physical read and allocation decisions; historical OS error subtype and delivered operator alarm for persistent cleanup pressure remain unproved. The latter is a separate notice-wiring unit, not a delivered effect asserted here.
-
-Subject (8 paths): register-source/owner-references/preview.json, tests/register/live-rule-four-admissions.test.ts, scripts/process-census-query.mjs, scripts/process-inventory.mjs, scripts/resource-owner.declarations.json, scripts/resource-owner.mjs, tests/integration/process-census-query.test.ts, tests/preview/resource-census-recovery.test.ts
-
-## Closing block
-
-simplestRobustRoute: Retain the existing census population, metadata and first4096 normalized command characters while streaming away tails already omitted by its decoder. Preserve2second and1MiB materialized bounds. Reuse current owner and Six settlement at admission pressure rather than add a recovery daemon or enlarge capacity.
-80/20: Author runs focused physical and semantic tests, typecheck/build and register/source checks. Normal full, independent Astra and pre/post release gates remain desk-owned and required.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Publication: Fixture reference uses the existing owner canonical content hash; replay output is shape-only and does not certify native compatibility or delivered alarms.
 
@@ -57,3 +50,11 @@ Register publication: Shape-only replay generation sha256:2069fcec89299141b913cf
 Astra round1 repair: The real survivor fixture now has the same intrinsic25second finite self-exit principle as the ordering fixture. A real child test with unavailable cleanup observations waits for normal code0 self-exit without a signal. Exact-incarnation proof still gates early cleanup. Production source and limits are unchanged.
 
 Round1 repair validation: Real finite-survivor and unavailable-observation fallback cases2/2 PASS (26.895s, normal code0 self-exit25.029s); typecheck PASS; canonical fixture hash refreshed; shape-only register generation cf3f067431b1784cbb37ad4d084b24ad9d21634f529bc8e1f317d675b00b0263 from4c3e83425a2a39837121faa6afcdc4fb8af14c1d passes --check; lint architecture and register wiring pass with issues0. Existing production source is unchanged from5871; fresh canonical unit review remains required.
+
+Subject (8 paths): register-source/owner-references/preview.json, tests/register/live-rule-four-admissions.test.ts, scripts/process-census-query.mjs, scripts/process-inventory.mjs, scripts/resource-owner.declarations.json, scripts/resource-owner.mjs, tests/integration/process-census-query.test.ts, tests/preview/resource-census-recovery.test.ts
+
+## Closing block
+
+simplestRobustRoute: Retain the existing census population, metadata and first4096 normalized command characters while streaming away tails already omitted by its decoder. Preserve2second and1MiB materialized bounds. Reuse current owner and Six settlement at admission pressure rather than add a recovery daemon or enlarge capacity.
+80/20: Author runs focused physical and semantic tests, typecheck/build and register/source checks. Normal full, independent Astra and pre/post release gates remain desk-owned and required.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
