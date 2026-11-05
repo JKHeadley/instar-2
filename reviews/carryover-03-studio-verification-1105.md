@@ -29,6 +29,8 @@ Decision: c03-studio-publication | Renew through the real native contract, rehas
 
 Evidence: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-studio-verification-1105-evidence/ retains initial failures, repaired native observations, fixture permissions and recursive events, focused cases, a failing disconnected-tick mutation and native before/after contract results. All named launcher cases pass on Studio without increasing limits; the WSL cause is unproved. The installed boundary contract is explicitly selected with INSTAR_TEST_NATIVE_WORKTREE=1 and does not require a provider credential or send a message.
 
+Decision: c03-studio-review | Reopen the inherited browser/resource review for changed generated subject, and correct eleven decision citations to the existing complete Studio copies without altering their historical conclusions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-studio-verification-1105-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: Reuse the existing privileged settlement read and conformance/publication owners. The added native test catches the concrete cross-UID blind spot hidden by same-user fixtures. Unknown ownership remains a refusal; proving useful recovery in the installed population is an open row03 issue, not an unattended completion claim.
