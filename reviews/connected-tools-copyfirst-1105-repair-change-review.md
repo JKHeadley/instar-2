@@ -4,7 +4,7 @@ Subject base: ed29f2f262120b8190d21359d1fda8927408266c
 Review state: open
 Reviewed content: none
 Outcome: Keep the installation's --effect-policy argument, but read unavailable standing trust through currentEffectPolicy from startup. Ordinary conversation and local recovery can proceed; affected effects, including listed connector reads, remain refused until the same reader observes a valid policy again.
-Affected rules: 1, 4, 15, 18, 26, 34, 39, 49, 57, 70, 74, 77, 95, 100, 101, 102, 103, 111, 113, 116
+Affected rules: 109, 1, 4, 15, 18, 26, 34, 39, 49, 57, 70, 74, 77, 95, 100, 101, 102, 103, 111, 113, 116
 Affected floors: secrets — only a path enters argv and diagnostic text excludes record contents; spend cap — existing reservations and caps unchanged; stop — unchanged; no duplicate sends — existing effect ownership and uniqueness unchanged; durable intake — unchanged.
 Operator questions: none
 Suggested tier: critical
@@ -21,6 +21,8 @@ Hook bypass: none
 Convergence: none
 Prompt review: No model-facing prompt, parsing or judgment change. The unchanged recorded-shape admission replay passes for summary 715672480, uncertain summary 715672483, Jev undecided 715672482, Jev unsure 969389570, reply-review 969389923, delivered reply 715672479 and empty bubble 715672550 from fixtures/retrospective-duty-followup-train-1-2026-10-08.json. These are tool payloads, not model judgment evidence. Real authorized account acceptance, browser authentication and owner-browser grant installation remain the explicitly accepted desk-owned residue.
 Decision: COPYFIRST-REPAIR-1 | Preserve reachability under unavailable standing trust and refuse only affected effects through the existing checkpoint; keep bounded reads and a startup diagnostic, with no empty-policy fallback. Supersedes COPYFIRST-1105-2 and the launch-refusal portion of COPYFIRST-1105-3. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/connected-tools-copyfirst-1105-repair-PROGRESS.md
+
+Decision: COPYFIRST-REPAIR-2 | Reopen the browser-bridge-on-resource-1104 and browser-mcp-worker-read-1104 review rounds because this repair changes their shared runner/generated subject; old hashes remain historical evidence, not approval of the new composition. The checker requires this explicit Rule 109 invalidation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/connected-tools-copyfirst-1105-repair-PROGRESS.md
 
 ## Closing block
 
