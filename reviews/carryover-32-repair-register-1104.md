@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: ordinary
 Tier rationale: Mechanical source-pin regeneration only; register schema, population and authority remain unchanged.
-Side effects: Generated register and document hashes change together with their source commit.
+Side effects: Generated register and document hashes change together with their source commit. The browser-bridge-on-resource-1104 and browser-mcp-worker-read-1104 frozen reviews are explicitly reopened under Rule 109 because their shared subject pins changed; no old independent verdict is claimed for this repair.
 Undo and recovery: Regenerate against the reverted implementation; never edit pins by hand.
 Multi-machine posture: Deterministic generated artifacts shared through git; no machine-local runtime state.
 Layer below: Delegated desk owner-manifest rehash and repin scripts, build-register replay and register wiring checker.
