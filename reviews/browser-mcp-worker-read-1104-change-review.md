@@ -27,6 +27,7 @@ Decision: MCP-READ-1104-2 | Commit the source repair before regenerating source-
 Decision: MCP-SCHEMA-1104-3 | Remove top-level oneOf from the client-advertised input schema because Claude skipped the only tool; retain the existing server-side input validation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 
 Publication re-review: Normal open voided the frozen round after snapshot-parser source and generated pins changed the subject. Historical reviewed digest sha256:41339ecebaa3eebf3d3a09bcb98108b0bdb289e724fb0bd3514a7e0c7431d0cc; current publication digest sha256:100fab9cebe17ce086c2f7a78ed6fa89b79c7b66168daa1c907c5d659b51cd4f. Independent re-review is required; this reopening records no approval.
+Integration review: train-168 explicitly reopens this round because its combined register changes the covered generated files. The previous frozen content and verdict remain in git history. reviews/train-168-change-review.md covers the merged candidate, whose desk review is still required.
 
 ## Closing block
 
