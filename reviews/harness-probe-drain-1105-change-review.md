@@ -22,9 +22,10 @@ Prompt review: No prompt, model output parser or judgment change. This parser co
 
 Decision: HPROBE-DRAIN | Flush the existing stdout stream before its existing exit rather than changing row requirements, command deadlines or adding retries. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/harness-probe-drain-1105-PROGRESS.md
 Decision: HPROBE-REASON | Preserve the existing null refusal but record bounded failure classes and let readiness name them; keep the generic refusal for injected probes without diagnostics. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/harness-probe-drain-1105-PROGRESS.md
+Decision: HPROBE-PUBLICATION | Replay the existing shape-only register from committed source after the existing desk rehash/repin tools found no manifest or inventory pin changes; reopen the two inherited browser publication scopes whose generated subject changed, preserving their historical findings. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/harness-probe-drain-1105-PROGRESS.md
 Decision: HPROBE-HISTORY | Report the demonstrated stdout defect separately from the historical outage cause, which the retained historical diagnostics cannot establish. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/harness-probe-drain-1105-PROGRESS.md
 
-Subject (5 paths): docs/defects/2026-11-05-harness-probe-stdout-drain.md, tests/preview/README.md, tests/preview/harness-launch.mjs, tests/preview/harness-user.mjs, tests/preview/harness-user.test.ts
+Subject (14 paths): docs/defects/2026-11-05-harness-probe-stdout-drain.md, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, reviews/browser-bridge-on-resource-1104-change-review.md, reviews/browser-mcp-worker-read-1104-change-review.md, tests/preview/README.md, tests/preview/harness-launch.mjs, tests/preview/harness-user.mjs, tests/preview/harness-user.test.ts
 
 ## Closing block
 
