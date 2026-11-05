@@ -7,7 +7,7 @@ import { clearTurnMedia } from './media-understanding.mjs';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { assertAgentPaths } from '../../scripts/agent-paths.mjs';
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statfsSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
@@ -78,29 +78,103 @@ export function attachScratch(dir, name = `itt-${randomBytes(6).toString('hex')}
   chmodSync(mount, 0o700);
   return realpathSync(mount);
 }
-/** The fixed size of the delegated session's volume (Rule 60). Every byte a session step's tools write (its workspace
- * and its shells' temporary files) lands on it, so session work can never take more than this from the disk that holds
- * the journal, however many files it writes. */
+/** The initial size of the delegated session's volume (Rule 60). Every byte a session step's tools write (its workspace
+ * and its shells' temporary files) lands on it, so session work can never take more than the volume from the disk that
+ * holds the journal, however many files it writes. An existing image is never shrunk, recreated or deleted here. */
 export const SESSION_VOLUME_BYTES = 2 * 1024 * 1024 * 1024;
+/** The bound one root's session volume may grow to, in whole `SESSION_VOLUME_BYTES` steps (Rule 60: the host storage
+ * bound). A bounded default, not live authority: the measured 2026-11-05 workload (update 969390679, a 1.x whole-repository
+ * session) filled the 2 GiB image to 0 bytes free with a 1.09 GiB checkout and 0.67 GiB of temporary files, so one such
+ * workload is one increment, its build and test temporaries a second, a second worktree a third, and one increment of
+ * headroom the fourth. A sparse image takes only the bytes written, so the bound is a ceiling, not an allocation. */
+export const SESSION_VOLUME_MAX_BYTES = 8 * 1024 * 1024 * 1024;
+/** Free bytes on the mounted volume below which it is full for session work: one eighth of the increment in use (so
+ * `SESSION_VOLUME_FULL_FREE_BYTES` on the default path, and the same fraction of a test's small volume). Derived, not a
+ * separate tunable: below it no step of the measured classes above (a checkout, a step's temporaries) can complete, and
+ * the measured failure sat at 0. The test is the kernel's own free-space count, never a model's words (Rule 4). */
+export const sessionVolumeFullFreeBytes = increment => Math.floor(increment / 8);
+export const SESSION_VOLUME_FULL_FREE_BYTES = sessionVolumeFullFreeBytes(SESSION_VOLUME_BYTES);
+const PLUTIL = '/usr/bin/plutil';
+const freeBytesAt = path => { const s = statfsSync(path); return s.bavail * s.bsize; };
+/** A sparse image's own virtual size from its header (`hdiutil imageinfo`, the primitive the 4 GiB tool-scratch growth
+ * of 15c4adf10 proved), read without attaching it. Exact for an image as created; after a resize hdiutil adds partition
+ * padding to the image (measured: 128 MiB + 40 KiB at GiB sizes, 40 KiB at MiB sizes) while the volume inside is exactly
+ * the requested size, so the bound below is measured on the mounted volume, not on the image. */
+export function sessionImageBytes(image, { hdiutil = HDIUTIL, plutil = PLUTIL } = {}) {
+  const plist = execFileSync(hdiutil, ['imageinfo', '-plist', image], { timeout: 60000 });
+  const current = Number(execFileSync(plutil, ['-extract', 'Size Information.Sector Count', 'raw', '-'],
+    { input: plist, encoding: 'utf8', timeout: 60000 }).trim()) * 512;
+  if (!Number.isSafeInteger(current) || current < 1) throw Error('preview: session volume image size unavailable');
+  return current;
+}
+/** The mounted volume's size and free bytes from the kernel (the usable storage Rule 60 bounds). */
+const volumeBytesAt = mount => { const s = statfsSync(mount); return { size: s.blocks * s.bsize, free: s.bavail * s.bsize }; };
+/** Grows a full session volume by one `bytes` increment, never past `maxBytes`, with the image detached, the proven
+ * primitive of 15c4adf10 (`hdiutil resize` on the detached sparse image keeps every byte). Preconditions, each an exact
+ * test, each refusing by leaving the volume exactly as it was: the mounted volume is below the bound; it is full (its free
+ * bytes under one eighth of the increment, `sessionVolumeFullFreeBytes`); the disk holding the image has the increment
+ * plus one `SESSION_VOLUME_BYTES` of reserve free; and the volume is quiescent: a non-forced `hdiutil detach` succeeds
+ * only when no process holds a file or working directory on it, so a live worker (a continuing session's harness, a step
+ * still running) refuses the growth by construction and is never forced off. No pid is consulted. The next size is the
+ * next whole multiple of the increment (an image as created carries hdiutil's partition padding inside its size, so its
+ * volume is a little under one increment; rounding keeps the first growth a whole step). The volume is mounted again
+ * before this returns, whatever happened. */
+function growSessionVolume({ image, mount, mounted, attach, bytes, maxBytes, hdiutil, log }) {
+  if (!mounted()) return;
+  const { size: current, free } = volumeBytesAt(mount);
+  if (current >= maxBytes) return;
+  if (free >= sessionVolumeFullFreeBytes(bytes)) return;
+  const next = Math.min(maxBytes, (Math.round(current / bytes) + 1) * bytes);
+  const hostFree = volumeBytesAt(dirname(image)).free;
+  if (hostFree < next - current + SESSION_VOLUME_BYTES) {
+    log(`session volume full (${String(free)} bytes free of ${String(current)}) and not grown: the host has ${String(hostFree)} bytes free, under the increment plus reserve`);
+    return;
+  }
+  try { execFileSync(hdiutil, ['detach', '-quiet', mount], { stdio: 'ignore', timeout: 60000 }); }
+  catch { log(`session volume full (${String(free)} bytes free of ${String(current)}) and not grown: a process still holds it`); return; }
+  if (mounted()) { log('session volume full and not grown: it stayed mounted'); return; }
+  let resized = true;
+  try { execFileSync(hdiutil, ['resize', '-quiet', '-size', `${String(Math.ceil(next / 1048576))}m`, image], { stdio: 'ignore', timeout: 60000 }); }
+  catch { resized = false; }
+  // An interrupted or refused resize leaves the image at its old size or its new one; either attaches and keeps its bytes.
+  attach();
+  const after = volumeBytesAt(mount).size;
+  if (!resized) { log(`session volume resize refused; its volume keeps ${String(after)} bytes`); return; }
+  log(`session volume grown from ${String(current)} to ${String(after)} bytes (bound ${String(maxBytes)})`);
+}
 /** Mounts the delegated session's persistent volume at `<root>/<name>` (a sparse disk image beside it, created once and
  * kept, so the workspace persists across steps and restarts) and returns its real path. Already mounted, it is reused.
- * `bytes` exists so a test can prove the bound with a small volume. */
-export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, name = 'session-work', at = null } = {}) {
+ * `bytes` exists so a test can prove the bound with a small volume; an explicit `bytes` keeps that exact bound (no growth)
+ * unless the test also passes `maxBytes`. On the default path (no `bytes`), an existing image that is full grows by one
+ * increment up to `SESSION_VOLUME_MAX_BYTES` at this boundary, under the preconditions of `growSessionVolume`. `log`
+ * receives one line per growth or refusal (the runner writes it as its existing `preview:` stderr notice). `tools` lets a
+ * test stand in for the hdiutil and plutil binaries, never the runner. */
+export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, maxBytes = bytes === SESSION_VOLUME_BYTES ? SESSION_VOLUME_MAX_BYTES : bytes,
+  name = 'session-work', at = null, log = () => {}, tools = {} } = {}) {
   assertAgentPaths({ root, workspace: at ?? join(root, name) });
+  if (!Number.isSafeInteger(bytes) || bytes < 1 || !Number.isSafeInteger(maxBytes) || maxBytes < bytes) throw Error('preview: session volume size refused');
+  const hdiutil = tools.hdiutil ?? HDIUTIL;
   // `at`: a mount point outside the root (a session run as the harness user, harness-user.mjs harnessSessionLayout); the
   // image stays beside the root's own mount point, so the workspace is the same one.
   const real = realpathSync(root), mount = at ?? join(real, name), image = join(real, `${name}.sparseimage`);
   mkdirSync(mount, { recursive: true, mode: 0o700 });
   const mounted = () => { try { return lstatSync(mount).dev !== lstatSync(dirname(mount)).dev; } catch { return false; } };
-  if (!mounted()) {
-    let created = true;
-    try { lstatSync(image); } catch { created = false; }
-    if (!created) execFileSync(HDIUTIL, ['create', '-quiet', '-size', `${String(Math.ceil(bytes / 1048576))}m`, '-type', 'SPARSE', '-fs', 'HFS+',
-      '-volname', 'instar-session-work', image], { stdio: 'ignore', timeout: 60000 });
-    execFileSync(HDIUTIL, ['attach', '-quiet', '-nobrowse', '-noautoopen', '-owners', 'on', '-mountpoint', mount, image],
+  const attach = () => {
+    execFileSync(hdiutil, ['attach', '-quiet', '-nobrowse', '-noautoopen', '-owners', 'on', '-mountpoint', mount, image],
       { stdio: 'ignore', timeout: 60000 });
     if (!mounted()) throw Error('preview: the session volume did not mount');
+  };
+  let created = true;
+  try { lstatSync(image); } catch { created = false; }
+  if (!mounted()) {
+    if (!created) execFileSync(hdiutil, ['create', '-quiet', '-size', `${String(Math.ceil(bytes / 1048576))}m`, '-type', 'SPARSE', '-fs', 'HFS+',
+      '-volname', 'instar-session-work', image], { stdio: 'ignore', timeout: 60000 });
+    attach();
   }
+  // Rule 60 with headroom: an image that existed before this call grows only on the default-sized path, only when it is
+  // full, only when quiescent; a fresh image is at its initial size. The boundary that reattaches a full image a
+  // restart left mounted, or mounts one afresh, is the same boundary, so a full volume never stays full until a restart.
+  if (created && maxBytes > bytes) growSessionVolume({ image, mount, mounted, attach, bytes, maxBytes, hdiutil, log });
   chmodSync(mount, 0o700);
   return realpathSync(mount);
 }
