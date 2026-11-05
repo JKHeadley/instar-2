@@ -39,7 +39,7 @@ Decision: AQ88-review-invalidation | Reopen the two prior frozen browser review 
 
 
 
-Publication checkpoint: generated outputs bind source 746cab6150b5a04e21ae5059a0ad15696fa10deb, generation sha256:36b94132f8408253805d398c995a5310828bb888143ed4e463d625bd57b07585. Authority remains shape-only; the hub feature remains dark.
+Publication checkpoint: generated outputs bind source dbcaba4149a55e674b3140a7f87cd5c7def542ed, generation sha256:2c27651a284c3ed8c94a2fcfd5a254fc831fbcdf2a25da75c82f95618a5fa1d2. Authority remains shape-only; the hub feature remains dark.
 
 Worker isolation: the wrapper retains the original endpoint.work function by identity. Hub recovery runs at composition and explicit recoverCollaboration maintenance; a full attention projection cannot become a new worker execution gate. The targeted transport test checks this identity.
 
