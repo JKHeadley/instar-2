@@ -1,6 +1,6 @@
 /**
- * Unit tests for RelationshipsReplicatedStore (WS2.3 — the FIRST PII kind on the HLC
- * replicated-store foundation). Covers the named §7 invariant/attack tests:
+ * Unit tests for relationship-store (the 1.x RelationshipsReplicatedStore — WS2.3, the
+ * FIRST PII kind on the replicated-store foundation). Covers the named §7 invariant/attack tests:
  *   - disclosure-minimization (no field outside the projection / no local id / no raw blob)
  *   - fat-record-replicates (the LARGEST legal record serializes UNDER the 64KB cap)
  *   - fat-record-does-not-wedge-stream (an over-cap record is a NAMED rejection, not silent)
@@ -8,7 +8,7 @@
  *   - foreign-record-type-clamped (ISO-8601 / finite-number clamps reject smuggled markup)
  *   - recordKey identity derivation (no split identity, no stranger-collision)
  *   - mergeRelationships put+delete coherence (no dangling tombstone, no loop)
- *   - the dual-registry coupling (relationship-record in BOTH registries)
+ *   - the dual-registry coupling (the kind is in BOTH registries: here and the carry frame's entry kinds)
  */
 import { describe, it, expect } from 'vitest';
 
@@ -34,12 +34,12 @@ import {
   assertProjectionUnderCap,
   RelationshipRecordTooLargeError,
   isIso8601,
-} from '../../src/core/RelationshipsReplicatedStore.js';
-import { validateReplicatedEnvelope, RESERVED_ENVELOPE_FIELDS } from '../../src/core/ReplicatedRecordEnvelope.js';
-import { JOURNAL_KINDS } from '../../src/core/CoherenceJournal.js';
-import type { RelationshipRecord, UserChannel } from '../../src/core/types.js';
-import type { HlcTimestamp } from '../../src/core/HybridLogicalClock.js';
-import type { OriginRecord, UnionResult } from '../../src/core/UnionReader.js';
+  validateReplicatedEnvelope,
+  RESERVED_ENVELOPE_FIELDS,
+  originRecordFromData,
+} from './relationship-store.js';
+import type { RelationshipRecord, UserChannel, HlcTimestamp, OriginRecord, UnionResult } from './relationship-store.js';
+import { CARRIED_ENTRY_KINDS } from './group-carry.js';
 
 function hlc(p: number, l = 0, n = 'm_self'): HlcTimestamp {
   return { physical: p, logical: l, node: n };
@@ -78,8 +78,11 @@ function newCounters() {
 // ── Dual registry ───────────────────────────────────────────────────
 
 describe('dual-registry coupling', () => {
-  it('relationship-record is in JOURNAL_KINDS (the static half)', () => {
-    expect(JOURNAL_KINDS).toContain(RELATIONSHIP_RECORD_KIND);
+  it('the carry frame (the static half) carries one relationship-record per person entry', () => {
+    // 1.x: JOURNAL_KINDS contains 'relationship-record'. 2.0: the group-carry frame's entry kinds contain 'person',
+    // and validCarriedMemory validates every such entry through relationshipRecordStoreSchema (relationship-carry.test.ts).
+    expect(CARRIED_ENTRY_KINDS).toContain('person');
+    expect(RELATIONSHIP_RECORD_KIND).toBe('relationship-record');
   });
   it('the registration descriptor names the kind + store', () => {
     expect(RELATIONSHIP_KIND_REGISTRATION.kind).toBe(RELATIONSHIP_RECORD_KIND);
@@ -116,7 +119,7 @@ describe('recordKey identity derivation (no split identity / no stranger-collisi
     const bob = deriveRelationshipRecordKey([{ type: 'telegram', identifier: '222' }]);
     expect(alice).not.toBe(bob);
   });
-  it('is NOT the local UUID — the same person with different UUIDs derives the same key', () => {
+  it('is NOT the local id — the same person with different ids derives the same key', () => {
     const r1 = makeRecord({ id: '00000000-0000-0000-0000-00000000000a' });
     const r2 = makeRecord({ id: '00000000-0000-0000-0000-00000000000b' });
     expect(deriveRelationshipRecordKey(r1.channels)).toBe(deriveRelationshipRecordKey(r2.channels));
@@ -144,7 +147,7 @@ describe('disclosure-minimization', () => {
     for (const k of Object.keys(data)) {
       expect(ALLOWED.has(k), `field "${k}" must be in the disclosure-minimized allowlist`).toBe(true);
     }
-    expect(data).not.toHaveProperty('id'); // the local UUID is NEVER replicated
+    expect(data).not.toHaveProperty('id'); // the local id is NEVER replicated
     expect(data.recordKey).toBe(deriveRelationshipRecordKey(rec.channels));
     expect(data.op).toBe('put');
   });
@@ -268,6 +271,32 @@ describe('foreign-record-type-clamped (injection defense on apply)', () => {
       expect(res.data.interactionCount).toBe(3);
     }
   });
+
+  it('envelope jail: a path-shaped recordKey or origin is REJECTED and counted as a jail reject', () => {
+    const key = applyForeign(baseForeign({ recordKey: '../etc/passwd' }));
+    expect(key.res).toEqual({ ok: false, reason: 'record-key-path-shaped' });
+    expect(key.counters.jail).toBe(1);
+    const origin = applyForeign(baseForeign({ origin: '/Users/someone/private' }));
+    expect(origin.res).toEqual({ ok: false, reason: 'bad-origin' });
+    expect(origin.counters.jail).toBe(1);
+  });
+
+  it('a store field echoing a reserved envelope key can never override the validated envelope', () => {
+    const data = baseForeign({ op: 'put' });
+    const { res } = applyForeign(data);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.storeFields).not.toHaveProperty('op');
+      expect(res.data.op).toBe('put');
+      expect(res.envelope).toEqual({ recordKey: 'abc123', hlc: hlc(100, 0, 'm_peer'), op: 'put', origin: 'm_peer' });
+    }
+  });
+
+  it('a malformed hlc or observed witness is a typed rejection, never a default stamp', () => {
+    expect(applyForeign(baseForeign({ hlc: { physical: -1, logical: 0, node: 'm' } })).res).toEqual({ ok: false, reason: 'bad-hlc' });
+    expect(applyForeign(baseForeign({ observed: 'yesterday' })).res).toEqual({ ok: false, reason: 'bad-observed' });
+    expect(applyForeign('not an object' as unknown as Record<string, unknown>).res).toEqual({ ok: false, reason: 'not-an-object' });
+  });
 });
 
 // ── tombstone-coexists-with-value (REQ-D6, gap #8) ──────────────────
@@ -326,8 +355,8 @@ describe('mergeUnionToRelationships (HIGH-impact append-both-and-flag)', () => {
     ]);
     const views = mergeUnionToRelationships(union);
     expect(views).toHaveLength(1);
-    expect(views[0].conflicted).toBe(false);
-    expect(views[0].data.name).toBe('Alice');
+    expect(views[0]!.conflicted).toBe(false);
+    expect(views[0]!.data.name).toBe('Alice');
   });
 
   it('an OPEN conflict injects BOTH put variants (never suppresses a usable view)', () => {
@@ -359,7 +388,7 @@ describe('mergeUnionToRelationships (HIGH-impact append-both-and-flag)', () => {
     ]);
     const views = mergeUnionToRelationships(union);
     expect(views).toHaveLength(1);
-    expect(views[0].data.name).toBe('Alice');
+    expect(views[0]!.data.name).toBe('Alice');
   });
 });
 
@@ -403,6 +432,17 @@ describe('relationshipToOriginRecord (own-origin union materialization)', () => 
   });
   it('a channel-less record yields null (no identity surface)', () => {
     expect(relationshipToOriginRecord(makeRecord({ channels: [] }), 'm_self')).toBeNull();
+  });
+  it('a carried projection reads back as the same origin record through the store schema', () => {
+    const rec = makeRecord();
+    const data = buildRelationshipRecordData({ record: rec, hlc: hlc(100, 7, 'm_self'), origin: 'm_self' })!;
+    const { bag, counters } = newCounters();
+    const back = originRecordFromData(data, bag)!;
+    expect(back.envelope).toEqual({ recordKey: data.recordKey, hlc: hlc(100, 7, 'm_self'), op: 'put', origin: 'm_self' });
+    expect(back.data.name).toBe('Alice');
+    expect(back.data).not.toHaveProperty('recordKey');
+    expect(counters.schema).toBe(0);
+    expect(originRecordFromData({ ...data, firstInteraction: '<b>' }, bag)).toBeNull();
   });
 });
 

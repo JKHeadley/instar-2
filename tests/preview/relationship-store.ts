@@ -1,15 +1,15 @@
 /**
- * RelationshipsReplicatedStore — the SECOND concrete consumer of the HLC
- * replicated-store foundation (WS2.3) and the FIRST PII kind. It layers the
- * `relationship-record` replicated kind onto the generic substrate
- * (ReplicatedRecordEnvelope / UnionReader / ConflictStore / RollbackUnmerge /
- * ReplicationBudget / StoreSnapshot) so that a person the agent knows on machine
- * A is known on machine B — ONE relationship graph, not one-per-machine.
+ * relationship-store — the `relationship-record` replicated kind, ported from 1.x
+ * `RelationshipsReplicatedStore.ts` (JKHeadley/instar 4f88880a, WS2.3) so that a person
+ * the agent knows in one conversation root is known in another — ONE relationship graph,
+ * not one-per-root or one-per-machine. Section 0 is the piece of the 1.x replicated-store
+ * substrate (`ReplicatedRecordEnvelope.ts`, `UnionReader.ts`, `HybridLogicalClock.ts`)
+ * this kind stands on, ported under the same names because 2.0 has no replicated record
+ * store; the originals are kept verbatim under legacy-1x/relationships/.
  *
- * It is the literal analog of `PreferencesReplicatedStore.ts` (the WS2.1 reference
- * consumer), with the PII-specific hardening the security spec
- * (`ws23-relationships-userregistry-security.md`) demands. THIS IS PURE LOGIC. No
- * fs, no Date directly, no network. It defines:
+ * It layers the `relationship-record` kind onto that substrate with the PII-specific
+ * hardening the 1.x security spec (`ws23-relationships-userregistry-security.md`) demands.
+ * THIS IS PURE LOGIC. No fs, no Date directly, no network. It defines:
  *
  *   A. The `relationship-record` store schema — a STRICT typed validator that
  *      TYPE-CLAMPS every known field (REQ-M3): ISO-8601-only dates, finite-number
@@ -22,10 +22,10 @@
  *
  *   B. The disclosure-minimized PROJECTION (REQ-M4) — `buildRelationshipRecordData`
  *      emits ONLY the enumerated resolution + merge-relevant fields, NEVER the raw
- *      on-disk blob and NEVER the local UUID `id`. `recordKey` is the cross-machine
+ *      record and NEVER the local `id`. `recordKey` is the cross-root
  *      IDENTITY SURFACE (REQ-D17), derived deterministically from the sorted
- *      channel-uids (a person is "the same" across machines by their channels,
- *      mirroring resolveByChannel) — never the per-machine `randomUUID()` id.
+ *      channel-uids (a person is "the same" across roots by their channels,
+ *      mirroring resolveByChannel) — never the per-root local id.
  *
  *   C. The TOMBSTONE builder — `buildRelationshipTombstoneData` emits an
  *      `op:'delete'` record `{ recordKey, op, hlc, origin, deletedAt }` (§4.2) so a
@@ -34,11 +34,10 @@
  *      "deleted" from "never replicated".
  *
  *   D. The union-aware read — `mergeUnionToRelationships` collapses a
- *      `Map<recordKey, UnionResult>` (from ReplicatedStoreReader.readAll('relationships'))
- *      into the merged relationship view. HIGH-impact (preferences/relationships):
- *      an OPEN concurrent conflict is APPEND-BOTH-AND-FLAG — both versions surface,
- *      never a silent clobber; the read NEVER writes a foreign record into the local
- *      store (REQ-M7 read-only union).
+ *      `Map<recordKey, UnionResult>` into the merged relationship view. HIGH-impact
+ *      (preferences/relationships): an OPEN concurrent conflict is APPEND-BOTH-AND-FLAG —
+ *      both versions surface, never a silent clobber; the read NEVER writes a foreign
+ *      record into the local store (REQ-M7 read-only union).
  *
  *   E. Foreign-record render safety — `renderForeignRelationshipContext` wraps a
  *      replicated record in an explicit `<replicated-untrusted-data origin="…">`
@@ -47,29 +46,516 @@
  *      safe; the free-text fields are escaped here). There is no "trusted because
  *      machine-set" render slot for a foreign record.
  *
- * SAFETY POSTURE (§14): MECHANISM, dark by default. Nothing here blocks a
- * user-initiated action. The local UUID `id`, the local `channelIndex`/`nameIndex`,
- * and any local-only bookkeeping are NEVER part of the replicated schema and are
- * stripped from every emitted projection (REQ-M4 disclosure minimization).
+ * SAFETY POSTURE (§14): MECHANISM. Nothing here blocks a user-initiated action. The
+ * local `id`, the local `channelIndex`/`nameIndex`, and any local-only bookkeeping are
+ * NEVER part of the replicated schema and are stripped from every emitted projection
+ * (REQ-M4 disclosure minimization). In 2.0 the carrier of a projection is the existing
+ * sealed group-carry frame of the encrypted journal (tests/preview/group-carry.ts); no
+ * second store, file or network path is introduced.
  */
 
 import { createHash } from 'node:crypto';
+import { isAbsolute } from 'node:path';
 
-import type {
-  RelationshipRecord,
-  UserChannel,
-  InteractionSummary,
-} from './types.js';
-import type {
-  StoreFieldSchema,
-  StoreValidateContext,
-  ReplicatedEnvelope,
-  ReplicatedOp,
-} from './ReplicatedRecordEnvelope.js';
-import { jailStoreStringField } from './ReplicatedRecordEnvelope.js';
-import type { ImpactTier, OriginRecord, UnionResult } from './UnionReader.js';
-import type { ReplicatedKindBounds } from './ReplicationBudget.js';
-import type { HlcTimestamp } from './HybridLogicalClock.js';
+// ───────────────────────────────────────────────────────────────────────────
+// 0. Record types (1.x types.ts) and the replicated-store substrate
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface UserChannel {
+  /** Channel type (telegram, slack, discord, email, etc.) */
+  type: string;
+  /** Channel-specific identifier (topic ID, Slack user ID, email address, etc.) */
+  identifier: string;
+}
+
+export interface InteractionSummary {
+  /** When this interaction happened */
+  timestamp: string;
+  /** Which platform/channel */
+  channel: string;
+  /** Brief summary of what was discussed */
+  summary: string;
+  /** Topics touched on */
+  topics?: string[];
+}
+
+export interface RelationshipRecord {
+  /** Unique identifier for this person (local to one root; never replicated) */
+  id: string;
+  /** Display name */
+  name: string;
+  /** Known identifiers across platforms */
+  channels: UserChannel[];
+  /** When the agent first interacted with this person */
+  firstInteraction: string;
+  /** When the agent last interacted with this person */
+  lastInteraction: string;
+  /** Total number of interactions */
+  interactionCount: number;
+  /** Key topics discussed across conversations */
+  themes: string[];
+  /** Agent's notes about this person — observations, preferences, context */
+  notes: string;
+  /** Communication style preferences the agent has observed */
+  communicationStyle?: string;
+  /** How significant this relationship is (0-10, auto-derived from frequency and depth) */
+  significance: number;
+  /** Brief summary of the relationship arc */
+  arcSummary?: string;
+  /** Relationship category (e.g., 'collaborator', 'community_member', 'kindred_ai') */
+  category?: string;
+  /** Freeform tags for flexible categorization */
+  tags?: string[];
+  /** Per-interaction log (last N interactions, kept compact) */
+  recentInteractions: InteractionSummary[];
+}
+
+/** Hybrid logical clock stamp (1.x HybridLogicalClock.ts §3). */
+export interface HlcTimestamp {
+  /** Physical time in ms since epoch (the LARGEST seen, not necessarily now). */
+  physical: number;
+  /** Logical counter — breaks ties at equal physical and advances under skew. */
+  logical: number;
+  /** Node (machine) id of the clock that STAMPED this timestamp. The
+   *  tie-breaker of LAST resort and the carrier of the origin tag (§7). */
+  node: string;
+}
+
+/**
+ * compare(a, b) — the STRICT TOTAL ORDER (§3.3, pure). Compares physical, then
+ * logical, then node id (lexicographic). Returns 0 ONLY for an identical triple —
+ * because node ids are unique, two distinct-machine stamps are NEVER "equal" in
+ * sort position. This totality is what makes a deterministic merge possible.
+ */
+export function compareHlc(a: HlcTimestamp, b: HlcTimestamp): -1 | 0 | 1 {
+  if (a.physical !== b.physical) return a.physical < b.physical ? -1 : 1;
+  if (a.logical !== b.logical) return a.logical < b.logical ? -1 : 1;
+  if (a.node !== b.node) return a.node < b.node ? -1 : 1;
+  return 0;
+}
+
+/** Serialize to the compact key-string form `"<physical>:<logical>:<node>"`. */
+export function serializeHlcKey(t: HlcTimestamp): string {
+  return `${t.physical}:${t.logical}:${t.node}`;
+}
+
+/**
+ * Validate + narrow an unknown value to an HlcTimestamp. The single chokepoint
+ * untrusted input funnels through (§3.5): physical and logical must be finite
+ * non-negative integers; node must be a non-empty string.
+ */
+export function coerceHlc(raw: unknown): HlcTimestamp {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new Error('coerceHlc: not an object');
+  }
+  const obj = raw as Record<string, unknown>;
+  const { physical, logical, node } = obj;
+  if (typeof physical !== 'number' || !Number.isInteger(physical) || physical < 0) {
+    throw new Error(`coerceHlc: physical must be a non-negative integer, got ${String(physical)}`);
+  }
+  if (typeof logical !== 'number' || !Number.isInteger(logical) || logical < 0) {
+    throw new Error(`coerceHlc: logical must be a non-negative integer, got ${String(logical)}`);
+  }
+  if (typeof node !== 'string' || node.length === 0) {
+    throw new Error('coerceHlc: node must be a non-empty string');
+  }
+  return { physical, logical, node };
+}
+
+export type ReplicatedOp = 'put' | 'delete';
+
+export interface ReplicatedEnvelope {
+  recordKey: string;
+  hlc: HlcTimestamp;
+  op: ReplicatedOp;
+  origin: string;
+  observed?: HlcTimestamp;
+}
+
+export const RESERVED_ENVELOPE_FIELDS: ReadonlyArray<string> = Object.freeze([
+  'recordKey',
+  'hlc',
+  'op',
+  'origin',
+  'observed',
+]);
+export const MAX_RECORD_KEY_LENGTH = 512;
+export const MAX_ORIGIN_LENGTH = 256;
+
+export interface StoreValidateContext {
+  /** Increment when the store drops an unknown/duplicate field (counted). */
+  countDroppedField(): void;
+  /** Increment when the store rejects a path-shaped string field via the jail. */
+  countJailReject(): void;
+}
+
+export interface StoreFieldSchema {
+  /** The store-specific field names this schema owns (for unknown-field counting). */
+  knownFields: ReadonlyArray<string>;
+  /** The SUBSET of `knownFields` that must never hold a path; auto-jailed before validate(). */
+  pathSensitiveFields?: ReadonlyArray<string>;
+  /**
+   * Validate the store-specific fields. Receives the FULL raw data object and a
+   * context object. Returns the validated store-specific fields (known fields
+   * only), or null to reject the whole record. Must be PURE (no I/O, no mutation).
+   */
+  validate(raw: Readonly<Record<string, unknown>>, ctx: StoreValidateContext): Record<string, unknown> | null;
+}
+
+/**
+ * Is a string PATH-SHAPED? (The §4 "jail any path-shaped field" rule, applied to
+ * the envelope's string fields — recordKey/origin — so a path can never smuggle in
+ * as a primary key.) A value is path-shaped if it contains a path separator, a `..`
+ * traversal segment, or is an absolute path. This is a STRUCTURAL reject (the field
+ * has no business holding a path), not a filesystem jail.
+ */
+export function isPathShaped(value: string): boolean {
+  if (isAbsolute(value)) return true;
+  if (value.includes('/') || value.includes('\\')) return true;
+  // A bare `..` or any `..`-as-segment.
+  const segments = value.split(/[/\\]/);
+  if (segments.some((s) => s === '..' || s === '.')) return true;
+  return false;
+}
+
+export function jailStoreStringField(value: unknown, ctx: StoreValidateContext): unknown {
+  if (typeof value === 'string' && isPathShaped(value)) {
+    ctx.countJailReject();
+    return null;
+  }
+  return value;
+}
+
+export interface EnvelopeValidationCounters {
+  /** A record dropped for failing the typed schema (any reason). */
+  bumpSchemaReject(): void;
+  /** An unknown field dropped from an otherwise-valid record. */
+  bumpDroppedField(): void;
+  /** A path-shaped field rejected by the jail (also a schema reject). */
+  bumpJailReject(): void;
+}
+
+/** The result of validateReplicatedEnvelope. */
+export type EnvelopeValidationResult =
+  | { ok: true; envelope: ReplicatedEnvelope; storeFields: Record<string, unknown>; data: Record<string, unknown> }
+  | { ok: false; reason: EnvelopeRejectReason };
+
+/** Why a record was rejected (for the typed result + tests). Never free text. */
+export type EnvelopeRejectReason =
+  | 'not-an-object'
+  | 'bad-record-key'
+  | 'record-key-path-shaped'
+  | 'bad-hlc'
+  | 'bad-op'
+  | 'bad-origin'
+  | 'bad-observed'
+  | 'store-field-path-shaped'
+  | 'store-schema-rejected';
+
+/** Validate one HLC field, returning the narrowed value or null (never throws). */
+function tryCoerceHlc(raw: unknown): HlcTimestamp | null {
+  try {
+    return coerceHlc(raw);
+  } catch {
+    // A malformed hlc is a typed rejection (null) the validator counts and surfaces; nothing is swallowed.
+    return null;
+  }
+}
+
+/**
+ * The strict envelope validator (§4):
+ *   - rejects a non-object,
+ *   - validates recordKey (non-empty, length-capped, NOT path-shaped → jail),
+ *   - validates hlc as a well-formed HlcTimestamp,
+ *   - validates op ∈ {'put','delete'},
+ *   - validates origin (non-empty, length-capped, NOT path-shaped),
+ *   - validates observed when present (well-formed HlcTimestamp); ABSENT is LEGAL,
+ *   - delegates store-specific fields to the supplied StoreFieldSchema,
+ *   - DROPS every field not in (RESERVED_ENVELOPE_FIELDS ∪ schema.knownFields),
+ *     counting each drop.
+ *
+ * Returns a typed result. NEVER throws on bad DATA — it bumps a counter and returns
+ * `{ ok: false }`. The validated envelope fields are AUTHORITATIVE: any
+ * RESERVED_ENVELOPE_FIELDS key the store's validate() returns is stripped (and
+ * counted as a dropped field) before merge, so a store can NEVER override a
+ * load-bearing envelope field on `data`.
+ */
+export function validateReplicatedEnvelope(
+  raw: unknown,
+  schema: StoreFieldSchema,
+  counters: EnvelopeValidationCounters,
+): EnvelopeValidationResult {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    counters.bumpSchemaReject();
+    return { ok: false, reason: 'not-an-object' };
+  }
+  const obj = raw as Record<string, unknown>;
+
+  // recordKey — non-empty, length-capped, not path-shaped (jailed).
+  const recordKey = obj.recordKey;
+  if (typeof recordKey !== 'string' || recordKey.length === 0 || recordKey.length > MAX_RECORD_KEY_LENGTH) {
+    counters.bumpSchemaReject();
+    return { ok: false, reason: 'bad-record-key' };
+  }
+  if (isPathShaped(recordKey)) {
+    counters.bumpJailReject();
+    counters.bumpSchemaReject();
+    return { ok: false, reason: 'record-key-path-shaped' };
+  }
+
+  // hlc — well-formed HlcTimestamp (required).
+  const hlc = tryCoerceHlc(obj.hlc);
+  if (hlc === null) {
+    counters.bumpSchemaReject();
+    return { ok: false, reason: 'bad-hlc' };
+  }
+
+  // op — enum.
+  const op = obj.op;
+  if (op !== 'put' && op !== 'delete') {
+    counters.bumpSchemaReject();
+    return { ok: false, reason: 'bad-op' };
+  }
+
+  // origin — non-empty, length-capped, not path-shaped.
+  const origin = obj.origin;
+  if (typeof origin !== 'string' || origin.length === 0 || origin.length > MAX_ORIGIN_LENGTH) {
+    counters.bumpSchemaReject();
+    return { ok: false, reason: 'bad-origin' };
+  }
+  if (isPathShaped(origin)) {
+    counters.bumpJailReject();
+    counters.bumpSchemaReject();
+    return { ok: false, reason: 'bad-origin' };
+  }
+
+  // observed — well-formed HlcTimestamp WHEN PRESENT; absent is legal.
+  let observed: HlcTimestamp | undefined;
+  if (obj.observed !== undefined && obj.observed !== null) {
+    const witness = tryCoerceHlc(obj.observed);
+    if (witness === null) {
+      counters.bumpSchemaReject();
+      return { ok: false, reason: 'bad-observed' };
+    }
+    observed = witness;
+  }
+
+  // Auto-jail every DECLARED path-sensitive store field BEFORE the store's own validate().
+  if (schema.pathSensitiveFields) {
+    for (const field of schema.pathSensitiveFields) {
+      const v = obj[field];
+      if (typeof v === 'string' && isPathShaped(v)) {
+        counters.bumpJailReject();
+        counters.bumpSchemaReject();
+        return { ok: false, reason: 'store-field-path-shaped' };
+      }
+    }
+  }
+
+  // Store-specific fields. The store validator may reject the whole record.
+  const storeCtx: StoreValidateContext = {
+    countDroppedField: () => counters.bumpDroppedField(),
+    countJailReject: () => counters.bumpJailReject(),
+  };
+  const storeFields = schema.validate(obj, storeCtx);
+  if (storeFields === null) {
+    counters.bumpSchemaReject();
+    return { ok: false, reason: 'store-schema-rejected' };
+  }
+
+  // Count dropped unknown fields across the WHOLE object.
+  const known = new Set<string>([...RESERVED_ENVELOPE_FIELDS, ...schema.knownFields]);
+  for (const k of Object.keys(obj)) {
+    if (!known.has(k)) counters.bumpDroppedField();
+  }
+
+  const envelope: ReplicatedEnvelope = {
+    recordKey,
+    hlc,
+    op,
+    origin,
+    ...(observed !== undefined ? { observed } : {}),
+  };
+
+  // Strip every reserved key from the store's returned fields so the VALIDATED
+  // envelope fields are the sole authority for the reconstructed `data`.
+  const reserved = new Set<string>(RESERVED_ENVELOPE_FIELDS);
+  const storeFieldsSafe: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(storeFields)) {
+    if (reserved.has(k)) {
+      counters.bumpDroppedField();
+      continue;
+    }
+    storeFieldsSafe[k] = v;
+  }
+
+  const data: Record<string, unknown> = {
+    ...storeFieldsSafe,
+    recordKey,
+    hlc,
+    op,
+    origin,
+    ...(observed !== undefined ? { observed } : {}),
+  };
+
+  return { ok: true, envelope, storeFields: storeFieldsSafe, data };
+}
+
+export type ImpactTier = 'high' | 'low';
+
+export interface OriginRecord {
+  origin: string;
+  envelope: ReplicatedEnvelope;
+  data: Record<string, unknown>;
+}
+
+export interface ConflictDescriptor {
+  conflictId: string;
+  recordKey: string;
+  versions: OriginRecord[];
+}
+
+/**
+ * The per-recordKey union result (§7.2):
+ *  - `value` — the resolved winning record, or null when the key resolves to "no
+ *    record" (every origin's latest is a delete tombstone, or there are no origins).
+ *    For a HIGH-impact unresolved conflict `value` is null (neither version clobbers
+ *    the other — both are preserved in `conflict.versions` for the operator).
+ *  - `conflict` — set when a HIGH-impact concurrent divergence was detected.
+ *  - `divergenceFlag` — true when a LOW-impact concurrent overwrite occurred.
+ */
+export interface UnionResult {
+  recordKey: string;
+  value: OriginRecord | null;
+  conflict: ConflictDescriptor | null;
+  divergenceFlag: boolean;
+}
+
+export type WitnessVerdict = 'sequential-after' | 'concurrent';
+
+/**
+ * Classify a PAIR (w1, w2) on the SAME recordKey from DIFFERENT origins (§7.2).
+ * Returns `'sequential-after'` ONLY when w2 provably saw w1 — i.e. w2 carries an
+ * `observed` witness AND `compare(w2.observed, w1.hlc) >= 0`. EVERY other case is
+ * `'concurrent'` ⇒ FLAG. The WITNESS, not the wall clock, decides — and the error is
+ * always toward flag. This deliberately NEVER consults `compare(w1.hlc, w2.hlc)`.
+ */
+export function classifyPair(w1: ReplicatedEnvelope, w2: ReplicatedEnvelope): WitnessVerdict {
+  const witness = w2.observed;
+  if (witness === undefined) return 'concurrent';
+  return compareHlc(witness, w1.hlc) >= 0 ? 'sequential-after' : 'concurrent';
+}
+
+const stableJson = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) =>
+  item !== null && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.entries(item as Record<string, unknown>).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0))
+    : item);
+
+/** Every record has the same op and byte-identical store fields (`stableJson`). */
+function allVersionsIdentical(records: OriginRecord[]): boolean {
+  const op = records[0]!.envelope.op;
+  const body = stableJson(records[0]!.data);
+  for (let i = 1; i < records.length; i++) {
+    if (records[i]!.envelope.op !== op || stableJson(records[i]!.data) !== body) return false;
+  }
+  return true;
+}
+
+/** Deterministic version ordering (by HLC key) for a stable conflictId + display. */
+function sortVersions(records: OriginRecord[]): OriginRecord[] {
+  return [...records].sort((a, b) => compareHlc(a.envelope.hlc, b.envelope.hlc));
+}
+
+/**
+ * Is the SET of distinct-origin records for one recordKey mutually sequential (a
+ * clean linear edit history with a single defensible winner), or are at least two
+ * of them concurrent (⇒ FLAG)? N concurrent edits produce ONE conflict with all N
+ * in the version set. The HLC-max candidate is "the winner" ONLY when it
+ * witness-dominates every peer; one missing/below witness collapses the verdict to
+ * concurrent — UNLESS every version is identical, when there is nothing to resolve.
+ */
+export function classifyOriginSet(
+  records: OriginRecord[],
+):
+  | { concurrent: false; winner: OriginRecord; collapsedIdentical?: true }
+  | { concurrent: true; versions: OriginRecord[] } {
+  if (records.length === 1) return { concurrent: false, winner: records[0]! };
+  let candidate = records[0]!;
+  for (let i = 1; i < records.length; i++) {
+    if (compareHlc(records[i]!.envelope.hlc, candidate.envelope.hlc) > 0) {
+      candidate = records[i]!;
+    }
+  }
+  for (const other of records) {
+    if (other.origin === candidate.origin) continue;
+    if (classifyPair(other.envelope, candidate.envelope) !== 'sequential-after') {
+      if (allVersionsIdentical(records)) {
+        return { concurrent: false, winner: candidate, collapsedIdentical: true };
+      }
+      return { concurrent: true, versions: sortVersions(records) };
+    }
+  }
+  return { concurrent: false, winner: candidate };
+}
+
+/**
+ * A stable, deterministic conflict id = `hash(recordKey, sorted version-set)` (§7.2).
+ * Re-discovering the SAME unresolved conflict yields the SAME id, so append-both
+ * never appends a third copy.
+ */
+export function conflictId(recordKey: string, versions: HlcTimestamp[]): string {
+  const sortedKeys = [...versions].sort(compareHlc).map((h) => serializeHlcKey(h));
+  const h = createHash('sha256');
+  h.update(recordKey);
+  h.update('\u0000');
+  h.update(sortedKeys.join(''));
+  return h.digest('hex').slice(0, 32);
+}
+
+/**
+ * The no-clobber union merge for one recordKey (§7.2). Rules:
+ *  - 0 origins ⇒ no record.
+ *  - 1 origin ⇒ return it (a delete tombstone resolves to "no record").
+ *  - multiple origins, provably SEQUENTIAL ⇒ the HLC-winner wins, no conflict.
+ *  - multiple origins, CONCURRENT ⇒ high ⇒ APPEND-BOTH-AND-FLAG (value=null, conflict set);
+ *    low ⇒ HLC-wins WITH divergenceFlag=true.
+ * A delete tombstone participates as a normal HLC-positioned record, so a concurrent
+ * delete↔put is a real conflict, never a silent resurrection or silent loss.
+ */
+export function readUnion(recordKey: string, perOrigin: OriginRecord[], tier: ImpactTier): UnionResult {
+  if (perOrigin.length === 0) {
+    return { recordKey, value: null, conflict: null, divergenceFlag: false };
+  }
+  if (perOrigin.length === 1) {
+    const only = perOrigin[0]!;
+    return { recordKey, value: only.envelope.op === 'delete' ? null : only, conflict: null, divergenceFlag: false };
+  }
+  const verdict = classifyOriginSet(perOrigin);
+  if (!verdict.concurrent) {
+    const winner = verdict.winner;
+    return { recordKey, value: winner.envelope.op === 'delete' ? null : winner, conflict: null, divergenceFlag: false };
+  }
+  const versions = verdict.versions;
+  if (tier === 'high') {
+    return {
+      recordKey,
+      value: null,
+      conflict: { conflictId: conflictId(recordKey, versions.map((v) => v.envelope.hlc)), recordKey, versions },
+      divergenceFlag: false,
+    };
+  }
+  let winner = versions[0]!;
+  for (const v of versions) {
+    if (compareHlc(v.envelope.hlc, winner.envelope.hlc) > 0) winner = v;
+  }
+  return { recordKey, value: winner.envelope.op === 'delete' ? null : winner, conflict: null, divergenceFlag: true };
+}
+
+/** Per-kind replication bounds (1.x ReplicationBudget.ts §8 / REQ-D1). */
+export interface ReplicatedKindBounds {
+  retention: { maxFileBytes: number; rotateKeep: number };
+  rateCap: { capacity: number; refillPerSec: number };
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 // A. Identity, tier, schema, bounds, caps
@@ -80,9 +566,8 @@ import type { HlcTimestamp } from './HybridLogicalClock.js';
  *  `stateSyncReceive['relationships']`. */
 export const RELATIONSHIP_STORE_KEY = 'relationships';
 
-/** The JournalKind string this store rides — the DUAL-REGISTRY's dynamic half.
- *  MUST also be present in CoherenceJournal.JOURNAL_KINDS (the static half), or the
- *  store advertises receive=true yet serves/applies/pulls nothing (§4 callout). */
+/** The JournalKind string this store rides. In 2.0 it is the entry kind inside the
+ *  group-carry frame (`CarriedMemory.entries[].kind === 'person'` carries one record). */
 export const RELATIONSHIP_RECORD_KIND = 'relationship-record';
 
 /**
@@ -147,8 +632,8 @@ export const RELATIONSHIP_MAX_ENTRY_BYTES = 64 * 1024;
 
 /**
  * The store-specific field names the `relationship-record` VALUE schema OWNS (the
- * unknown-field counter's allowlist). The local UUID `id` is DELIBERATELY ABSENT
- * — it is per-machine and never replicated (REQ-D17 keys on the identity surface,
+ * unknown-field counter's allowlist). The local `id` is DELIBERATELY ABSENT
+ * — it is per-root and never replicated (REQ-D17 keys on the identity surface,
  * not the id). `recordKey`/`hlc`/`op`/`origin`/`observed` are reserved envelope
  * fields, never store fields.
  */
@@ -385,17 +870,17 @@ export function channelUid(channel: UserChannel): string {
 /**
  * Derive the cross-machine-stable recordKey for a relationship (REQ-D17). A person
  * is "the same" across machines by their CHANNEL SET (mirroring resolveByChannel),
- * NOT by the per-machine `randomUUID()` id — VM-A and VM-B mint different UUIDs for
- * the same human, so a UUID-keyed record could never collide them.
+ * NOT by the per-machine local id — two roots mint different ids for the same
+ * human, so an id-keyed record could never collide them.
  *
  * The key is a deterministic, collision-resistant hash of the SORTED, de-duplicated
  * channel-uids: `sha256(sorted(channelUids).join('\n'))`, hex-truncated to 32 chars
- * (the same shape UnionReader.conflictId uses). Sorting makes it order-independent
- * (the two machines converge to the SAME key for the same channel set); the hash
- * makes it a bounded, non-path-shaped string (the envelope's recordKey jail accepts
- * it). A relationship with NO channels (a degenerate local-only record) is NOT
- * replicable — it has no cross-machine identity surface — and is reported as null so
- * the caller skips emission (it can never collide a stranger by an empty key).
+ * (the same shape conflictId uses). Sorting makes it order-independent (the two
+ * machines converge to the SAME key for the same channel set); the hash makes it a
+ * bounded, non-path-shaped string (the envelope's recordKey jail accepts it). A
+ * relationship with NO channels (a degenerate local-only record) is NOT replicable
+ * — it has no cross-machine identity surface — and is reported as null so the
+ * caller skips emission (it can never collide a stranger by an empty key).
  *
  * COLLISION SAFETY: two DIFFERENT people share a key ONLY if they share the EXACT
  * same full channel set — which is the manager's own definition of "the same
@@ -444,7 +929,7 @@ export class RelationshipRecordTooLargeError extends Error {
 /**
  * Build the disclosure-minimized `relationship-record` envelope `data` for an
  * `op:'put'` (REQ-M4). Emits ONLY the enumerated resolution + merge-relevant
- * fields — NEVER the raw on-disk blob, NEVER the local UUID `id`. recordKey = the
+ * fields — NEVER the raw record, NEVER the local `id`. recordKey = the
  * derived channel-set identity surface (REQ-D17).
  *
  * Returns null when the record has NO channels (no cross-machine identity surface ⇒
@@ -521,7 +1006,7 @@ export interface BuildRelationshipTombstoneInput {
  * Build an `op:'delete'` TOMBSTONE `data` for a relationship erasure (§4.2 REQ-D4).
  * recordKey = the SAME channel-set identity surface the value records key on, so the
  * tombstone reaches the same human's record on every machine even though the local
- * UUIDs differ. Returns null when the person has no channels (no identity surface to
+ * ids differ. Returns null when the person has no channels (no identity surface to
  * tombstone). The exact field set is `{ recordKey, op:'delete', hlc, origin,
  * deletedAt }` (the REQ-D6 tombstone schema branch).
  */
@@ -533,9 +1018,8 @@ export function buildRelationshipTombstoneData(input: BuildRelationshipTombstone
 
 /**
  * The same tombstone built from an already-derived recordKey. A tombstone carries no
- * identity beyond the key, so a deletion recorded without the identity (the replicated-
- * store reconciler's deletion intents) builds exactly the record the identity-taking
- * builder above would.
+ * identity beyond the key, so a deletion recorded without the identity builds exactly
+ * the record the identity-taking builder above would.
  */
 export function buildRelationshipTombstoneFromKey(input: {
   recordKey: string;
@@ -580,8 +1064,7 @@ function viewFromOriginRecord(rec: OriginRecord, conflicted: boolean): MergedRel
 }
 
 /**
- * Collapse a `Map<recordKey, UnionResult>` (from
- * ReplicatedStoreReader.readAll('relationships')) into the merged relationship view.
+ * Collapse a `Map<recordKey, UnionResult>` into the merged relationship view.
  * HIGH-impact contract (REQ-M9):
  *   - A resolved single value ⇒ that one view entry.
  *   - An OPEN concurrent conflict ⇒ BOTH (all) `put` variants as separate entries
@@ -589,7 +1072,7 @@ function viewFromOriginRecord(rec: OriginRecord, conflicted: boolean): MergedRel
  *     resolution). A `delete` variant contributes nothing to display.
  *   - A delete-resolved key (every origin's latest is a tombstone) ⇒ nothing.
  * The read is READ-ONLY: a replicated record NEVER clobbers a divergent local
- * record (REQ-M7) — the local store files are never written here.
+ * record (REQ-M7) — the local store is never written here.
  */
 export function mergeUnionToRelationships(union: Map<string, UnionResult>): MergedRelationshipView[] {
   const out: MergedRelationshipView[] = [];
@@ -606,6 +1089,17 @@ export function mergeUnionToRelationships(union: Map<string, UnionResult>): Merg
     }
   }
   return out;
+}
+
+/** Group origin records by recordKey and read each key's union at this store's tier:
+ *  the one-call form of `readAll('relationships')` over an in-memory record set. */
+export function unionOfOriginRecords(records: readonly OriginRecord[], tier: ImpactTier = RELATIONSHIP_IMPACT_TIER): Map<string, UnionResult> {
+  const byKey = new Map<string, OriginRecord[]>();
+  for (const record of records) {
+    const list = byKey.get(record.envelope.recordKey) ?? [];
+    list.push(record); byKey.set(record.envelope.recordKey, list);
+  }
+  return new Map([...byKey.entries()].map(([recordKey, perOrigin]) => [recordKey, readUnion(recordKey, perOrigin, tier)]));
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -674,7 +1168,7 @@ export function renderForeignRelationshipContext(view: MergedRelationshipView): 
  * derived channel-set identity surface; the envelope carries a SYNTHETIC own-origin
  * HLC stamp derived deterministically from the record's lastInteraction (physical)
  * so the own record has a well-formed, stable position relative to peer records.
- * Returns null for a channel-less record (no identity surface). The local UUID `id`
+ * Returns null for a channel-less record (no identity surface). The local `id`
  * is NEVER carried into the replicated namespace (REQ-M4 / REQ-D17).
  */
 export function relationshipToOriginRecord(record: RelationshipRecord, origin: string): OriginRecord | null {
@@ -705,13 +1199,19 @@ export function relationshipToOriginRecord(record: RelationshipRecord, origin: s
   return { origin, envelope, data };
 }
 
+/** A validated carried projection read back as an OriginRecord (the envelope separated from
+ *  the store fields), so carried records from several roots can be read through readUnion. */
+export function originRecordFromData(data: Record<string, unknown>, counters: EnvelopeValidationCounters): OriginRecord | null {
+  const result = validateReplicatedEnvelope(data, relationshipRecordStoreSchema, counters);
+  return result.ok ? { origin: result.envelope.origin, envelope: result.envelope, data: result.storeFields } : null;
+}
+
 // ───────────────────────────────────────────────────────────────────────────
-// Registration descriptor (consumed by server.ts to register the dual registry)
+// Registration descriptor (the dual registry's dynamic half)
 // ───────────────────────────────────────────────────────────────────────────
 
-/** The ReplicatedKindRegistry registration for the `relationship-record` store.
- *  server.ts registers this onto the shared registry; the dual-registry coupling
- *  test asserts `kind` is also present in JOURNAL_KINDS. */
+/** The registration for the `relationship-record` store. In 2.0 the static half is
+ *  the group-carry entry kind list (`validCarriedMemory`), which the carry test couples to this. */
 export const RELATIONSHIP_KIND_REGISTRATION = {
   kind: RELATIONSHIP_RECORD_KIND,
   store: RELATIONSHIP_STORE_KEY,
@@ -724,12 +1224,9 @@ export function relationshipContributingKinds(): string[] {
   return [RELATIONSHIP_RECORD_KIND];
 }
 
-/** The store's impact tier resolver, for ReplicatedStoreReader.tierOf. Returns HIGH
- *  for the `relationships` store (and HIGH for any unknown store — the conservative
- *  append-both-and-flag direction, never a silent clobber). */
+/** The store's impact tier resolver. Returns HIGH for the `relationships` store (and
+ *  HIGH for any unknown store — the conservative append-both-and-flag direction,
+ *  never a silent clobber). */
 export function relationshipTierOf(_store: string): ImpactTier {
   return RELATIONSHIP_IMPACT_TIER;
 }
-
-/** Re-export the envelope type for callers building/applying relationship-record envelopes. */
-export type { ReplicatedEnvelope };

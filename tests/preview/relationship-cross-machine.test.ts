@@ -1,180 +1,100 @@
-// safe-fs-allow: test fixture teardown uses SafeFsExecutor.safeRmSync on tmp dirs only.
 /**
- * E2E — WS2 send-side: a relationship (person) recorded on instance A is READABLE on
- * instance B (the SAME proof shape that closed the learnings gap, applied to the
- * `relationships` store — WS2-SEND-2).
+ * Cross-machine: a person recorded in the private conversation on machine A is READABLE in the group
+ * conversation on machine B (the 2.0 shape of the 1.x WS2-SEND-2 proof).
  *
- * Two in-process instances with separate stateDirs, each wired exactly as server.ts
- * wires them:
- *   - A: RelationshipManager + journal-backed emitter (emission enabled) + journal.
- *   - B: JournalSyncApplier + ReplicatedPeerStreamReader + a ReplicatedStoreReader
- *        (the bypass-proof no-clobber union — the SAME funnel the server uses).
- * A.findOrCreate → A's journal own-stream → serve → B.apply → B's `relationships`
- * union read returns A's person as a foreign-origin record. Also proves a delete
- * replicates as a channel-keyed TOMBSTONE (REQ-D4) and the union resolves the key to
- * "no record". Identity across machines is the CHANNEL SET, never the local UUID.
+ * 1.x proved it with two in-process instances wired as server.ts wires them (journal emitter → serve →
+ * apply → union read). 2.0 has one encrypted journal per conversation and replicates its sealed bytes to
+ * the other machine (journal-replication.ts), so the proof is: A's private people enter the group journal
+ * through the granted carry as `relationship-record` projections; the group journal's bytes are shipped
+ * to B's replica store, verified and adopted; B opens the adopted journal and reads A's person as a
+ * foreign-origin record. Identity across roots is the confirmed name set, never a local id.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
+import { afterEach, expect, it } from 'vitest';
+import { mkdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { appendGroupCarry, buildCarriedMemory, carriedPerson, carryOrigin, groupCarryPacket } from './group-carry.js';
+import { openPreviewJournal } from './journal-test-worker.js';
+import { adoptReceivedCopy, createJournalShipper, localReplicaClient, openReplicaStore } from './journal-replication.js';
+import { resolveGroupDisclosure, verifyGroupAudience } from './group-disclosure.js';
+import { now, key, sealKey, scope, records, authority, membership } from './group-carry-fixture.js';
+import { peopleWorld, place } from './relationship-carry-fixture.js';
+import { journalRelationships } from './relationship-journal.js';
+import { buildRelationshipRecordData, mergeUnionToRelationships, originRecordFromData, renderForeignRelationshipContext, unionOfOriginRecords,
+  type OriginRecord } from './relationship-store.js';
 
-import { CoherenceJournal } from '../../src/core/CoherenceJournal.js';
-import { JournalSyncApplier } from '../../src/core/JournalSyncApplier.js';
-import { ReplicatedPeerStreamReader } from '../../src/core/ReplicatedPeerStreamReader.js';
-import { ReplicatedRecordEmitter } from '../../src/core/ReplicatedRecordEmitter.js';
-import { ReplicatedStoreReader } from '../../src/core/ReplicatedStoreReader.js';
-import { ReplicatedKindRegistry } from '../../src/core/ReplicatedRecordEnvelope.js';
-import { ConflictStore } from '../../src/core/ConflictStore.js';
-import { DroppedOriginRegistry } from '../../src/core/RollbackUnmerge.js';
-import { RelationshipManager } from '../../src/core/RelationshipManager.js';
-import { HybridLogicalClock } from '../../src/core/HybridLogicalClock.js';
-import {
-  RELATIONSHIP_KIND_REGISTRATION,
-  RELATIONSHIP_RECORD_KIND,
-  RELATIONSHIP_STORE_KEY,
-  relationshipTierOf,
-  buildRelationshipRecordData,
-  buildRelationshipTombstoneData,
-  deriveRelationshipRecordKey,
-} from '../../src/core/RelationshipsReplicatedStore.js';
-import { SafeFsExecutor } from '../../src/core/SafeFsExecutor.js';
-import type { UserChannel } from '../../src/core/types.js';
+const SECRET = 'replication-test-secret-0123456789', CONVERSATION = `telegram/bot-${scope.bot}/chat-${scope.chat}`;
+const dirs: string[] = [];
+afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+const world = async (options?: Parameters<typeof peopleWorld>[1]) => { const dir = place('relationship-machine-'); dirs.push(dir);
+  mkdirSync(join(dir, 'studio'), { recursive: true }); return { dir, ...await peopleWorld(join(dir, 'studio'), options) }; };
+const permission = () => { const p = resolveGroupDisclosure(scope, authority(), now, records, sealKey); if (p.kind !== 'resolved') throw Error(p.reason); return p; };
+const verify = (path: string) => { openPreviewJournal(path, key, undefined, undefined, true).close(); };
 
-const A = 'm_laptop';
-const B = 'm_mac_mini';
+it('a person named on A becomes readable on B as a foreign-origin record after the carried journal is replicated and adopted', async () => {
+  const w = await world();
+  const audience = await verifyGroupAudience(scope, membership());
+  expect(appendGroupCarry(w.destination, w.source, scope, permission(), audience, now, () => false)).toBe('carried');
+  // Machine B holds a replica of the group journal and nothing else.
+  const laptop = join(w.dir, 'laptop'); mkdirSync(laptop, { recursive: true });
+  const store = openReplicaStore({ directory: join(laptop, 'replica'), conversation: CONVERSATION, machine: 'laptop', secret: SECRET });
+  const shipper = createJournalShipper({ path: w.target, size: () => w.destination.size, peer: localReplicaClient(store),
+    conversation: CONVERSATION, machine: 'studio', secret: SECRET, epoch: () => 1, monotonic: () => 0 });
+  await shipper.pump();
+  expect(store.copy()).toMatchObject({ machine: 'studio', size: w.destination.size });
+  const journalPath = join(laptop, 'journal.encrypted');
+  expect(adoptReceivedCopy({ root: laptop, journalPath, store, epoch: 2, seed: false, verify })).toEqual({ ok: true, how: 'adopted' });
+  // B's union read: A's person, foreign origin, channel-set identity, no local id.
+  const adopted = openPreviewJournal(journalPath, key);
+  const carried = adopted.view.groupCarry!.entries.filter(entry => entry.kind === 'person').map(entry => carriedPerson(entry, adopted.view.groupCarry!.scope)!);
+  const union = unionOfOriginRecords(carried);
+  const views = mergeUnionToRelationships(union);
+  expect(views.map(view => view.data.name).sort()).toEqual(['Ana Lima', 'Sam Ruiz']);
+  const sam = views.find(view => view.data.name === 'Sam Ruiz')!;
+  expect(sam.origin).toBe(carryOrigin(scope));
+  expect(sam.conflicted).toBe(false);
+  expect(sam.data).not.toHaveProperty('id');
+  expect(sam.recordKey).toBe(carried.find(record => record.data.name === 'Sam Ruiz')!.envelope.recordKey);
+  expect(renderForeignRelationshipContext(sam)).toContain(`<replicated-untrusted-data origin="${carryOrigin(scope)}">`);
+  // And the adopted root serves it to its own model packet exactly as the studio did.
+  const packet = groupCarryPacket(adopted.view.groupCarry!, 'Who is Sam?', now, 409600, adopted.view);
+  expect(packet.entries.some(entry => entry.kind === 'person' && entry.text.includes('Name: Sam Ruiz'))).toBe(true);
+  adopted.close(); store.close(); w.destination.close(); w.source.close();
+});
 
-function reg(): ReplicatedKindRegistry {
-  const r = new ReplicatedKindRegistry();
-  r.register(RELATIONSHIP_KIND_REGISTRATION);
-  return r;
-}
+it('a forgotten mention on A is withheld before the carry, so B can never hold it: the forget row is the positive signal', async () => {
+  const w = await world();
+  w.source.view.memory.push({ mode: 'forget', source: w.ids.ana, trigger: w.ids.ana, quote: 'Ana Lima' });
+  const memory = buildCarriedMemory(w.source.view, scope, permission(), now);
+  const names = memory.entries.filter(entry => entry.kind === 'person').map(entry => carriedPerson(entry, scope)!.data.name);
+  expect(names).toEqual(['Sam Ruiz']);
+  expect(JSON.stringify(memory)).not.toContain('Ana');
+  w.destination.close(); w.source.close();
+});
 
-interface Instance {
-  dir: string;
-  registry: ReplicatedKindRegistry;
-  journal: CoherenceJournal;
-  applier: JournalSyncApplier;
-  reader: ReplicatedPeerStreamReader;
-  relationships: RelationshipManager;
-  unionReader: ReplicatedStoreReader;
-}
-
-function makeInstance(machineId: string, label: string): Instance {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `ws2e2e-rel-${label}-`));
-  const registry = reg();
-  const journal = new CoherenceJournal({ stateDir: dir, machineId, flushIntervalMs: 1_000_000 });
-  journal.open();
-  journal.setReplicatedKindRegistry(registry);
-  const applier = new JournalSyncApplier({ stateDir: dir, replicatedRegistry: registry });
-  const reader = new ReplicatedPeerStreamReader({ stateDir: dir, registry, selfMachineId: machineId });
-  const relationships = new RelationshipManager({ relationshipsDir: path.join(dir, 'relationships'), maxRecentInteractions: 10 });
-
-  // Emitter (the SEND wiring) — emission ENABLED for relationships.
-  const emitter = new ReplicatedRecordEmitter({
-    journal,
-    clock: new HybridLogicalClock({ node: machineId, now: () => Date.now() }),
-    registry,
-    origin: machineId,
-    stores: () => ({ relationships: { enabled: true } }),
-    loadWitness: (store, rk) => reader.loadWitness(store, rk),
+it('the SAME person named in two private conversations collapses to ONE recordKey across origins and is flagged, never silently merged', async () => {
+  const a = await world(), b = await world({ extraSamMention: true });
+  const other = { ...scope, sourceRoot: '/test/other-private' };
+  const asOrigin = (view: typeof a.source.view, origin: string): OriginRecord[] => journalRelationships(view, now).flatMap(person => {
+    const data = buildRelationshipRecordData({ record: person.record, origin,
+      hlc: { physical: Date.parse(person.record.lastInteraction), logical: person.record.interactionCount, node: origin } });
+    // Read back through the store schema, as a receiver does: the envelope apart from the store fields.
+    const record = data && originRecordFromData(data, { bumpSchemaReject() { throw Error('schema reject'); }, bumpDroppedField() {}, bumpJailReject() {} });
+    return record ? [record] : [];
   });
-  relationships.setReplicationEmitter({
-    emitPut: (rec) => emitter.emit(RELATIONSHIP_STORE_KEY, deriveRelationshipRecordKey(rec.channels),
-      (hlc, o, observed) => buildRelationshipRecordData({ record: rec, hlc, origin: o, observed })),
-    emitDelete: (channels, deletedAt) => emitter.emit(RELATIONSHIP_STORE_KEY, deriveRelationshipRecordKey(channels),
-      (hlc, o, observed) => buildRelationshipTombstoneData({ channels, hlc, origin: o, deletedAt, observed })),
-  });
-
-  // The bypass-proof union reader (the SAME funnel + seams the server wires).
-  const unionReader = new ReplicatedStoreReader({
-    registry,
-    stores: { relationships: { enabled: true } },
-    tierOf: relationshipTierOf,
-    loadOriginRecords: (store, rk) => reader.loadOriginRecords(store, rk),
-    listRecordKeys: (store) => reader.listRecordKeys(store),
-    droppedOrigins: new DroppedOriginRegistry({ stateDir: dir }),
-    conflictStore: new ConflictStore({ stateDir: dir, now: () => new Date() }),
-  });
-
-  return { dir, registry, journal, applier, reader, relationships, unionReader };
-}
-
-/** Ship every NEW own relationship-record entry from `from` to `to` (the journal
- *  serve/apply path, first-hop bound). Returns the cursor to resume from next time. */
-function replicate(from: Instance, fromMachineId: string, to: Instance, fromSeq: number): number {
-  from.journal.flush();
-  const served = from.applier.buildServeBatch(RELATIONSHIP_RECORD_KIND, fromSeq, fromMachineId);
-  if (served.entries.length === 0) return fromSeq;
-  to.applier.apply(fromMachineId, [served]);
-  return served.entries[served.entries.length - 1].seq;
-}
-
-const tg = (id: string): UserChannel => ({ type: 'telegram', identifier: id });
-
-describe('E2E — a person recorded on A is readable on B (WS2.3 send-side)', () => {
-  let a: Instance;
-  let b: Instance;
-
-  beforeEach(() => {
-    a = makeInstance(A, 'a');
-    b = makeInstance(B, 'b');
-  });
-  afterEach(() => {
-    for (const inst of [a, b]) {
-      try { inst.journal.close(); } catch { /* best-effort */ }
-      SafeFsExecutor.safeRmSync(inst.dir, { recursive: true, force: true, operation: 'tests/e2e/ws2-relationships-cross-instance.test.ts' });
-    }
-  });
-
-  it('findOrCreate on A becomes readable through B\'s union reader as a foreign-origin record', () => {
-    const rec = a.relationships.findOrCreate('Alice', tg('12345'));
-    const rk = deriveRelationshipRecordKey(rec.channels)!;
-
-    // B sees nothing yet (no replication has happened).
-    expect(b.unionReader.read(RELATIONSHIP_STORE_KEY, rk).value).toBeNull();
-
-    // Replicate A → B over the real serve/apply path.
-    replicate(a, A, b, 0);
-
-    // B's union read now returns A's person — a foreign-origin record, channel-keyed.
-    const result = b.unionReader.read(RELATIONSHIP_STORE_KEY, rk);
-    expect(result.value).not.toBeNull();
-    expect(result.value!.origin).toBe(A);
-    expect(result.value!.data.name).toBe('Alice');
-    expect((result.value!.data.channels as UserChannel[]).some((c) => c.identifier === '12345')).toBe(true);
-    // The local UUID is NEVER replicated (identity is the channel set, REQ-M4/D17).
-    expect((result.value!.data as Record<string, unknown>).id).toBeUndefined();
-    // And it appears in B's full key listing.
-    expect(b.unionReader.readAll(RELATIONSHIP_STORE_KEY).has(rk)).toBe(true);
-  });
-
-  it('a delete on A replicates as a channel-keyed tombstone and the union resolves the key to no-record', () => {
-    const rec = a.relationships.findOrCreate('Bob', tg('67890'));
-    const rk = deriveRelationshipRecordKey(rec.channels)!;
-    let cursor = replicate(a, A, b, 0);
-    expect(b.unionReader.read(RELATIONSHIP_STORE_KEY, rk).value).not.toBeNull();
-
-    // Erase Bob on A, replicate the tombstone.
-    expect(a.relationships.delete(rec.id)).toBe(true);
-    cursor = replicate(a, A, b, cursor);
-    expect(cursor).toBeGreaterThan(0);
-
-    // B resolves the key to "no record" (an explicit tombstone, not a record absence).
-    expect(b.unionReader.read(RELATIONSHIP_STORE_KEY, rk).value).toBeNull();
-  });
-
-  it('the SAME person (same channel set) on BOTH machines collapses to ONE recordKey across origins', () => {
-    const recA = a.relationships.findOrCreate('Carol', tg('55555'));
-    b.relationships.findOrCreate('Carol', tg('55555'));
-
-    // A replicates to B; flush B so its OWN emitted record is durable on disk too.
-    replicate(a, A, b, 0);
-    b.journal.flush();
-    const rk = deriveRelationshipRecordKey(recA.channels)!;
-    const origins = b.reader.loadOriginRecords(RELATIONSHIP_STORE_KEY, rk);
-    expect(origins.map((o) => o.origin).sort()).toEqual([A, B].sort());
-    // ONE key, not two — the channel-set identity surface collapsed the same person.
-    expect(b.reader.listRecordKeys(RELATIONSHIP_STORE_KEY)).toEqual([rk]);
-  });
+  const recordsA = asOrigin(a.source.view, carryOrigin(scope)), recordsB = asOrigin(b.source.view, carryOrigin(other));
+  const samA = recordsA.find(record => record.data.name === 'Sam Ruiz')!, samB = recordsB.find(record => record.data.name === 'Sam Ruiz')!;
+  // ONE key for the same confirmed name set, from two roots that never shared a local id.
+  expect(samA.envelope.recordKey).toBe(samB.envelope.recordKey);
+  expect(samA.origin).not.toBe(samB.origin);
+  expect(samB.data.interactionCount).toBe(3);
+  const union = unionOfOriginRecords([...recordsA, ...recordsB]);
+  expect(union.size).toBe(2); // Sam Ruiz (two origins) + Ana Lima
+  // Ana's two accounts are byte-identical store fields: nothing to resolve, one value.
+  expect(union.get(recordsA.find(record => record.data.name === 'Ana Lima')!.envelope.recordKey)!.conflict).toBeNull();
+  const sam = union.get(samA.envelope.recordKey)!;
+  // Neither root witnessed the other: HIGH-impact append-both-and-flag, never a silent clobber of either account.
+  expect(sam.value).toBeNull();
+  expect(sam.conflict!.versions.map(version => version.origin).sort()).toEqual([samA.origin, samB.origin].sort());
+  expect(mergeUnionToRelationships(union).filter(view => view.conflicted)).toHaveLength(2);
+  a.destination.close(); a.source.close(); b.destination.close(); b.source.close();
 });

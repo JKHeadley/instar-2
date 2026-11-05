@@ -1,27 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { RelationshipManager } from '../../src/core/RelationshipManager.js';
-import type { RelationshipManagerConfig, UserChannel, IntelligenceProvider } from '../../src/core/types.js';
-import { SafeFsExecutor } from '../../src/core/SafeFsExecutor.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { RelationshipManager, memoryRelationshipStore } from './relationship-manager.js';
+import type { RelationshipManagerConfig, RelationshipManagerPorts, UserChannel } from './relationship-manager.js';
+
+// 1.x tests ran against a directory of JSON files and the wall clock; the 2.0 manager takes a store
+// port and clock/id ports, so every case here is deterministic and writes nothing to disk.
+const CLOCK = Date.UTC(2026, 9, 10, 12, 0, 0);
+const DAY = 24 * 60 * 60 * 1000;
 
 describe('RelationshipManager', () => {
-  let tmpDir: string;
+  let store: ReturnType<typeof memoryRelationshipStore>;
   let config: RelationshipManagerConfig;
+  let ports: RelationshipManagerPorts;
   let manager: RelationshipManager;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'instar-rel-test-'));
-    config = {
-      relationshipsDir: path.join(tmpDir, 'relationships'),
-      maxRecentInteractions: 20,
-    };
-    manager = new RelationshipManager(config);
-  });
-
-  afterEach(() => {
-    SafeFsExecutor.safeRmSync(tmpDir, { recursive: true, force: true, operation: 'tests/unit/RelationshipManager.test.ts:24' });
+    let ids = 0;
+    store = memoryRelationshipStore();
+    config = { maxRecentInteractions: 20 };
+    ports = { now: () => CLOCK, id: () => `r${++ids}` };
+    manager = new RelationshipManager(config, ports, store);
   });
 
   describe('findOrCreate', () => {
@@ -55,23 +52,21 @@ describe('RelationshipManager', () => {
       expect(r1.id).not.toBe(r2.id);
     });
 
-    it('persists to disk', () => {
+    it('persists to the store', () => {
       const channel: UserChannel = { type: 'telegram', identifier: '12345' };
       const record = manager.findOrCreate('Alice', channel);
 
-      const filePath = path.join(config.relationshipsDir, `${record.id}.json`);
-      expect(fs.existsSync(filePath)).toBe(true);
-
-      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      expect(data.name).toBe('Alice');
+      const saved = store.records().find((r) => r.id === record.id);
+      expect(saved).toBeDefined();
+      expect(saved!.name).toBe('Alice');
     });
 
-    it('survives reload from disk', () => {
+    it('survives reload from the store', () => {
       const channel: UserChannel = { type: 'telegram', identifier: '12345' };
       const original = manager.findOrCreate('Alice', channel);
 
-      // Create a new manager pointing at the same dir
-      const manager2 = new RelationshipManager(config);
+      // Create a new manager over the same store
+      const manager2 = new RelationshipManager(config, ports, store);
       const loaded = manager2.resolveByChannel(channel);
 
       expect(loaded).not.toBeNull();
@@ -102,7 +97,7 @@ describe('RelationshipManager', () => {
       const record = manager.findOrCreate('Alice', channel);
 
       manager.recordInteraction(record.id, {
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(CLOCK).toISOString(),
         channel: 'telegram',
         summary: 'Discussed project setup',
         topics: ['onboarding', 'architecture'],
@@ -122,7 +117,7 @@ describe('RelationshipManager', () => {
       // Record more than maxRecentInteractions
       for (let i = 0; i < 25; i++) {
         manager.recordInteraction(record.id, {
-          timestamp: new Date(Date.now() + i * 1000).toISOString(),
+          timestamp: new Date(CLOCK + i * 1000).toISOString(),
           channel: 'telegram',
           summary: `Interaction ${i}`,
         });
@@ -136,7 +131,7 @@ describe('RelationshipManager', () => {
     it('ignores unknown relationship id', () => {
       // Should not throw
       manager.recordInteraction('nonexistent-id', {
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(CLOCK).toISOString(),
         channel: 'telegram',
         summary: 'Should be ignored',
       });
@@ -149,7 +144,7 @@ describe('RelationshipManager', () => {
       // Record many interactions with varied topics
       for (let i = 0; i < 20; i++) {
         manager.recordInteraction(record.id, {
-          timestamp: new Date().toISOString(),
+          timestamp: new Date(CLOCK).toISOString(),
           channel: 'telegram',
           summary: `Discussion ${i}`,
           topics: [`topic-${i}`],
@@ -190,7 +185,7 @@ describe('RelationshipManager', () => {
       const record = manager.findOrCreate('Alice', ch1);
 
       const ch2: UserChannel = { type: 'email', identifier: 'alice@example.com' };
-      manager.linkChannel(record.id, ch2);
+      expect(manager.linkChannel(record.id, ch2)).toBe(true);
 
       const updated = manager.get(record.id)!;
       expect(updated.channels).toHaveLength(2);
@@ -208,6 +203,15 @@ describe('RelationshipManager', () => {
       const updated = manager.get(record.id)!;
       expect(updated.channels).toHaveLength(1);
     });
+
+    it('refuses the fifty-first channel and records the refusal instead of a console warning', () => {
+      const record = manager.findOrCreate('Alice', { type: 'telegram', identifier: '0' });
+      for (let i = 1; i < 50; i++) manager.linkChannel(record.id, { type: 'telegram', identifier: String(i) });
+      expect(manager.get(record.id)!.channels).toHaveLength(50);
+      expect(manager.linkChannel(record.id, { type: 'telegram', identifier: '50' })).toBe(false);
+      expect(manager.get(record.id)!.channels).toHaveLength(50);
+      expect(manager.refusedChannelLinks).toEqual([{ id: record.id, channel: { type: 'telegram', identifier: '50' } }]);
+    });
   });
 
   describe('mergeRelationships', () => {
@@ -220,13 +224,13 @@ describe('RelationshipManager', () => {
 
       // Add interactions to both
       manager.recordInteraction(r1.id, {
-        timestamp: new Date(Date.now() - 10000).toISOString(),
+        timestamp: new Date(CLOCK - 10000).toISOString(),
         channel: 'telegram',
         summary: 'Chat on Telegram',
         topics: ['ai'],
       });
       manager.recordInteraction(r2.id, {
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(CLOCK).toISOString(),
         channel: 'email',
         summary: 'Email exchange',
         topics: ['philosophy'],
@@ -241,12 +245,21 @@ describe('RelationshipManager', () => {
       expect(merged.themes).toContain('ai');
       expect(merged.themes).toContain('philosophy');
 
-      // r2 should be gone
+      // r2 should be gone, in the manager and in the store
       expect(manager.get(r2.id)).toBeNull();
+      expect(store.records().some((r) => r.id === r2.id)).toBe(false);
 
       // Both channels should resolve to r1
       expect(manager.resolveByChannel(ch1)!.id).toBe(r1.id);
       expect(manager.resolveByChannel(ch2)!.id).toBe(r1.id);
+    });
+
+    it('handles merge with nonexistent source gracefully', () => {
+      const r1 = manager.findOrCreate('Dave', { type: 'telegram', identifier: '111' });
+      expect(() => manager.mergeRelationships(r1.id, 'nonexistent-id')).not.toThrow();
+      const unchanged = manager.get(r1.id)!;
+      expect(unchanged.name).toBe('Dave');
+      expect(unchanged.channels).toHaveLength(1);
     });
   });
 
@@ -261,7 +274,7 @@ describe('RelationshipManager', () => {
       manager.updateNotes(record.id, 'Test note');
 
       manager.recordInteraction(record.id, {
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(CLOCK).toISOString(),
         channel: 'telegram',
         summary: 'Discussed testing',
         topics: ['testing'],
@@ -292,7 +305,7 @@ describe('RelationshipManager', () => {
       // Give r2 more interactions to boost significance
       for (let i = 0; i < 10; i++) {
         manager.recordInteraction(r2.id, {
-          timestamp: new Date().toISOString(),
+          timestamp: new Date(CLOCK).toISOString(),
           channel: 'telegram',
           summary: `Discussion ${i}`,
           topics: [`topic-${i}`],
@@ -300,7 +313,8 @@ describe('RelationshipManager', () => {
       }
 
       const all = manager.getAll();
-      expect(all[0].id).toBe(r2.id);
+      expect(all[0]!.id).toBe(r2.id);
+      expect(all[1]!.id).toBe(r1.id);
     });
 
     it('sorts by name when requested', () => {
@@ -320,7 +334,7 @@ describe('RelationshipManager', () => {
 
       const matches = manager.resolveByName('alice');
       expect(matches).toHaveLength(1);
-      expect(matches[0].id).toBe(record.id);
+      expect(matches[0]!.id).toBe(record.id);
     });
 
     it('resolves with leading @ stripped', () => {
@@ -329,7 +343,7 @@ describe('RelationshipManager', () => {
 
       const matches = manager.resolveByName('@ColonistOne');
       expect(matches).toHaveLength(1);
-      expect(matches[0].id).toBe(record.id);
+      expect(matches[0]!.id).toBe(record.id);
     });
 
     it('resolves collapsed name (underscores/hyphens/spaces)', () => {
@@ -339,7 +353,7 @@ describe('RelationshipManager', () => {
       // "ColonistOne" collapsed matches "colonist one" collapsed
       const matches = manager.resolveByName('ColonistOne');
       expect(matches).toHaveLength(1);
-      expect(matches[0].id).toBe(record.id);
+      expect(matches[0]!.id).toBe(record.id);
     });
 
     it('returns empty for unknown name', () => {
@@ -368,22 +382,19 @@ describe('RelationshipManager', () => {
       expect(dupes).toHaveLength(0);
     });
 
-    it('detects collapsed-name duplicates', () => {
-      // Bypass findOrCreate name resolution by creating via different channels
-      // and manually editing records to have similar-but-not-same normalized names
-      const r1 = manager.findOrCreate('test user', { type: 'telegram', identifier: '111' });
-      // "testuser" won't match "test user" in exact normalized form,
-      // but will match in collapsed form
-      const r2 = manager.findOrCreate('TestUser', { type: 'email', identifier: 'test@example.com' });
-
-      // Since findOrCreate resolves by name, r2 may have merged into r1
-      // Check if they're separate or merged
-      if (r1.id !== r2.id) {
-        const dupes = manager.findDuplicates();
-        expect(dupes.length).toBeGreaterThanOrEqual(1);
-        const group = dupes.find((d) => d.records.some((r) => r.id === r1.id));
-        expect(group).toBeTruthy();
-      }
+    it('detects collapsed-name duplicates loaded from the store', () => {
+      // Two stored records whose names differ only in separators (the store came from elsewhere, so
+      // findOrCreate's own name resolution never had the chance to link them).
+      const loaded = new RelationshipManager(config, ports, memoryRelationshipStore([
+        { id: 'a', name: 'test user', channels: [{ type: 'telegram', identifier: '111' }], firstInteraction: new Date(CLOCK).toISOString(),
+          lastInteraction: new Date(CLOCK).toISOString(), interactionCount: 1, themes: [], notes: '', significance: 1, recentInteractions: [] },
+        { id: 'b', name: 'TestUser', channels: [{ type: 'email', identifier: 'test@example.com' }], firstInteraction: new Date(CLOCK).toISOString(),
+          lastInteraction: new Date(CLOCK).toISOString(), interactionCount: 1, themes: [], notes: '', significance: 1, recentInteractions: [] },
+      ]));
+      const dupes = loaded.findDuplicates();
+      expect(dupes).toHaveLength(1);
+      expect(dupes[0]!.reason).toBe('Similar collapsed name: "testuser"');
+      expect(dupes[0]!.records.map((r) => r.id).sort()).toEqual(['a', 'b']);
     });
   });
 
@@ -413,6 +424,18 @@ describe('RelationshipManager', () => {
 
       // Collapsed match should link them
       expect(r1.id).toBe(r2.id);
+    });
+
+    it('never guesses between two people sharing a name: an ambiguous match creates a third record', () => {
+      const loaded = new RelationshipManager(config, ports, memoryRelationshipStore([
+        { id: 'a', name: 'Sam', channels: [{ type: 'telegram', identifier: '1' }], firstInteraction: new Date(CLOCK).toISOString(),
+          lastInteraction: new Date(CLOCK).toISOString(), interactionCount: 1, themes: [], notes: '', significance: 1, recentInteractions: [] },
+        { id: 'b', name: 'sam', channels: [{ type: 'email', identifier: 'sam@x.io' }], firstInteraction: new Date(CLOCK).toISOString(),
+          lastInteraction: new Date(CLOCK).toISOString(), interactionCount: 1, themes: [], notes: '', significance: 1, recentInteractions: [] },
+      ]));
+      const third = loaded.findOrCreate('Sam', { type: 'slack', identifier: 'U1' });
+      expect(['a', 'b']).not.toContain(third.id);
+      expect(loaded.getAll()).toHaveLength(3);
     });
   });
 
@@ -520,10 +543,10 @@ describe('RelationshipManager', () => {
       const channel: UserChannel = { type: 'telegram', identifier: '12345' };
       const record = manager.findOrCreate('Alice', channel);
 
-      // Manually boost significance and set old last interaction
+      // Boost significance with old interactions (30 days ago)
       for (let i = 0; i < 6; i++) {
         manager.recordInteraction(record.id, {
-          timestamp: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days ago
+          timestamp: new Date(CLOCK - 30 * DAY).toISOString(),
           channel: 'telegram',
           summary: `Old discussion ${i}`,
           topics: [`topic-${i}`],
@@ -532,7 +555,7 @@ describe('RelationshipManager', () => {
 
       const stale = manager.getStaleRelationships(14);
       expect(stale.length).toBeGreaterThanOrEqual(1);
-      expect(stale[0].id).toBe(record.id);
+      expect(stale[0]!.id).toBe(record.id);
     });
 
     it('excludes low-significance relationships', () => {
@@ -545,175 +568,15 @@ describe('RelationshipManager', () => {
       expect(stale).toHaveLength(0);
     });
   });
-});
 
-// ── LLM-Supervised Identity Resolution Tests ─────────────────────────
-
-describe('RelationshipManager with IntelligenceProvider', () => {
-  let tmpDir: string;
-  let config: RelationshipManagerConfig;
-  let manager: RelationshipManager;
-  let mockIntelligence: IntelligenceProvider;
-  let lastPrompt: string;
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'instar-rel-intel-test-'));
-    lastPrompt = '';
-
-    // Mock intelligence provider — records prompts and returns configurable responses
-    mockIntelligence = {
-      evaluate: async (prompt: string) => {
-        lastPrompt = prompt;
-        // Default: confirm match for index 0
-        return 'MATCH:0';
-      },
-    };
-
-    config = {
-      relationshipsDir: path.join(tmpDir, 'relationships'),
-      maxRecentInteractions: 20,
-      intelligence: mockIntelligence,
-    };
-    manager = new RelationshipManager(config);
-  });
-
-  afterEach(() => {
-    SafeFsExecutor.safeRmSync(tmpDir, { recursive: true, force: true, operation: 'tests/unit/RelationshipManager.test.ts:582' });
-  });
-
-  describe('findOrCreateAsync', () => {
-    it('resolves by channel without calling LLM', async () => {
-      let llmCalled = false;
-      mockIntelligence.evaluate = async (prompt) => {
-        llmCalled = true;
-        return 'NEW';
-      };
-
-      const ch: UserChannel = { type: 'telegram', identifier: '12345' };
-      const r1 = manager.findOrCreate('Alice', ch);
-      const r2 = await manager.findOrCreateAsync('Alice', ch);
-
-      expect(r1.id).toBe(r2.id);
-      expect(llmCalled).toBe(false); // Channel match is definitive
-    });
-
-    it('uses LLM to confirm name matches', async () => {
-      const ch1: UserChannel = { type: 'telegram', identifier: '111' };
-      manager.findOrCreate('sarah-chen', ch1);
-
-      // LLM confirms this is the same person
-      mockIntelligence.evaluate = async (prompt) => {
-        lastPrompt = prompt;
-        return 'MATCH:0';
-      };
-
-      // "SarahChen" matches "sarah chen" via collapsed name heuristic
-      const ch2: UserChannel = { type: 'colony', identifier: 'sarahchen' };
-      const result = await manager.findOrCreateAsync('SarahChen', ch2);
-
-      // The prompt should contain both names
-      expect(lastPrompt).toContain('SarahChen');
-      expect(lastPrompt).toContain('sarah-chen');
-      // Should have linked to existing (LLM said MATCH:0)
-      expect(result.channels).toHaveLength(2);
-    });
-
-    it('creates new record when LLM says NEW', async () => {
-      const ch1: UserChannel = { type: 'telegram', identifier: '111' };
-      const r1 = manager.findOrCreate('Sarah', ch1);
-
-      mockIntelligence.evaluate = async () => 'NEW';
-
-      const ch2: UserChannel = { type: 'email', identifier: 'sarah.different@test.com' };
-      const r2 = await manager.findOrCreateAsync('Sarah', ch2);
-
-      // LLM said NEW — should be a different record
-      // Note: sync findOrCreate would have merged these (same normalized name)
-      expect(r2.id).not.toBe(r1.id);
-    });
-
-    it('falls back to heuristic when LLM fails', async () => {
-      const ch1: UserChannel = { type: 'telegram', identifier: '111' };
-      const r1 = manager.findOrCreate('Alice', ch1);
-
-      mockIntelligence.evaluate = async () => {
-        throw new Error('LLM unavailable');
-      };
-
-      const ch2: UserChannel = { type: 'email', identifier: 'alice@test.com' };
-      const r2 = await manager.findOrCreateAsync('Alice', ch2);
-
-      // Should fall back to heuristic: single match → link
-      expect(r2.id).toBe(r1.id);
-    });
-  });
-
-  describe('findDuplicatesAsync', () => {
-    it('confirms duplicates via LLM', async () => {
-      // Create two records with different names but manually (bypass findOrCreate name resolution)
-      const ch1: UserChannel = { type: 'telegram', identifier: '111' };
-      const ch2: UserChannel = { type: 'email', identifier: 'test@test.com' };
-
-      const r1 = manager.findOrCreate('Alice Smith', ch1);
-      const r2 = manager.findOrCreate('Alice (Other)', ch2);
-
-      // These won't be heuristic duplicates (different normalized names)
-      // So findDuplicatesAsync will return empty regardless of LLM
-      const results = await manager.findDuplicatesAsync();
-      // All results should have confirmed field
-      for (const r of results) {
-        expect(typeof r.confirmed).toBe('boolean');
-      }
-    });
-
-    it('marks LLM-confirmed duplicates', async () => {
-      mockIntelligence.evaluate = async () => 'YES';
-
-      // Create potential duplicates that heuristics catch
-      // Use channel-only creation to bypass name resolution
-      const ch1: UserChannel = { type: 'telegram', identifier: '111' };
-      const r1 = manager.findOrCreate('test user', ch1);
-
-      // Manually create a second record to simulate a duplicate
-      // (findOrCreate would merge them, so we need to test with pre-existing data)
-      const results = await manager.findDuplicatesAsync();
-      // Even if no heuristic dupes found, the method should work
-      expect(Array.isArray(results)).toBe(true);
-    });
-  });
-
-  describe('without intelligence provider', () => {
-    it('findOrCreateAsync falls back to sync behavior', async () => {
-      // Create manager without intelligence
-      const noIntelConfig: RelationshipManagerConfig = {
-        relationshipsDir: path.join(tmpDir, 'no-intel-relationships'),
-        maxRecentInteractions: 20,
-        // No intelligence provider
-      };
-      const noIntelManager = new RelationshipManager(noIntelConfig);
-
-      const ch1: UserChannel = { type: 'telegram', identifier: '111' };
-      const r1 = noIntelManager.findOrCreate('Alice', ch1);
-
-      const ch2: UserChannel = { type: 'email', identifier: 'alice@test.com' };
-      const r2 = await noIntelManager.findOrCreateAsync('Alice', ch2);
-
-      // Without LLM, should behave like sync: single name match → link
-      expect(r2.id).toBe(r1.id);
-    });
-
-    it('findDuplicatesAsync returns unconfirmed results', async () => {
-      const noIntelConfig: RelationshipManagerConfig = {
-        relationshipsDir: path.join(tmpDir, 'no-intel-dup-relationships'),
-        maxRecentInteractions: 20,
-      };
-      const noIntelManager = new RelationshipManager(noIntelConfig);
-
-      const results = await noIntelManager.findDuplicatesAsync();
-      expect(Array.isArray(results)).toBe(true);
-      for (const r of results) {
-        expect(r.confirmed).toBe(false);
-      }
+  describe('readAll', () => {
+    it('counts records with an invalid id instead of returning them', () => {
+      const read = RelationshipManager.readAll({ load: () => [
+        { id: 'ok', name: 'Alice', channels: [], firstInteraction: 'x', lastInteraction: 'x', interactionCount: 0, themes: [], notes: '', significance: 1, recentInteractions: [] },
+        { id: '../escape', name: 'Mallory', channels: [], firstInteraction: 'x', lastInteraction: 'x', interactionCount: 0, themes: [], notes: '', significance: 1, recentInteractions: [] },
+      ] });
+      expect(read.records.map((r) => r.id)).toEqual(['ok']);
+      expect(read.skipped).toBe(1);
     });
   });
 });
