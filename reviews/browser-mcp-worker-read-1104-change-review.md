@@ -1,8 +1,8 @@
 # Change review — worker reads connector launch configuration
 
 Subject base: bcbe1def1642146c18f1e0d569ab84016fa6454e
-Review state: frozen
-Reviewed content: sha256:41339ecebaa3eebf3d3a09bcb98108b0bdb289e724fb0bd3514a7e0c7431d0cc
+Review state: open
+Reviewed content: none
 Outcome: Grant the worker read access to the generated MCP launch configuration before its continuing session starts and expose the owner browser tool with an Anthropic-compatible input schema. Keep the configuration owned by the operator and read-only to the worker. Regenerate the source-pinned register against the committed repair.
 Affected rules: 31, 63, 74, 78, 95, 101, 103, 111, 113, 116
 Affected floors: secrets — only the already redacted launch file is readable, not credential custody; spend cap — unchanged; stop — unchanged; no duplicate sends — no new effect path; durable intake — unchanged.
@@ -31,3 +31,12 @@ Decision: MCP-SCHEMA-1104-3 | Remove top-level oneOf from the client-advertised 
 simplestRobustRoute: Use the existing harness ACL helper on the one generated file before a continuing session launches.
 80/20: The worker can load the connector without changing owner profile custody. Real signed-in page reads still need copy proof before live release.
 VERDICT: author submission; this record asserts no independent verdict.
+
+## Carryover02 r3 review reconciliation
+
+The existing normal `check-change-review.mjs open` command voids the frozen round. Independent re-review is required before approval; no prior verdict covers the changed subject.
+
+Prior reviewed digest: sha256:41339ecebaa3eebf3d3a09bcb98108b0bdb289e724fb0bd3514a7e0c7431d0cc
+Current digest of that same original subject at 96b432fcaa3ce6f7663419ccbd58a31737b62263: sha256:b5e0e9fba564b7ca5a335e1295e6516b720b66f6ead0dc31edbc24ccf901e5bd
+Original reviewed-record commit: b5806d1e015dc650cdc1dee2e0accab05a849d4b
+Reason: inherited shared-source changes invalidate the frozen byte-bound review; the r3 brief explicitly requires ordinary review reconciliation. Prior review evidence remains historical, not re-approved.

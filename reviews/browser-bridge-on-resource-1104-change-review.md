@@ -1,8 +1,8 @@
 # Change review — browser bridge on current live resource recovery
 
 Subject base: 47b9c8234e85856ca3aeee322927621139af4342
-Review state: frozen
-Reviewed content: sha256:094316dfd656ab51b6d7663e4bd9207c62d4593c8a3e743493d748b4dfe47228
+Review state: open
+Reviewed content: none
 Outcome: Merge the independently reviewed bounded owner GitHub read sequence onto the answering resource-recovery build, retaining its worker-slot repair. The only merge conflicts were generated register outputs; regenerate those against the merged source commit. The later connector file ACL and Claude-compatible MCP schema repairs are reviewed separately in browser-mcp-worker-read-1104-change-review.md; this combined record covers the updated exact content.
 Affected rules: 1, 4, 18, 28, 34, 36, 42, 44, 49, 55, 57, 60, 61, 62, 63, 66, 74, 78, 84, 95, 100, 101, 103, 111, 113, 116
 Affected floors: secrets — owner-side fixed DOM projection and scrub stay in place; spend cap — no model budget change; stop — the same claim and deadline bound every read; no duplicate sends — read-only operation admits no send or write; durable intake — existing effect preparation and exact grant remain prerequisites.
@@ -31,3 +31,12 @@ Decision: BROWSER-MERGE-1104-2 | Reopen the copied resource-recovery review whos
 simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
 80/20: The two browser test files and register lifecycle test passed 31/31 on the combined branch. Full exact-head suite, independent combination review and a real signed-in multi-step group task remain required before release. No new browser service or credential custody path.
 VERDICT: author submission; this record asserts no independent verdict.
+
+## Carryover02 r3 review reconciliation
+
+The existing normal `check-change-review.mjs open` command voids the frozen round. Independent re-review is required before approval; no prior verdict covers the changed subject.
+
+Prior reviewed digest: sha256:094316dfd656ab51b6d7663e4bd9207c62d4593c8a3e743493d748b4dfe47228
+Current digest of that same original subject at 96b432fcaa3ce6f7663419ccbd58a31737b62263: sha256:5d4ec4d49921a33b5471fbe8cf98a6748379847bc798bd3d97c4821cd558c303
+Original reviewed-record commit: b5806d1e015dc650cdc1dee2e0accab05a849d4b
+Reason: inherited shared-source changes invalidate the frozen byte-bound review; the r3 brief explicitly requires ordinary review reconciliation. Prior review evidence remains historical, not re-approved.
