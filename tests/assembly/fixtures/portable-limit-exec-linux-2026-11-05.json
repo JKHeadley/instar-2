@@ -1,0 +1,90 @@
+{
+  "scope": "offline physical launcher proof; not native macOS conformance or live-channel qualification",
+  "sourceCommit": "b8c203b4e2723063e46a96f6aff9f30342ef45ea",
+  "command": "nice -n 10 npx vitest run --maxWorkers 1 tests/assembly/portable-limit-exec.test.ts",
+  "result": "12 tests passed",
+  "sourceLogSha256": "216e48ee224c2b8ccb31e542ed265b43c8666cd8cad99d1e745abff94d188657",
+  "finiteLinuxChild": {
+    "limits": {
+      "core_file_size_blocks": {
+        "soft": 0,
+        "hard": "unlimited"
+      },
+      "data_seg_size_bytes": {
+        "soft": "unlimited",
+        "hard": "unlimited"
+      },
+      "file_size_blocks": {
+        "soft": "unlimited",
+        "hard": "unlimited"
+      },
+      "max_locked_memory_bytes": {
+        "soft": 67108864,
+        "hard": 67108864
+      },
+      "max_memory_size_bytes": {
+        "soft": "unlimited",
+        "hard": "unlimited"
+      },
+      "open_files": {
+        "soft": 256,
+        "hard": 256
+      },
+      "stack_size_bytes": {
+        "soft": 8388608,
+        "hard": "unlimited"
+      },
+      "cpu_time_seconds": {
+        "soft": 8,
+        "hard": 8
+      },
+      "max_user_processes": {
+        "soft": 46,
+        "hard": 46
+      },
+      "virtual_memory_bytes": {
+        "soft": "unlimited",
+        "hard": "unlimited"
+      }
+    },
+    "status": [
+      "Uid:\t1000\t1000\t1000\t1000",
+      "NSpid:\t130",
+      "Threads:\t3",
+      "CapEff:\t0000000000000000"
+    ],
+    "workerStatus": [
+      "Uid:\t1000\t1000\t1000\t1000",
+      "NSpid:\t130",
+      "Threads:\t4",
+      "CapEff:\t0000000000000000"
+    ],
+    "extraFork": {
+      "status": null,
+      "error": "EAGAIN"
+    },
+    "workerExit": 0,
+    "dnsError": null,
+    "finalStatus": [
+      "Uid:\t1000\t1000\t1000\t1000",
+      "NSpid:\t130",
+      "Threads:\t4",
+      "CapEff:\t0000000000000000"
+    ]
+  },
+  "baselineShimBinding": {
+    "capturedSha256": "1f4454be7c2ce8e65cb550d71943cebdd5fb9adfd9b31db988d966a7815ff7d9",
+    "exactBaseShimSha256": "1f4454be7c2ce8e65cb550d71943cebdd5fb9adfd9b31db988d966a7815ff7d9",
+    "equal": true
+  },
+  "transport": {
+    "command": "nice -n 10 npx vitest run --maxWorkers 1 tests/assembly/portable-limit-exec.test.ts tests/preview/journal-send-outcome.test.ts",
+    "sourceLogSha256": "ae477eed0f89a0097a7b917381ef6ad5d1c8a8356b199adead41eaa94bc942da",
+    "result": "26 tests passed; 16 original transport cases plus 10 then-current shim cases",
+    "proved": [
+      "closed-port ECONNREFUSED/connect-no-write",
+      "overflow exactly one physical request, UNKNOWN retained after reopen, no resend",
+      "pre-dispatch refusal neighbor"
+    ]
+  }
+}
