@@ -1,7 +1,7 @@
 // Read-side port of 1.x LiveConfig.ts (1cb59f787), get/refresh/events/deepEqual.
 // Separate non-authority settings; never writes config, grants, caps or installation facts.
 import { EventEmitter } from 'node:events';
-import fs from 'node:fs';
+import { existsSync, statSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 export class LiveConfig extends EventEmitter {
     stateDir;
@@ -52,9 +52,9 @@ export class LiveConfig extends EventEmitter {
     }
     refreshIfStale() {
         try {
-            if (!fs.existsSync(this.configPath))
+            if (!existsSync(this.configPath))
                 return;
-            const stat = fs.statSync(this.configPath);
+            const stat = statSync(this.configPath);
             if (stat.mtimeMs !== this.lastMtime) {
                 this.refresh();
             }
@@ -64,15 +64,15 @@ export class LiveConfig extends EventEmitter {
     }
     refresh() {
         try {
-            if (!fs.existsSync(this.configPath)) {
+            if (!existsSync(this.configPath)) {
                 this.cache = {};
                 return;
             }
-            const content = fs.readFileSync(this.configPath, 'utf-8');
+            const content = readFileSync(this.configPath, 'utf-8');
             const newConfig = JSON.parse(content);
             if (!newConfig || typeof newConfig !== "object" || Array.isArray(newConfig))
                 throw Error("settings object required");
-            const stat = fs.statSync(this.configPath);
+            const stat = statSync(this.configPath);
             this.lastMtime = stat.mtimeMs;
             this.lastReadAt = Date.now();
             const pathsToCheck = this.watchPaths.size > 0
