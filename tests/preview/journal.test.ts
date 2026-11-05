@@ -203,10 +203,17 @@ it.each(['before:intake', 'after:intake', 'before:reserve', 'after:reserve', 'be
       expect(turn.reserved).toBe(true);
       expect(turn.answer).toBeUndefined();
       expect(turn.intent).toBeUndefined();
-    } else if (['after:intent','before:sent'].includes(stage)) {
+    } else if (stage === 'after:intent') {
       expect(first.notices + next.notices).toBe(1);
       expect(turn.intent).toBe('first answer');
       expect(turn.sent).toBeUndefined();
+    } else if (stage === 'before:sent') {
+      // The thrown hook can finish its failure handler before this fixture closes;
+      // restart must reconcile the already accepted reply without another notice.
+      expect(first.notices).toBe(1);
+      expect(next.notices).toBe(0);
+      expect(next.journal.view.sendEvidence?.[`reply:${turn.id}`]?.message).toBe(42);
+      expect(turn.sent).toBe(42);
     } else expect(turn.sent).toBe(stage === 'after:sent' ? 42 : 43);
     next.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -235,10 +242,14 @@ it('survives actual SIGKILL before and after every turn-path durable boundary', 
         expect(turn.reserved, stage).toBe(true);
         expect(turn.answer, stage).toBeUndefined();
         expect(turn.intent, stage).toBeUndefined();
-      } else if (stage === 'after:intent' || stage === 'before:sent') {
+      } else if (stage === 'after:intent') {
         expect(resumed.notices, stage).toBe(1);
         expect(turn.intent, stage).toBe('answer');
         expect(turn.sent, stage).toBeUndefined();
+      } else if (stage === 'before:sent') {
+        expect(resumed.notices, stage).toBe(0);
+        expect(resumed.journal.view.sendEvidence?.[`reply:${turn.id}`]?.message, stage).toBe(1);
+        expect(turn.sent, stage).toBe(1);
       } else expect(turn.sent, stage).toBeGreaterThan(0);
       resumed.journal.close();
     } finally { rmSync(root, {recursive:true,force:true}); }

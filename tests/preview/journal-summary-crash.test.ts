@@ -31,8 +31,9 @@ try {
   const first = points.indexOf('journal:before:summary-reserve:1');
   const compacted = points.indexOf('journal:compact:after-reopen:1');
   const review = points.indexOf('journal:before:reply-jev-reserve:2');
+  const accepted = points.indexOf('journal:after:send-acceptance:2');
   const sent = points.indexOf('journal:after:sent:2');
-  if (first < 0 || compacted <= first || review <= compacted || sent <= review)
+  if (first < 0 || compacted <= first || review <= compacted || accepted <= review || sent <= accepted)
     throw Error('summary or reply review did not run');
   // A kill at a model call's return, or just before a frame that directly follows another frame or
   // a return, leaves the same journal bytes and send log as the preceding point, so only distinct
@@ -76,6 +77,7 @@ it('refuses a summary and recall when their source packet loses the fact', () =>
 
 it.each(cuts)('recovers from %s', cut => {
   const root = rootFor();
+  const acceptedSend = points.indexOf(cut) >= points.indexOf('journal:after:send-acceptance:2');
   try {
     const killed = run(root, cut);
     expect(killed.signal, `${cut}: ${killed.stderr}`).toBe('SIGKILL');
@@ -83,6 +85,8 @@ it.each(cuts)('recovers from %s', cut => {
     try {
       expect(interrupted.view.order.map(item => item.update), cut).toEqual([1, 2]);
       expect(interrupted.view.order[1]?.accepted, cut).toBe(true);
+      expect(interrupted.view.sendEvidence?.[`reply:${interrupted.view.order[1]!.id}`]?.message, cut)
+        .toBe(acceptedSend ? 2 : undefined);
       if (points.indexOf(cut) <= points.indexOf('journal:compact:after-reopen:1'))
         expect(interrupted.view.order[1]?.sent, cut).toBeUndefined();
     } finally { interrupted.close(); }
@@ -96,7 +100,10 @@ it.each(cuts)('recovers from %s', cut => {
     const interruptedReview = points.indexOf(cut) >= points.indexOf('journal:after:reply-jev-reserve:2')
       && points.indexOf(cut) <= points.indexOf('journal:before:reply-check:3');
     const uncertainSend = points.indexOf(cut) >= points.indexOf('journal:after:intent:2')
-      && points.indexOf(cut) < points.indexOf('journal:after:sent:2');
+      && !acceptedSend;
+    // A durable, identity-bound acceptance survives a crash before the sent row.
+    // Recovery reconciles it without an UNKNOWN notice or another send. Earlier
+    // crash points still retain the uncertain-effect fence and its notice.
     // Recovery's injected clock jumps 100 seconds, but its answer is immediate. The timer is cancelled;
     // elapsed age alone must never cause an acknowledgement after the recovered answer is ready.
     expect(sends.filter(item => item.text === REPLY_ACKNOWLEDGEMENT), cut).toEqual([]);
