@@ -34,7 +34,7 @@ import { admitToolCallEffect } from './tool-admission.mjs';
 import { grantVolume, HARNESS_OFF_REASON, HARNESS_SESSION_BRIDGE, harnessCredentialValues, harnessGate, harnessHookPath, harnessRefusedNotice, harnessSessionAdmission,
   harnessSessionLayout, harnessStatusLine, readHarnessLogin } from './harness-user.mjs';
 import { encoded } from '../../src/assembly/boundary.js';
-import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
+import { UNAVAILABLE_EFFECT_POLICY, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope, toolPreparation, withWorkspaceNotice } from './journal-envelope.js';
@@ -2616,10 +2616,17 @@ async function main() {
     }
     const effectPolicyPath = options['effect-policy'];
     if (effectPolicyPath !== undefined) {
-      decodeEffectPolicy(JSON.parse(readFileSync(effectPolicyPath, 'utf8')));
       // A configured policy that cannot be reread is unavailable, never the empty default: the hook refuses every proposal
       // that could reach the doorway until it reads again (its restrictions must not lapse while it is being rewritten).
-      effectPolicyOf = () => currentEffectPolicy(() => readFileSync(effectPolicyPath, 'utf8'));
+      // Rules 15/77/95: use the same unavailable state from startup; conversation remains reachable.
+      effectPolicyOf = () => currentEffectPolicy(() => {
+        const record = statSync(effectPolicyPath);
+        if (!record.isFile() || record.size > 1024 * 1024) throw Error('effect policy is not a bounded record');
+        return readFileSync(effectPolicyPath, 'utf8');
+      });
+      const policy = effectPolicyOf();
+      if (policy.type === UNAVAILABLE_EFFECT_POLICY)
+        process.stderr.write(`preview: effect policy unavailable: ${policy.reason}; affected effects refused until readable.\n`);
     }
     // Rule 114: a tool turn a crash interrupted has its hook record journaled now, before any new turn (and its retention
     // pass) can run; until it is, retention keeps that directory. No tool turn of this runner is live yet.

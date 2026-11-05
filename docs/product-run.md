@@ -6,7 +6,9 @@ The installation's existing service supervisor owns restarting it. This command 
 install accounts, grant authority, change the selected model, or clear a stop.
 `journal-agent.mjs run` remains available with its existing arguments.
 
-The root must already have its journal and admitted login inventory. The installation owner
+The root must already have its journal and admitted login inventory. Missing or unreadable standing
+trust (`effect-policy.json`, written by `instar2 setup`) keeps ordinary conversation and local recovery
+reachable; affected effects remain refused until the record is readable. The installation owner
 records `run-config.json` in this format (example identities are placeholders):
 
 ```json
@@ -48,6 +50,7 @@ through its existing custody path. Diagnostics never print record values or caug
 | `--tools-activation` | First login's optional `toolsActivation`; absent retains the runner's existing grant derivation |
 | `--conversation-session` | Configuration option `on` or `off` |
 | `--session-work-activation` | First login's `sessionActivation`; required when conversation sessions are on |
+| `--effect-policy` | `<root>/effect-policy.json`, the standing trust `instar2 setup` records (Part Twelve); read as a bounded record at startup and every decision. Unavailable trust is diagnosed and refuses affected effects, including listed connector reads, while ordinary conversation remains reachable. Restoration takes effect through the same reader, so the installation's recorded grants, including a connected account's write and the owner GitHub read, govern a copy exactly as they govern the hand-maintained launcher |
 | `--max-calls`, `--max-replies`, `--max-turns`, `--max-context-bytes` | Optional positive integer configuration options; defaults 16, 16, 20, 32768, matching the captured launcher |
 | Login pool | Existing runner reads the whole `harness-logins.json`, prepares members and performs its existing admission; no explicit pool flag bypasses that path |
 
