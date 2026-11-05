@@ -33,9 +33,9 @@ step-2 diff added. Counts from `git diff --numstat 8e7df7f5 87a8efec`.
 | relationship-replication-emit.test.ts | 149 | 157 | 121 | 36 |
 | relationship-union-read.test.ts | 139 | 112 | 59 | 53 |
 | relationship-cross-machine.test.ts | 180 | 100 | 7 | 93 |
-| relationship-carry.test.ts | 0 | 131 | 0 | 131 |
+| relationship-carry.test.ts | 0 | 165 | 0 | 165 |
 
-Source: 1,454 carried / 999 adapted. Tests: 1,233 carried / 500 adapted. Fifteen further 1.x files
+Source: 1,454 carried / 999 adapted. Tests: 1,233 carried / 534 adapted. Fifteen further 1.x files
 (8,635-line `types.ts` included) are kept verbatim under `legacy-1x/relationships/` and are not compiled.
 
 ## Omitted 1.x behavior, with the 2.0 evidence
@@ -52,11 +52,14 @@ Source: 1,454 carried / 999 adapted. Tests: 1,233 carried / 500 adapted. Fifteen
 
 ## What this does and does not demonstrate for row 40
 
-Demonstrated by can-fail tests (red against the base carry module: 6 of 7 new cases fail; green after):
+Demonstrated by can-fail tests (red against the base carry module: 7 of 8 new cases fail; green after):
 
 - topic boundary: the journal's people are one record across the lineage, read through the ported manager;
 - authorized private-to-group boundary: people travel only under the sourced grant and verified audience the
-  carry already requires, validated per entry on replay, served only as quoted untrusted data;
+  carry already requires, validated per entry on replay, served only as quoted untrusted data; a predecessor
+  with no grant, an unverified audience, another operator, an expired grant or a stop carries nobody, and a
+  changed predecessor (another private root with its own valid grant) cannot replace the people a fixed one
+  carried;
 - session boundary: the carried people survive close/reopen and reach the actual worker's model packet;
 - machine boundary: the carried journal's bytes shipped to a second machine's replica store, verified,
   adopted, and read there as foreign-origin records; two roots knowing the same person collapse to one

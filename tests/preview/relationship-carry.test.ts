@@ -6,8 +6,8 @@ import { createHash } from 'node:crypto';
 import { rmSync } from 'node:fs';
 import { appendGroupCarry, buildCarriedMemory, carriedPerson, carryOrigin, groupCarryPacket, validCarriedMemory, type CarriedMemory } from './group-carry.js';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
-import { resolveGroupDisclosure, verifyGroupAudience } from './group-disclosure.js';
-import { now, key, sealKey, scope, records, authority, membership } from './group-carry-fixture.js';
+import { resolveGroupDisclosure, verifyGroupAudience, type DisclosureVerdict } from './group-disclosure.js';
+import { now, key, sealKey, scope, records, authority, membership, permissionFor } from './group-carry-fixture.js';
 import { peopleWorld, place, update } from './relationship-carry-fixture.js';
 import { journalRelationshipManager, journalRelationships } from './relationship-journal.js';
 import { deriveRelationshipRecordKey } from './relationship-store.js';
@@ -127,5 +127,39 @@ it('the journal itself answers who a name is across its topics through the porte
   // A link the operator later corrected no longer joins the two names.
   w.source.view.memory.push({ mode: 'correct', source: w.ids.confirm, trigger: w.ids.confirm, quote: 'Actually, Sam Ruiz and Sam are the same person.', replacement: 'They are different people.' });
   expect(journalRelationships(w.source.view, now).map(item => item.record.name).sort()).toEqual(['Ana Lima', 'Sam', 'Sam Ruiz']);
+  w.source.close(); w.destination.close();
+});
+
+it('an unauthorized predecessor carries nobody, and a changed predecessor cannot replace the people a fixed one carried', async () => {
+  const w = await world();
+  const audience = await verifyGroupAudience(scope, membership());
+  const size = w.destination.size;
+  const attempt = (p: DisclosureVerdict = permission(), verified = audience, subject = scope, stopped = false) =>
+    appendGroupCarry(w.destination, w.source, subject, p, verified, now, () => stopped);
+  // No grant, unverified audience, another operator's scope, an expired grant, a stop: the group root stays empty.
+  expect(() => attempt({ kind: 'refused', reason: 'no grant' })).toThrow(/permission/u);
+  expect(() => attempt(permission(), false)).toThrow(/audience/u);
+  expect(() => attempt(permission(), audience, { ...scope, operator: '999' })).toThrow(/permission/u);
+  expect(() => attempt({ ...permission(), expiresAt: now })).toThrow(/permission/u);
+  expect(() => attempt(permission(), audience, scope, true)).toThrow(/stopped/u);
+  expect(w.destination.size).toBe(size);
+  expect(w.destination.view.groupCarry).toBeUndefined();
+  expect(journalRelationships(w.destination.view, now)).toEqual([]);
+  // The authorized carry fixes this predecessor and its people.
+  expect(attempt()).toBe('carried');
+  const served = () => groupCarryPacket(w.destination.view.groupCarry!, 'Who is Sam?', now, 409600, w.destination.view)
+    .entries.filter(entry => entry.kind === 'person').map(entry => entry.text);
+  expect(served()).toHaveLength(2);
+  const fixed = w.destination.size;
+  // A different private root with its own valid grant for this group is a changed predecessor: refused, nothing rewritten.
+  const other = { ...scope, sourceRoot: '/test/other' };
+  const otherPermission = permissionFor(other);
+  if (otherPermission.kind !== 'resolved') throw Error(otherPermission.reason);
+  expect(() => appendGroupCarry(w.destination, w.source, other, otherPermission, audience, now, () => false)).toThrow(/predecessor already fixed/u);
+  expect(w.destination.size).toBe(fixed);
+  expect(w.destination.view.groupCarry!.scope.sourceRoot).toBe(scope.sourceRoot);
+  expect(people(w.destination.view.groupCarry!).every(({ record }) => record.origin === carryOrigin(scope))).toBe(true);
+  expect(served().every(text => text.startsWith(`<replicated-untrusted-data origin="${carryOrigin(scope)}">`))).toBe(true);
+  expect(JSON.stringify(served())).not.toContain(carryOrigin(other));
   w.source.close(); w.destination.close();
 });
