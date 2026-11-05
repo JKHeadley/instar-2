@@ -20,6 +20,10 @@ Hook bypass: none; core.hooksPath unset; common hooks directory contains only sa
 Convergence: none
 Prompt review: No prompt wording, parser or model choice changed. Recovery admission changed, so tests replay captured summary-writer, Jev, reply-review, delivered-reply and empty-bubble shapes through the new queued-revival path using the existing recorded fixture corpus; opaque bytes remain identical and empty output stays uncertain. This is offline replay, not a live proof.
 
+Prompt finding: 0725f0150c56 | quoted-evidence | Existing unchanged role briefing and its prologue fixture; this repair changes recovery dispatch, not model authority or prompt text. The phrase is not used as a semantic recovery trigger.
+Prompt finding: 27d7720e7977 | protocol-literal | Existing unchanged prologue boundary used to extract the briefing in its test. No new keyword decision or prompt wording is introduced.
+Prompt finding: 85544c20941f | protocol-literal | Existing unchanged retained-message outage notice and output assertion; recovery does not use this sentence as permission to dispatch or send.
+
 Decision: CARRYOVER-03-FULL-1104-1 | Port the resource-held revival into existing ConversationInput custody, with original delivery and authority binding, instead of introducing another queue/store/timer. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-full-parity-1104-PROGRESS.md
 Decision: CARRYOVER-03-FULL-1104-2 | Keep 1.x resource holds distinct from failed launches: retry capacity at 60 seconds, bounded by the original lifetime; never retry an unknown launch or replenish allowance. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-full-parity-1104-PROGRESS.md
 Decision: CARRYOVER-03-FULL-1104-3 | Keep full parity and row 03 OPEN wherever the behavior inventory lacks implementation or evidence; passing the scoped repair tests is not full parity. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-full-parity-1104-PROGRESS.md
