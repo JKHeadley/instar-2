@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
-import { nextObligationAt } from './journal.js';
+import { nextObligationAt, nextDeliveryRecoveryAt, replyFormatting } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
 import { createClaudePoolQuota } from '../../scripts/claude-pool-quota.mjs';
 import { createWorkingActivities, readWorkingAdmission } from './working-activity.mjs';
@@ -1683,9 +1683,9 @@ async function main() {
         return `Two machines: this runner holds the conversation (lease epoch ${fence.epoch}); every reply waits until the other machine has acknowledged its record. ${status.current
           ? 'The other machine holds the whole journal.' : `Waiting for it now (${status.reason}).`}`; },
       // The minimal path is awaited by the poll loop: its wait is bounded so reading and stop stay reachable (Rule 15).
-      admit: (target, refusal) => dispatch.admit(target, refusal, target.startsWith('limited:') ? 10_000 : undefined),
+      admit: (target, refusal, retryAttempt) => dispatch.admit(target, refusal, target.startsWith('limited:') ? 10_000 : undefined, retryAttempt),
       replicated: refusal => dispatch.replicated(refusal),
-      outcome: (target, kind) => dispatch.outcome(target, kind),
+      outcome: (target, kind, retryable) => dispatch.outcome(target, kind, retryable),
       /** A clean end: the last journal bytes go to the other machine, then the lease is handed back so it can take over at once. */
       async stop() {
         clearInterval(renewTimer);
@@ -2402,7 +2402,7 @@ async function main() {
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
       sendAdmits: true,
-      send: async ({ text, expectedText, formatting, chat, thread: signedThread, replyTo, replyMarkup, target, provenance, admit, current, observeSendPhase }) => {
+      send: async ({ text, expectedText, formatting, chat, thread: signedThread, replyTo, replyMarkup, target, retryAttempt, provenance, admit, current, observeSendPhase }) => {
         if (!journal.verifyOutbound(provenance, { target, chat, ...(signedThread === undefined ? {} : { thread: signedThread }), body: text }))
           return { kind: 'refused', reason: 'outbound provenance unsigned' };
         if (formatting && !journal.verifyOutbound(formatting.fallback.provenance, { target, chat, ...(signedThread === undefined ? {} : { thread: signedThread }), body: formatting.fallback.text }))
@@ -2433,7 +2433,7 @@ async function main() {
           // dispatch-claim for this target is taken, immediately before the physical send. Until then it waits.
           const refused = await shared.admit(target, () => workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop
             ? 'stopped before dispatch' : !ownerHeld() ? 'conversation ownership lost before dispatch'
-              : current && !current() ? 'acknowledgement cancelled' : null);
+              : current && !current() ? 'acknowledgement cancelled' : null, retryAttempt);
           if (refused !== null) return refused;
         }
         if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
@@ -2465,7 +2465,7 @@ async function main() {
           // unparsable created no message, so it alone is sent once more as plain text, after the same stop and
           // ownership checks as any dispatch; every other outcome is final.
           try {
-            outcome = await sendFormattedText({ text, expectedText, fallback: formatting?.fallback,
+            outcome = await sendFormattedText({ text, expectedText, fallback: formatting?.fallback, priorRefusal: replyFormatting(journal.view, target)?.refusal,
               recordRefusal: async response => {
                 journal.append({ kind: 'send-format-refused', target, response, at: wallNow() });
                 return shared === null || await shared.replicated(() => !noticeAllowed() || current && !current()
@@ -2486,7 +2486,7 @@ async function main() {
                 () => workingActivities.current(noticeTurn.id)?.running === true);
           }
           return outcome;
-        } finally { if (shared) await shared.outcome(target, outcome.kind); }
+        } finally { if (shared) await shared.outcome(target, outcome.kind, outcome.kind === 'refused' && Number.isSafeInteger(outcome.retryAfterMs) && outcome.retryAfterMs > 0); }
       } });
     if (existsSync(stopPath)) throw Error('preview: stop latched');
     const activationPath = required(options, 'activation-record');
@@ -3118,7 +3118,8 @@ async function main() {
     // It only requests work; result delivery still waits for the withdrawal-aware post-poll pass.
     dueWake = createNextDueWake({ now: wallNow,
       next: () => signalled || workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires
-        || !ownerHeld() || !activationMatchesJournal(journal.view, activation) ? null : nextObligationAt(journal.view),
+        || !ownerHeld() || !activationMatchesJournal(journal.view, activation) ? null : (() => { const due = [nextObligationAt(journal.view), nextDeliveryRecoveryAt(journal.view)].filter(at => at !== null);
+          return due.length ? Math.min(...due) : null; })(),
       after: (ms, fire) => { const timer = setTimeout(fire, ms); timer.unref(); return () => clearTimeout(timer); },
       wake: () => workCycle(false, true) });
     dueWake.refresh();

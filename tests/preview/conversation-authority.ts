@@ -34,21 +34,21 @@ import { dirname } from 'node:path';
 
 export type Fence = Readonly<{ epoch: number; incarnation: string }>;
 /** `refused` is a definite refusal by the platform: nothing was delivered (Rule 42). */
-export type ClaimState = 'claimed' | 'sent' | 'unknown' | 'refused';
+export type ClaimState = 'claimed' | 'sent' | 'unknown' | 'refused' | 'retryable';
 export type ClaimOutcome = Exclude<ClaimState, 'claimed'>;
 export type AuthorityRecord =
   | { t: 'genesis'; conversation: string; termMs: number }
   | { t: 'acquire'; epoch: number; machine: string; incarnation: string }
   | { t: 'expire'; epoch: number }
   | { t: 'release'; epoch: number }
-  | { t: 'claim'; epoch: number; incarnation: string; key: string }
-  | { t: 'outcome'; key: string; state: ClaimOutcome }
+  | { t: 'claim'; epoch: number; incarnation: string; key: string; attempt?: number }
+  | { t: 'outcome'; key: string; state: ClaimOutcome; attempt?: number }
   | { t: 'settle'; epoch: number; cursor: number };
 export type AuthorityRequest =
   | { op: 'acquire'; machine: string; incarnation: string }
   | { op: 'renew' | 'release'; fence: Fence }
-  | { op: 'claim'; fence: Fence; key: string }
-  | { op: 'outcome'; fence: Fence; key: string; state: ClaimOutcome }
+  | { op: 'claim'; fence: Fence; key: string; attempt?: number }
+  | { op: 'outcome'; fence: Fence; key: string; state: ClaimOutcome; attempt?: number }
   | { op: 'settle'; fence: Fence; cursor: number }
   | { op: 'read' };
 export type Holder = Readonly<{ epoch: number; machine: string; incarnation: string }>;
@@ -76,17 +76,21 @@ export function openConversationAuthority(input: Readonly<{ path: string; conver
   mkdirSync(dirname(input.path), { recursive: true, mode: 0o700 });
   let corrupt: string | null = null, head = 'genesis', seq = 0;
   let epoch = 0, holder: Holder | null = null, live = false, expiresAt = 0, cursor = 0, termMs = input.termMs;
-  const claims = new Map<string, { epoch: number; incarnation: string; state: ClaimState }>();
+  const claims = new Map<string, { epoch: number; incarnation: string; state: ClaimState; attempt: number }>();
   const apply = (record: AuthorityRecord) => {
     switch (record.t) {
       case 'genesis': if (record.conversation !== input.conversation) throw Error('conversation differs'); termMs = record.termMs; return;
       case 'acquire': if (record.epoch !== epoch + 1 || live) throw Error('epoch out of order');
         epoch = record.epoch; holder = { epoch: record.epoch, machine: record.machine, incarnation: record.incarnation }; live = true; return;
       case 'expire': case 'release': if (record.epoch !== epoch || !live) throw Error('loss out of order'); live = false; return;
-      case 'claim': if (claims.has(record.key) || record.epoch !== epoch || !live) throw Error('claim out of order');
-        claims.set(record.key, { epoch: record.epoch, incarnation: record.incarnation, state: 'claimed' }); return;
+      case 'claim': {
+        const prior = claims.get(record.key), attempt = record.attempt ?? 0;
+        if (!count(attempt) || record.epoch !== epoch || !live
+          || (prior ? prior.state !== 'retryable' || attempt !== prior.attempt + 1 : attempt !== 0)) throw Error('claim out of order');
+        claims.set(record.key, { epoch: record.epoch, incarnation: record.incarnation, state: 'claimed', attempt }); return;
+      }
       case 'outcome': { const claim = claims.get(record.key);
-        if (!claim || claim.state !== 'claimed') throw Error('outcome out of order'); claim.state = record.state; return; }
+        if (!claim || claim.state !== 'claimed' || (record.attempt ?? 0) !== claim.attempt) throw Error('outcome out of order'); claim.state = record.state; return; }
       case 'settle': if (record.epoch !== epoch || !live || record.cursor <= cursor) throw Error('settle out of order'); cursor = record.cursor; return;
     }
   };
@@ -169,19 +173,23 @@ export function openConversationAuthority(input: Readonly<{ path: string; conver
         // A claim is consumed once, including by its own claimant: a repeated claim after a lost
         // acknowledgement or a lost outcome is never fresh send authority (no duplicate sends). The
         // claimant's lost acknowledgement stays visible as an unresolved claim, honestly unknown.
-        if (prior) return { ok: false, reason: 'already-claimed', state: prior.state };
-        append({ t: 'claim', epoch, incarnation: request.fence.incarnation, key: request.key });
+        const attempt = request.attempt ?? 0;
+        if (!count(attempt)) return { ok: false, reason: 'invalid' };
+        if (prior && (prior.state !== 'retryable' || attempt !== prior.attempt + 1))
+          return { ok: false, reason: 'already-claimed', state: prior.state };
+        if (!prior && attempt !== 0) return { ok: false, reason: 'invalid' };
+        append({ t: 'claim', epoch, incarnation: request.fence.incarnation, key: request.key, ...(attempt ? { attempt } : {}) });
         return { ok: true, state: 'claimed' };
       }
       case 'outcome': {
         // An admitted in-flight dispatch reports its outcome even after its lease is gone (design 10 §4).
-        if (!fenceOk(request.fence) || !text(request.key, 200) || !['sent', 'unknown', 'refused'].includes(request.state))
+        if (!fenceOk(request.fence) || !text(request.key, 200) || !['sent', 'unknown', 'refused', 'retryable'].includes(request.state))
           return { ok: false, reason: 'invalid' };
         const claim = claims.get(request.key);
-        if (!claim || claim.epoch !== request.fence.epoch || claim.incarnation !== request.fence.incarnation)
+        if (!claim || claim.epoch !== request.fence.epoch || claim.incarnation !== request.fence.incarnation || (request.attempt ?? 0) !== claim.attempt)
           return { ok: false, reason: 'not-claimant' };
         if (claim.state !== 'claimed') return claim.state === request.state ? { ok: true, state: claim.state } : { ok: false, reason: 'invalid', state: claim.state };
-        append({ t: 'outcome', key: request.key, state: request.state });
+        append({ t: 'outcome', key: request.key, state: request.state, ...(claim.attempt ? { attempt: claim.attempt } : {}) });
         return { ok: true, state: request.state };
       }
       case 'settle': {

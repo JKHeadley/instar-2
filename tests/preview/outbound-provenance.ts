@@ -12,7 +12,7 @@ export interface OutboundSubject { target: string; chat: string; thread?: number
 /** A definite refusal and an unknown outcome stay distinct from delivery and from each other. */
 /** `not-sent` is the transport's proof that the network call was never made, so this exact intent may
  * be dispatched again. It never reaches the journal: the one outbound funnel settles it (Rule 42). */
-export type SendOutcome = { kind: 'accepted'; message: number; acknowledgementPath?: 'reaction' | 'text' } | { kind: 'refused'; reason: string }
+export type SendOutcome = { kind: 'accepted'; message: number; acknowledgementPath?: 'reaction' | 'text' } | { kind: 'refused'; reason: string; retryAfterMs?: number }
   | { kind: 'unknown'; reason: string } | { kind: 'not-sent'; reason: string };
 /** What a dispatch settles to, and the only outcomes the journal records. */
 export type SettledSendOutcome = Exclude<SendOutcome, { kind: 'not-sent' }>;
@@ -58,6 +58,8 @@ export function settleSendOutcome(result: number | null | SendOutcome | undefine
     ? result : { kind: 'unknown', reason: 'malformed receipt' };
   if ((result.kind === 'refused' || result.kind === 'unknown' || result.kind === 'not-sent')
     && typeof result.reason === 'string' && result.reason.trim())
-    return { kind: result.kind, reason: result.reason.slice(0, 200) };
+    return { kind: result.kind, reason: result.reason.slice(0, 200),
+      ...(result.kind === 'refused' && Number.isSafeInteger(result.retryAfterMs) && result.retryAfterMs! > 0
+        ? { retryAfterMs: result.retryAfterMs } : {}) };
   return { kind: 'unknown', reason: 'malformed send outcome' };
 }

@@ -80,7 +80,7 @@ it.each(['real-connect-recovery', 'real-connect-persistent', 'real-lost-receipt'
     } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
   }, 60_000);
 
-it('persistent native connection refusal stops after one outer retry and remains refused after restart', async () => {
+it('persistent native connection refusal queues durable recovery after one immediate retry', async () => {
   const dir = root();
   try {
     const w = world(dir, input => {
@@ -98,8 +98,8 @@ it('persistent native connection refusal stops after one outer retry and remains
       return classifyTelegramSend(reply, { chat: genesis.chat, expectedText: 'an answer' });
     });
     w.worker.intake([update(1)]); await w.worker.drain();
-    expect(w.seen).toHaveLength(3);
-    expect(w.seen[2]).toMatchObject({ expectedText: REFUSED_SEND_NOTICE });
+    expect(w.seen).toHaveLength(2); // no premature failure notice while recovery remains queued
+    expect(w.journal.view.sendOutcomes[0]?.recovery).toMatchObject({ attempts: 2, nextAt: 61000 });
     expect(w.journal.view.sendOutcomes).toHaveLength(1);
     expect(w.journal.view.sendOutcomes[0]).toMatchObject({ outcome: 'refused',
       reason: expect.stringContaining('ECONNREFUSED/connect') });
@@ -349,19 +349,19 @@ it('dispatches a never-sent reply once more and accepts it; a repeat proof is re
     expect(once.journal.view.sendOutcomes).toEqual([]); // nothing to record: it was delivered
     expect(sendOutcomeCounts(once.journal.view)).toMatchObject({ accepted: 1, refused: 0, unknown: 0, unknownReasons: {} });
     once.journal.close();
-    // A second proof settles as a definite non-delivery with its reason, and is never dispatched a third time.
+    // A second proof retains definite non-delivery and queues a delayed third attempt; never a tight retry loop.
     const twice = world(dir, input => input.target?.startsWith('delivery-notice:') ? 99 : neverSent);
     twice.worker.intake([update(2)]); await twice.worker.drain();
-    expect(twice.seen).toHaveLength(3);
-    expect(twice.seen[2]).toMatchObject({ expectedText: REFUSED_SEND_NOTICE });
+    expect(twice.seen).toHaveLength(2);
+    expect(twice.journal.view.sendOutcomes[0]?.recovery).toMatchObject({ attempts: 2, nextAt: 61000 });
     const turn = twice.journal.view.order[1]!;
     expect(turn.sent).toBeUndefined();
-    expect(twice.journal.view.sendOutcomes).toEqual([{ target: `reply:${turn.id}`, outcome: 'refused',
+    expect(twice.journal.view.sendOutcomes).toMatchObject([{ target: `reply:${turn.id}`, outcome: 'refused',
       reason: neverSent.reason, at: 1000 }]);
-    expect(sendOutcomeCounts(twice.journal.view)).toMatchObject({ accepted: 2, refused: 1, unknown: 0, unknownReasons: {},
+    expect(sendOutcomeCounts(twice.journal.view)).toMatchObject({ accepted: 1, refused: 1, unknown: 0, unknownReasons: {},
       lastRefusal: { target: `reply:${turn.id}`, outcome: 'refused', reason: neverSent.reason }, lastUnknown: null });
     twice.journal.close();
-    // Replay keeps that refusal and never dispatches the intent again.
+    // Replay keeps the queued refusal and never dispatches it before its due time.
     const replayed = world(dir, () => { throw Error('send repeated'); });
     await replayed.worker.drain();
     expect(replayed.seen).toHaveLength(0);
@@ -370,7 +370,7 @@ it('dispatches a never-sent reply once more and accepts it; a repeat proof is re
     // The operator views agree: refused, with the reason that says it was never sent.
     expect(launcher(dir, 'inspect').reply).toMatchObject({ update: 2, outcome: 'send-refused', refusal: neverSent.reason });
     expect(launcher(dir, 'status')).toMatchObject({ unknownSends: 0,
-      sendOutcomes: { accepted: 2, refused: 1, unknown: 0, unknownReasons: {}, lastUnknown: null } });
+      sendOutcomes: { accepted: 1, refused: 1, unknown: 0, unknownReasons: {}, lastUnknown: null } });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }, 60000);
 
