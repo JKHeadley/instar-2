@@ -26,14 +26,18 @@ Decision: MCP-READ-1104-1 | Grant read-only ACL only on the generated MCP file a
 Decision: MCP-READ-1104-2 | Commit the source repair before regenerating source-pinned register outputs, then cover both commits in this record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 Decision: MCP-SCHEMA-1104-3 | Remove top-level oneOf from the client-advertised input schema because Claude skipped the only tool; retain the existing server-side input validation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 
-## Closing block
 
-simplestRobustRoute: Use the existing harness ACL helper on the one generated file before a continuing session launches.
-80/20: The worker can load the connector without changing owner profile custody. Real signed-in page reads still need copy proof before live release.
-VERDICT: author submission; this record asserts no independent verdict.
 
 ## Rule109 reopening for whole row07 publication
 
 The existing checker open command voided the prior frozen round. Prior frozen content: sha256:41339ecebaa3eebf3d3a09bcb98108b0bdb289e724fb0bd3514a7e0c7431d0cc. Current digest of that original 12-path subject at row07 head bfcc640b9149465c1a7d6af307fb69ccbde63cbe: sha256:c5cdfb3cc4b17fd7dd47aa840655d3104e31d26ef0bc4303854e82ed3f42c441. Original record last edit: b5806d1e015dc650cdc1dee2e0accab05a849d4b. Those hashes and Git history remain evidence; neither is a new approval.
 
 The original browser subject changed through generated register publication inherited by row07, while its browser implementation remains unchanged. Whole row07 behavior is covered separately by carryover-07-whole-parity-r2-1105-change-review.md. Current review state is open; independent review and combined qualification remain required. No frozen content was silently relabelled accepted.
+
+Deferral: tests/preview/journal-conversation-session.test.ts:448 | not-a-deferral=The inherited row07 test advances an injected clock to the existing queued-delivery retry deadline; it defers no implementation. Whole row07 behavior remains covered by its own critical review record.
+
+## Closing block
+
+simplestRobustRoute: Use the existing harness ACL helper on the one generated file before a continuing session launches.
+80/20: The worker can load the connector without changing owner profile custody. Real signed-in page reads still need copy proof before live release.
+VERDICT: author submission; this record asserts no independent verdict.

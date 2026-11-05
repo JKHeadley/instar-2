@@ -26,14 +26,18 @@ Deferral: generated/register.json:1 | not-a-deferral=generated source hash was r
 Decision: BROWSER-MERGE-1104-1 | Merge reviewed 24194ed8 onto live 47b9c823; retain live generated output only for the merge commit, then regenerate all seven outputs from that exact merged source. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 Decision: BROWSER-MERGE-1104-2 | Reopen the copied resource-recovery review whose generated-register subject changed in the combination; cover the exact combined content here and require independent review again before release. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 
-## Closing block
 
-simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
-80/20: The two browser test files and register lifecycle test passed 31/31 on the combined branch. Full exact-head suite, independent combination review and a real signed-in multi-step group task remain required before release. No new browser service or credential custody path.
-VERDICT: author submission; this record asserts no independent verdict.
 
 ## Rule109 reopening for whole row07 publication
 
 The existing checker open command voided the prior frozen round. Prior frozen content: sha256:094316dfd656ab51b6d7663e4bd9207c62d4593c8a3e743493d748b4dfe47228. Current digest of that original 18-path subject at row07 head bfcc640b9149465c1a7d6af307fb69ccbde63cbe: sha256:6fe1b062060881c981604764498aee28a66d35539adb8c87c5d18edf186040c3. Original record last edit: b5806d1e015dc650cdc1dee2e0accab05a849d4b. Those hashes and Git history remain evidence; neither is a new approval.
 
 The original browser subject changed through generated register publication inherited by row07, while its browser implementation remains unchanged. Whole row07 behavior is covered separately by carryover-07-whole-parity-r2-1105-change-review.md. Current review state is open; independent review and combined qualification remain required. No frozen content was silently relabelled accepted.
+
+Deferral: tests/preview/journal-conversation-session.test.ts:448 | not-a-deferral=The inherited row07 test advances an injected clock to the existing queued-delivery retry deadline; it defers no implementation. Whole row07 behavior remains covered by its own critical review record.
+
+## Closing block
+
+simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
+80/20: The two browser test files and register lifecycle test passed 31/31 on the combined branch. Full exact-head suite, independent combination review and a real signed-in multi-step group task remain required before release. No new browser service or credential custody path.
+VERDICT: author submission; this record asserts no independent verdict.
