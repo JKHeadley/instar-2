@@ -1,0 +1,241 @@
+{
+  "repository": "JKHeadley/instar",
+  "revision": "4f88880a45f0a119aae3cfd2ccaf9ace26d405b9",
+  "files": [
+    {
+      "source": "docs/specs/CARTOGRAPHER-CONFORMANCE-AUDIT.md",
+      "sha256": "6c27f33a45d67cf682154c00ad55d5bbd1cbf9a6716c0fe754281e1dd985bdaf",
+      "lines": 265
+    },
+    {
+      "source": "docs/specs/CARTOGRAPHER-DOC-FRESHNESS.md",
+      "sha256": "b38156ae9b5e86134b0054c3975c346776ea3175c82fd100cffcfe1dc6699a60",
+      "lines": 592
+    },
+    {
+      "source": "docs/specs/CARTOGRAPHER-DOC-TREE-SCHEMA.md",
+      "sha256": "de6c246861ffdcbc87075aafea6ad9b805bef03368b884ec4ac426f24cca2785",
+      "lines": 284
+    },
+    {
+      "source": "docs/specs/CARTOGRAPHER-SUBTREE-NAV.md",
+      "sha256": "89303b5c3fa8d9c9c55bc4e5247f98e0af8b668a3dbc79389347ff0b0b7754c4",
+      "lines": 203
+    },
+    {
+      "source": "docs/specs/CARTOGRAPHER-SWEEP-EVENTLOOP-SAFETY.md",
+      "sha256": "b212cee8fd0b6a7d730deb7d2c1b9b3b4d1d6dec30e49e7f9a7cf533d177e1a6",
+      "lines": 159
+    },
+    {
+      "source": "docs/specs/cartographer-conformance-audit.eli16.md",
+      "sha256": "4a0d2edce3866bb92a907869ed09575517207d8521291e3a0febc71043732b98",
+      "lines": 81
+    },
+    {
+      "source": "docs/specs/cartographer-doc-freshness.eli16.md",
+      "sha256": "00d336ddb713ca7f53baa6e9f370aa00db973b9512c8b192b6cd86b297d2a8be",
+      "lines": 62
+    },
+    {
+      "source": "docs/specs/cartographer-doc-tree-schema.eli16.md",
+      "sha256": "1ce5cc95d0ba40d5b44f990a3c74a4dfbafe9b171d4b610640bb256e05fd20f9",
+      "lines": 89
+    },
+    {
+      "source": "docs/specs/cartographer-subtree-nav.eli16.md",
+      "sha256": "74a76824887a5631f17ee448b518db9b9f8e8a45acaa4d1ba1ff7d0c463f8ef2",
+      "lines": 55
+    },
+    {
+      "source": "docs/specs/cartographer-sweep-eventloop-safety.eli16.md",
+      "sha256": "0a800fb43cc3976c62daf3523281e1661f35753d434ef947de488e4a0aaf9a0c",
+      "lines": 51
+    },
+    {
+      "source": "docs/specs/reports/cartographer-doc-freshness-convergence.md",
+      "sha256": "32b9d8d1d6262d05c91644fb59d507b33660dea72eef6921416abbac00b622b1",
+      "lines": 148
+    },
+    {
+      "source": "docs/specs/reports/cartographer-doc-tree-schema-convergence.md",
+      "sha256": "bd7bcff66f34a5cb5e85aff360c85eb8a256edd6b72c46578da4b93ea1558f64",
+      "lines": 83
+    },
+    {
+      "source": "docs/specs/reports/cartographer-sweep-eventloop-safety-convergence.md",
+      "sha256": "1dce2bd063d37513050805151e86d3a00a54a02ae1ffbacce491e1e8f7b8bdff",
+      "lines": 83
+    },
+    {
+      "source": "src/core/CartographerNavigator.ts",
+      "sha256": "310d1a4880654a74ca2642c15dfbb17765d6d26f50303b6132c4cb72702a0c09",
+      "lines": 474
+    },
+    {
+      "source": "src/core/CartographerRootAuthority.ts",
+      "sha256": "6a266474e566a1935555ae0e6544538de9d9cf85eb1f28f2ad02563aecc71040",
+      "lines": 722
+    },
+    {
+      "source": "src/core/CartographerRootRegistry.ts",
+      "sha256": "c5b1bfbc906616ae311c16b66f939cb4c8707a6ad4ae9f04dab403b844ae67b1",
+      "lines": 409
+    },
+    {
+      "source": "src/core/CartographerSweepEngine.ts",
+      "sha256": "af1e37ec779a7742a7049db062d7020c656070b4c01b29c5f0fa84f2c74e1eb2",
+      "lines": 872
+    },
+    {
+      "source": "src/core/CartographerTree.ts",
+      "sha256": "473ec8a8f3f2b5562aea5013e51a0b599b82480e8d8f542fb350fe83e4a212bc",
+      "lines": 949
+    },
+    {
+      "source": "src/core/ProjectMapper.ts",
+      "sha256": "175acd7d25c544167e563299a5e7946c67f3ec7ea032fec19a245d75c67e2253",
+      "lines": 589
+    },
+    {
+      "source": "src/core/cartographerDetect.ts",
+      "sha256": "3c46ffb64adc350bb6c34e842908fd8721de37968d320767822c050558e3ca3f",
+      "lines": 764
+    },
+    {
+      "source": "src/core/cartographerDetect.worker.ts",
+      "sha256": "cb8a1f8e020d60c67fe16dc02a1dbb59c51ee6d2cbaff3fa73fa831852bb9721",
+      "lines": 48
+    },
+    {
+      "source": "src/core/cartographerDetectWorker.ts",
+      "sha256": "a1e7dcc1072d0e1effdc660b7ccaf27199ae0f42c40e045467e83474fb9292a7",
+      "lines": 105
+    },
+    {
+      "source": "src/core/cartographerPopulation.ts",
+      "sha256": "b0676f84d41329f0ae14bf5158b9c32d24917ad3f8b5a18e88ce72e59c29c359",
+      "lines": 131
+    },
+    {
+      "source": "src/core/cartographerSummary.ts",
+      "sha256": "90d2ff3da7c28b263ad7c4a2902253700ede7c62b3f243ef156bb23458cfdee5",
+      "lines": 182
+    },
+    {
+      "source": "src/core/liveTailRedaction.ts",
+      "sha256": "1daffa0e8e0170ce86f1715a1e5c928b1305d274011729832fc302fea5fa149f",
+      "lines": 72
+    },
+    {
+      "source": "src/core/skipDirs.ts",
+      "sha256": "113ff06126032338982d3fdd007c7581dcd9115e6e92ffa3941ddee1ded6f343",
+      "lines": 12
+    },
+    {
+      "source": "src/monitoring/CartographerSweepPoller.ts",
+      "sha256": "9be00f76bab6fc37e987aea8527f559202387d3bf52a8469a5c2d729ed5b0dd8",
+      "lines": 237
+    },
+    {
+      "source": "tests/e2e/cartographer-dev-gate-lifecycle.test.ts",
+      "sha256": "bc3d3cd8dbd12013c158cc074fbbabd9476dbcd800e37fd61b6049d7fde63b21",
+      "lines": 163
+    },
+    {
+      "source": "tests/e2e/cartographer-freshness-lifecycle.test.ts",
+      "sha256": "83bf35d9edd97087d4df4a2bcd5c2b6d22b4dfcb526b473cb02e9ceaaea7c4af",
+      "lines": 281
+    },
+    {
+      "source": "tests/e2e/cartographer-lifecycle.test.ts",
+      "sha256": "59564fa6b93c05bda6eeb164097b58b80b840bf8459c903c249b0e6e9639a377",
+      "lines": 123
+    },
+    {
+      "source": "tests/e2e/cartographer-navigate-lifecycle.test.ts",
+      "sha256": "d70a6c46206247c0a3c13a74aa3ac753fae34c0e9cd54399f253f1858158c864",
+      "lines": 121
+    },
+    {
+      "source": "tests/integration/cartographer-eventloop-worker.test.ts",
+      "sha256": "f9032cdb7c86888221e07ee5150b480ca61aa8de5945f40049933d989b740ce7",
+      "lines": 244
+    },
+    {
+      "source": "tests/integration/cartographer-navigate-route.test.ts",
+      "sha256": "756459c3893b5c2132e5eeebab673876996c85537529511608efb1a8950491f6",
+      "lines": 136
+    },
+    {
+      "source": "tests/integration/cartographer-refresh-route.test.ts",
+      "sha256": "c7c602830e32e7b33c86199caba59dc20f1577ac7743e81e0b747043f90a6d50",
+      "lines": 214
+    },
+    {
+      "source": "tests/integration/cartographer-root-registry.test.ts",
+      "sha256": "568c3d796121f70b2082b66db5af6a4d67259d4cc3070607482624bd0b648f05",
+      "lines": 286
+    },
+    {
+      "source": "tests/integration/cartographer-routes.test.ts",
+      "sha256": "63a9d0db91f4ae0f4d197f27265dd47fc917626d1ef68ef9c2e7f5f07344286b",
+      "lines": 209
+    },
+    {
+      "source": "tests/unit/PostUpdateMigrator-cartographerDevGate.test.ts",
+      "sha256": "b4a18a67bc875d01ddd4ac858cd3b2ef06d32e14ea41f4ccce2dc12d119aa971",
+      "lines": 134
+    },
+    {
+      "source": "tests/unit/cartographer-freshness-ratchet.test.ts",
+      "sha256": "36347f8f45087473774537fc5cfc854d4bc801422bcf05085bc385fb06d96991",
+      "lines": 134
+    },
+    {
+      "source": "tests/unit/cartographer-ls-tree-stream.test.ts",
+      "sha256": "e80e1d8ba988bdfa77cd3435cf63da12aca8d23cb11d1916aa9035bc897ca4cb",
+      "lines": 175
+    },
+    {
+      "source": "tests/unit/cartographer-navigator.test.ts",
+      "sha256": "2274c0836436910de8b17742550fe9eb030314236972d5a6e2f1af10b22ecd64",
+      "lines": 298
+    },
+    {
+      "source": "tests/unit/cartographer-root-authority.test.ts",
+      "sha256": "67046c4f6e4c4f3d841eb3082ec8c0dafddcc8a64cc8991cc56bf2523b409dc1",
+      "lines": 577
+    },
+    {
+      "source": "tests/unit/cartographer-summary.test.ts",
+      "sha256": "51d2f29827e4bc4c6111ec9ef0468d0d94cabe9b45f1cf9de06eacacb10b5f43",
+      "lines": 102
+    },
+    {
+      "source": "tests/unit/cartographer-sweep-engine.test.ts",
+      "sha256": "40aab620e39015c708640a7f74eeef9eb72432ce17a6c56409390fd9fe5ed183",
+      "lines": 491
+    },
+    {
+      "source": "tests/unit/cartographer-sweep-poller-breaker.test.ts",
+      "sha256": "8eb28058f63f53e1cc0ea30498cee3737a727ed8d14284a279fcdd4369cb06eb",
+      "lines": 77
+    },
+    {
+      "source": "tests/unit/cartographer-sweep-routing.test.ts",
+      "sha256": "4097f1f5ebb51572937655928107bf3e0d5c14042b97059dd55d3f7c7f82cf2d",
+      "lines": 131
+    },
+    {
+      "source": "tests/unit/cartographer-tree.test.ts",
+      "sha256": "5c129d7cd861dcafa7de8c8b0590be25196c4b6f8e21412858cce4176d34e0ea",
+      "lines": 209
+    },
+    {
+      "source": "tests/unit/cartographerDetect.test.ts",
+      "sha256": "63298f7f623b15a55f32d0021f7d88b4d927893b1001d8c2f796f6b07d2f9f01",
+      "lines": 255
+    }
+  ]
+}
