@@ -36,6 +36,8 @@ Decision: AQ88-r4-proof-status-receipt | Use existing bounded async status and c
 
 Publication follow-through: the first replay after the launcher-test repair refused its stale Part Nine artifact references. Derive only those existing references from the actual test bytes with the built core canonical function, preserving probe identities, cadences, execution modes and declarations, then replay from that committed source. No hard-coded pin or authority is introduced.
 
+Final publication source: 2b028031155a3aadf970cfaf9b98c24f9387c4bc; generation sha256:d5a871058eca307f2e66bd0089ef98f319a6e6969da6263c13b71ad7e6bca8b7, with the same299 entries/120 branch rules/34 terms/48 warnings/112 prerequisites. The previous generation remains a historical checkpoint.
+
 simplestRobustRoute: Use the existing guarded native contract, repository digest functions and normal publication. Only real passing behavior permits renewal of the exact composition claim, followed by full contract verification. No new machinery, unsupported-state downgrade, changed runtime, hand pin or weakened check.
 80/20: One bounded contract before/after renewal, nine passing targeted launcher cases including injected-delay/refusal coverage, and the required publication gates. The final aggregate rechecks the exact startup-plan assertion. This is native conformance evidence, not a new live model or full-suite acceptance claim.
 VERDICT: author submission; no independent verdict asserted.
