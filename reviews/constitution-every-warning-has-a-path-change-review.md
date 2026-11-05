@@ -22,7 +22,7 @@ Convergence: none
 Deferral: generated/conversion.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
 Deferral: generated/register.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
 
-Publication source: commit ba890209a on this branch, regenerated through scripts/build-register.mjs --replay --commit with --now 1792195200000 (2026-10-17), the same backdated clock as Rules 118 to 121, because the real clock refuses every replay build on main for an unrelated overdue deadline.
+Publication source: commit c1aca34ed on this branch, regenerated through scripts/build-register.mjs --replay --commit with --now 1792195200000 (2026-10-17), the same backdated clock as Rules 118 to 121, because the real clock refuses every replay build on main for an unrelated overdue deadline.
 
 Counterpart (Rule 119): the obligation applies to both versions, so this needs a 1.x counterpart, not "none". The PR body names it.
 
