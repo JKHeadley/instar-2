@@ -1,7 +1,7 @@
 # Generated glossary
 
-Register generation: sha256:2f7e5bd701d88458d4c57473d4a156b8bb6473b20d55fb83fb8258708bb01e79
-Source commit: 231cc3d01024d3ec2f2cd3e1c9b6f2dfc102a44b
+Register generation: sha256:cd0cd0c32b963e830dc7f973aa3facc42f59c95a7e58ee1421ffe8a11a6c0be0
+Source commit: 6427ced9f00b311c2aca033f8610c4feded274a6
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -230,7 +230,7 @@ Used by: rule:33, rule:35, rule:40, rule:7
 
 Where does a person meet it, if anywhere?
 
-Used by: rule:102, rule:105, rule:62, rule:8, rule:80, rule:87
+Used by: rule:102, rule:105, rule:120, rule:62, rule:8, rule:80, rule:87
 
 ## user
 

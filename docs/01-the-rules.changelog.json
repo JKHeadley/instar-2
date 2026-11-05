@@ -1,5 +1,21 @@
 [
   {
+    "revision": 19,
+    "date": "2026-11-04",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, 2026-11-03: \"The user should only ever have to make approvals or suggest changes or provide credentials.\" and \"The agent is like an executive assistant that manages all the users accounts and the user is like a CEO that only needs to direct and approve\". Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Add Rule 120, The Person Decides; the Agent Does the Rest, in Needs building, with its value rationale, the outbound check and the per-service live proof; update the group and total counts and the source note.",
+        "why": "Rules 23 and 82 cover when to escalate and how to ask, but no rule states the person's whole part, so handing account setup to the person kept recurring as a trap.",
+        "ref": "Justin, 2026-11-03: \"The user should only ever have to make approvals or suggest changes or provide credentials.\" and \"The agent is like an executive assistant that manages all the users accounts and the user is like a CEO that only needs to direct and approve\". Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 18,
     "date": "2026-11-03",
     "status": "draft",

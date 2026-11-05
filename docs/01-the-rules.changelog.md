@@ -4,6 +4,10 @@ _Generated from `01-the-rules.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 19 · 2026-11-04 · draft — Justin, 2026-11-03: "The user should only ever have to make approvals or suggest changes or provide credentials." and "The agent is like an executive assistant that manages all the users accounts and the user is like a CEO that only needs to direct and approve". Final-head GitHub code-owner approval and merge pending.
+
+- **Add Rule 120, The Person Decides; the Agent Does the Rest, in Needs building, with its value rationale, the outbound check and the per-service live proof; update the group and total counts and the source note.** — Rules 23 and 82 cover when to escalate and how to ask, but no rule states the person's whole part, so handing account setup to the person kept recurring as a trap. _(Justin, 2026-11-03: "The user should only ever have to make approvals or suggest changes or provide credentials." and "The agent is like an executive assistant that manages all the users accounts and the user is like a CEO that only needs to direct and approve". Final-head GitHub code-owner approval and merge pending.)_
+
 ## Revision 18 · 2026-11-03 · draft — Justin, 2026-11-03: "we should have a FUNDAMENTAL REQUIREMENT that 1.x and 2.0 constitution/rule book always stay aligned for ALL updates"; wording approved 2026-11-03. Final-head GitHub code-owner approval and merge pending.
 
 - **Add Rule 119, One Constitution, Two Books Aligned, in Checkable now; update the group and total counts and the source note.** — The two books are one constitution, but nothing kept their texts together, and changes to one repeatedly never reached the other. _(Justin, 2026-11-03: "we should have a FUNDAMENTAL REQUIREMENT that 1.x and 2.0 constitution/rule book always stay aligned for ALL updates"; wording approved 2026-11-03. Final-head GitHub code-owner approval and merge pending.)_
