@@ -3,7 +3,7 @@
     "type": "Declaration", "schemaVersion": 1, "id": "preview-collaboration-hub", "kind": "features", "status": "dark",
     "requiredFacts": {
       "metrics": ["preview.collaboration.threads", "preview.collaboration.pending", "preview.collaboration.unknown"],
-      "gate": { "test": "COLLABORATION-HUB-INSTALLED", "deadline": 1794096000000 }
+      "gate": { "test": "PREVIEW-COLLABORATION-HUB-COMPONENT", "deadline": 1794096000000 }
     },
     "profile": { "type": "Profile", "schemaVersion": 1, "consequence": "attention", "reversibility": "reversible", "reach": "user", "surface": "dashboard", "repeats": { "kind": "no" } },
     "standards": [7, 28, 31, 32, 34, 39, 42, 52, 53, 63, 74, 79, 84, 87, 105, 113, 116], "holds": []
