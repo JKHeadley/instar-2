@@ -1,5 +1,5 @@
 export type * from './contracts.js';
-export { createEffectSpine, isHarnessLiveInputOwnerRegistration, decodeOutboundMessage, effectSchemas, registerEffectBodies, installOperationDefinition,
+export { createEffectSpine, isHarnessLiveInputOwnerRegistration, decodeOutboundMessage, decodeProcessControlPayload, effectSchemas, registerEffectBodies, installOperationDefinition,
   installNativeLaunchDefinition, nativeProcessSchemas, nativeProcessMigrations, nativeProcessRows,
   recordNativeConfinedLaunchRequest, recordNativeConfinedLaunchObservation,
   decodeNativeConfinedLaunchDefinitionAtOrigin, decodeHistoricalNativeConfinedLaunchDefinition,
@@ -17,3 +17,5 @@ export type { InfrastructureNotice, SelfHealFailure } from './infrastructure-not
 export { dispatchInfrastructureNotice } from './infrastructure-notice-driver.js';
 export type { InfrastructureNoticePorts, NoticeDispatch, NoticeLedgerEntry, NoticeRoute, NoticeSendObservation, NoticeState }
   from './infrastructure-notice-driver.js';
+
+export { consumeProcessControlInvocation } from './process-control-invocation.js';

@@ -1,8 +1,8 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { afterEach, describe, expect, it } from 'vitest';
 // @ts-expect-error physical host boundary is JavaScript
-import { createKernelProcessControl, readExactProcessIdentity } from '../../scripts/process-control-kernel.mjs';
+import { createKernelProcessControl, readExactProcessIdentity, PROCESS_CONTROL_KERNEL_HELPER } from '../../scripts/process-control-kernel.mjs';
 
 const children: ChildProcess[] = [];
 const binding = { machine: 'isolated-linux-fixture', incarnation: 'fixture-owner' };
@@ -18,8 +18,8 @@ afterEach(async () => {
     }
   }
 });
-async function fixture(ignore = false) {
-  const child = spawn(process.execPath, ['-e', `${ignore ? "process.on('SIGINT',()=>{});process.on('SIGTERM',()=>{});" : ''}process.stdout.write('ready');setInterval(()=>{},1000)`], { stdio: ['ignore', 'pipe', 'pipe'] });
+async function fixture(ignore = false, args: readonly string[] = []) {
+  const child = spawn(process.execPath, ['-e', `${ignore ? "process.on('SIGINT',()=>{});process.on('SIGTERM',()=>{});" : ''}process.stdout.write('ready');setInterval(()=>{},1000)`, '--', ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
   children.push(child);
   await once(child.stdout!, 'data');
   const observed = readExactProcessIdentity(child.pid!);
@@ -50,10 +50,10 @@ describe.skipIf(process.platform !== 'linux')('kernel-pinned exact process signa
     await ended;
     expect(port.observe(target).state).toBe('exited');
   });
-  it.each(['machine', 'incarnation', 'startIdentity', 'parentStartIdentity', 'parentPid', 'executable', 'argv'])(
+  it.each(['machine', 'incarnation', 'startIdentity', 'parentStartIdentity', 'parentPid', 'executable', 'argvDigest'])(
     'refuses changed %s without touching the live target', async key => {
       const { target } = await fixture();
-      const changed = { ...target, [key]: key === 'argv' ? [...target.argv].reverse() : key === 'parentPid' ? target.parentPid + 1 : `${target[key]}-changed` };
+      const changed = { ...target, [key]: key === 'parentPid' ? target.parentPid + 1 : `${target[key]}-changed` };
       expect(port.signal(changed, 'SIGKILL').state).toBe('refused');
       expect(port.observe(target).state).toBe('running');
     });
@@ -67,6 +67,35 @@ describe.skipIf(process.platform !== 'linux')('kernel-pinned exact process signa
     expect(createKernelProcessControl(binding).signal(target, 'SIGKILL').state).toBe('refused');
     expect(port.observe(target).state).toBe('running');
     expect(port.observe(other.target).state).toBe('running');
+  });
+  it('ancestor ESRCH never reports a still-live exact target as exited', async () => {
+    const { target } = await fixture();
+    // Inject the kernel's ESRCH at the ancestor lookup only; the target pidfd
+    // and live child are real. This pins the reparenting race's decision boundary.
+    const inject = `import os
+original_open = os.pidfd_open
+def ancestor_gone(pid, flags=0):
+    if pid == ${workerRoot.pid}: raise ProcessLookupError(3, 'ancestor exited')
+    return original_open(pid, flags)
+os.pidfd_open = ancestor_gone
+`;
+    const observation = spawnSync('/usr/bin/python3', ['-I', '-c', inject + PROCESS_CONTROL_KERNEL_HELPER], {
+      input: JSON.stringify({ mode: 'observe', target, workerRoot }), encoding: 'utf8', timeout: 2000,
+    });
+    expect(observation.status).toBe(0);
+    expect(JSON.parse(observation.stdout)).toMatchObject({ state: 'unknown' });
+    expect(port.observe(target).state).toBe('running');
+  });
+  it('ordered UTF-8 arguments bind exact bytes without retaining their secret plaintext', async () => {
+    const first = await fixture(false, ['fixture-secret', 'α', 'two words']);
+    const swapped = await fixture(false, ['α', 'fixture-secret', 'two words']);
+    expect(first.target.argvDigest).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(first.target.argvDigest).not.toBe(swapped.target.argvDigest);
+    expect(JSON.stringify(first.target)).not.toContain('fixture-secret');
+    expect(JSON.stringify(first.target)).not.toContain('two words');
+    expect(port.signal({ ...first.target, argvDigest: swapped.target.argvDigest }, 'SIGTERM').state).toBe('refused');
+    expect(port.observe(first.target).state).toBe('running');
+    expect(port.observe(swapped.target).state).toBe('running');
   });
   it('does not call an unreadable exact identity dead or accept a different signal', async () => {
     const { target } = await fixture();

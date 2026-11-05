@@ -68,3 +68,6 @@ export type { InventoryProcess, InventoryResource, InventoryStatus, LaunchRoot, 
 export { admissionArgs, modelGateLaunch, sessionConnectorArgs } from './production-session-driver.js';
 export type { ProductionSessionConfig } from './production-session-driver.js';
 export type { SessionWorkIO } from './production-session-work.js';
+
+export { createProcessControlAdapter } from './process-control-driver.js';
+export type { ProcessControlKernelPort, ProcessControlDriverBinding } from './process-control-driver.js';

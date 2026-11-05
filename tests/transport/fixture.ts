@@ -53,6 +53,8 @@ export function transportFixture(directory = mkdtempSync(join(tmpdir(), 'p6-')),
       record: { kind: 'owned' as const, owner: 'part-seven', name: 'TestServingAcceptance' } } },
     { ...shared, kind: 'effect-EffectRequest', fields: {
       record: { kind: 'owned' as const, owner: 'part-eight', name: 'TestServingEffectRequest' } } },
+    { ...shared, kind: 'effect-ProcessControlPayload', fields: {
+      record: { kind: 'owned' as const, owner: 'part-eight', name: 'TestServingProcessControlPayload' } } },
     { ...shared, kind: 'effect-OutboundMessage', fields: {
       record: { kind: 'owned' as const, owner: 'part-eight', name: 'TestServingOutboundMessage' } } },
   ] : [];
@@ -85,6 +87,7 @@ export function transportFixture(directory = mkdtempSync(join(tmpdir(), 'p6-')),
         operation: short, answerDigest: short }],
       ['TestServingEffectRequest', 'part-eight', { id: short, run: short,
         message: short, digest: short, attempt: short }],
+      ['TestServingProcessControlPayload', 'part-eight', { id: short, run: short, purpose: short, generation: short, semanticMessage: short }],
       ['TestServingOutboundMessage', 'part-eight', { id: short, run: short,
         text: short, purpose: short, sourceResult: short, semanticMessage: short }],
     ].map(([name, owner, fields]) => value(registerOwnedBody({ name: name as string,

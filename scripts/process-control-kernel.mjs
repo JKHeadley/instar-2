@@ -4,8 +4,8 @@
 // by Eight/Six at the caller, not by this read-only identity lookup.
 import { spawnSync } from 'node:child_process';
 
-const HELPER = String.raw`
-import json, os, select, signal, sys
+export const PROCESS_CONTROL_KERNEL_HELPER = String.raw`
+import hashlib, json, os, select, signal, sys
 
 def emit(state, detail, **fields):
     print(json.dumps(dict(state=state, detail=detail, **fields)))
@@ -23,11 +23,11 @@ def identity(pid):
     executable = os.readlink('/proc/%d/exe' % pid)
     with open('/proc/%d/cmdline' % pid, 'rb') as f: raw = f.read(65537)
     if len(raw) > 65536 or not raw.endswith(b'\0'): raise ValueError('unreadable ordered argv')
-    argv = [a.decode('utf-8', errors='strict') for a in raw[:-1].split(b'\0')]
+    argv_digest = 'sha256:'+hashlib.sha256(raw).hexdigest()
     # Start identities include boot identity: ticks alone repeat after a reboot.
     with open('/proc/sys/kernel/random/boot_id') as f: boot = f.read().strip()
     return dict(pid=pid, parentPid=parent, startIdentity=boot+':'+start,
-                parentStartIdentity=boot+':'+parent_start, executable=executable, argv=argv)
+                parentStartIdentity=boot+':'+parent_start, executable=executable, argvDigest=argv_digest)
 
 def same(actual, expected):
     return all(expected.get(key) == value for key, value in actual.items())
@@ -46,7 +46,11 @@ def pin_lineage(child_pid, root):
         seen.add(ancestor)
         handle = os.pidfd_open(ancestor)
         probe = select.poll(); probe.register(handle, select.POLLIN)
-        parent, start = stat(ancestor)
+        try:
+            parent, start = stat(ancestor)
+        except Exception:
+            os.close(handle)
+            raise
         lineage.append((handle, probe, ancestor, parent, start))
         if probe.poll(0): raise ValueError('worker ancestry exited during observation')
         if ancestor == root['pid']:
@@ -97,7 +101,11 @@ try:
         else:
             raise ValueError('unsupported operation')
 except ProcessLookupError:
-    emit('refused' if mode == 'signal' else 'exited', 'exact process is absent')
+    # ESRCH from an ANCESTOR lookup does not say the target died. It may have
+    # reparented while remaining alive. Only the original target handle decides.
+    gone = fd is None or bool(poll.poll(0))
+    emit('refused' if mode == 'signal' else 'exited' if gone else 'unknown',
+         'exact process is absent' if gone else 'worker ancestry unavailable; target exit unproved')
 except (PermissionError, FileNotFoundError, OSError, ValueError, KeyError) as error:
     # A procfs read failure is not proof of death. Only ESRCH from the pinned
     # kernel lookup (above) can supply absence without the full identity.
@@ -109,7 +117,7 @@ finally:
 
 function query(input) {
   if (process.platform !== 'linux') return { state: input.mode === 'signal' ? 'refused' : 'unknown', detail: 'kernel-pinned process control unsupported on this host' };
-  const result = spawnSync('/usr/bin/python3', ['-I', '-c', HELPER], {
+  const result = spawnSync('/usr/bin/python3', ['-I', '-c', PROCESS_CONTROL_KERNEL_HELPER], {
     input: JSON.stringify(input), encoding: 'utf8', timeout: 2000, maxBuffer: 131072,
   });
   // A timed-out signal may already have happened. Retain UNKNOWN, never retry

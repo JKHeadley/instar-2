@@ -7,7 +7,8 @@ import type { TransportHost, AdmissionReservation, DispatchClaim, FenceToken, Ru
 import type { EffectComposition, EffectDoorway, EffectRecord, EffectRequest, EffectSettlement, EffectValidation,
   OperationDefinition, OperationObservation, OutboundMessage } from './contracts.js';
 import { boundary, encoded, ensure, freeze, take } from './boundary.js';
-import { definitionCheck, live, rows, wire, readHarnessLiveInputCapture, harnessLiveInputAuthor } from './records.js';
+import { definitionCheck, live, rows, wire, payloadFrom, readHarnessLiveInputCapture, harnessLiveInputAuthor } from './records.js';
+import { withProcessControlInvocation } from './process-control-invocation.js';
 import { issuedSettlement, withSettlement, consumeEffectSettlement } from './settlement-authority.js';
 
 export interface HarnessLiveInputExecutionPort {
@@ -84,10 +85,15 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
   const actual = (q: EffectRequest) => {
     const stored = find(q.id, 'EffectRequest');
     ensure(encoded(stored.record).bytes === encoded(q).bytes, 'request handoff changed');
-    const d = find(q.definition, 'OperationDefinition'), m = find(q.message, 'OutboundMessage');
+    const d = find(q.definition, 'OperationDefinition'), m = payloadFrom(rows(snapshot()), q.message);
     definitionCheck(d.record, host);
     ensure((m.record.purpose === 'context-delivery') === (d.record.feature === 'harness-live-input'), 'live-input payload requires its governed harness-live-input definition');
+    ensure((m.record.type === 'ProcessControlPayload') === (d.record.feature === 'process-control'), 'process payload requires its governed definition');
+    if (m.record.type === 'ProcessControlPayload') ensure(m.record.generation === d.record.generation
+      && m.record.deadline > host.current().clock.value, 'process generation or deadline expired');
     const capabilities = adapter.describe();
+    if (m.record.type === 'ProcessControlPayload') ensure(capabilities.processControl === true
+      && adapter.invokeProcess && adapter.observeProcess, 'adapter does not support process control');
     ensure(adapter.owner === 'part-ten' && adapter.id === d.record.adapter && capabilities.contract.length > 0
       && capabilities.account === m.record.account && capabilities.conversation === m.record.conversation
       && capabilities.maxCharge <= d.record.maxCharge && capabilities.timeout === d.record.timeout
@@ -111,7 +117,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
   };
   const observeRecord = (q: EffectRequest, op: ReturnType<typeof operation>, stage: OperationObservation['stage'], bytes: string, wake = '') => {
     ensure(op.claim, 'observation requires recorded claim');
-    const m = find(q.message, 'OutboundMessage').record;
+    const m = payloadFrom(rows(snapshot()), q.message).record;
     const capture = take(host.capture(bytes));
     const fields = { request: q.id, operation: op.reservation.operation, claim: op.claim.id, digest: q.digest,
       account: m.account, conversation: m.conversation, stage, wake, capture, attestation: 'local-recorder' as const };
@@ -141,7 +147,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       const d = find(input.definition, 'OperationDefinition'); definitionCheck(d.record, host);
       const m = persist(input.message, [input.message.sourceResult]);
       const closure = [...new Set([...input.closure, input.pending, input.obligation, d.fact.id,
-        find(m.id, 'OutboundMessage').fact.id, ...(d.record.feature === 'harness-live-input' ? host.current(d.record.feature) : host.current()).authority])];
+        payloadFrom(rows(snapshot()), m.id).fact.id, ...(d.record.feature === 'harness-live-input' ? host.current(d.record.feature) : host.current()).authority])];
       const q = persist({ type: 'EffectRequest', schemaVersion: 1,
         id: `request:${encoded([m.account, m.conversation, m.semanticMessage]).hash}`, definition: d.record.id,
         message: m.id, semanticMessage: m.semanticMessage, run: m.run, pending: input.pending, attempt: input.attempt,
@@ -183,7 +189,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       // admission — never a second six reservation. dispatch/handoff/settle apply unchanged.
       const m = persist(input.message, [input.message.sourceResult]);
       const closure = [...new Set([...input.closure, input.pending, input.obligation, d.fact.id,
-        find(m.id, 'OutboundMessage').fact.id, ...(d.record.feature === 'harness-live-input' ? host.current(d.record.feature) : host.current()).authority])];
+        payloadFrom(rows(snapshot()), m.id).fact.id, ...(d.record.feature === 'harness-live-input' ? host.current(d.record.feature) : host.current()).authority])];
       const q = persist({ type: 'EffectRequest', schemaVersion: 1,
         id: requestId, definition: d.record.id,
         message: m.id, semanticMessage: m.semanticMessage, run: m.run, pending: input.pending, attempt: input.attempt,
@@ -253,14 +259,21 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
             && (!serving || row.run === (fact.body as unknown as { record: RunPairAdmission }).record.reply)));
         const invoke = () => {
           try {
-            const response = adapter.invoke(invocation);
+            const processInput = m.record.type === 'ProcessControlPayload'
+              ? { operation: claim.operation, claim: op.claim!.id, digest: q.digest, payload: m.record } : null;
+            const response = processInput
+              ? withProcessControlInvocation(processInput, () => adapter.invokeProcess!(processInput))
+              : adapter.invoke({ ...invocation, message: m.record as OutboundMessage });
             return consumeResult<string, { bytes: string; stage: 'response' | 'unknown' }>(response, {
               Success: bytes => ({ bytes, stage: 'response' as const }),
-              Refused: () => ({ bytes: 'adapter returned no conclusive response', stage: 'unknown' as const }),
+              Refused: refusal => processInput
+                ? ({ bytes: encoded({ type: 'process-control-refusal', operation: claim.operation, digest: q.digest,
+                    detail: refusal.detail, state: 'refused' }).bytes, stage: 'response' as const })
+                : ({ bytes: 'adapter returned no conclusive response', stage: 'unknown' as const }),
             });
           } catch { return { bytes: 'invocation ended without a recorded service response', stage: 'unknown' as const }; }
         };
-        const { bytes, stage } = paired || serving
+        const { bytes, stage } = paired || serving || m.record.type === 'ProcessControlPayload'
           ? take(invokeConsumedDispatch(transport, claim, fence, host.boundary, invoke)) : invoke();
         // Append failure after invoke is not a clean business-effect refusal.
         // The already-durable acceptance remains the observer-only disposition.
@@ -270,7 +283,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
     }),
     observe: id => checked('EffectObserve', id, () => {
       const op = operation(id); ensure(op.claim, 'prepared operation cannot be queried as dispatched');
-      const q = find(op.reservation.request, 'EffectRequest').record, m = find(q.message, 'OutboundMessage').record;
+      const q = find(op.reservation.request, 'EffectRequest').record, m = payloadFrom(rows(snapshot()), q.message).record;
       const transportFacts = take(transport.inspect());
       const wake = transportFacts.filter(v => v.record.type === 'LoopRecord' && v.record.run === q.run).at(-1);
       ensure(wake?.record.type === 'LoopRecord' && wake.record.pending === id
@@ -282,7 +295,9 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
       // Recovery has ONLY this read-only adapter method. It never calls dispatch,
       // reserves a replacement, consumes a claim or upgrades a lookup miss.
       try {
-        const response = consumeResult(adapter.observe({ operation: id, digest: q.digest, account: m.account, conversation: m.conversation }),
+        const response = consumeResult(m.type === 'ProcessControlPayload'
+          ? adapter.observeProcess!({ operation: id, digest: q.digest, payload: m })
+          : adapter.observe({ operation: id, digest: q.digest, account: m.account, conversation: m.conversation }),
           { Success: bytes => bytes, Refused: () => 'lookup unavailable; original operation remains uncertain' });
         const observation = observeRecord(q, op, 'lookup', response, wake.fact.id);
         return { owner: 'part-eight' as const, name: 'OperationObservation' as const, id: find(observation.id, 'OperationObservation').fact.id };
@@ -408,7 +423,7 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
         const op = operation(input.operation), spec = input.specification;
         const request = find(op.reservation.request, 'EffectRequest').record;
         const { m } = actual(request);
-        ensure(op.reservation.state === 'consumed' && op.reservation.digest === request.digest
+        ensure(m.record.type === 'OutboundMessage' && op.reservation.state === 'consumed' && op.reservation.digest === request.digest
           && (m.record.context?.input.hash ?? request.digest) === spec.inputDigest
           && op.reservation.run === spec.run && op.claim?.id === spec.claim, 'consumed live-input owner claim required');
         const observation = priorObservation(input.operation);

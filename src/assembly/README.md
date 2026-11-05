@@ -470,3 +470,17 @@ path and sends one signed infrastructure notice under the original reply identit
 with the existing stop, cap, ownership, audience and unknown-send protections. No
 operator stop is fabricated, no run is declared complete, and no uncertain action is
 retried. The minimal operator responder retains its independent admission.
+
+### Exact process-control driver
+
+`createProcessControlAdapter` delegates an admitted Eight process-control payload
+to the host's kernel identity port only inside the current one-use Six/Eight
+handoff. The trusted binding ties the action to the supervised exact target and
+source result. Read-only observation reports running, exited or unknown; a signal
+receipt is not quiescence, settlement or completion of a user's work.
+
+The Linux host implementation is `scripts/process-control-kernel.mjs`. It opens a
+pidfd before action-time start, parent, executable and ordered-argument checks and
+signals through the pinned handle. It has no numeric-PID kill fallback. Other
+platforms report unsupported pending the corresponding kernel/owned-child
+implementation; whole carryover row 02 therefore remains open.
