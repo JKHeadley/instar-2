@@ -26,6 +26,8 @@ Subject (14 paths): docs/01-the-rules.changelog.json, docs/01-the-rules.changelo
 
 Decision: train-176-repair-merge | Preserve both parents and all changelog versions; derive the combined conversion hash with the existing tool, then replay publication. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-176-repair-PROGRESS.md
 
+Publication evidence: Replayed source 5701599364fe33bd1ff8332546b6feecf6bbf595 with 298 entries and 121 rules; generation sha256:36020c2debef8908f04c6af35593a82826e0e8a0512a20a2e81f243f8826e430. Existing desk tools changed no owner-reference or grounding-inventory pins. Build and TypeScript check passed.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: an ordinary merge, the existing train-11-rederive-anchor and desk rehash/repin tools, and register replay. No new runtime machinery. Start guard: clean candidate and fetched main; end guard: exact merged publication and cheap checks; limit guard: foreground one-worker targeted tests, no full suite or live mutation. No autonomous live completion claim.
