@@ -34,16 +34,18 @@ Decision: carry02-r4-pins | Owner-reference and grounding support-source pins ar
 Prompt review: The stall-review question now asks for the 1.x classification/action vocabulary by meaning; no test phrase was copied into it, and the parser maps only closed vocabularies. The conversation prompt is unchanged. Every recorded real summary, Jev, review and reply shape in tests/preview/fixtures/work-recovery-2026-10-15.json replays through the typed parser as unknown, and the owner tests replay them through frozen recovery unchanged.
 Prompt finding: 0725f0150c56 | protocol-literal | Existing owner role instruction asserted by its prompt test, not benchmark guidance; untouched by this change.
 Prompt finding: 27d7720e7977 | protocol-literal | Existing memory envelope field asserted by its consumer test, not fixture-specific desired output; untouched by this change.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing obligation-work instruction in journal.ts asserted by the topic-awareness consumer test; this change touches journal.ts only in the session-work call-intent projection and record listing, not that prompt text.
+Prompt finding: 85544c20941f | protocol-literal | Existing held-reply acknowledgement wording in journal.ts asserted by the conversation-session consumer test; this change touches journal.ts only in the session-work call-intent projection and record listing, not that reply text.
 Deferral: src/assembly/production-conversation-session.ts:89 | not-a-deferral=the phrase names the implemented 1.x scheduled follow-up custody field, no work is deferred
 Deferral: src/assembly/production-conversation-session.ts:97 | not-a-deferral=the phrase is the implemented history trigger label for a scheduled follow-up review
 Deferral: src/assembly/production-conversation-session.ts:105 | not-a-deferral=the phrase describes the implemented bounded follow-up behavior of the typed judgment
 Deferral: src/assembly/production-conversation-session.ts:784 | not-a-deferral=the phrase records the implemented follow-up trigger in the bounded history
 Deferral: src/assembly/production-conversation-session.ts:876 | not-a-deferral=the phrase labels the implemented follow-up scheduling block
-Deferral: src/assembly/production-session-work.ts:533 | not-a-deferral=the phrase describes the implemented one-shot follow-up cadence
+Deferral: src/assembly/production-session-work.ts:567 | not-a-deferral=the phrase describes the implemented one-shot follow-up cadence
 Deferral: tests/assembly/production-conversation-session.test.ts:1778 | not-a-deferral=test of the implemented scheduled follow-up cadence and notice; no engineering work is deferred by this label
 Deferral: tests/assembly/production-conversation-session.test.ts:1790 | not-a-deferral=assertion of the implemented follow-up trigger history
-Deferral: tests/assembly/production-session-work.test.ts:929 | not-a-deferral=test of the implemented one-shot follow-up cadence
-Deferral: tests/assembly/production-session-work.test.ts:942 | not-a-deferral=comment explaining the implemented cadence against the step deadline
+Deferral: tests/assembly/production-session-work.test.ts:880 | not-a-deferral=test of the implemented one-shot follow-up cadence
+Deferral: tests/assembly/production-session-work.test.ts:893 | not-a-deferral=comment explaining the implemented cadence against the step deadline
 Deferral: tests/preview/stall-review.test.ts:116 | not-a-deferral=test of the implemented bounded follow-up mapping in the typed parser
 Skip: tests/assembly/process-control-kernel.test.ts:30 | scope=Linux pidfd contract tests require the Linux kernel API; unsupported platforms refuse and their implementation remains an explicit parity gap, unchanged by this review.
 Publication result: shape-only replay generated from source dc8ea057498a5511b42b55bb6ee99d07621f3dfb, generation sha256:6de36e9f2ab577f7e9808e45a9569ffbc5dcd2fbb8f616cda457d38014c1b34c, committed as c0f83e0cd0afdd146fc0e9b3cd8891670fed589f; register:check and the wiring check pass on it with authority shape-only. Lint carries only the permitted native macOS R105 certificate mismatch (certified on node 24.14.1, this host runs 24.15.0); the certificate is unchanged and Studio-owned.

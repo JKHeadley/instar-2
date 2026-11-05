@@ -1098,7 +1098,7 @@ it.each([{ next: 19, outcome: 'complete' }, { next: 20, outcome: 'uncertain' }])
         if (outcome === 'complete') await world.command(`write ${f.resultPath()} ${recordedWork.workOutput}`, 6 + next);
         for (let i = 0; i < 200 && outcome === 'complete' && f.io.readResult(f.resultPath(), 65536) === null; i++) await new Promise(resolve => setTimeout(resolve, 25));
         expect(calls.slice(6, 6 + 19).every(row => row.status === 200)).toBe(true);
-        if (next === 20) expect(calls[25]).toMatchObject({ status: 400 }); 
+        if (next === 20) expect(calls[25]).toMatchObject({ status: 400 });
         return rt.success({ phase: 'output-observed', evidence: 'evidence:restored', detail: 'idle prompt fallback' });
       } });
     try {
