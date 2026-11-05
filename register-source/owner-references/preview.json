@@ -3,6 +3,22 @@
   "owner": "preview",
   "fixtures": [
     {
+      "id": "PREVIEW-COLLABORATION-HUB-COMPONENT",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/collaboration-hub.test.ts",
+        "hash": "sha256:5c6bbb09e763837d22734bbd196cc5cacc77b76b74f57eada3335128f3807f0e"
+      }
+    },
+    {
+      "id": "PREVIEW-ATTENTION-QUEUE-INSTALLED",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/attention-installed.test.ts",
+        "hash": "sha256:d485db591cbdf1b5f1f497dd02fd0cf49db72cf44c32f14f7efd0c6442e9aa93"
+      }
+    },
+    {
       "id": "PREVIEW-CONVERSATION",
       "stage": "build",
       "artifact": {

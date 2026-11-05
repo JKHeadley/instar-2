@@ -93,8 +93,12 @@ export function createIntakePort(deps: IntakeDependencies): Result<IntakePort> {
       // occurrence and live authority before this decoder binds identity.
       requireIntake(e.principalKind==='person'||(adapterId==='scheduled-intake-v1'
         &&e.principalKind==='system'&&provenance.class==='verified'
-        &&e.sender===e.principalId&&e.channel.startsWith('scheduled:')),
-      'P4-NF-09: system/agent stimuli require the verified scheduled parser','standing');
+        &&e.sender===e.principalId&&e.channel.startsWith('scheduled:'))
+        ||(adapterId==='threadline-intake-v1'&&e.principalKind==='agent'
+          &&provenance.class==='channel-attested'&&e.sender===e.principalId
+          &&e.channel.startsWith('threadline:')
+          &&provenance.authenticated.recordType==='threadline-authenticated-sender'),
+      'P4-NF-09: system/agent stimuli require their registered authenticated source parser','standing');
       return take(decode('VerifiedPrincipal',{ type: 'VerifiedPrincipal',schemaVersion: 1,id: e.principalId,kind: e.principalKind },
         { ...context(preserved).decode,provenance }));
     }

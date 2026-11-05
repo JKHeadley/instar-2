@@ -33,7 +33,7 @@ const DIGEST = /^sha256:[a-f0-9]{64}$/u;
  * authority; every other action is requested by someone other than the operator. */
 export function checkChallenge(challenge, { operator, maxLifetime, now }) {
   check(challenge !== null && typeof challenge === 'object' && !Array.isArray(challenge)
-    && Object.keys(challenge).sort().join(',') === FIELDS, 'closed challenge subject required');
+    && Object.keys(challenge).sort().join(',') === (challenge.action === 'tracking-receipt' ? FIELDS + ',tracking' : FIELDS), 'closed challenge subject required');
   check(typeof challenge.id === 'string' && /^challenge:[a-f0-9]{64}$/u.test(challenge.id), 'challenge id invalid');
   check(challenge.singleUse === true && challenge.surface === SURFACE && challenge.operator === operator, 'challenge surface or operator differs');
   check(Number.isSafeInteger(challenge.issuedAt) && Number.isSafeInteger(challenge.expiresAt) && challenge.expiresAt > challenge.issuedAt
@@ -42,6 +42,15 @@ export function checkChallenge(challenge, { operator, maxLifetime, now }) {
   for (const field of ['artifact', 'requestDigest', 'renderingDigest']) check(DIGEST.test(challenge[field]), 'challenge digest missing');
   for (const field of ['request', 'action', 'audience', 'base', 'requestedBy']) check(typeof challenge[field] === 'string'
     && challenge[field].length > 0 && challenge[field].length <= 512, 'bounded challenge field required');
+  if (challenge.action === 'tracking-receipt') {
+    checkTracking(challenge.tracking);
+    check(challenge.audience === 'attention-tracking' && challenge.scope === 'attention-status-only'
+      && DIGEST.test(challenge.generation) && challenge.requestedBy !== challenge.operator
+      && challenge.base === String(challenge.tracking.revision)
+      && challenge.requestDigest === `sha256:${hex(canonical(challenge.tracking))}`
+      && challenge.renderingDigest === `sha256:${hex(trackingText(challenge.tracking))}`, 'tracking subject differs');
+    return challenge;
+  }
   const stop = challenge.action === 'emergency-stop' || challenge.audience === 'independent-emergency-stop';
   check(stop ? challenge.action === 'emergency-stop' && challenge.audience === 'independent-emergency-stop'
     && challenge.requestedBy === challenge.operator : challenge.action === 'raise-caps' && challenge.requestedBy !== challenge.operator,
@@ -49,12 +58,29 @@ export function checkChallenge(challenge, { operator, maxLifetime, now }) {
   return challenge;
 }
 
+/** Tracking is a status receipt, never an authorization or an execution request. */
+export function checkTracking(value) {
+  check(value && Object.keys(value).sort().join(',') === 'installation,itemId,revision,status,targetMachineId', 'closed tracking subject required');
+  for (const field of ['installation', 'itemId', 'targetMachineId']) check(typeof value[field] === 'string'
+    && value[field].length > 0 && value[field].length <= (field === 'itemId' ? 512 : 120), 'bounded tracking identity required');
+  check(Number.isSafeInteger(value.revision) && value.revision > 0
+    && ['OPEN', 'ACKNOWLEDGED', 'IN_PROGRESS', 'DONE', 'WONT_DO'].includes(value.status), 'tracking revision or status invalid');
+  return value;
+}
+export const trackingText = value => `Record ${value.status} for attention item ${value.itemId} at revision ${value.revision}?`;
+
 const RAISE = /^Approve raising the (model call|reply|message) allowance from (\d{1,9}) to (\d{1,9})\? That adds (\d{1,9}) (model calls I may spend|replies I may send|messages I may take) (?:in this trial|for this agent)\.$/u;
 const EFFECTS = { 'model call': 'model calls I may spend', reply: 'replies I may send', message: 'messages I may take' };
 /** What the operator is shown, derived by the surface itself. A raise's wording must match the one
  * fixed template exactly and hash to the challenge's rendering digest; anything else is refused, so no
  * requester prose ever reaches the page. */
 export function renderChallenge(challenge, text) {
+  if (challenge.action === 'tracking-receipt') {
+    checkTracking(challenge.tracking);
+    return { kind: 'tracking', title: trackingText(challenge.tracking),
+      effect: 'Records tracking status only. It approves no send, spending or execution. The current owner checks the item revision when it returns.',
+      approve: 'Record status', decline: 'Decline' };
+  }
   if (challenge.action === 'emergency-stop') return { kind: 'stop', title: 'Stop this agent permanently?',
     effect: 'It stops at once. Nothing more will be sent or spent in this installation, and it cannot be restarted from here.',
     approve: 'Stop now', decline: null };

@@ -842,3 +842,22 @@ it('keeps scheduled work policy unchanged and requires the exact continuing-sess
   expect(() => codexConversation.validateActivation({ ...codexGrant, acceptedResiduals: [] }, codexProfile, codexModel, 1000))
     .toThrow(/residual/u);
 });
+
+for (const maxTokens of [200, 320]) it(`enforces a narrowed ${maxTokens}-token invocation beneath the existing standing`, async () => {
+  const f = fixture({ tokens: maxTokens });
+  const route = value(createClaudeCodeSubscriptionRoute(f.input));
+  const bounds = { ...f.bounds, maxTokens, timeout: maxTokens === 200 ? 4000 : 15000 };
+  expect((await route.invoke('bounded hub request', bounds)).state).toBe('complete');
+  expect(f.commands().at(-1).env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe(String(maxTokens + 2048));
+  const over = fixture({ tokens: maxTokens + 1 });
+  expect((await value(createClaudeCodeSubscriptionRoute(over.input)).invoke('bounded hub request', bounds)).state).toBe('uncertain');
+  for (const invalid of [0, -1, 200.5, 2049]) {
+    const before = f.commands().length;
+    expect((await route.invoke('bounded hub request', { ...bounds, maxTokens: invalid })).state).toBe('uncertain');
+    expect(f.commands()).toHaveLength(before);
+  }
+  f.stop();
+  const beforeStop = f.commands().length;
+  expect((await route.invoke('bounded hub request', bounds)).state).toBe('uncertain');
+  expect(f.commands()).toHaveLength(beforeStop);
+});

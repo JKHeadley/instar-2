@@ -19,6 +19,9 @@ export interface CommitmentNote<Due> {
   owner?: 'agent'; waitsOn?: CommitmentWaitsOn; loop?: ReplyLoop['kind'];
   /** Source-bound request; a date or a promise alone grants no send. */
   deliveryRequest?: string;
+  /** Exact admitted delegation association, never inferred from a display name.
+   * Kept in the existing promise record; closures retain this history. */
+  threadline?: { thread: string; edge: string; peer: string; topic: number | null };
 }
 export interface CommitmentClosure { id: number; source: string; quote: string }
 export interface PromiseStore<Due> {
@@ -35,6 +38,48 @@ export function recordCommitments<Due>(store: Pick<PromiseStore<Due>, 'commitmen
 }
 export function closeCommitment<Due>(store: PromiseStore<Due>, closure: CommitmentClosure): void {
   store.closed.set(closure.id, closure);
+}
+
+/** CommitmentTracker.findByThreadId: only active rows participate. The index
+ * is disposable and rebuilt from the retained owner projection after restart. */
+const threadIndexes = new WeakMap<object, { count: number; closed: number; active: Map<string, number> }>();
+export function findCommitmentByThread<Due>(store: PromiseStore<Due>, thread: string):
+  Readonly<{ id: number; note: CommitmentNote<Due> }> | null {
+  if (!thread) return null;
+  let index = threadIndexes.get(store);
+  if (!index || index.count !== store.commitments.length || index.closed !== store.closed.size) {
+    const active = new Map<string, number>();
+    store.commitments.forEach((note, id) => {
+      if (note.threadline && !store.closed.has(id)) active.set(note.threadline.thread, id);
+    });
+    index = { count: store.commitments.length, closed: store.closed.size, active }; threadIndexes.set(store, index);
+  }
+  const id = index.active.get(thread), note = id === undefined ? undefined : store.commitments[id];
+  return id !== undefined && note?.threadline?.thread === thread && !store.closed.has(id) ? { id, note } : null;
+}
+
+/** Origin capture is called only at the durable delegation producer boundary.
+ * Like 1.x, an automatic send never overwrites another topic's origin. */
+export function recordThreadlineCommitment<Due>(store: PromiseStore<Due>, input: {
+  thread: string; edge: string; peer: string; topic: number; source: string; quote: string;
+}): void {
+  if (![input.thread, input.edge, input.peer, input.source, input.quote].every(value => typeof value === 'string' && value.length > 0)
+    || !Number.isSafeInteger(input.topic) || input.topic <= 0) throw Error('commitment: exact delegation origin required');
+  const previous = findCommitmentByThread(store, input.thread);
+  if (previous) {
+    if (previous.note.threadline!.topic !== input.topic || previous.note.threadline!.peer !== input.peer)
+      throw Error('commitment: delegation origin or expected peer differs');
+    return;
+  }
+  recordCommitments(store, [{ in: 'reply', source: input.source, quote: input.quote,
+    owner: 'agent', waitsOn: 'external', threadline: { thread: input.thread, edge: input.edge, peer: input.peer, topic: input.topic } }]);
+}
+
+/** Explicit operator binding changes routing, never authority or completion. */
+export function bindThreadlineCommitment<Due>(store: PromiseStore<Due>, thread: string, topic: number): void {
+  if (!Number.isSafeInteger(topic) || topic <= 0) throw Error('commitment: exact topic required');
+  const found = findCommitmentByThread(store, thread);
+  if (found) found.note.threadline!.topic = topic;
 }
 /** A declaration in the same reply augments the existing promise, never opens a second loop. */
 export function recordReplyLoop<Due>(store: PromiseStore<Due>, source: string, loop: ReplyLoop): void {

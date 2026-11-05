@@ -99,7 +99,7 @@ describe('Part Ten confined Telegram Bot API custodian', () => {
     const s = setup([]); const invalid = { ...s.token, name: '' } as SecretRef;
     rejected(s.custodian.identity({ token: invalid, apiVersion: '9.2' }), 'confined SecretRef');
     expect(s.calls).toHaveLength(0);
-    expect(Object.keys(s.custodian)).toEqual(['owner', 'id', 'identity', 'readCapture', 'authenticate', 'poll', 'sendMessage']);
+    expect(Object.keys(s.custodian)).toEqual(['owner', 'id', 'identity', 'readCapture', 'authenticate', 'poll', 'createForumTopic', 'sendMessage']);
     expect(JSON.stringify(s.custodian)).not.toContain('telegram_livetest_bot_token');
   });
 
@@ -243,4 +243,22 @@ test('LIVE Telegram custodian: real getMe, update capture, authentication, and s
   const messageId = JSON.parse(capturedResponse!.bytes!).result.message_id;
   expect(Number.isSafeInteger(messageId)).toBe(true);
   process.stderr.write(`LIVE_EVIDENCE update_id=${String(parsed.update_id)} message_id=${String(messageId)} token=confined\n`);
+});
+
+// Synthetic provider neighbors; actual Telegram topic capture remains an installed proof.
+test('topic transport captures exact receipt, bounds inputs, and never retries uncertainty', () => {
+  const bytes = JSON.stringify({ ok: true, result: { message_thread_id: 88, name: 'Threadline', icon_color: 7322096 } });
+  const s = setup([{ kind: 'response', status: 200, bytes }]);
+  const input = { token: s.token, apiVersion: '9.2', chatId: '-100123', name: 'Threadline', timeout: 1, hiddenRetries: 0 as const };
+  rejected(s.custodian.createForumTopic!({ ...input, name: 'x'.repeat(41) }), 'outside declared bounds');
+  rejected(s.custodian.createForumTopic!({ ...input, chatId: '7654321' }), 'forum chat');
+  expect(s.calls).toHaveLength(0);
+  expect(unwrap(s.custodian.createForumTopic!(input))).toBe(bytes);
+  expect([...s.bytes.values()]).toContain(bytes);
+  expect(s.calls).toEqual([{ method: 'createForumTopic', body: { chat_id: '-100123', name: 'Threadline' } }]);
+  rejected(s.custodian.createForumTopic!(input), 'transport uncertainty');
+  expect(s.calls).toHaveLength(2);
+  const mismatch = setup([{ kind: 'response', status: 200, bytes: bytes.replace('Threadline', 'Other') }]);
+  rejected(mismatch.custodian.createForumTopic!({ ...input, token: mismatch.token }), 'identity differs');
+  expect(mismatch.calls).toHaveLength(1);
 });

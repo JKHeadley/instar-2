@@ -7,7 +7,7 @@ import { ENVELOPE_FLOOR } from './model-call-boundary.js';
  * constitution's mind-held rules ride every conversation answer call as the application's
  * standing instructions, outside the quoted role:context data (Rules 3, 17 and 47). The
  * narrow maintenance calls (rolling summary, reply review) keep their own fixed questions. */
-export const answerCall = (id: string) => !id.startsWith('summary:') && !id.endsWith(':reply-review');
+export const answerCall = (id: string) => !id.startsWith('hub:') && !id.startsWith('summary:') && !id.endsWith(':reply-review');
 export function prepareJournalEnvelope(input: { question: string; context: string; id: string;
     /** Rule 29: the verified principal whose input this turn is; quoted material never gets one. */
     writer?: { id: string; kind: string; adapter: string } },

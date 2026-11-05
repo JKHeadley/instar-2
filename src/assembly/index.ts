@@ -68,3 +68,6 @@ export type { InventoryProcess, InventoryResource, InventoryStatus, LaunchRoot, 
 export { admissionArgs, modelGateLaunch, sessionConnectorArgs } from './production-session-driver.js';
 export type { ProductionSessionConfig } from './production-session-driver.js';
 export type { SessionWorkIO } from './production-session-work.js';
+export { composeProductionDelegation } from './production-delegation.js';
+export type { ProductionDelegationConfiguration, ProductionDelegationProjection } from './production-delegation.js';
+export type { DelegatedProviderPolicy } from './production-delegated-provider.js';

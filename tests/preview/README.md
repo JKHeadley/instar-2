@@ -15,6 +15,12 @@ authority, store or outbound path.
 
 ## Capabilities
 
+- `preview-collaboration-hub`: Optional collaboration retains one silent hub, authenticated parent binding and unknown effects in the owner journal.
+  Details: The journal launcher exposes retained hub binding at the authenticated PIN/CSRF /dashboard/collaboration page. Its effect consumer uses the existing role/policy check, shared claim, Telegram bridge and sender; authorized message intents reserve existing replies. The optional production composition joins authenticated Threadline intake, canonical delegated work and the bounded hub model route. The concrete installation boundary is documented below; actual serving installation and independent live acceptance remain pending. Method availability is not authority.
+
+- `preview-attention-queue`: Track items and acknowledge them from the authenticated dashboard; state and pending acknowledgements survive handoff.
+  Details: Tracking state and pending acknowledgements survive journal replay and replica handoff; actual independent installation and live acceptance remain pending. When the existing independent passkey surface is configured, a status change opens a distinct signed tracking request there. Its existing private store retains the exact request across owner-outbox absence, and the returning owner rechecks installation, revision, expiry, signature and stop before applying it. Tracking never approves an effect. Independent-machine availability still requires a separately installed authorized operator surface/custody path and its proof.
+
 The journal runner's capability briefing is generated from these lines and the feature declarations beside the shipped sources; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
 - `fetch-inbound-media`: saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.
@@ -4537,3 +4543,179 @@ model id. Failed exchanges, local ceilings and stale evidence retain their exist
 meaning. Replaced doorway entries remain retired history and do not appear as active
 unavailable models in status, capability context or reply notices. Restarting an
 existing root applies this reconciliation without another store or probe.
+
+## Attention queue carryover (row 88)
+
+The installed journal runner's PIN-authenticated dashboard has an Attention link.
+The operator can add a tracking item and save its status from a phone. This does
+not approve an action, widen a grant, or send a Telegram message. The queue keeps
+the 1.x status/priority aliases, exact item identities, refresh/reopen revisions,
+condition episodes, and durable acknowledgement intent. A stale acknowledgement
+cannot close a newer escalation. The page paginates retained items; terminal and
+exhausted acknowledgement evidence remains in the journal.
+
+`attention-queue.ts` adapts `TelegramAdapter`, `AttentionConditionStore`, and
+`RemoteAckStore`; `attention-surface.ts` binds them to the installed encrypted
+journal. Append failure refuses before success. The current writer, stop, expiry
+and activation authority are checked before mutation. The dashboard's verified
+PIN session is the operator's identity; only a hashed session/request receipt is
+recorded. On two machines, acknowledgement confirmation waits for the existing
+journal replica; a successor replays the intent and status. The existing journal
+compaction and archived evidence preserve every accepted event. Old readers
+refuse the non-additive Attention frame rather than silently lose its lifecycle.
+The page is a pull surface, so a burst cannot create topics or send notifications.
+
+The installed maintenance pass feeds `attention-health.ts` from the existing
+obligation-health projection. Overdue intake, stalled work, unknown delivery and
+unknown recovery become silent Agent Health items on this page. Repeated identical
+observations do not append or reset an acknowledgement. Positive recovery closes
+the item; recurrence reopens that same identity with a retained episode counter.
+The condition and visible item change in one durable frame. These observations
+never resend unknown work or change execution authority.
+
+The independent passkey surface below retains exact signed status receipts while
+the owning machine is unreachable. The installed optional production composition
+now supplies authenticated Threadline custody, current Run authority, topic
+origins and commitment consumption. Source checks do not certify installation,
+remote-host usefulness or the outstanding independent full gate.
+
+### Row 88 collaboration consumer
+
+`collaboration-hub.ts` adapts the 1.x CollaborationSurfacer into the existing
+encrypted journal. `collaborationEndpoint` wraps the actual authenticated
+AgentEndpoint: only admitted envelopes enter the hub intake; lookup, refusal,
+unknown receipts and worker authority remain the endpoint's. A host supplies its
+existing effect doorway and current owner/stop/expiry checks. The journal runner connects this consumer when the booted application's
+`owners.delegation` is configured. Its existing activation declarations remain
+unchanged; this addition does not install or authorize a serving route.
+
+The routing retains one silent Threadline hub, one first-contact notice per
+conversation, parent-bound content, hub-only housekeeping, explicit target-topic
+binding and 409 for ambiguous implicit selection. Notice identities permit a new
+episode while suppressing duplicate delivery of the same episode. Prepared work
+can resume after durability returns; a replicated dispatch fence without a
+receipt remains unknown and cannot trigger a resend. Thread, intake and effect
+populations refuse new identities at their bounds without deleting evidence.
+`collaboration-hub.test.ts` exercises actual signed/encrypted transport custody,
+endpoint admission, encrypted journal restart/compaction and both routing sides.
+Its injected judgments and effect receipts are deterministic fixtures, not live
+model or Telegram evidence. The separate production-delegation test uses the booted canonical owners;
+the network fixture here is additional routing evidence, not production authority.
+
+`hub-model-contract.ts` carries the original 1.x prompt functions and parser
+semantics with their tuned request bounds. `CollaborationSurfacer.command`
+consumes those contracts through a supplied reserved model doorway and verifies
+operator standing before binding. `open` retains its first brief and creation
+identity so restart cannot create another topic or replace the chosen brief.
+The installed `hub-model-route.ts` passes these limits through the existing
+recorded provider boundary and journal reservations. Provider acceptance enforces
+the answer allowance; it does not claim a provider-total generation ceiling.
+The deterministic tests are additional controls, not genuine model recordings.
+
+`hub-recorded.test.ts` replays six exact isolated Studio captures through the
+binding consumer. Set `INSTAR_HUB_CAPTURE_ROOT` to the private capture evidence
+directory (with its `repaired/` child). Without that directory the test visibly
+skips; a skipped run is not model evidence. Inputs/outputs stay private, hashes
+are committed. The captures have no live-user Telegram update IDs.
+
+### Carryover 88 optional independent tracking transport
+
+The existing approval surface can read tracking requests through the authenticated
+private file service with `requestSource` in its operator-owned configuration.
+That object has `endpoint` (an exact HTTPS origin), `agentId` (the existing service
+role), `directory` (the fixed relative owner-outbox path) and `standing` (the
+existing read-standing evidence reference). The service process resolves its own
+already-configured `INSTAR_AUTH_TOKEN`; it does not persist or copy that credential.
+The owner runner's optional `--approval-transport /ABS/operator-owned.json` uses
+the same fields for the independent surface's `acts` directory. Existing
+`--approval-store`, `--approval-outbox` and `--approval-operator-uid` remain required;
+public enrolled keys and the approved surface descriptor remain under that
+operator's custody. All other approval classes keep their existing local path.
+
+The owner publishes a bounded `tracking-index.json` in its existing outbox. The
+independent surface caches the exact request in its existing private directory,
+and its passkey signs the exact challenge, decision and nonce. On return the owner
+verifies against its own issued request, installed public keys, current revision,
+expiry and one-use marker before applying a status receipt. The transport reads
+only fixed request or issued-act filenames, refuses redirects, path substitution,
+foreign authentication and oversized bodies, and gives each batch four seconds.
+Neither a path token nor transport authentication is operator identity, and a
+tracking receipt approves no execution or send.
+
+Reviewable installation proposal (not performed by this change): the desk binds
+the existing operator service's `surface.json` origin/rpId/publicBase/operator/
+ingressGrant to its independently hosted store, with the same enrolled public
+keys and currently approved ingress. The owner retains its approved public
+metadata reader; each host uses its own existing service role. Configure only the
+two fixed read namespaces above under established standing, then test complete
+owner-machine unreachability and recovery. A missing host/rpId/ingress binding is
+an installation dependency, never permission to invent a grant, copy an account
+bearer, rotate credentials or generate substitute owner challenges. An absent
+owner outbox is accepted only when the existing matching surface descriptor is
+already present. The isolated HTTP proof does not certify TLS, real independent
+machines, actual serving installation or live usefulness.
+
+The copied hub model questions now pass through the launcher's recorded
+subscription boundary with journal reservations and the original 200/320 answer
+allowances and 4000/15000 ms deadlines. Noncommands and uncertainty use the normal
+answer path. The new envelope preserves each copied question, but the recorded
+six-case corpus predates this envelope; replay proves consumption, not a fresh
+provider invocation. Independent review, combined full gates, actual installation
+and fresh live usefulness are separately required before release.
+
+
+### Canonical delegated work and journal installation boundary
+
+`bootProductionApplication` constructs `owners.delegation` inside the existing
+`ProductionApplicationHost.configure(installation, storage)` boundary. Its
+configuration references existing enrolled Threadline keys and epochs, relay,
+Ten byte custody, the local policy Run, current decode context and Six fence.
+`work` supplies placement and recorded completion; native work also supplies
+its existing operation planner/settlement, or `provider` selects the actual
+composed Seven/Eight provider owners and their existing policy. The source
+installs no parser declaration, peer enrollment, grant or provider approval.
+Missing current standing refuses at the corresponding owner.
+
+The existing installed host's `run(application)` can call the exported
+`runJournalAgent(application, args)` using its current journal arguments. This
+connects the one journal projection, pumps authenticated Four intake, collects
+at most 32 due edges per maintenance pass and invokes the installed work owner.
+The same canonical delegation port accepts an actual parent Run for outgoing
+work; callers cannot supply parent authority or a topic claim. The direct
+journal CLI still runs without an optional delegated application. This is the
+concrete source installation boundary; no serving configuration was changed.
+
+| Producer | Existing owner and consumer |
+| --- | --- |
+| Operator tracking item/status | PIN/CSRF dashboard → Attention journal; independent passkey requests/acts return through the same queue |
+| Overdue intake, stalled steps, unknown recovery/delivery | Obligation projection → silent Attention Agent Health items |
+| Delegated conflict, overdue task, unconfirmed cancellation | Canonical Five ledger → the same Attention health projection |
+| Encrypted peer offer | Ten custody → Four authenticated Intent → Five receiving Run; admitted receipt → hub first contact or bound parent |
+| Checked peer result | Five/Eight/Nine/Six completion → exact endpoint receipt → bound content; only confirmed delivery closes its promise |
+| Cancellation housekeeping | Canonical cancellation edge → silent hub notice; never a claimed completion |
+| Operator binding/open command | Existing admitted operator turn or PIN boundary → bounded copied classifier/brief → current topic effect doorway |
+| Active thread commitment | Existing promise projection → explicit operator move and exact peer/result delivery; excluded from the ordinary second-worker scheduler |
+
+First origin is immutable; an explicit current operator move changes the active
+binding and its commitment. Self-targeted work emits no collaboration chatter.
+General/private Telegram work and parentless authenticated Threadline work gain
+no inferred forum topic. A missing exact forum origin refuses before the first
+offer; a proven pre-send refusal can retry the same edge, while possibly-sent
+work only looks up its retained identity. Current Six fencing protects new
+submissions and cancellations from an old process after handoff.
+
+The 1.x source comparison is pinned in the change review. In particular, routine
+Agent Health observations without `needsUser` are held in 1.x too; the 2.0
+projection is likewise silent. The broader 1.x machine-specific monitoring
+producers are not represented as newly ported monitors by this composition.
+Historical 44 unresolved/101 unfinished files and five r3 failures remain
+unverified. No declaration or native certificate was altered to hide them.
+
+Nested Threadline commitments use their retained authenticated parent receipt,
+not a fabricated Telegram turn, for the open-obligation population. The verified
+operator's existing action-facts packet carries bounded opaque delegated-work
+state. Task questions are excluded from the quoted-utterance/summary-closure
+inventory: they are work records, not words the agent previously said. The seven
+historical summary/Jev/review/reply shapes are replayed through the ordinary
+worker with this packet. Missing delegation-owner evidence leaves health unknown;
+only actual checked recovery clears its condition.

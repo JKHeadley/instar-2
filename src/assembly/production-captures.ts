@@ -3,7 +3,26 @@ import { hashBytes } from '../facts/index.js';
 import type { CapturedContent } from '../facts/index.js';
 import type { Capture, CaptureCapacity, JudgmentCapturePort } from '../judgment/index.js';
 import type { TelegramDurableCapturePort } from './telegram-bot-api-custodian.js';
+import type { IntakeCapturePort } from '../intake/index.js';
 import { boundary, encoded, ensure } from './boundary.js';
+
+/** Four's UnresolvedInput names a content hash. Reuse Ten's admitted custody
+ * with that exact reference, for every sender/parser, without interpreting the
+ * payload as Telegram or charging it to a provider-response reservation. */
+export function createProductionIntakeCaptures(input: Readonly<{
+  custody: TelegramDurableCapturePort; context: BoundaryContext;
+  metadata: Record<string, CapturedContent>; decodeCaptures: Record<string, string>;
+}>): IntakeCapturePort {
+  return Object.freeze({ owner: 'part-ten' as const,
+    preserve: (raw: string) => boundary('ProductionIntakeCapture', null, input.context, () => {
+      const hash = hashBytes(raw);
+      ensure(input.custody.preserve(hash, raw) && input.custody.read(hash) === raw,
+        'intake-captures: durable custody unavailable');
+      input.metadata[hash] = { bytes: raw, hash, byteLength: Buffer.byteLength(raw), status: 'available' };
+      input.decodeCaptures[hash] = raw;
+      return Object.freeze({ reference: hash, hash });
+    }) });
+}
 
 /** Provider receipt capacity is reserved durably before dispatch. The root's
  * exclusive process lease serializes this append-only capacity journal. A dead

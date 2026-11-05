@@ -1,4 +1,7 @@
-import { createPromiseStore, recordCommitments, closeCommitment, recordReplyLoop, schedulePromise, promiseRetryDelay as workRetryDelay, COMMITMENT_WAITS_ON } from '../../src/rungraph/promises.js';
+import { applyHubRecord, collaborationTopicForOperation, type HubRecord, type HubState } from './collaboration-hub.js';
+import { applyAttentionRecord, type AttentionRecord, type AttentionState } from './attention-queue.js';
+import { createPromiseStore, recordCommitments, closeCommitment, recordReplyLoop, schedulePromise, promiseRetryDelay as workRetryDelay, COMMITMENT_WAITS_ON,
+  recordThreadlineCommitment, bindThreadlineCommitment, findCommitmentByThread } from '../../src/rungraph/promises.js';
 import type { CommitmentNote as CoreCommitmentNote, CommitmentClosure, CommitmentWaitsOn, ReplyLoop } from '../../src/rungraph/promises.js';
 export { COMMITMENT_WAITS_ON, OBLIGATION_FORMAT_RETRIES, OBLIGATION_FORMAT_RETRY_MS } from '../../src/rungraph/promises.js';
 export type { CommitmentClosure, CommitmentWaitsOn, ReplyLoop } from '../../src/rungraph/promises.js';
@@ -1069,7 +1072,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 6;
+export const JOURNAL_GENERATION = 7;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1082,7 +1085,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['collaboration', 'attention', 'send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1101,6 +1104,8 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refu
   'summary-reserve', 'summary-review-reserve', 'summary-uncertain', 'tool-turn', 'waiting']);
 
 export type JournalRecord =
+  | HubRecord
+  | AttentionRecord
   | PhaseTiming
   // Non-additive: an older writer must not discard the no-repeat expectation.
   | { kind: 'media-claim'; id: string; digest: string; at: number }
@@ -1648,6 +1653,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   /** UNKNOWN calls conservatively written off by an authorized cap raise; absent until one is. */
   writtenOff?: string[];
   /** Part 18: the live sentinels' recorded decisions; absent until a sentinel records one. */
+  attention?: AttentionState;
+  collaboration?: HubState;
   sentinels?: SentinelView }
 
 function reserveTokens(view: JournalView, key: string, kind: CallKind, input: number, output: number): void {
@@ -2342,7 +2349,10 @@ export function loopRevisits(view: JournalView): Map<number, number> {
 /** A commitment is open until a recorded closure, an operator forgetting, or its source's removal ends it. */
 export function commitmentOpen(view: JournalView, id: number): boolean {
   const note = view.commitments[id], source = note && view.turns.get(note.source);
-  return !!note && !!source && !view.closed.has(id) && !probeTurn(view, source) && !view.memory.some(change => change.mode === 'forget'
+  const inherited = note?.threadline && note.source.startsWith('threadline:')
+    && collaborationTopicForOperation(view.collaboration, note.source) !== null
+    && view.collaboration?.origins?.some(origin => origin.edge === note.threadline!.edge && origin.source === note.source);
+  return !!note && !view.closed.has(id) && (!!source && !probeTurn(view, source) || !!inherited) && !view.memory.some(change => change.mode === 'forget'
     && change.source === note.source && note.quote.includes(change.quote));
 }
 /** What an open commitment waits on now: a completed work step may have moved it onto the operator or an outside party. */
@@ -2372,6 +2382,9 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
     return Math.max(first, work ? work.last + workRetryDelay(work, revisit) : first); };
   view.commitments.forEach((note, id) => {
     const source = view.turns.get(note.source), key = `commitment:${id}`, work = view.obligationWork[key];
+    // TopicLinkage's beaconEnabled:false: the canonical delegated Run owns
+    // collection. This routing promise must not start a second model worker.
+    if (note.threadline) return;
     if (!commitmentOpen(view, id) || !source || !operatorTurn(view, source) || !(note.owner === 'agent' || note.agentPromise)) return;
     const due = note.agentPromise?.due;
     const item = schedulePromise({ id, openedAt: source.at, ...(source.sentAt === undefined ? {} : { sentAt: source.sentAt }),
@@ -2525,7 +2538,13 @@ export function currentActionFacts(view: JournalView, now: number, operatorOnly:
     kind: 'effect', operation: redact(item.operation).text.slice(0, 160), topic: item.topic,
     source: item.source, subject: item.subject, state: item.state === 'prepared' ? 'prepared, outcome unknown' : 'tool returned, success not established',
   }));
-  const items = [...requests, ...effects];
+  const delegated = view.commitments.flatMap((note, id) => note.threadline ? [{
+    kind: 'delegated-work', operation: 'Threadline task', topic: String(note.threadline.topic ?? 'unbound'),
+    source: ref(note.source), subject: ref(note.threadline.edge),
+    state: view.closed.has(id) ? 'closed by recorded cause' : commitmentOpen(view, id)
+      ? 'open; awaiting external result delivery' : 'withdrawn from conversation context',
+  }] : []).slice(-32);
+  const items = [...requests, ...effects, ...delegated];
   const siblingWords = currentTopic === undefined ? undefined : currentSiblingWords(view, currentTopic,
     Math.max(0, 30000 - Buffer.byteLength(JSON.stringify(items))), zone);
   return { items, ...(siblingWords?.items.length ? { siblingWords } : {}), bounded: true,
@@ -2555,7 +2574,7 @@ function currentSiblingWords(view: JournalView, currentTopic: string, maxBytes: 
       ...excerpt(turn, turn.intent!) })).reverse();
   const promises = view.commitments.flatMap((note, id) => {
     const turn = view.turns.get(note.source);
-    if (note.in !== 'reply' || !turn || !eligible(turn)) return [];
+    if (note.threadline || note.in !== 'reply' || !turn || !eligible(turn)) return [];
     const state = view.closed.has(id) ? 'closed' : commitmentOpen(view, id) ? 'open' : 'withdrawn';
     return [{ kind: 'promise', ...origin(turn), id, state, ...excerpt(turn, note.quote) }];
   }).reverse();
@@ -3914,6 +3933,55 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   // generic read (`'state' in row`, `'failureClass' in row`) can fold a newer build's frame into this
   // build's counts and silently move the projection digest the two builds compare.
   if (!KNOWN_FRAME_KINDS.has(row.kind)) { admitForwardFrame(view, row); return; }
+  if (row.kind === 'collaboration') {
+    if (view.stop !== null) throw Error('collaboration: stopped journal');
+    // Authorized installed hub messages share the existing reply reservation.
+    // Reserve at intent, including UNKNOWN, and retain one slot for an answer.
+    // Legacy portable rows lack authorization and cannot dispatch in the host.
+    const charged = row.action === 'intent' && row.attempt.effect.kind === 'message' && row.attempt.authorization !== undefined;
+    if (charged && view.replies >= view.limits.maxReplies - 1) throw Error('collaboration: reply allowance reserved for the operator');
+    if (row.action === 'model-reserve' && (view.calls >= view.limits.maxCalls || row.deadline > view.expires
+      || row.maxInputTokens !== view.limits.maxBytes)) throw Error('collaboration: model call allowance or lifetime exhausted');
+    if (row.action === 'origin') {
+      const source = view.turns.get(row.source);
+      const inherited = row.source.startsWith('threadline:')
+        && collaborationTopicForOperation(view.collaboration, row.source) === row.topic;
+      if ((!source?.accepted || source.thread !== row.topic) && !inherited)
+        throw Error('collaboration: admitted origin turn and topic required');
+    }
+    const repeatedOrigin = row.action === 'origin' && view.collaboration?.origins?.some(item => item.edge === row.envelope.edge);
+    view.collaboration = applyHubRecord(view.collaboration, row);
+    if (row.action === 'origin' && !repeatedOrigin) {
+      const c = row.envelope.contract!;
+      // Self-delegation is not a promise to a remote counterpart.
+      if (c.owner !== c.recipient) recordThreadlineCommitment(view, {
+        thread: c.transport.conversation, edge: c.id, peer: c.recipient,
+        topic: view.collaboration.threads.find(thread => thread.threadId === c.transport.conversation)!.parent!,
+        source: row.source, quote: c.task.question });
+    } else if (row.action === 'bind') bindThreadlineCommitment(view, row.threadId, row.topic);
+    else if (row.action === 'outcome' && row.outcome.kind === 'accepted' && row.outcome.receipt) {
+      // Receipt of the peer's result is not delivery to the person. Only the
+      // existing effect owner's exact confirmed topic send closes this promise.
+      const attempt = view.collaboration.attempts.find(item => item.id === row.id);
+      const input = view.collaboration.inbox.find(item => item.envelope.kind === 'result'
+        && `content:${JSON.stringify([item.envelope.conversation, item.envelope.key])}` === row.id);
+      const linked = input && findCommitmentByThread(view, input.envelope.conversation);
+      if (linked && attempt?.effect.kind === 'message' && !attempt.effect.silent
+        && linked.note.threadline!.edge === input!.envelope.edge
+        && linked.note.threadline!.peer === input!.envelope.sender
+        && linked.note.threadline!.topic === attempt.effect.topic)
+        closeCommitment(view, { id: linked.id, source: row.outcome.receipt, quote: attempt.effect.text });
+    }
+    if (row.action === 'model-reserve') {
+      reserveTokens(view, `hub:${row.id}`, 'replyCheck', row.maxInputTokens, row.maxTokens); view.calls++;
+    } else if (row.action === 'model-settle') settleTokens(view, `hub:${row.id}`, row.usage);
+    if (charged) view.replies++;
+    return;
+  }
+  if (row.kind === 'attention') {
+    if (view.stop !== null) throw Error('attention: stopped journal');
+    view.attention = applyAttentionRecord(view.attention, row, view.genesis.operator); return;
+  }
   if (row.kind === 'send-format-refused') {
     const prepared = replyFormatting(view, row.target), target = sendTarget(view, row.target);
     if (!prepared || prepared.refusal || !target || target.sent !== undefined
@@ -6838,7 +6906,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const openFor = (through: number, limit: number) => journal.view.commitments
     .map((note, id) => ({ id, note, turn: journal.view.turns.get(note.source),
       due: note.agentPromise?.due ? dueState(note.agentPromise.due, ports.now()) !== 'upcoming' : dueSoon(note.quote) }))
-    .filter(item => !journal.view.closed.has(item.id) && item.turn !== undefined && item.turn.update <= through
+    .filter(item => !item.note.threadline && !journal.view.closed.has(item.id) && item.turn !== undefined && item.turn.update <= through
       && !affectedNote(item.note))
     .sort((a, b) => Number(b.due && !!b.note.agentPromise) - Number(a.due && !!a.note.agentPromise)
       || Number(b.due) - Number(a.due) || Number(!!b.note.agentPromise) - Number(!!a.note.agentPromise)
@@ -7395,7 +7463,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     for (const [id, note] of journal.view.commitments.entries()) {
       const source = journal.view.turns.get(note.source);
-      if (!source || source.update >= turn.update || affectedNote(note) || !relevant(`${note.quote} ${source.text}`)) continue;
+      if (note.threadline || !source || source.update >= turn.update || affectedNote(note) || !relevant(`${note.quote} ${source.text}`)) continue;
       groups[2]!.push({ kind: 'commitment', source: sourceOf(note.source), date: dated(source),
         from: note.in === 'reply' ? 'agent reply' : speakerOf(source), text: clean(redact(note.quote).text, true),
         status: journal.view.closed.has(id) ? 'closed by verified operator' : 'open' });

@@ -567,3 +567,17 @@ it('uses generic Instar identity on both Codex routes', () => {
     expect(prompt).not.toMatch(/Justin|preview/iu);
   }
 });
+
+for (const maxTokens of [200, 320]) it(`applies the ${maxTokens}-token invocation bound to recorded Codex output`, async () => {
+  const f = fixture(), route = value(createCodexSubscriptionRoute(f.input()));
+  const bounds = { ...f.bounds, maxTokens, timeout: maxTokens === 200 ? 4000 : 15000 };
+  // Unmodified recorded OK stream has five output tokens; the exact cap is inclusive.
+  expect((await route.invoke('bounded request', bounds)).state).toBe('complete');
+  expect((await route.invoke('bounded request', { ...bounds, maxTokens: 5 })).state).toBe('complete');
+  expect((await route.invoke('bounded request', { ...bounds, maxTokens: 4 })).state).toBe('rejected');
+  for (const invalid of [0, -1, 200.5, f.policy.maxTokens + 1]) {
+    const before = f.commands().length;
+    expect((await route.invoke('bounded request', { ...bounds, maxTokens: invalid })).state).toBe('uncertain');
+    expect(f.commands()).toHaveLength(before);
+  }
+});

@@ -20,10 +20,12 @@
  * adapter sent that key and digest to, in that conversation. Unknown suites
  * refuse and never negotiate down.
  */
-import type { BoundaryContext } from '../index.js';
+import type { BoundaryContext, CaptureInput, Result } from '../index.js';
+import { consumeResult } from '../index.js';
+import type { IntakePort, InboundRoute } from '../intake/index.js';
 import type { AgentEndpoint, AgentTransportEnvelope, AgentTransportPort, CapabilityAdvertisement, DeliveryEvidence,
   EndpointReceipt } from '../rungraph/index.js';
-import { envelopeIntact, evidenceFromReceipt, semanticDigest } from '../rungraph/index.js';
+import { envelopeIntact, evidenceFromReceipt, semanticDigest, resultEnvelope } from '../rungraph/index.js';
 import { boundary, encoded, ensure, freeze } from './boundary.js';
 
 export const THREADLINE_PROTOCOL = 'threadline-ref-v2';
@@ -56,7 +58,7 @@ export interface ThreadlineKeys {
   open(sender: string, associated: string, box: ThreadlineSealedBox): string | 'invalid' | 'unknown-key';
 }
 export type ThreadlineRejection = Readonly<{ reason: 'unknown-suite' | 'future-schema' | 'wrong-recipient' | 'unknown-key'
-  | 'bad-signature' | 'bad-ciphertext' | 'malformed' | 'binding-mismatch' | 'unexpected-receipt'; sender: string; key: string }>;
+  | 'bad-signature' | 'bad-ciphertext' | 'malformed' | 'binding-mismatch' | 'unexpected-receipt' | 'intake-refused'; sender: string; key: string }>;
 export interface ThreadlineAdapter {
   readonly port: AgentTransportPort;
   /** Drain this agent's inbox: admit envelopes through the endpoint, answer lookups, keep verified receipts. */
@@ -77,51 +79,59 @@ export function sealThreadlineFrame(keys: ThreadlineKeys, fields: Omit<Threadlin
   return box === 'unknown-key' ? box : freeze({ ...routing, salt: box.salt, nonce: box.nonce, sealed: box.sealed });
 }
 
+export function openThreadlineFrame(keys: ThreadlineKeys, f: ThreadlineFrame): ThreadlineRejection['reason'] | ThreadlinePayload {
+  if (!f || typeof f !== 'object') return 'malformed';
+  const texts = [f.protocol, f.suite, f.kind, f.sender, f.recipient, f.conversation, f.key, f.digest, f.attempt, f.salt, f.nonce, f.sealed];
+  if (texts.some(value => typeof value !== 'string') || !Number.isSafeInteger(f.schemaVersion)) return 'malformed';
+  if (f.protocol !== THREADLINE_PROTOCOL || f.suite !== THREADLINE_SUITE) return 'unknown-suite';
+  if (f.schemaVersion !== 1) return 'future-schema';
+  if (f.recipient !== keys.principal) return 'wrong-recipient';
+  const routing = routingOf(f);
+  let plain: string;
+  try { plain = keys.open(f.sender, associated(routing), f); } catch { return 'malformed'; }
+  if (plain === 'unknown-key') return 'unknown-key';
+  // Any change to the ciphertext or to the routing it authenticates fails here.
+  if (plain === 'invalid') return 'bad-ciphertext';
+  let inner: { routing: ThreadlineRouting; envelope: AgentTransportEnvelope | null; receipt: EndpointReceipt | null; signature: string };
+  try { inner = JSON.parse(plain) as typeof inner; } catch { return 'malformed'; }
+  if (!inner || typeof inner.signature !== 'string' || !inner.routing) return 'malformed';
+  const signed = { routing: inner.routing, envelope: inner.envelope ?? null, receipt: inner.receipt ?? null };
+  let verdict: 'valid' | 'invalid' | 'unknown-key';
+  try {
+    if (encoded(routingOf(inner.routing)).bytes !== encoded(routing).bytes) return 'binding-mismatch';
+    verdict = keys.verify(f.sender, encoded(signed).bytes, inner.signature);
+  } catch { return 'malformed'; }
+  if (verdict === 'unknown-key') return 'unknown-key';
+  if (verdict !== 'valid') return 'bad-signature';
+  const envelope = signed.envelope, receipt = signed.receipt;
+  if (envelope && (!envelopeIntact(envelope) || envelope.key !== f.key || semanticDigest(envelope) !== f.digest || envelope.sender !== f.sender
+    || envelope.recipient !== f.recipient || envelope.conversation !== f.conversation)) return 'binding-mismatch';
+  if (receipt && (receipt.key !== f.key || receipt.digest !== f.digest)) return 'binding-mismatch';
+  return { envelope, receipt };
+}
+
 export function createThreadlineReferenceAdapter(input: Readonly<{ keys: ThreadlineKeys; relay: ThreadlineRelay;
   now: () => number; freshFor: number; context: BoundaryContext;
+  /** Production composition supplies Four over this same custody. No lookup
+   * or receipt creates work; physical envelope attempts remain durable intake. */
+  intake?: Readonly<{ port: IntakePort; route(frame: ThreadlineFrame): InboundRoute }>;
+  /** Ten retains opaque protocol receipts/lookups before interpretation too.
+   * They do not become requester work at Four. */
+  preserve?(raw: string): Result<CaptureInput>;
+  observedReceipt?(envelope: AgentTransportEnvelope, receipt: EndpointReceipt, capture: CaptureInput): void;
   advertisements: (peer: string) => readonly CapabilityAdvertisement[] }>): ThreadlineAdapter {
   const { keys, relay, context } = input;
   const receipts = new Map<string, EndpointReceipt>();
   /** Which recipient and conversation each key+digest was sent to: the only party whose receipt counts. */
-  const sentTo = new Map<string, Readonly<{ recipient: string; conversation: string }>>();
+  const sentTo = new Map<string, Readonly<{ recipient: string; conversation: string; envelope: AgentTransportEnvelope }>>();
   const id = (key: string, digest: string) => `${key}\u0000${digest}`;
-  const open = (f: ThreadlineFrame): ThreadlineRejection['reason'] | ThreadlinePayload => {
-    if (!f || typeof f !== 'object') return 'malformed';
-    const texts = [f.protocol, f.suite, f.kind, f.sender, f.recipient, f.conversation, f.key, f.digest, f.attempt, f.salt, f.nonce, f.sealed];
-    if (texts.some(value => typeof value !== 'string') || !Number.isSafeInteger(f.schemaVersion)) return 'malformed';
-    if (f.protocol !== THREADLINE_PROTOCOL || f.suite !== THREADLINE_SUITE) return 'unknown-suite';
-    if (f.schemaVersion !== 1) return 'future-schema';
-    if (f.recipient !== keys.principal) return 'wrong-recipient';
-    const routing = routingOf(f);
-    let plain: string;
-    try { plain = keys.open(f.sender, associated(routing), f); } catch { return 'malformed'; }
-    if (plain === 'unknown-key') return 'unknown-key';
-    // Any change to the ciphertext or to the routing it authenticates fails here.
-    if (plain === 'invalid') return 'bad-ciphertext';
-    let inner: { routing: ThreadlineRouting; envelope: AgentTransportEnvelope | null; receipt: EndpointReceipt | null; signature: string };
-    try { inner = JSON.parse(plain) as typeof inner; } catch { return 'malformed'; }
-    if (!inner || typeof inner.signature !== 'string' || !inner.routing) return 'malformed';
-    const signed = { routing: inner.routing, envelope: inner.envelope ?? null, receipt: inner.receipt ?? null };
-    let verdict: 'valid' | 'invalid' | 'unknown-key';
-    try {
-      if (encoded(routingOf(inner.routing)).bytes !== encoded(routing).bytes) return 'binding-mismatch';
-      verdict = keys.verify(f.sender, encoded(signed).bytes, inner.signature);
-    } catch { return 'malformed'; }
-    if (verdict === 'unknown-key') return 'unknown-key';
-    if (verdict !== 'valid') return 'bad-signature';
-    const envelope = signed.envelope, receipt = signed.receipt;
-    if (envelope && (!envelopeIntact(envelope) || envelope.key !== f.key || semanticDigest(envelope) !== f.digest || envelope.sender !== f.sender
-      || envelope.recipient !== f.recipient || envelope.conversation !== f.conversation)) return 'binding-mismatch';
-    if (receipt && (receipt.key !== f.key || receipt.digest !== f.digest)) return 'binding-mismatch';
-    return { envelope, receipt };
-  };
   const evidence = (envelope: AgentTransportEnvelope, attempt: string, fields: Pick<DeliveryEvidence, 'state' | 'witness' | 'authoritative'>
     & Partial<Pick<DeliveryEvidence, 'refusedWhat' | 'unresolved'>>): DeliveryEvidence => freeze({ type: 'DeliveryEvidence', schemaVersion: 1,
     key: envelope.key, digest: envelope.digest, edge: envelope.edge, conversation: envelope.conversation, attempt,
     observedAt: input.now(), freshFor: input.freshFor, ...fields });
   const submit = (envelope: AgentTransportEnvelope, attempt: string, kind: 'envelope' | 'lookup'): DeliveryEvidence => {
     const digest = semanticDigest(envelope);
-    sentTo.set(id(envelope.key, digest), { recipient: envelope.recipient, conversation: envelope.conversation });
+    sentTo.set(id(envelope.key, digest), { recipient: envelope.recipient, conversation: envelope.conversation, envelope });
     const f = sealThreadlineFrame(keys, { kind, recipient: envelope.recipient, conversation: envelope.conversation, key: envelope.key,
       digest, attempt }, { envelope, receipt: null });
     if (f === 'unknown-key') return evidence(envelope, attempt, { state: 'refused', witness: { kind: 'transport', principal: THREADLINE_PROTOCOL },
@@ -173,7 +183,19 @@ export function createThreadlineReferenceAdapter(input: Readonly<{ keys: Threadl
     pump: endpoint => {
       const rejected: ThreadlineRejection[] = [];
       for (const f of relay.collect(keys.principal)) {
-        const opened = open(f);
+        let capture: CaptureInput | undefined;
+        if (input.preserve) {
+          capture = consumeResult(input.preserve(encoded(f).bytes), { Success: value => value, Refused: () => undefined });
+          if (!capture) { rejected.push({ reason: 'intake-refused', sender: f.sender, key: f.key }); continue; }
+        }
+        if (input.intake && f?.kind === 'envelope') {
+          let accepted = false;
+          try { accepted = consumeResult(input.intake.port.receive(encoded(f).bytes, input.intake.route(f)), {
+            Success: disposition => disposition.kind === 'admitted' || disposition.kind === 'duplicate', Refused: () => false }); }
+          catch { /* Four preserves refused arrivals; a failed read grants nothing. */ }
+          if (!accepted) { rejected.push({ reason: 'intake-refused', sender: f.sender, key: f.key }); continue; }
+        }
+        const opened = openThreadlineFrame(keys, f);
         const sender = typeof f?.sender === 'string' ? f.sender : '', key = typeof f?.key === 'string' ? f.key : '';
         if (typeof opened === 'string') { rejected.push({ reason: opened, sender, key }); continue; }
         if (f.kind === 'receipt' && opened.receipt) {
@@ -183,6 +205,12 @@ export function createThreadlineReferenceAdapter(input: Readonly<{ keys: Threadl
             rejected.push({ reason: 'unexpected-receipt', sender, key }); continue;
           }
           const prior = receipts.get(id(f.key, f.digest)), next = opened.receipt;
+          if (capture) input.observedReceipt?.(expected.envelope, next, capture);
+          // An authenticated lookup can recover a lost result delivery. It
+          // never re-offers work: the endpoint only records the exact result
+          // against the already owned contract, under the verified signer.
+          if (next.state === 'answered' && next.result && expected.envelope.kind === 'offer' && expected.envelope.contract)
+            endpoint.receive(resultEnvelope(expected.envelope.contract, next.result, input.now()), input.now(), f.sender);
           // A later lookup never erases a stronger stored proof (answered before a stale queued receipt).
           if (!prior || prior.state === 'unknown' || next.state === 'answered' || (prior.state === 'durably-queued' && next.state !== 'unknown'))
             receipts.set(id(f.key, f.digest), next);

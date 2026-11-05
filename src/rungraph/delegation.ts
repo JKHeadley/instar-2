@@ -116,7 +116,8 @@ export type DelegationRecord =
   | Readonly<{ record: 'evidence'; evidence: DeliveryEvidence }>
   | Readonly<{ record: 'result'; result: DelegationResult }>
   | Readonly<{ record: 'collection'; edge: string; terminal: string; digest: string; at: number }>
-  | Readonly<{ record: 'cancel'; edge: string; by: string; reason: string; at: number }>
+  | Readonly<{ record: 'cancel'; edge: string; by: string; reason: string; at: number;
+    message?: Readonly<{ key: string; digest: string; at: number }> }>
   | Readonly<{ record: 'conflict'; edge: string; subject: string; left: string; right: string; at: number }>
   /** Proof that the exact edge, acceptance, result, collection or cancel prefix achieved a replicated demand.
    * Without it that record is retained history only (never dispatchable, executable, answered, collected or
@@ -141,6 +142,8 @@ export interface EdgeView {
   readonly retained: DelegationResult | null;
   readonly collected: boolean;
   readonly cancellation: 'none' | 'requested' | 'confirmed';
+  /** Retained request identity; custody still requires cancellation !== none. */
+  readonly cancellationRequest: Extract<DelegationRecord, { record: 'cancel' }> | null;
   readonly conflicts: readonly string[];
   /** An offer may leave only when the edge's durability demand is proven met. */
   readonly dispatchable: boolean;
@@ -193,14 +196,14 @@ export function childAuthority(contract: DelegationContract): DelegationAuthorit
 export function foldDelegation(records: readonly DelegationRecord[]): ReadonlyMap<string, EdgeView> {
   type Mutable = { contract: DelegationContract; acceptance: EdgeView['acceptance']; lastProven: DeliveryState | null;
     uncertain: string[]; refusals: NonNullable<DeliveryEvidence['refusedWhat']>[]; result: DelegationResult | null;
-    collected: boolean; conflicts: string[]; proofs: Set<DeliveryState>; cancelRequested: boolean; achieved: Set<DurablePrefix> };
+    collected: boolean; conflicts: string[]; proofs: Set<DeliveryState>; cancelRequested: boolean; cancellationRequest: EdgeView['cancellationRequest']; achieved: Set<DurablePrefix> };
   const edges = new Map<string, Mutable>();
   for (const row of records) {
     if (row.record === 'edge') {
       const prior = edges.get(row.contract.id);
       if (prior) { if (prior.contract.digest !== row.contract.digest) prior.conflicts.push(`edge digest ${row.contract.digest}`); continue; }
       edges.set(row.contract.id, { contract: row.contract, acceptance: null, lastProven: null, uncertain: [], refusals: [],
-        result: null, collected: false, conflicts: [], proofs: new Set(), cancelRequested: false, achieved: new Set() });
+        result: null, collected: false, conflicts: [], proofs: new Set(), cancelRequested: false, cancellationRequest: null, achieved: new Set() });
       continue;
     }
     const edgeId = row.record === 'evidence' ? row.evidence.edge : row.record === 'result' ? row.result.edge : row.edge;
@@ -221,7 +224,10 @@ export function foldDelegation(records: readonly DelegationRecord[]): ReadonlyMa
       if (!edge.result) edge.result = row.result;
       else if (edge.result.digest !== row.result.digest) edge.conflicts.push(`result digest ${row.result.digest}`);
     } else if (row.record === 'collection') edge.collected = true;
-    else if (row.record === 'cancel') edge.cancelRequested = true;
+    else if (row.record === 'cancel') {
+      edge.cancelRequested = true;
+      if (!edge.cancellationRequest || !edge.cancellationRequest.message && row.message) edge.cancellationRequest = row;
+    }
     else if (row.record === 'conflict') edge.conflicts.push(`${row.subject}: ${row.left} vs ${row.right}`);
     else if (row.record === 'durable' && row.durability === 'replicated' && row.replicas >= 1) edge.achieved.add(row.prefix ?? 'edge');
   }
@@ -243,7 +249,7 @@ export function foldDelegation(records: readonly DelegationRecord[]): ReadonlyMa
     view.set(id, freeze({ contract: edge.contract, acceptance: edge.acceptance,
       proven: DELIVERY_STATES.filter(state => edge.proofs.has(state)), lastProven: edge.lastProven,
       uncertain: [...edge.uncertain], refusals: [...edge.refusals], result, retained: result ? null : edge.result, collected,
-      cancellation, conflicts: [...edge.conflicts],
+      cancellation, cancellationRequest: edge.cancellationRequest, conflicts: [...edge.conflicts],
       dispatchable: edge.contract.durability === 'local-durable' || edge.achieved.has('edge'),
       executable: edge.acceptance !== null && (edge.contract.durability === 'local-durable' || edge.achieved.has('acceptance')),
       achieved: edge.contract.durability === 'local-durable' ? 'local-durable' : edge.achieved.has('edge') ? 'replicated' : null,
@@ -265,7 +271,8 @@ export interface DelegationLedger {
   /** Exactly once per (edge, terminal) as a logical transition; replays return the existing collection. */
   collect(edge: string, at: number): Result<EdgeView>;
   /** Cancels the edge and every descendant edge; each stays owned until its cancellation is confirmed. */
-  cancel(edge: string, by: string, reason: string, at: number): Result<readonly string[]>;
+  cancel(edge: string, by: string, reason: string, at: number,
+    message?: Readonly<{ key: string; digest: string; at: number }>): Result<readonly string[]>;
   retry(edge: string): Result<RetryPlan>;
   view(): ReadonlyMap<string, EdgeView>;
   outstanding(): readonly EdgeView[];
@@ -419,15 +426,23 @@ export function createDelegationLedger(store: DelegationStorePort, context: Boun
         { edge: edgeId, kind: 'collection', at });
       return edgeOf(edgeId);
     }),
-    cancel: (edgeId, by, reason, at) => boundary('DelegationCancel', { edge: edgeId }, context, () => {
+    cancel: (edgeId, by, reason, at, message) => boundary('DelegationCancel', { edge: edgeId }, context, () => {
       const all = view(), edge = all.get(edgeId);
       need(edge, `unknown delegation edge ${edgeId}`);
       need(by === edge.contract.owner, 'only the accountable parent may cancel its edge');
+      if (message) {
+        text(message.key, 'cancel message key'); text(message.digest, 'cancel message digest'); count(message.at, 'cancel message clock');
+        need(!edge.cancellationRequest?.message
+          || encoded(edge.cancellationRequest.message).bytes === encoded(message).bytes,
+        'cancel message identity changed');
+      }
       const targets = [edgeId, ...descendants(edge.contract, all)];
       for (const target of targets) {
         const child = all.get(target)!;
-        if (child.cancellation === 'none' && !child.result)
-          durable({ record: 'cancel', edge: target, by, reason, at }, child.contract.durability, { edge: target, kind: 'cancel', at });
+        if (!child.result && (child.cancellation === 'none'
+          || target === edgeId && message && !child.cancellationRequest?.message))
+          durable({ record: 'cancel', edge: target, by, reason: child.cancellationRequest?.reason ?? reason, at,
+            ...(target === edgeId && message ? { message } : {}) }, child.contract.durability, { edge: target, kind: 'cancel', at });
       }
       return targets;
     }),

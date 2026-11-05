@@ -609,7 +609,8 @@ export function createClaudeCodeSubscriptionRoute(input:
           source: 'Subscription preview: charge and quiescence unknown; no retry or fallback' }, retryBlocked: false });
       try {
         ensure(bounds.automaticRetries === 0 && bounds.maxCharge === 0 && bounds.timeout > 0 && bounds.timeout <= policy.timeout
-          && Number.isSafeInteger(bounds.timeout) && bounds.maxTokens === policy.maxTokens
+          && Number.isSafeInteger(bounds.timeout) && Number.isSafeInteger(bounds.maxTokens)
+          && bounds.maxTokens > 0 && bounds.maxTokens <= policy.maxTokens
           && bounds.maxOutputBytes === policy.maxOutputBytes && Buffer.byteLength(bytes) <= promptBytes
           && Buffer.byteLength(system, 'utf8') + Buffer.byteLength(bytes, 'utf8') <= promptBytes,
         'subscription invocation bounds differ');
@@ -622,7 +623,7 @@ export function createClaudeCodeSubscriptionRoute(input:
         // refuses more than policy.maxTokens answer tokens. The CLI's generation limit also needs its thinking
         // budget: train-163 produced truncated continuations even for 1775-1821 answer tokens under a 2048 cap.
         const env = Object.freeze({ PATH: policy.path, HOME: profile.home, CLAUDE_CONFIG_DIR: profile.configDirectory,
-          CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(subscriptionGenerationTokens(policy.maxTokens)),
+          CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(subscriptionGenerationTokens(bounds.maxTokens)),
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', ...SUBSCRIPTION_THINKING_ENV,
           ...(config.toolTurn ? { CLAUDE_CODE_TMPDIR: config.toolTurn.scratch, ...SUBSCRIPTION_TOOL_SESSION_ENV } : {}) });
         const command = async (args: readonly string[], stdin: string, timeout: number, maxBytes: number,
@@ -632,7 +633,7 @@ export function createClaudeCodeSubscriptionRoute(input:
           // Current authority/profile checks can be slow. Compute the model's remaining time
           // AFTER them, at dispatch; a timeout chosen before check() can already be stale.
           const now = config.now();
-          const commandTimeout = stdin.length > 0 ? Math.min(timeout, bounds.deadline - now - 100) : timeout;
+          const commandTimeout = Math.min(timeout, bounds.deadline - now - 100);
           ensure(Number.isSafeInteger(bounds.deadline) && commandTimeout > 0 && now + commandTimeout <= bounds.deadline,
             'subscription owner deadline has insufficient command time');
           const result = await config.io.execute({ executable: profile.executable, args,
@@ -678,7 +679,7 @@ export function createClaudeCodeSubscriptionRoute(input:
           && typeof frame.session_id === 'string'
           && frame.session_id.length > 0 && frame.session_id.length <= 256
           && reportedUsage !== null
-          && reportedUsage.answerTokens! <= policy.maxTokens, 'subscription result refused');
+          && reportedUsage.answerTokens! <= bounds.maxTokens, 'subscription result refused');
         const usage = reportedUsage;
 
         if (frame.is_error === true) {

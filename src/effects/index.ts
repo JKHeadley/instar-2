@@ -5,7 +5,7 @@ export { createEffectSpine, isHarnessLiveInputOwnerRegistration, decodeOutboundM
   decodeNativeConfinedLaunchDefinitionAtOrigin, decodeHistoricalNativeConfinedLaunchDefinition,
   decodeNativeConfinedLaunchRequestAtOrigin, decodeHistoricalNativeConfinedLaunchRequest,
   decodeNativeConfinedLaunchObservationAtOrigin, decodeHistoricalNativeConfinedLaunchObservation } from './records.js';
-export { createEffectDoorway, createHarnessLiveInputExecution, isHarnessLiveInputExecution } from './doorway.js';
+export { readEffectRunSettlement, createEffectDoorway, createHarnessLiveInputExecution, isHarnessLiveInputExecution } from './doorway.js';
 export { consumeEffectSettlement } from './settlement-authority.js';
 export * from './provider-api.js';
 export { consumeAcceptedProviderAnswer } from './provider-path.js';

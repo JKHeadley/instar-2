@@ -34,7 +34,7 @@ const testMatch = typeof testEndpoint === 'string' ? /^http:\/\/127\.0\.0\.1:(\d
 if (testEndpoint !== undefined && (token !== TEST_TOKEN || !testMatch
   || Number(testMatch[1]) < 1 || Number(testMatch[1]) > 65535)) process.exit(2);
 // answerCallbackQuery only clears a pressed button with a short toast; it carries no message.
-const validMethod = request?.method === 'getMe' || request?.method === 'getUpdates' || request?.method === 'sendMessage'
+const validMethod = request?.method === 'getMe' || request?.method === 'getUpdates' || request?.method === 'sendMessage' || request?.method === 'createForumTopic'
   || request?.method === 'answerCallbackQuery' || request?.method === 'setMessageReaction' || request?.method === 'sendChatAction'
   || request?.method === 'getChat' || request?.method === 'getChatMemberCount' || request?.method === 'getChatMember';
 const identityRequestPresent = request?.method !== 'getMe' || (
@@ -44,6 +44,14 @@ if (!/^[0-9]+:[A-Za-z0-9_-]{20,}$/.test(token) || !validMethod
   || !record(request.body)
   || !Number.isSafeInteger(request.timeoutMs) || request.timeoutMs <= 0
   || !identityRequestPresent) process.exit(2);
+
+if (request.method === 'createForumTopic' && (
+  Object.keys(request.body).sort().join(',') !== 'chat_id,name'
+  || typeof request.body.chat_id !== 'string' || !/^-[1-9][0-9]*$/.test(request.body.chat_id)
+  || !Number.isSafeInteger(Number(request.body.chat_id))
+  || typeof request.body.name !== 'string' || request.body.name.trim().length === 0
+  || Array.from(request.body.name).length > 40 || Buffer.byteLength(request.body.name, 'utf8') > 160
+  || request.timeoutMs > 30000)) process.exit(2);
 
 function uncertain(stage, limitation = 'transport', details = {}) {
   process.stdout.write(JSON.stringify({ kind: 'uncertain', limitation, stage, ...details }));
@@ -244,7 +252,7 @@ function scanCredential(bytes) {
 // complete outbound body before the irreversible network call, including the
 // bounded representations above. Other credentials need exact evidence from
 // protected custody; a credential-shaped string alone cannot block a send.
-if (request.method === 'sendMessage' || request.method === 'setMessageReaction' || request.method === 'sendChatAction') {
+if (request.method === 'createForumTopic' || request.method === 'sendMessage' || request.method === 'setMessageReaction' || request.method === 'sendChatAction') {
   const outgoing = JSON.stringify(request.body);
   if (scanCredential(outgoing) !== null) {
     uncertain('scan-policy'); process.exit(0);

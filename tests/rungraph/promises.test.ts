@@ -1,11 +1,29 @@
 import { expect, it } from 'vitest';
 import { createPromiseStore, recordCommitments, recordReplyLoop, closeCommitment, schedulePromise,
+  recordThreadlineCommitment, findCommitmentByThread, bindThreadlineCommitment,
   type PromiseScheduleInput, type PromiseWork } from '../../src/rungraph/promises.js';
 
 const input: PromiseScheduleInput = { id: 3, openedAt: 1000, dueAt: 21001, deliveryRequested: false, nextOperatorAt: null,
   waitsOn: 'date', work: undefined };
 const work: PromiseWork = { last: 22000, lastSlot: 21001, outcome: 'continue' };
 const schedule = (changes: Partial<PromiseScheduleInput> = {}) => schedulePromise({ ...input, ...changes }, 10000);
+it('Threadline retains one active binding, refuses automatic redirection and rebuilds its active index after closure', () => {
+  const store = createPromiseStore<number>();
+  const origin = { thread: 'thread:1', edge: 'edge:1', peer: 'peer:1', topic: 42, source: 'turn:1', quote: 'Review this work.' };
+  recordThreadlineCommitment(store, origin); recordThreadlineCommitment(store, origin);
+  expect(findCommitmentByThread(store, origin.thread)?.id).toBe(0);
+  expect(store.commitments).toHaveLength(1);
+  expect(() => recordThreadlineCommitment(store, { ...origin, topic: 43 })).toThrow(/origin/);
+  expect(() => recordThreadlineCommitment(store, { ...origin, peer: 'impostor' })).toThrow(/peer/);
+  bindThreadlineCommitment(store, origin.thread, 43);
+  expect(findCommitmentByThread(store, origin.thread)?.note.threadline?.topic).toBe(43);
+  closeCommitment(store, { id: 0, source: 'checked-delivery', quote: 'Delivered.' });
+  expect(findCommitmentByThread(store, origin.thread)).toBeNull();
+  recordThreadlineCommitment(store, { ...origin, edge: 'edge:2', topic: 43 });
+  const replay = { commitments: structuredClone(store.commitments), closed: new Map(store.closed) };
+  expect(findCommitmentByThread(replay, origin.thread)).toMatchObject({ id: 1, note: { threadline: { edge: 'edge:2', topic: 43 } } });
+  expect(replay.closed.get(0)?.source).toBe('checked-delivery');
+});
 it('keeps stable promise identities, declaration joins and terminal evidence in the owner projection', () => {
   const store = createPromiseStore<number>();
   recordCommitments(store, [{ in: 'reply', source: 'turn:1', quote: 'I will check.', agentPromise: {

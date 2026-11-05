@@ -31,6 +31,7 @@ export { adapterStimulusClasses, supervisionCoverage, reviewDisclosureAllowed, r
   outcomeWindowStatus, convergenceEligible, activationGaps } from './policy.js';
 export type { SupervisionObservation, SupervisionCoverageRow, ReportClaim } from './policy.js';
 export { createEffectSettlementAssessmentPort, createProviderResponseAssessmentPort } from './effect-consumption.js';
+export { createRunExitCheck } from './run-exit.js';
 export type { EffectSettlementAssessmentInput, ConsumedEffectAssessment, EffectSettlementAssessmentPort } from './effect-consumption.js';
 export { providerSettlementSupported } from './provider-settlement-support.js';
 export type { ProviderSettlementSupportInput } from './provider-settlement-support.js';

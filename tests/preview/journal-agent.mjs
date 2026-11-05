@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+import { createHubModelRoute } from './hub-model-route.js';
+import { connectProductionCollaboration } from './production-collaboration.js';
+import { fileURLToPath } from 'node:url';
+import { createCollaborationDispatch } from './collaboration-dispatch.mjs';
+import { createCollaborationSurface, collaborationTopicForOperation } from './collaboration-hub.js';
+import { topicNames } from './journal.js';
+import { createAttentionSurface } from './attention-surface.js';
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
 import { nextObligationAt } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
@@ -78,6 +85,8 @@ import { createLeaseHolder } from './two-machine-serving.js';
 import { adoptReceivedCopy, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, openReplicaStore, serveReplicaStore,
   backupStatusLine, sharedHistoryStatus, takeoverEligibility } from './journal-replication.js';
 import { createApprovalSurfaceClient } from './approval-surface-client.mjs';
+import { createApprovalFileTransport } from '../../scripts/approval-surface-transport.mjs';
+import { readOwnedFile as readApprovalTransportConfig } from '../../scripts/approval-surface-core.mjs';
 import { dashboardSnapshot } from './operator-dashboard.js';
 import { parseExplicitYesInstallation } from './explicit-yes-installation.js';
 import { createGitHubReviewClient } from './github-review-client.js';
@@ -171,10 +180,14 @@ const parse = values => {
 // given; the runner reads the operator's store and writes only its own request outbox.
 const approvalSurfaceOf = options => {
   const given = ['approval-store', 'approval-outbox', 'approval-operator-uid'].filter(name => options[name] !== undefined);
-  if (!given.length) return null;
+  if (!given.length && options['approval-transport'] === undefined) return null;
   if (given.length !== 3) throw Error('preview: --approval-store, --approval-outbox and --approval-operator-uid go together');
+  const operatorUid = number(options['approval-operator-uid'], 'approval-operator-uid', 0);
+  const transport = options['approval-transport'] ? createApprovalFileTransport(
+    JSON.parse(readApprovalTransportConfig(options['approval-transport'], operatorUid, process.getuid())),
+    { credential: () => process.env.INSTAR_AUTH_TOKEN }) : undefined;
   return createApprovalSurfaceClient({ store: options['approval-store'], outbox: options['approval-outbox'],
-    operatorUid: number(options['approval-operator-uid'], 'approval-operator-uid', 0), now: wallNow });
+    operatorUid, now: wallNow, transport });
 };
 // Rules 79, 81 (plan #502): the operator dashboard served READ-ONLY by this runner, with no approval port. Installed only when
 // both are given: where it listens (loopback or this machine's Tailscale address) and the loopback endpoint that checks the
@@ -746,8 +759,10 @@ const stepCheckView = view => ({ total: view.stepChecks.size,
     reserved: item.reserved === true, result: item.result ?? null })) });
 
 
-async function main() {
-  const { command, options } = parse(process.argv.slice(2));
+/** Existing installation-host.run(application) may supply its booted canonical
+ * owners. No installation, credential, parser or grant is created here. */
+export async function runJournalAgent(application, args = process.argv.slice(2)) {
+  const { command, options } = parse(args);
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   // Retired 2026-10-20 by the operator's review (promotion record): no live evidence, so it can no longer be turned on.
   if (options['step-check'] === 'true') throw new PlainRefusal('preview: the step check is retired (2026-10-20, no live evidence); launch without --step-check true');
@@ -2135,7 +2150,56 @@ async function main() {
         approvalSurface?.publish(snapshot);
       } catch { /* the page reads its copy's age */ }
     };
-    const readOnlyServer = readOnly && serveReadOnly(createReadOnlyDashboard({ checkPin: readOnly.checkPin,
+    let attentionReady = false, sendTelegram;
+    const collaborationAdmitted = () => {
+      if (!attentionReady || workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires) return false;
+      try { requireAuthority(options, activation, activationPath, journal.view, wallNow()); return true; } catch { return false; }
+    };
+    const collaborationAuthorization = effect => {
+      if (!collaborationAdmitted() || g.forum !== true) return null;
+      const policy = effectPolicyOf();
+      const verdict = admitToolCallEffect(effect.kind === 'topic' ? 'mcp__telegram__createForumTopic' : 'mcp__telegram__sendMessage',
+        { chat_id: g.chat }, { ...admissionConfig(), effectPolicy: policy }, wallNow());
+      return verdict.admitted === true ? JSON.stringify({ grant: g.grant, chat: g.chat, bot: g.bot, policy, verdict }) : null;
+    };
+    const hubModel = createHubModelRoute({ view: () => journal.view, now: wallNow, admitted: collaborationAdmitted,
+      append: row => journal.append(row), model: required(options, 'model'),
+      policy: doorway.policyFor(required(options, 'model'), doorway.conversationFraming),
+      replicated: async () => { if (shared === null) return true; await shared.sync(); return shared.peerCurrent() && ownerHeld(); },
+      recordedCall: (judgment, bytes, bounds) => modelLaunch.run(() => callSubscription(judgment, bytes, bounds.operation, bounds)) });
+    const collaborationSurface = createCollaborationSurface({ state: () => journal.view.collaboration,
+      append: row => journal.append(row), now: wallNow, admitted: collaborationAdmitted, authorization: collaborationAuthorization,
+      replicated: async () => { if (shared === null) return true; await shared.sync(); return shared.peerCurrent() && ownerHeld(); },
+      topics: () => {
+        const names = new Map(topicNames(journal.view));
+        for (const attempt of journal.view.collaboration?.attempts ?? [])
+          if (attempt.effect.kind === 'topic' && attempt.outcome?.kind === 'accepted') names.set(attempt.outcome.id, attempt.effect.name);
+        return [...names].map(([topicId, topicName]) => ({ topicId, topicName }));
+      }, effect: (id, effect) => dispatchCollaboration(id, effect) }, {
+      admitted: id => {
+        const turn = journal.view.turns.get(id);
+        const hub = journal.view.collaboration?.attempts.find(attempt => attempt.id === 'hub:create')?.outcome;
+        return collaborationAdmitted() && turn?.accepted === true && operatorWriter(journal.view, turn)
+          && !turn.editOf && hub?.kind === 'accepted' && turn.thread === hub.id;
+      },
+      model: (id, request) => hubModel(id, { ...request,
+        prompt: redact(concealSecretMaterial(request.prompt, heldSecretValues())).text }),
+      messages: threadId => (journal.view.collaboration?.inbox ?? []).filter(item => item.envelope.conversation === threadId)
+        .slice(-10).map(({ envelope }) => ({ direction: 'in', remoteAgentName: envelope.sender,
+          timestamp: new Date(envelope.at).toISOString(), text: envelope.contract?.task.question ?? envelope.result?.result ?? '' }))
+    });
+    const attentionSurface = createAttentionSurface(journal, { now: wallNow, machine: ownerMachine,
+      ...(application?.owners.delegation ? { delegations: () => [...application.owners.delegation.ledger.view().values()] } : {}),
+      ...(approvalSurface ? { tracking: { ...approvalSurface.tracking, link: approvalSurface.link } } : {}),
+      admitted: () => {
+        if (!attentionReady || workerStop.value || existsSync(stopPath) || !ownerHeld()) return false;
+        try { requireAuthority(options, activation, activationPath, journal.view, wallNow()); return true; } catch { return false; }
+      },
+      replicated: async () => { if (shared === null) return true; await shared.sync(); return shared.peerCurrent() && ownerHeld(); } });
+    const collaboration = application?.owners.delegation ? connectProductionCollaboration({ owners: application.owners,
+      hub: collaborationSurface.hub, view: () => journal.view, append: row => journal.append(row),
+      now: wallNow, admitted: collaborationAdmitted }) : null;
+    const readOnlyServer = readOnly && serveReadOnly(createReadOnlyDashboard({ checkPin: readOnly.checkPin, attention: attentionSurface, collaboration: collaborationSurface,
       state: () => dashboardText === null ? { kind: 'missing' } : snapshotState(dashboardText, wallNow()) }),
     `${readOnly.listen.host}:${String(readOnly.listen.port)}`);
     if (readOnlyServer) {
@@ -2252,6 +2316,18 @@ async function main() {
       model: async ({ id, prepared, question, context: packet }) => {
         try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
+        // Only the exact durably admitted operator turn in the confirmed hub can
+        // request binding. Noncommands and uncertain classifier answers retain
+        // the normal answer path and its already reserved call allowance.
+        const hubTurn = journal.view.turns.get(id);
+        if (hubTurn) {
+          const history = journal.view.order.filter(turn => turn.accepted && turn.thread === hubTurn.thread && turn.update < hubTurn.update)
+            .slice(-6).flatMap(turn => [{ fromUser: true, text: turn.text },
+              ...(turn.answer && turn.sent !== undefined ? [{ fromUser: false, text: turn.answer }] : [])]);
+          const bound = await collaborationSurface.command({ id, text: hubTurn.text, context: history });
+          if (bound.handled) return { state: 'complete', text: bound.result?.outcome === 'bound'
+            ? 'Conversation bound.' : 'Binding saved; confirmation pending.' };
+        }
         if (conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id)) {
           // The journal reserves the one format repair before this call. Its exact packet gets
           // a durable child identity; replaying the original bytes still names the original turn.
@@ -2402,7 +2478,7 @@ async function main() {
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
       sendAdmits: true,
-      send: async ({ text, expectedText, formatting, chat, thread: signedThread, replyTo, replyMarkup, target, provenance, admit, current, observeSendPhase }) => {
+      send: sendTelegram = async ({ text, expectedText, formatting, chat, thread: signedThread, replyTo, replyMarkup, target, provenance, admit, current, observeSendPhase, silent = false }) => {
         if (!journal.verifyOutbound(provenance, { target, chat, ...(signedThread === undefined ? {} : { thread: signedThread }), body: text }))
           return { kind: 'refused', reason: 'outbound provenance unsigned' };
         if (formatting && !journal.verifyOutbound(formatting.fallback.provenance, { target, chat, ...(signedThread === undefined ? {} : { thread: signedThread }), body: formatting.fallback.text }))
@@ -2471,7 +2547,7 @@ async function main() {
                 return shared === null || await shared.replicated(() => !noticeAllowed() || current && !current()
                   ? 'stopped before plain alternative' : null) === null;
               },
-              body: { chat_id: chat, ...(thread === undefined ? {} : { message_thread_id: thread }),
+              body: { chat_id: chat, ...(silent ? { disable_notification: true } : {}), ...(thread === undefined ? {} : { message_thread_id: thread }),
                 ...(replyTo === undefined ? {} : { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } }),
                 ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
               invoke: body => physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage', body, timeoutMs: 30000 }, token()),
@@ -2886,6 +2962,11 @@ async function main() {
           maxSessions: sessionLimits.maxSessions, idleMs: sessionLimits.idleMs, topicConfig: topicConfiguration,
           capacity: createTopicWorkerCapacity(sessionLimits),
           topicOf: operation => {
+            if (operation.startsWith('threadline:')) {
+              const topic = collaborationTopicForOperation(journal.view.collaboration, operation);
+              if (topic === null) throw Error('preview: Threadline input lacks admitted custody and a bound topic');
+              return String(topic);
+            }
             // A repair inherits only its admitted parent's topic, never its execution identity.
             // The durable one-repair reservation is required; a suffix alone grants nothing.
             const parent = /^telegram:[0-9]+:update:[0-9]+:format-retry$/u.test(operation)
@@ -2925,6 +3006,9 @@ async function main() {
     const physical = createProductionTelegramIO(join(root, '.writer'), { preserve(ref, bytes) {
       if (captures.has(ref) && captures.get(ref) !== bytes) return false; captures.set(ref, bytes); return true;
     }, read: ref => captures.get(ref) ?? null }, offlineEndpoint);
+    const dispatchCollaboration = createCollaborationDispatch({ journal, authorization: collaborationAuthorization,
+      held: heldVerdict(heldSecrets), disclosure: () => requireGroupDisclosure(journal.view), shared, sendTelegram, physical,
+      tokenReference: secretRef('telegram-bot-token'), credential: token });
     if (signalled || existsSync(stopPath)) {
       reportExit(signalName ? `paused by signal ${signalName}` : 'operator stop latched');
       return;
@@ -3129,6 +3213,7 @@ async function main() {
       if (cutFile === null) return false;
       try { return Number(readFileSync(cutFile, 'utf8').trim()) > wallNow(); } catch { return false; }
     };
+    attentionReady = true;
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
@@ -3164,6 +3249,9 @@ async function main() {
       reportCap();
       runDueProof();
       checkDoorways();
+      await attentionSurface.maintain();
+      await collaboration?.maintain();
+      await collaboration?.work();
       publishDashboard();
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       let pollLimit;
@@ -3354,7 +3442,7 @@ async function main() {
   }
 }
 
-try { await main(); } catch (error) {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) try { await runJournalAgent(); } catch (error) {
   reportExit('error (details suppressed)');
   process.stderr.write(error instanceof AgentPathRefused || error instanceof PlainRefusal ? `${error.message}\n`
     : 'preview refused to start or continue; details suppressed\n');

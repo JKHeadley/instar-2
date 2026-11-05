@@ -1,3 +1,4 @@
+import { delegatedRunSchedule } from '../rungraph/delegated-authority.js';
 import { acceptedReplyOpening, acceptedReplyPreviewText } from '../rungraph/accepted-reply.js';
 import { hashBytes } from '../facts/index.js';
 import { requireRunPairAdmission } from './run-pair.js';
@@ -508,8 +509,11 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
       ensure(['scheduled', 'running', 'restoring', 'waiting', 'stopped'].includes(r.state) && r.attempts >= 0 && r.attempts <= r.policy.maxAttempts, 'loop state or count');
       const prior = latestLoop(all, r.run);
       if (!prior) {
-        ensure(serving.binding || !all.some(p => p.record.type === 'LoopRecord') || pair?.reply === r.run,
-          'slice supports one run only');
+        const delegated = delegatedRunSchedule(facts, r.run, host.principal.id);
+        ensure(serving.binding || !all.some(p => p.record.type === 'LoopRecord') || pair?.reply === r.run || delegated,
+          'slice supports one run only without a canonical delegated acceptance');
+        if (delegated) ensure(r.policy.maxDuration <= delegated.expiresAt - delegated.createdAt,
+          'delegated observation schedule exceeds its lifetime');
         const opening = facts.find(f => f.kind === 'run-opening' && (f.body as { run?: string }).run === r.run);
         const cause = opening && (opening.body as { record: { opening: { id: string } } }).record.opening.id;
         ensure(!facts.some(f => f.id === cause && f.kind === 'judgment-provider-ProviderAnswerAcceptance') || pair?.reply === r.run,
