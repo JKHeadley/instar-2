@@ -186,7 +186,7 @@
       "id": "decodeVerificationRecord",
       "module": {
         "path": "src/verification/index.ts",
-        "hash": "sha256:20fede08894402d6f47246660ce3415d97d785b60637c5535bfbf1a3d80bce10"
+        "hash": "sha256:83952a4d69e3e140bcf2857b3825bbf44ff58a8d6a6ed4f338e63f362879d1fa"
       },
       "artifact": {
         "path": "src/verification/records.ts",
@@ -197,7 +197,7 @@
       "id": "decodeVerificationRecordAtOrigin",
       "module": {
         "path": "src/verification/index.ts",
-        "hash": "sha256:20fede08894402d6f47246660ce3415d97d785b60637c5535bfbf1a3d80bce10"
+        "hash": "sha256:83952a4d69e3e140bcf2857b3825bbf44ff58a8d6a6ed4f338e63f362879d1fa"
       },
       "artifact": {
         "path": "src/verification/records.ts",
@@ -208,7 +208,7 @@
       "id": "decodeHistoricalVerificationRecord",
       "module": {
         "path": "src/verification/index.ts",
-        "hash": "sha256:20fede08894402d6f47246660ce3415d97d785b60637c5535bfbf1a3d80bce10"
+        "hash": "sha256:83952a4d69e3e140bcf2857b3825bbf44ff58a8d6a6ed4f338e63f362879d1fa"
       },
       "artifact": {
         "path": "src/verification/records.ts",
