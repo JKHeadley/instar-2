@@ -43,7 +43,9 @@
       "reversibility": "costly",
       "reach": "internal",
       "surface": "none",
-      "repeats": { "kind": "no" }
+      "repeats": {
+        "kind": "no"
+      }
     },
     "standards": [
       60,
@@ -52,8 +54,39 @@
       95
     ],
     "holds": [
-      {"rule": 60, "class": "partial", "evidence": {"kind": "fixture", "id": "PREVIEW-RESOURCE-ADMISSION", "stage": "build"}, "portion": "the shipped admit path caps local launch slots, preserves the answer reserve, refuses at the queue deadline and drains after capacity returns; tested through hold without launching a process", "remainder": "kernel CPU/handle limits, sampled memory/process ceilings, escaped descendants, every launch composition and live pressure recovery are not certified by this slot test; verified Part Two extract and independent semantic review remain absent"},
-      {"rule": 61, "class": "partial", "evidence": {"kind": "fixture", "id": "PREVIEW-RESOURCE-ADMISSION", "stage": "build"}, "portion": "queued maintenance respects the priority gate and answer reserve, resumes after the gate reopens, and stops when its queued stop signal arrives; the fake-clock test ends with no active work or timers", "remainder": "whole-system restart/respawn/notification convergence and real host pressure behavior are not proven; verified Part Two extract and independent semantic review remain absent"}
+      {
+        "rule": 60,
+        "class": "partial",
+        "evidence": {
+          "kind": "fixture",
+          "id": "PREVIEW-RESOURCE-ADMISSION",
+          "stage": "build"
+        },
+        "portion": "the shipped admit path caps local launch slots, preserves the answer reserve, refuses at the queue deadline and drains after capacity returns; tested through hold without launching a process",
+        "remainder": "kernel CPU/handle limits, sampled memory/process ceilings, escaped descendants, every launch composition and live pressure recovery are not certified by this slot test; verified Part Two extract and independent semantic review remain absent"
+      },
+      {
+        "rule": 61,
+        "class": "partial",
+        "evidence": {
+          "kind": "fixture",
+          "id": "PREVIEW-RESOURCE-ADMISSION",
+          "stage": "build"
+        },
+        "portion": "queued maintenance respects the priority gate and answer reserve, resumes after the gate reopens, and stops when its queued stop signal arrives; the fake-clock test ends with no active work or timers",
+        "remainder": "whole-system restart/respawn/notification convergence and real host pressure behavior are not proven; verified Part Two extract and independent semantic review remain absent"
+      },
+      {
+        "rule": 60,
+        "class": "partial",
+        "evidence": {
+          "kind": "fixture",
+          "id": "PREVIEW-RESOURCE-CENSUS-RECOVERY",
+          "stage": "build"
+        },
+        "portion": "The actual host owner retains nine real Six allocations under failed process census, then the same living owner verifies complete fresh census and recorded incarnation absence, settles the debits and admits a tenth real local child under unchanged ceilings. A live recorded descendant with denied cleanup remains reserved. Process census keeps the existing 4096-character command projection before the unchanged 1 MiB materialized bound and two-second deadline.",
+        "remainder": "Historical query subtype and live operator delivery of a persistent cleanup-pressure alarm are not established by this isolated proof; independent review and release gates remain required."
+      }
     ]
   }
 ]
