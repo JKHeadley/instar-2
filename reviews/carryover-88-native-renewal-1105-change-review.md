@@ -26,6 +26,8 @@ Prompt review: No model instruction, output parser or acceptance behavior change
 
 Validation: npm run build passed. Guarded Studio renewal ran all ten native contract cases with one worker at nice 10 on the declared runtime. Before renewal, 9/10 passed and only the stale-certificate assertion failed. After renewal, 10/10 passed and the renewal exited 0. Exact final pushed-head lint/register/pinned-test/review/diff receipts belong to the PROGRESS record. The original older unresolved inventory, independent critical review and full/live acceptance obligations are not waived.
 
+Publication: normal replay from source 8d2ac02ce43578568ac3ec30f67e9331f513a320 produced generation sha256:4c909478303c39d203e2da8437a07444df317e82d31371b5269f827c9a4ee5ed, 299 entries/120 rules/34 terms/48 warnings/112 prerequisites, shape-only authority. This refresh changes no runtime standing.
+
 simplestRobustRoute: Use the existing guarded native contract, repository digest functions and normal publication. Only real passing behavior permits renewal of the exact composition claim, followed by full contract verification. No new machinery, unsupported-state downgrade, changed runtime, hand pin or weakened check.
 80/20: One bounded contract before/after renewal and the required publication gates. This is native conformance evidence, not a new live model or full-suite acceptance claim.
 VERDICT: author submission; no independent verdict asserted.
