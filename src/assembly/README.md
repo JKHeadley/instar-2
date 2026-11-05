@@ -113,6 +113,58 @@ host journal and the driver's existing uncertain-delivery rules. Multi-machine
 posture is deliberately local to the admitted conversation owner and its launch;
 this port does not acquire or transfer conversation ownership.
 
+## Lost-worker revival (carryover row 03)
+
+`revival-queue.ts`, `revival-drainer.ts` and `worker-recovery.ts` carry the 1.x
+`ResumeQueue`, `ResumeQueueDrainer` and `SessionRecovery` (JKHeadley/instar
+4f88880a) behind this package's existing ports; `work-evidence.ts`,
+`stall-detector.ts` and `crash-detector.ts` carry their pure helpers. The queue and
+the drainer's brakes persist in the conversation's own host-owned record
+(`revivalQueue`, `revivalBrakes`); the port's `maintain` tick drives the drainer at
+the 1.x 60-second cadence. No second store, timer, watcher or owner is added.
+
+A worker lost mid-turn is a terminal reap whose pending input is the work evidence.
+The queue decides admission: one open entry per conversation, the resurrection ledger
+(two revivals per stable key in 24 hours, reset after a full working lifetime or an
+elapsed window; a cap is loud and retains the input as failed), the 50-entry bound.
+After exact retirement the input becomes a queued revival and every later attempt
+passes the drainer: three consecutive normal readings of the host's pressure gauge
+(a host without a gauge cannot count calm ticks; its resource owner's admission
+remains the pressure gate), the topics owner's one-revival-per-interval gate, the
+reality validation (owner, scope, placement, current grant, stop, original delivery
+digest), the observe-only Tier-1 sanity check (audited, five-second `io.wait`
+deadline, never a gate), then one launch through the existing `replace`. A
+`resources.admit()` refusal is a capacity hold: the entry stays queued and no attempt
+is consumed. After launch the port waits the 15-second settling period and observes
+the replacement; a replacement that died with exact proof of no effect (no unknown
+send, no tool preparation by its claim, no open child) is retired and enters the
+ladder: three attempts, two-minute exponential backoff, three consecutive failures
+open a 30-minute breaker. Anything else that died is invalidated and never retried,
+and a launch that threw is settled uncertain by the host, outside the ladder.
+Interactive conversation workers hold the resource owner's `answer` family, so the
+reserve and critical-before-maintenance ordering give them the 1.x cross-class
+priority over scheduled maintenance work.
+
+Entries expire after the 24-hour TTL (incident age, pause time excluded, marked
+pressure-starved when the gauge was not calm); the admitted conversation lifetime,
+at most four hours, is the tighter brake. `port.revival` carries the operator
+levers (pause, unpause, requeue of a gave-up entry, cancel) and the pull-only
+status (entries, pause, calm ticks, breaker). A pause holds until an explicit
+resume; the 1.x auto-resume of a stale emergency pause is not carried (Rules 4/93).
+Notices go through the host's one aggregated attention port (`notice`): the
+20-minute pressure-held notice, paused-with-waiting-work, breaker, ttl-expired,
+gave-up, invalidated, resurrection-cap, overflow and the honest "restarted" notice;
+the markers that dedupe them are durable, so a restart never repeats one. The 1.x
+dry-run posture and lockfile are not carried: the route ships reviewed and live,
+and the conversation ownership fence is the single writer.
+
+`worker-recovery.ts` keeps the mechanical ladder (three attempts, 15-minute cooldown,
+one-hour expiry, durable), the context-wall latch (durable first-seen, transcript-growth
+deferral, 30-minute ceiling, compaction before a fresh restart) and the ownership gate
+over observation ports; the stall, crash and error-loop detectors judge adapter-parsed
+transcript entries. Transcript rewind and the 7-second in-flight reply poll are not
+carried: the host's send receipts answer exactly, and a rewound action is never replayed.
+
 ## Bounded grounding packet (R5, `production-context-sampler.ts`)
 
 Evidence tier: offline ahead unit. It is not exported from the barrel or wired into

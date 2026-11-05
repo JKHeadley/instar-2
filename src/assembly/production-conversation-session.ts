@@ -490,7 +490,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     const applyTick = (id: string, result: Awaited<ReturnType<ResumeQueueDrainer['tick']>>): boolean => {
       const input = row(id), entry = input.revival ? queue.get(input.revival.entry) : undefined;
       if (result.resumed) return true;
-      if (input.state !== 'revival-queued') return false; // a capacity hold already re-queued it
+      if (input.state === 'settled') return false;
+      if (result.blocked === 'quota' && input.state === 'revival-queued') return false; // a capacity hold already re-queued it
       if (result.invalidated || !entry || entry.status.startsWith('invalidated:')) {
         settle(id, outcome(`queued revival invalidated: ${entry?.status ?? 'entry missing'}; input retained, no automatic replay`)); return false;
       }
@@ -500,7 +501,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       if (entry.status === 'cancelled') { settle(id, outcome('queued revival cancelled by the operator; input retained')); return false; }
       // Held by calm ticks, the breaker, a pause, a gate or backoff: wait at the drain cadence
       // or until the ladder's next attempt, never past the original lifetime.
-      update(id, { retryAt: Math.min(input.revival!.deadline, Math.max(config.now() + drainIntervalMs, entry.nextAttemptAt ?? 0)) });
+      update(id, { state: 'revival-queued', retryAt: Math.min(input.revival!.deadline, Math.max(config.now() + drainIntervalMs, entry.nextAttemptAt ?? 0)) });
       return false;
     };
     const work = async (waiting: readonly string[]) => {
@@ -535,7 +536,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             && revival.deadline === state.deadline && revival.deadline <= parentDeadline(), 'queued revival lifetime exhausted; work retained');
           ensure(calls() < config.maxCalls, 'queued revival allowance exhausted; work retained');
           const entry = queue.get(revival.entry);
-          ensure(entry && entry.sessionName === id && (entry.status === 'queued' || entry.status === 'starting'), 'queued revival entry missing or settled; no automatic replay');
+          ensure(!entry || entry.sessionName === id, 'queued revival entry belongs to another input; no automatic replay');
+          // An entry the operator cancelled, the ladder gave up on or a tick invalidated settles
+          // the retained input with that reason instead of draining it again.
+          if (!entry || entry.status !== 'queued' && entry.status !== 'starting') { applyTick(id, { resumed: false, blocked: 'entry-settled' }); return false; }
           // The 1.x drainer decides this tick: calm ticks, gates, reality validation, the
           // observe-only sanity check, one launch, the settling check and the failure ladder.
           pendingRevival = { id, request, prior, deadline: revival.deadline };

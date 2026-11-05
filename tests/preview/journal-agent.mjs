@@ -2814,10 +2814,17 @@ async function main() {
           if (loginPool) loginRuntimes.get(binding.entry().index).check('session');
           else sessionAdapter.validateActivation(sessionActivation, binding.entry().profile, required(options, 'model'), wallNow(), journal.view.expires);
           await doorway.session.admit({ profile: binding.entry().profile, io: binding.admissionIO(), deadline: wallNow() + 15000, now: wallNow });
-          const held = await hostResources.hold('maintenance', { timeout: 30000, stopped: binding.stopped });
+          // Carryover row 03 (1.x ResumeQueue R2.5 cross-class priority): a conversation worker
+          // answers the operator, so it holds the answer family that the resource owner's reserve
+          // protects and orders before maintenance; scheduled session work stays maintenance.
+          const held = await hostResources.hold(conversationSession ? 'answer' : 'maintenance', { timeout: 30000, stopped: binding.stopped });
           return held === null ? null : { attach: child => held.attach({ pid: Number(child.split(':')[1]), cwd: project }),
             release: async () => (await held.release()).verified };
         } },
+        // The shared pressure gauge (one definition of calm): the resource owner's sampled level.
+        // An unknown reading is not calm (1.x safeTier: cannot read pressure ⇒ do not spawn).
+        pressure: () => { const level = hostResources.snapshot().usage.level;
+          return level === 'normal' ? 'normal' : level === 'elevated' ? 'moderate' : 'critical'; },
         context, now: wallNow, stopped: conversationSession ? hostStopped : binding.stopped,
         ...(conversationSession ? { callAccounting: 'per-call' } : {}),
         ...(!conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords() } : {}),

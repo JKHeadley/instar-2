@@ -37,3 +37,52 @@ Register enforcement: the changed dispatch stays in the existing Part Eight asse
 | Channel/framework scope | Telegram, Slack and Threadline/job paths have distinct wiring | Existing public harness adapter and conversation topics ports are channel-independent | Complete live cross-channel proof remains desk-owned and unclaimed | 30/105/113/114 |
 
 The implementation and tests in this branch close the capacity-stranding defect. Rows explicitly marked incomplete above must not be represented as full feature parity or live proof.
+
+## Round 2 (fix/carryover-03-full-parity-r2-1104): carried source and its 2.0 wiring
+
+Step 1 copied the three 1.x modules, their pure helpers and five test files byte-for-byte
+(commit `a4eadbaa`); step 2 adapted them in place behind existing Part Ten ports. Carried
+lines are the final lines unchanged from the raw copy; adaptation lines are the final lines
+added by the diff from that copy. Core modules reach no clock, timer, filesystem or process
+(NF-52): persistence is the host store, time is the injected clock in milliseconds.
+
+| File | 1.x source | Raw lines | Final lines | Carried | Adapted |
+|---|---|---|---|---|---|
+| `src/assembly/revival-queue.ts` | `src/monitoring/ResumeQueue.ts` | 994 | 632 | 513 | 119 |
+| `src/assembly/revival-drainer.ts` | `src/monitoring/ResumeQueueDrainer.ts` | 807 | 767 | 532 | 235 |
+| `src/assembly/worker-recovery.ts` | `src/monitoring/SessionRecovery.ts` | 1203 | 1096 | 794 | 302 |
+| `src/assembly/work-evidence.ts` | `src/core/WorkEvidence.ts` | 162 | 162 | 162 | 0 |
+| `src/assembly/stall-detector.ts` | `src/monitoring/stall-detector.ts` | 177 | 163 | 105 | 58 |
+| `src/assembly/crash-detector.ts` | `src/monitoring/crash-detector.ts` | 277 | 233 | 188 | 45 |
+| `tests/assembly/revival-queue.test.ts` | `tests/unit/resume-queue.test.ts` | 503 | 510 | 395 | 115 |
+| `tests/assembly/revival-drainer.test.ts` | `tests/unit/resume-queue-drainer.test.ts` | 848 | 818 | 614 | 204 |
+| `tests/assembly/worker-recovery.test.ts` | `tests/unit/SessionRecovery.test.ts` | 406 | 414 | 149 | 265 |
+| `tests/assembly/revival-queue-paused-claimable.test.ts` | `tests/unit/ResumeQueue-paused-claimable.test.ts` | 125 | 118 | 91 | 27 |
+| `tests/assembly/revival-queue-autoheal-lock.test.ts` | `tests/unit/resume-queue-autoheal-lock.test.ts` | 161 | 101 | 26 | 75 |
+
+Newly written 2.0 wiring: `production-conversation-session.ts` +183/−22, `conversation-topics.ts`
++11/−1, `tests/preview/journal-agent.mjs` +8/−1, `tests/assembly/production-conversation-revival.test.ts`
+320 lines (fifteen can-fail decision-boundary cases), the shared fixture +3/−1.
+
+| Imported behavior | Round-2 status | Evidence |
+|---|---|---|
+| Cross-class priority (interactive, job, other; FIFO) | Carried in the queue. In 2.0 one conversation holds at most one open entry; cross-class ordering is the resource owner's critical-before-maintenance order with its answer reserve, so the shipped conversation worker now holds the `answer` family instead of `maintenance`. Scheduled session work keeps `maintenance` and its own obligation tick. | `revival-queue.test.ts` ordering cases; `tests/preview/journal-agent.mjs` hold family; `scripts/resource-owner.mjs` `eligible` |
+| One candidate per tick | Carried per conversation; across topics the topics owner's `revivalGate` admits one revival per drain interval, read by the drainer as its quota gate. | `production-conversation-revival.test.ts` "cross-topic one-per-interval gate" |
+| Three calm pressure ticks | Carried: `pressure` port, 3 consecutive `normal` readings, reset on any other reading, an unreadable gauge is not calm; the streak is durable with the brakes. Shipped host reads the resource owner's sampled level (normal; elevated → moderate; critical, shutdown, unknown → critical). A host without a gauge cannot count calm ticks and keeps the resource owner's admission as its pressure gate. | "waits for three consecutive calm ticks", "calm streak is durable", "without a gauge"; drainer calm-gate cases |
+| Retry/backoff/breaker and settling | Carried: 3 attempts, 2-minute exponential backoff, 3 consecutive failures open a 30-minute breaker, 15-second settling observation (bounded by the admitted lifetime). Stricter than 1.x: the ladder admits only a replacement that died with exact proof of no effect; unprovable effects invalidate the entry and a launch that threw is settled uncertain by the host. A capacity hold consumes no attempt. | "fifteen-second settling check … ladder", "open breaker … across restart", "unprovable effects … never retried"; drainer ladder cases |
+| Two resurrections per 24 hours | Carried: ledger keyed on the conversation, 24-hour window, `seenWorkingPastAgeLimit` reset kept (a 2.0 worker that completes its lifetime is retired by the host, never counted as a loss); the cap is loud and retains the input as failed. | "resurrection ledger caps the third loss"; queue ledger cases incl. REPRO 52075 |
+| Pause, requeue, TTL, status | Carried: queue-global pause freezes TTL clocks, requeue only from gave-up (never cancelled, never while paused) re-anchors the TTL and reopens the retained input, cancel, 24-hour TTL with pressure-starved marker, queue snapshot plus drainer status on `port.revival`. The admitted lifetime (≤ 4 hours) is the tighter brake in 2.0. | "TTL expires a held revival", "cancel settles", queue TTL/requeue cases |
+| Aggregated notices | Carried through the `notice` port: pressure-held after 20 minutes, paused-waiting (per episode and growing backlog), breaker, ttl-expired, gave-up, invalidated, resurrection-cap, overflow, "restarted" on success. Dedupe markers are durable: no repeat across host restart. The shipped host's attention surface for this port is not yet wired (see remaining). | "twenty minutes … pressure-held", "paused-waiting … not again after restart"; drainer G2 and Layer-1 cases |
+| Tier-1 sanity check | Carried observe-only: prompt and identity-only provenance, verdict audited, never a gate, 5-second deadline through `io.wait`, shed on timeout or error. The shipped host's judgment-doorway binding for `sanityCheck` is not yet wired. | "observe-only Tier-1 check"; drainer Tier-1 cases |
+| Lost-worker origins and dirty worktree | The exit-mid-turn origin runs through the queue; the existing worktree recovery (`worktree-recovery.ts`) and the `onWorktreeRevival` hook remain separate owners. Not complete: see remaining. | existing `worktree-recovery.test.ts` |
+| Stall/crash/error-loop detectors and cooldown | Carried as pure detectors over adapter-parsed entries and the 3-attempt/15-minute/1-hour ladder with durable state. The crash origin in production is the exit observation (drainer ladder). Stall and error-loop detection in production needs the harness adapter to supply transcript entries; not wired. | `worker-recovery.test.ts` detector and ladder cases |
+| Context-wall latch and ceiling | Carried in `worker-recovery.ts`: durable first-seen latch, transcript-growth deferral with zero attempts spent, 30-minute ceiling, compaction-first rung. Production keeps the existing compact-then-replace path, which requires the driver's exact idle-prompt evidence before any action and records `contextRecovery` durably before control input; the 30-minute ceiling is not wired into that path. | "context wall" cases in `worker-recovery.test.ts` |
+| Stale emergency pause auto-resume | Not carried (Rules 4/93): a pause holds until an explicit resume. | "pause is never cleared by elapsed time"; drainer "never auto-resumed" |
+| Lockfile single writer | Not carried: the conversation ownership fence is the writer; the store refuses corrupt or foreign records instead of auto-healing. | `revival-queue-autoheal-lock.test.ts` |
+| Dry-run posture | Not carried (Rules 73/76). | — |
+| Transcript rewind, 7-second reply poll | Not carried (Rules 1/26/63): rewind only through a host port that performs one, reply from send receipts. | `worker-recovery.test.ts` "without a rewind port", "exact already-sent reply" |
+
+Remaining after round 2 (not READY): shipped-host wiring of the `notice`, `audit` and `sanityCheck`
+ports; harness-adapter transcript observation for the stall and error-loop detectors and the
+30-minute context-wall ceiling on the production compact path; a complete proof from every
+lost-worker origin to dirty-worktree recovery; live channel, framework and host proof (desk-owned).

@@ -60,6 +60,16 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     const allowanceCalls = () => state.edge?.budget.calls ?? config.maxCalls;
     ensure(spent() <= allowanceCalls(), 'shared topic allowance exceeded');
     const hosts = new Map<string, ConversationSessionPort>();
+    // 1.x ResumeQueueDrainer R2.4: AT MOST ONE lost-worker revival launches per drain
+    // interval across every topic of this conversation; the per-topic drainer reads it as
+    // its quota gate. A host that supplies its own gate keeps it.
+    const drainIntervalMs = (config.revival?.drainIntervalSec ?? 60) * 1000;
+    let lastRevivalAt = -Infinity;
+    const revivalGate = config.revivalGate ?? (() => {
+      const now = config.now();
+      if (now - lastRevivalAt < drainIntervalMs) return false;
+      lastRevivalAt = now; return true;
+    });
     const active = new Set<string>();
     const busy = new Map<string, number>();
     const touched = new Map<string, number>();
@@ -84,7 +94,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       ensure(Object.keys(state.topics).length < 4096 || topic in state.topics, 'topic custody capacity reached');
       const local = config.topicConfig?.(topic);
       const io = local?.io ?? config.io, resources = local?.resources ?? config.resources;
-      const result = createConversationSessionPort({ ...config, ...local, maxCalls: allowanceCalls(), batchWaiting: true, conversation: `${config.conversation}:${topic}`, allowanceDeadline: parentDeadline(),
+      const result = createConversationSessionPort({ ...config, ...local, revivalGate, maxCalls: allowanceCalls(), batchWaiting: true, conversation: `${config.conversation}:${topic}`, allowanceDeadline: parentDeadline(),
         stopped: () => stopped || config.stopped(),
         prepareTurn: async input => (local?.prepareTurn ?? config.prepareTurn)?.(input) ?? true,
         store: { load: () => state.topics[topic] ?? null, save: next => {
