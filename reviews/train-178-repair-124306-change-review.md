@@ -33,3 +33,7 @@ VERDICT: author submission; this record asserts no independent verdict — the r
 
 Decision: train-178-repair-main | Merge exact main c20b68d1d and derive the conversion pin from merged anchor bytes, preserving both histories and all candidate runtime behavior. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-178-repair-124306-PROGRESS.md
 Decision: train-178-repair-publication | Regenerate the register using existing tools; keep platform-only and Studio-local evidence checks explicit. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-178-repair-124306-PROGRESS.md
+
+Deferral: generated/register.json:1 | not-a-deferral=source-bound generated publication retains existing rule text without a new deferred task
+
+Publication: Replayed merged source 8320000a499fda5acb116c619257806375bfc05a at the actual clock; 298 entries, 121 rules, 34 terms, 113 prerequisites. No backdated clock or hand-edited generated values.
