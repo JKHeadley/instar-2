@@ -146,7 +146,8 @@ export function sentReview(e: SentReviewEvidence) {
   const reserved = last?.path === 'subscription' ? e.reviewReserved : last?.path === 'jev' ? e.jevReserved : false;
   const needsReservation = !revision && (last?.path === 'subscription' || last?.path === 'jev');
   const timed = e.intentAt !== undefined && e.sentAt !== undefined && e.checkDoneAt !== undefined
-    && (!needsReservation || reserved === true && reservedAt !== undefined);
+    && (!needsReservation || reserved === true && reservedAt !== undefined)
+    && (!e.afterSendReview || reservedAt !== undefined);
   const phase = timed && e.intentAt! <= e.sentAt! && (!needsReservation || reservedAt! <= e.checkDoneAt!)
     ? e.afterSendReview
       ? reservedAt !== undefined && e.sentAt! <= reservedAt && reservedAt <= e.checkDoneAt! ? 'after-send' : 'wrong-phase'

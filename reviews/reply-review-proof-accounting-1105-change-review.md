@@ -2,7 +2,7 @@
 
 Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
 Review state: frozen
-Reviewed content: sha256:442212457877bf0fcf8fc8478f30e6390d0efb0e58253e507c479cc44f24e853
+Reviewed content: sha256:e31237c57d04b7396fd0705e132b15191df7a7b65ede760484c69be8851faedd
 Outcome: Bind reply-review proof accounting to the actual sent candidate, recorded before-send or after-send phase, and source observation time. Distinguish exact fixed notices and passed revisions from raw answers, and keep attempted, reached, judged, passed, unavailable and adverse outcomes separate. The live capability proof uses the same exact-candidate predicate.
 Affected rules: 9, 13, 26, 36, 38, 41, 42, 43, 49, 58, 70, 73, 74, 95, 101, 111, 112, 113, 116
 Affected floors: secrets — outbound guard unchanged; spend cap — no calls or reservations added; stop — execution checks unchanged; no duplicate sends — no send path or retry changed; durable intake — journal admission and persistence unchanged.
