@@ -350,7 +350,10 @@ describe('compiled register build adapter lifecycle', () => {
   // not a product latency assertion; retain every acceptance/refusal check.
   // Evidence: docs/defects/register-intake-cli-wsl-budget.md.
   }, 120_000);
-  it('P3-P5 shipped CLI defaults resolve committed owner bindings, but never spoofed calls or stale artifacts', async () => {
+  // Separate the independent documentation and owner checks: ten physical CLI runs
+  // exceeded the existing 120s case bound on the Studio. Every assertion and that
+  // bound remain; both cases start from their own verified committed fixture.
+  it.each(['documentation pins', 'owner bindings'] as const)('P3-P5 shipped CLI defaults resolve committed owner bindings, but never spoofed calls or stale artifacts (%s)', async part => {
     const root = mkdtempSync(join(tmpdir(), 'instar-owner-cli-'));
     try {
       for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
@@ -364,13 +367,16 @@ describe('compiled register build adapter lifecycle', () => {
       expect(good.status, good.stderr).toBe(0);
       const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
       expect(source.authority).toBe('shape-only'); expectOwnerPrerequisites(root, source.authorityPrerequisites);
-      // The consumed documentation is pinned: a changed or removed module README requires regeneration.
-      const readme = join(root, 'tests/preview/README.md'); const documented = readFileSync(readme, 'utf8');
-      writeFileSync(readme, documented.replace('- `preview-conversation`: ', '- `preview-conversation`: stale text '));
-      const changedDoc = await run(revision); expect(changedDoc.status).not.toBe(0); expect(changedDoc.stderr).toContain('source pin trails tests/preview/README.md');
-      rmSync(readme);
-      const removedDoc = await run(revision); expect(removedDoc.status).not.toBe(0); expect(removedDoc.stderr).toContain('source pin trails tests/preview/README.md');
-      writeFileSync(readme, documented); expect((await run(revision)).status).toBe(0);
+      if (part === 'documentation pins') {
+        // The consumed documentation is pinned: a changed or removed module README requires regeneration.
+        const readme = join(root, 'tests/preview/README.md'); const documented = readFileSync(readme, 'utf8');
+        writeFileSync(readme, documented.replace('- `preview-conversation`: ', '- `preview-conversation`: stale text '));
+        const changedDoc = await run(revision); expect(changedDoc.status).not.toBe(0); expect(changedDoc.stderr).toContain('source pin trails tests/preview/README.md');
+        rmSync(readme);
+        const removedDoc = await run(revision); expect(removedDoc.status).not.toBe(0); expect(removedDoc.stderr).toContain('source pin trails tests/preview/README.md');
+        writeFileSync(readme, documented); expect((await run(revision)).status).toBe(0);
+        return;
+      }
       const declared = JSON.parse(readFileSync(join(root, 'out/register.json'), 'utf8'));
       expect(declared.entries.find((e: { declaration: { id: string } }) => e.declaration.id === 'rungraph-core').declaration).toMatchObject({ status: 'dark', profile: { reach: 'user', consequence: 'control', reversibility: 'costly', surface: 'chat' } });
       const path = join(root, 'src/rungraph/rungraph.ts'); const original = readFileSync(path, 'utf8');
