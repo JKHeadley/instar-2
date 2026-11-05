@@ -24,6 +24,7 @@ async function setup(dirty = true) {
   if (dirty) writeFileSync(join(checkout, 'retained-work.json'), captured);
   let now = 1000, stopped = false, missingUid = false, partial = false, unknownSource = false;
   let snapshot: unknown = null;
+  let ancestry: 'complete' | 'missing' | 'empty' | 'partial' = 'complete';
   const watchEvents: { change?: () => void; error?: () => void } = {};
   const journalPath = join(directory, 'journal.encrypted'), key = new Uint8Array(32).fill(31);
   const open = () => openPreviewJournal(journalPath, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
@@ -52,7 +53,12 @@ async function setup(dirty = true) {
       route, machine: 'm', now: () => now, stopped: () => stopped, sourceFor, checkText: () => {} }),
     // The test's isolated process population is this real child, not invented ps bytes.
     query: async (file: string, args: string[]) => {
-      if (file === '/bin/ps' && args.includes('-e')) return execFileSync(file, args, { encoding: 'utf8' });
+      if (file === '/bin/ps' && args.includes('-e')) {
+        if (ancestry === 'missing') return null;
+        if (ancestry === 'empty') return '';
+        if (ancestry === 'partial') return 'unreadable parent row\n';
+        return execFileSync(file, args, { encoding: 'utf8' });
+      }
       if (file === '/bin/ps') {
         if (partial) return 'unreadable row\n';
         return child.exitCode !== null ? '' : execFileSync('/bin/ps', ['-p', String(child.pid), '-ww', '-o', args.at(-1)!], { encoding: 'utf8' });
@@ -100,6 +106,7 @@ async function setup(dirty = true) {
   };
   return { checkout, source, config, worker, cycle, get journal() { return journal; }, get host() { return host; }, captured, watchEvents,
     now: (n: number) => { now = n; }, stop: () => { stopped = true; }, partial: () => { partial = true; },
+    ancestry: (value: typeof ancestry) => { ancestry = value; },
     unknown: () => { unknownSource = true; }, missingUid: () => { missingUid = true; }, exit,
     restart: async () => { host.close(); journal.close(); journal = open(); host = await build(); },
     close: () => { host.close(); journal.close(); } };
@@ -136,7 +143,7 @@ it('admits a real dirty checkout through signed durable intake after exact proce
   } finally { f.close(); }
 });
 
-it.each(['clean', 'live', 'unknown', 'partial', 'activity-gap', 'recent', 'missing-identity', 'stop'])(
+it.each(['clean', 'live', 'unknown', 'partial', 'activity-gap', 'recent', 'missing-identity', 'stop', 'ancestry-missing', 'ancestry-empty', 'ancestry-partial'])(
   'does not create recovery intake for %s evidence', async neighbor => {
     const f = await setup(neighbor !== 'clean');
     try {
@@ -146,6 +153,9 @@ it.each(['clean', 'live', 'unknown', 'partial', 'activity-gap', 'recent', 'missi
       if (neighbor !== 'live') await f.exit();
       f.now(32000);
       if (neighbor === 'partial') f.partial();
+      if (neighbor === 'ancestry-missing') f.ancestry('missing');
+      if (neighbor === 'ancestry-empty') f.ancestry('empty');
+      if (neighbor === 'ancestry-partial') f.ancestry('partial');
       if (neighbor === 'activity-gap') f.watchEvents.error?.();
       if (neighbor === 'recent') f.watchEvents.change?.();
       if (neighbor === 'stop') f.stop();
@@ -154,6 +164,17 @@ it.each(['clean', 'live', 'unknown', 'partial', 'activity-gap', 'recent', 'missi
     } finally { f.close(); }
   });
 
+
+it.each(['missing', 'empty', 'partial'] as const)('does not establish checkout lineage from %s ancestry', async observation => {
+  const f = await setup();
+  try {
+    f.ancestry(observation); await f.host.tick();
+    expect(f.host.sourceFor(f.checkout)).toBeNull();
+    await f.exit(); f.ancestry('complete'); f.now(32000);
+    expect(await f.host.tick()).toEqual([]);
+    expect(f.journal.view.order.filter(turn => turn.worktreeRecovery)).toHaveLength(0);
+  } finally { f.close(); }
+});
 
 it('reads an empty real ps selection while retaining diagnostic failures as unknown', async () => {
   const child = spawn(process.execPath, ['-e', ''], { stdio: 'ignore' });

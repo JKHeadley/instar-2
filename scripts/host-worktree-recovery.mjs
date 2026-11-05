@@ -97,9 +97,9 @@ export async function createHostWorktreeRecovery(ports) {
       const seen = new Set();
       for (let hops = 0; hops < 64 && !seen.has(pid); hops++) {
         seen.add(pid);
+        if (!ancestryComplete || !parents.has(pid)) return null;
         const root = roots.find(item => item.pid === pid);
         if (root) return root.source;
-        if (!ancestryComplete || !parents.has(pid)) return null;
         pid = parents.get(pid);
       }
       return null;
@@ -128,7 +128,7 @@ export async function createHostWorktreeRecovery(ports) {
       const census = createWorktreeInventory({ machine: ports.identity.machine, now: ports.now,
         freshForMs: 30000, limit: 64, query, observe: async checkout => {
           const known = state.checkouts[checkout], coverage = watched.get(checkout);
-          return { owner: known?.source && live.length === 0 && roots.length === 0 ? 'absent' : 'unknown',
+          return { owner: ancestryComplete && known?.source && live.length === 0 && roots.length === 0 ? 'absent' : 'unknown',
             activity: known?.source && coverage?.valid ? { coveredFrom: coverage.from,
               coveredThrough: ports.now(), lastActivity: known.lastActivity } : null };
         } });
