@@ -71,9 +71,9 @@ it('puts a current, labelled desk report into every turn packet within the conte
       expect(JSON.parse(input.context).capability).not.toContain('runner sends any due held notice on its fixed path');
       expect(JSON.parse(input.context).sources.map((s: { id: string }) => s.id)).toContain('purpose:purpose');
       expect(JSON.parse(input.context).sources.find((s: { id: string }) => s.id === 'capability-note').text)
-        .toContain('- "status" and "how are you doing" are answered from the journal');
+        .toContain('- answers "status" and "how are you doing" from the journal');
       const sources = JSON.parse(input.context).sources as { id: string; text: string }[];
-      expect(sources.find(source => source.id === 'capability-note')?.text).toContain('correct or forget a fact');
+      expect(sources.find(source => source.id === 'capability-note')?.text).toContain('correct or forget facts');
       // The per-turn self-state is the brief; memory's standing description rides the capability note above.
       expect(sources.find(source => source.id === 'self-state')?.text).toContain('Operator messages received:');
       expect(sources.find(source => source.id === 'self-state')?.text).toContain('both keep their original audit record');
