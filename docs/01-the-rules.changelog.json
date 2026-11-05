@@ -1,5 +1,21 @@
 [
   {
+    "revision": 21,
+    "date": "2026-11-05",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, 2026-11-05: \"On the decision: yes\" [source: telegram 134088/139281 2026-11-05], answering the wording in 134088/139279. Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Add Rule 122, Every Warning Has a Path, in Needs building, with its value rationale and the owed check; update the group and total counts and the source note.",
+        "why": "Rules 23, 82 and 120 cover when to ask the person, how, and what their part is, but none says what a warning owes them, so a status word could be true for a machine and useless to the person reading it.",
+        "ref": "Justin, 2026-11-05: \"On the decision: yes\" [source: telegram 134088/139281 2026-11-05], answering the wording in 134088/139279. Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 20,
     "date": "2026-11-05",
     "status": "draft",
