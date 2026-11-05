@@ -149,8 +149,9 @@ function growSessionVolume({ image, mount, mounted, attach, bytes, maxBytes, hdi
  * increment up to `SESSION_VOLUME_MAX_BYTES` at this boundary, under the preconditions of `growSessionVolume`. `log`
  * receives one line per growth or refusal (the runner writes it as its existing `preview:` stderr notice). `tools` lets a
  * test stand in for the hdiutil and plutil binaries, never the runner. */
-export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, maxBytes = bytes === SESSION_VOLUME_BYTES ? SESSION_VOLUME_MAX_BYTES : bytes,
-  name = 'session-work', at = null, log = () => {}, tools = {} } = {}) {
+export function attachSessionVolume(root, options = {}) {
+  const { bytes = SESSION_VOLUME_BYTES, maxBytes = options.bytes === undefined ? SESSION_VOLUME_MAX_BYTES : bytes,
+    name = 'session-work', at = null, log = () => {}, tools = {} } = options;
   assertAgentPaths({ root, workspace: at ?? join(root, name) });
   if (!Number.isSafeInteger(bytes) || bytes < 1 || !Number.isSafeInteger(maxBytes) || maxBytes < bytes) throw Error('preview: session volume size refused');
   const hdiutil = tools.hdiutil ?? HDIUTIL;

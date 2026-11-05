@@ -4,7 +4,7 @@ Subject base: a8f354e1b3aa6497624afdcc1c31426a8b5d257e
 Review state: open
 Reviewed content: none
 Outcome: The delegated session's working scope (tests/preview/tool-turn.mjs attachSessionVolume) was created at 2 GiB and only ever reattached, so one whole-repository session (measured 2026-11-05 on update 969390679: a 1.09 GiB checkout plus 0.67 GiB of temporaries, 0 bytes free) filled it with no way out. Now, at the step boundary that mounts or reattaches an existing image on the runner's default path, a full volume (free under one eighth of the increment) grows by one 2 GiB increment up to SESSION_VOLUME_MAX_BYTES (8 GiB), only when the host disk has the increment plus a 2 GiB reserve free and only when a non-forced hdiutil detach succeeds (the kernel refuses it while any process holds the volume), using the resize primitive the 15c4adf10 tool-scratch growth proved; every refusal leaves the volume exactly as it was, and the runner writes each growth or refusal as its existing preview: notice line.
-Affected rules: 2, 4, 13, 26, 40, 42, 44, 60, 61, 66, 69, 74, 90, 101, 102, 111, 113, 116
+Affected rules: 4, 7, 13, 26, 32, 34, 40, 42, 44, 60, 61, 63, 66, 69, 70, 74, 90, 101, 102, 111, 113, 116; purpose constraint 2 (notice/loss, not rulebook Rule 2 Self-Hosting)
 Affected floors: secrets — untouched: no credential path, the volume holds only the session's own files; spend cap — untouched: no model or provider call; stop — untouched: the step's stop checks are before and after this boundary as they were; no duplicate sends — untouched: no send path; durable intake — untouched: no journal row kind or field added, and a refused growth leaves the step's own outcome as it was.
 Operator questions: none
 Suggested tier: critical

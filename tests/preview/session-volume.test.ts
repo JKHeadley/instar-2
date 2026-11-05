@@ -198,6 +198,13 @@ it.runIf(darwin)('the runner\'s default call: a fresh image is the initial size,
   expect(Number(zeros.stdout.trim())).toBeGreaterThan(8);
   expect(freeOf(scope)).toBeLessThan(SESSION_VOLUME_FULL_FREE_BYTES);
   writeFileSync(join(scope, 'mark.txt'), 'measured');
+  // An explicit initial size is still an exact bound, even when it equals the default size.
+  const originalSize = sizeOf(scope);
+  expect(attachSessionVolume(root, { bytes: SESSION_VOLUME_BYTES, log: (line: string) => lines.push(line) })).toBe(scope);
+  expect(sessionImageBytes(image)).toBe(SESSION_VOLUME_BYTES);
+  expect(sizeOf(scope)).toBe(originalSize);
+  expect(lines).toEqual([]);
+  // Omit bytes on the same filled image: the runner's default growth remains available.
   expect(attachSessionVolume(root, { log: (line: string) => lines.push(line) })).toBe(scope);
   expect(lines).toHaveLength(1);
   // The volume inside an image as created is one increment less hdiutil's partition padding; the grown one is exact.
