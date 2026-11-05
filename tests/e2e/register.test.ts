@@ -459,7 +459,10 @@ describe('compiled register build adapter lifecycle', () => {
         const untracked = await wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
       }
     } finally { rmSync(directory, { recursive: true, force: true }); }
-  }, 60_000);
+  // Two committed CLI replays plus two wiring checks exceeded 60s on the Studio
+  // (train-174-p2, 2026-11-05). Match the adjacent full-graph fixture budget;
+  // this is a hang ceiling, not a product latency requirement. All controls remain.
+  }, 120_000);
   it('P3-NF-01 P3-NF-07 P3-NF-09 actual CLI reproduces committed outputs and rejects edited output', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-e2e-'));
     try {

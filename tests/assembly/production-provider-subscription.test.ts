@@ -432,27 +432,29 @@ function installServerPolicy(directory: string) {
   for (const name of serverPolicyFiles) writeFileSync(join(directory, name), serverPolicyFixture(name));
 }
 
-it('accepts the real 2.1.280 server policy only after the profile and activation are re-derived', async () => {
+it('accepts restrictive server cache arrival for pre-cache enrollment and binds fresh cache enrollment', async () => {
   const f = fixture();
   const staleRoute = value(createClaudeCodeSubscriptionRoute(f.input));
   installServerPolicy(f.input.profile.configDirectory);
   const observed = f.input.io.inspectSubscriptionProfile(f.input.profile);
   expect(observed.loginProfileIdentity).toBe(f.input.profile.loginProfileIdentity);
-  expect(observed.managedConfigurationDigest).not.toBe(f.input.profile.managedConfigurationDigest);
-  expect((await staleRoute.invoke('request', f.bounds)).state).toBe('uncertain');
-  expect(f.commands()).toHaveLength(0);
-  const profile = Object.freeze({ ...f.input.profile, ...observed });
+  expect(observed.managedConfigurationDigest).toBe(f.input.profile.managedConfigurationDigest);
+  expect((await staleRoute.invoke('request', f.bounds)).state).toBe('complete');
+  expect(f.commands()).toHaveLength(3);
+  // New enrollment has no prior digest: it binds the cache content present then.
+  const enrolled = f.input.io.inspectSubscriptionProfile({ ...f.input.profile, managedConfigurationDigest: '' });
+  const profile = Object.freeze({ ...f.input.profile, ...enrolled });
   expect(createClaudeCodeSubscriptionRoute({ ...f.input, profile }).kind).toBe('Refused');
   const input = { ...f.input, profile, resolveProfile: () => profile,
     adapterEvidenceContract: { ...f.input.adapterEvidenceContract, version: hash(profile) },
     activation: { ...f.input.activation, profileDigest: hash(profile) } };
   const renewedRoute = value(createClaudeCodeSubscriptionRoute(input));
   expect((await renewedRoute.invoke('request', f.bounds)).state).toBe('complete');
-  expect(f.commands()).toHaveLength(3);
+  expect(f.commands()).toHaveLength(6);
   const stamp = JSON.parse(serverPolicyFixture('policy-limits.json.stamp.json'));
   writeFileSync(join(profile.configDirectory, 'policy-limits.json.stamp.json'), JSON.stringify({ ...stamp, confirmed_at: stamp.confirmed_at + 1 }));
   expect((await renewedRoute.invoke('request', f.bounds)).state).toBe('complete');
-  expect(f.commands()).toHaveLength(5); // version is reused; auth and model still run
+  expect(f.commands()).toHaveLength(8); // version is reused; auth and model still run
 });
 
 const capturedPolicy = () => JSON.parse(serverPolicyFixture('policy-limits.json'));
@@ -494,7 +496,7 @@ it.each([
 it('binds each accepted file and its removal to the managed digest; permits only restrictive additions', () => {
   const f = fixture(), directory = f.input.profile.configDirectory;
   installServerPolicy(directory);
-  const inspect = () => f.input.io.inspectSubscriptionProfile(f.input.profile).managedConfigurationDigest;
+  const inspect = () => f.input.io.inspectSubscriptionProfile({ ...f.input.profile, managedConfigurationDigest: '' }).managedConfigurationDigest;
   const initial = inspect();
   for (const [name, settings] of [
     ['policy-limits.json', { ...capturedPolicy(), restrictions: { another_restriction: { allowed: false } } }],
@@ -532,10 +534,10 @@ it('refuses malformed, oversized and redirected server policy files', () => {
   expect(() => f.input.io.inspectSubscriptionProfile(f.input.profile)).toThrow('remote-settings.json: unsafe path or size');
 });
 
-it('holds added remote/server policy and orphan signature files before any child', async () => {
+it('holds unknown remote/server policy and orphan signature files before any child', async () => {
   for (const name of ['remote-settings.json', 'remote-settings.json.signature.json', 'remote-settings.other', 'policy-limits.json.signature-iat.json', 'policy-limits.json.extra']) {
     const f = fixture(); const route = value(createClaudeCodeSubscriptionRoute(f.input));
-    writeFileSync(join(f.input.profile.configDirectory, name), '{}');
+    writeFileSync(join(f.input.profile.configDirectory, name), name === 'remote-settings.json' ? '{"disableAllHooks":true}' : '{}');
     expect((await route.invoke('request', f.bounds)).state).toBe('uncertain');
     expect(f.commands()).toHaveLength(0);
   }
