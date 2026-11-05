@@ -87,8 +87,41 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
       child.unref();
     },
     tmux(args) {
-      const result = spawnSync(tmuxPath, args, { cwd, env, encoding: 'utf8', timeout: 10_000, maxBuffer: 1024 * 1024 });
-      return { code: result.status ?? 1, stdout: result.stdout ?? '' };
+      // 1.x tmux resilience: bound the exact client, never the shared server.
+      // A timeout or failed exec is an unavailable observation, not exit code 1
+      // (which the session owner would otherwise mistake for a missing worker).
+      const execute = command => {
+        const result = spawnSync(tmuxPath, command, { cwd, env, encoding: 'utf8', timeout: 9000,
+          killSignal: 'SIGKILL', maxBuffer: 1024 * 1024 });
+        if (result.error || result.signal || result.status === null)
+          throw Error('session control plane unavailable; worker state unknown');
+        return result;
+      };
+      const result = execute(args);
+      if (args[0] === 'has-session' && result.status !== 0) {
+        // StaleSessionBackstop's tri-state distinction: a refused/unreachable
+        // server is not a census proving that this worker disappeared.
+        const target = args[args.indexOf('-t') + 1];
+        const match = typeof target === 'string' && /^=(instar20-[a-f0-9]{24}):$/u.exec(target);
+        if (!match) throw Error('exact session liveness target required');
+        const census = execute(['list-sessions', '-F', '#{session_name}']);
+        if (census.status === 0)
+          return { code: census.stdout.split('\n').includes(match[1]) ? 0 : 1, stdout: '' };
+        // A last session can take its server away. Independent local evidence
+        // that its recorded pane process is gone still permits ordinary cleanup.
+        // A reused PID, permission error, missing identity or live pane is UNKNOWN.
+        const journal = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : base;
+        const session = journal.sessions.find(row => row.name === match[1]);
+        const identity = session?.identity?.startsWith(`${match[1]}:`)
+          ? session.identity.match(/^instar20-[a-f0-9]{24}:(\d+):\d+$/u) : null;
+        const pid = identity ? Number(identity[1]) : 0;
+        if (Number.isSafeInteger(pid) && pid > 0) {
+          try { process.kill(pid, 0); }
+          catch (error) { if (error?.code === 'ESRCH') return { code: 1, stdout: '' }; }
+        }
+        throw Error('session control plane unavailable; worker state unknown');
+      }
+      return { code: result.status, stdout: result.stdout ?? '' };
     },
     sleep(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
     load() { return withHalts(existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : base); },
