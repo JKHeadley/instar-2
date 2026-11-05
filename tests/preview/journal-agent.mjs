@@ -98,6 +98,7 @@ import { createMediaAdmission } from './media-admission.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
 import { reapNotices } from './reap-notices.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
+import { createCommitmentHost } from './commitment-host.js';
 import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking } from './live-sentinels.js';
 import { SENTINEL_FAMILIES } from './sentinel-record.js';
 
@@ -3090,7 +3091,16 @@ async function main() {
       // A due reminder is never sent from this pre-poll job: the post-poll job below already sends every requested
       // reminder, and only after a successful empty poll, so a waiting withdrawal is read and settled first (Rule 93).
       actOnPromise: id => { if (!id.startsWith('request:')) sentinelSteps.push(() => worker.workObligations()); } });
-    const sentinelTick = () => { if (sentinelFamilies.size && !journal.readOnly) sentinels.tick(); };
+    // Row 01: typed commitments and the internal beacon advance on this same admitted tick, so a stop,
+    // lost ownership or expiry stops them by not ticking. Beacon output and every send stay off here (Rule 87).
+    const commitmentHost = createCommitmentHost(journal, { now: wallNow, log() {},
+      minutesOfDay: ms => { const at = new Date(ms); return at.getHours() * 60 + at.getMinutes(); },
+      formatWhen: ms => new Date(ms).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
+      fileExists: path => existsSync(path), config: { get: (_key, fallback) => fallback, set() { throw Error('no setting store is bound'); } } });
+    const sentinelTick = () => {
+      if (!journal.readOnly) { try { commitmentHost.tick(); } catch { /* retained; the next admitted cycle retries */ } }
+      if (sentinelFamilies.size && !journal.readOnly) sentinels.tick();
+    };
     // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
     // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
     // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.

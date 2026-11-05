@@ -105,8 +105,8 @@ export class CheckInReminderReconciler {
     if (!this.config.enabled) return emptyReport({ dryRun: this.config.dryRun });
 
     const now = this.deps.time.now();
+    const settled = await this.settleUnsettled(this.deps.tracker.getAll());
     const all = this.deps.tracker.getAll();
-    const settled = await this.settleUnsettled(all);
     const { due, skipped } = selectDueCommitments(all as Array<Commitment & { id: string }>, now, this.deps.time.parse);
 
     const skippedByReason: Partial<Record<NotDueReason, number>> = {};

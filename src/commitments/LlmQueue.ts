@@ -188,7 +188,7 @@ export class LlmQueue {
     this.waiters.sort((a, b) => (a.lane === b.lane ? 0 : a.lane === 'interactive' ? -1 : 1));
 
     while (this.waiters.length > 0) {
-      const next = this.waiters[0];
+      const next = this.waiters[0]!;
 
       if (this.inFlight.size < this.maxConcurrent) {
         // Herd guard (§3c): pace BACKGROUND-lane dispatches so a burst of queued calls can't re-trip

@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';

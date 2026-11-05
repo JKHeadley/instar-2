@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 /**
  * Regression test for the event-loop WEDGE fix (2026-06-21).
  *

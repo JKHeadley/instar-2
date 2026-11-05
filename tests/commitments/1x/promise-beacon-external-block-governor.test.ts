@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 /**
  * Unit tests for the C1+C2 external-block staleness governor
  * (PromiseBeacon.sweepExternalBlocks — spec agent-owned-followthrough §4.4).

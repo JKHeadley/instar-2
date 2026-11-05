@@ -1066,10 +1066,10 @@ export class CommitmentTracker extends CommitmentEmitter {
    * re-runs the SAME gate. Throws on an invalid enum or a blank
    * user-authorization. Never classifies prose; holds no side-effect authority.
    */
-  static normalizeState(input: { owner?: string; blockedOn?: string; actionClass?: string }): {
+  static normalizeState(input: { owner?: string | undefined; blockedOn?: string | undefined; actionClass?: string | undefined }): {
     owner: 'agent' | 'user';
     blockedOn: 'none' | 'external' | 'user-input' | 'user-authorization';
-    actionClass?: string;
+    actionClass?: string | undefined;
   } {
     const OWNERS = ['agent', 'user'];
     const BLOCKED_ON = ['none', 'external', 'user-input', 'user-authorization'];
@@ -1270,7 +1270,7 @@ export class CommitmentTracker extends CommitmentEmitter {
 
   static isTopicScopedConfigPath(configPath: string | undefined): boolean {
     if (!configPath) return false;
-    const root = configPath.split('.')[0].replace(/[-_\s]/g, '').toLowerCase();
+    const root = configPath.split('.')[0]!.replace(/[-_\s]/g, '').toLowerCase();
     return CommitmentTracker.TOPIC_SCOPED_CONFIG_ROOTS.has(root);
   }
 
@@ -2082,7 +2082,7 @@ export class CommitmentTracker extends CommitmentEmitter {
       if (idx === -1) {
         throw new Error(`CommitmentTracker.mutate: unknown commitment id ${id}`);
       }
-      const current = this.store.commitments[idx];
+      const current = this.store.commitments[idx]!;
       const observedVersion = current.version ?? 0;
 
       // Provide a shallow clone so fn mutations don't prematurely touch store.
@@ -2094,7 +2094,7 @@ export class CommitmentTracker extends CommitmentEmitter {
       if (latestIdx === -1) {
         throw new Error(`CommitmentTracker.mutate: commitment ${id} disappeared mid-apply`);
       }
-      const latest = this.store.commitments[latestIdx];
+      const latest = this.store.commitments[latestIdx]!;
       if ((latest.version ?? 0) !== observedVersion) {
         attempt++;
         continue;
@@ -2137,7 +2137,7 @@ export class CommitmentTracker extends CommitmentEmitter {
     if (idx === -1) {
       throw new Error(`CommitmentTracker.mutateSync: unknown commitment id ${id}`);
     }
-    const current = this.store.commitments[idx];
+    const current = this.store.commitments[idx]!;
     const observedVersion = current.version ?? 0;
     const next = fn({ ...current });
     const rollback = this.batchingSaves ? null : structuredClone(this.store);
@@ -2245,7 +2245,7 @@ export class CommitmentTracker extends CommitmentEmitter {
     bucket[kind]++;
     buckets[day] = bucket;
     const keep = Object.keys(buckets).sort().slice(-30);
-    this.store.blockerEpisodeDropBuckets = Object.fromEntries(keep.map(k => [k, buckets[k]]));
+    this.store.blockerEpisodeDropBuckets = Object.fromEntries(keep.map(k => [k, buckets[k]!]));
   }
 
   /**
@@ -2311,8 +2311,8 @@ export class CommitmentTracker extends CommitmentEmitter {
     try {
       const loaded = this.ports.store.load();
       if (loaded !== null) {
-        const data = loaded as CommitmentStore & { version: number };
-        if ((data.version === 1 || data.version === 2) && Array.isArray(data.commitments)) {
+        const data = loaded as CommitmentStore & { replicationSeq: number };
+        if ((data.version as number === 1 || data.version === 2) && Array.isArray(data.commitments)) {
           // Migrate: add self-healing fields to existing commitments
           for (const c of data.commitments) {
             if (c.correctionCount === undefined) c.correctionCount = 0;
@@ -2468,7 +2468,7 @@ export class CommitmentTracker extends CommitmentEmitter {
     if (this.store.commitments.length === 0) return 1;
     const maxId = Math.max(...this.store.commitments.map(c => {
       const match = c.id.match(/CMT-(\d+)/);
-      return match ? parseInt(match[1], 10) : 0;
+      return match ? parseInt(match[1]!, 10) : 0;
     }));
     return maxId + 1;
   }

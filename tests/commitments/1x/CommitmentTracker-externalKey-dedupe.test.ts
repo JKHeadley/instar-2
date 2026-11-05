@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 // safe-git-allow: test fixture cleanup uses fs.rmSync on tmp dirs only.
 /**
  * FD3 (action-claim-followthrough) — record() is idempotent on externalKey: an

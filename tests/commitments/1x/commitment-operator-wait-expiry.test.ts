@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 /**
  * Tier-1 unit tests — attention-lifecycle-close-on-cause §3.5: a commitment
  * waiting on the operator expires after a bounded wait (default 14 days) with

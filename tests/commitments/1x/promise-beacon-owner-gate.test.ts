@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 /**
  * Unit tests for the C1+C2 owner-gated outbound chokepoint
  * (PromiseBeacon.emitUserSend — spec agent-owned-followthrough §4.2/§4.8).

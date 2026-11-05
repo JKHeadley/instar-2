@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 /**
  * Unit tests for the threadline-reply verification method added to
  * CommitmentTracker per THREAD-TOPIC-LINKAGE-SPEC.md.

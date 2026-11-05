@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 /**
  * Integration: commit-action → beacon → summarizer signals concern → atRisk
  * (non-terminal) → simulated session death → violated (terminal).

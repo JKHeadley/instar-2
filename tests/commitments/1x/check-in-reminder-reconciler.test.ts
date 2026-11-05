@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 /**
  * Tier 1 — the check-in reminder reconciler (the stateful half).
  * Spec: docs/specs/dated-commitment-reminder.md (ACT-724).

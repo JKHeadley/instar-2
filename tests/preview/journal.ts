@@ -70,6 +70,7 @@ import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, oper
 import { chatYesReference, reviewYesReference, SHARED_ACCESS_NOTE } from '../../src/operator/explicit-yes.js';
 import type { ExplicitYesInstallation, SharedAccessDisclosure } from '../../src/operator/explicit-yes.js';
 import { reviewLink, type ReviewYesSource } from './review-yes-source.js';
+import { applyCommitmentStoreRecord, checkCommitmentStoreRecord, type CommitmentStoreRecord, type CommitmentStoreView } from './commitment-record.js';
 import { applySentinelRecord, checkSentinelRecord, retainedSentinelEvidence, presenceNoteDue, type SentinelRecord, type SentinelView } from './sentinel-record.js';
 import { taskFields } from './answer-reading.js';
 import { encodeReply, fitsOneMessage, replyPartTarget, splitReply, wholeReplySent, MAX_ANSWER_BYTES, MAX_REPLY_PARTS, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
@@ -1069,7 +1070,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 6;
+export const JOURNAL_GENERATION = 7;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1082,7 +1083,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['commitment-store', 'send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1102,6 +1103,8 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refu
 
 export type JournalRecord =
   | PhaseTiming
+  /** Additive: the commitment and beacon modules' durable rows (commitment-record.ts). */
+  | CommitmentStoreRecord
   // Non-additive: an older writer must not discard the no-repeat expectation.
   | { kind: 'media-claim'; id: string; digest: string; at: number }
   | { kind: 'media-custody'; id: string; result: MediaCustodyResult; at: number }
@@ -1648,7 +1651,9 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   /** UNKNOWN calls conservatively written off by an authorized cap raise; absent until one is. */
   writtenOff?: string[];
   /** Part 18: the live sentinels' recorded decisions; absent until a sentinel records one. */
-  sentinels?: SentinelView }
+  sentinels?: SentinelView;
+  /** Typed commitments, beacon bookkeeping and sweep dispositions; absent until first written. */
+  commitmentStore?: CommitmentStoreView }
 
 function reserveTokens(view: JournalView, key: string, kind: CallKind, input: number, output: number): void {
   if (![input, output].every(n => Number.isSafeInteger(n) && n > 0)) throw Error('preview journal: invalid token reservation');
@@ -4474,6 +4479,10 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       packetSha256: row.packetSha256, contextDigest: row.contextDigest,
       ...(row.estimatedAnswerBytes === undefined ? {} : { estimatedAnswerBytes: row.estimatedAnswerBytes }) });
     return;
+  }
+  if (row.kind === 'commitment-store') {
+    checkCommitmentStoreRecord(row);
+    view.commitmentStore = applyCommitmentStoreRecord(view.commitmentStore, row); return;
   }
   if (row.kind === 'sentinel') {
     checkSentinelRecord(row, id => view.turns.has(id));

@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 /**
  * Unit tests for the PromiseBeacon escalation ladder
  * (PROMISE-BEACON-ESCALATION-SPEC §3–§5, §7).

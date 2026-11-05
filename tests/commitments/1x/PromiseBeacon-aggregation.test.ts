@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 /**
  * Tier 1 semantic coverage for topic-level PromiseBeacon aggregation.
  *

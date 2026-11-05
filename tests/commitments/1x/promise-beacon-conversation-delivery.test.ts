@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 /**
  * promise-beacon-conversation-delivery.test.ts — the §6.1 step-2 funnel swap
  * (durable-conversation-identity). PromiseBeacon.emitUserSend now routes every

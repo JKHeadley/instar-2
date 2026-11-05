@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 /**
  * Echo Bugs 10000001049 (2026-10-28): two per-topic model requests were both
  * recorded as config-change on ONE invented key (`topic.model`). One key holds

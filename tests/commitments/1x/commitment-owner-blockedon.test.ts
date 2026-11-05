@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 /**
  * Unit tests for the C1+C2 "The Agent Carries the Loop" commitment state model
  * (spec docs/specs/agent-owned-followthrough.md §4.1).

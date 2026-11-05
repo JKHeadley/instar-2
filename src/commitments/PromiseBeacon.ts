@@ -910,7 +910,7 @@ export class PromiseBeacon extends CommitmentEmitter {
               );
               if (verdict === 'stalled') {
                 atRiskSignal = true;
-                const softPhrase = AT_RISK_VARIANTS[hot.templatedVariantCursor % AT_RISK_VARIANTS.length];
+                const softPhrase = AT_RISK_VARIANTS[hot.templatedVariantCursor % AT_RISK_VARIANTS.length]!;
                 safeLine = softPhrase;
                 originAuthor = deterministicAutomationAuthor();
               }
@@ -981,7 +981,7 @@ export class PromiseBeacon extends CommitmentEmitter {
         h.lastSnapshotHash = hash;
         h.consecutiveUnchanged = hot.consecutiveUnchanged;
         h.templatedVariantCursor = hot.templatedVariantCursor;
-        h.consecutiveTurnFinished = hot.consecutiveTurnFinished;
+        if (hot.consecutiveTurnFinished !== undefined) h.consecutiveTurnFinished = hot.consecutiveTurnFinished;
         h.heartbeatCount = hot.heartbeatCount;
         if (livenessFired && sendResult === 'sent') h.lastLivenessAt = nowIso;
       });
@@ -1581,7 +1581,7 @@ export class PromiseBeacon extends CommitmentEmitter {
       outcome = await this.emitUserSend(
         representative,
         aggregateText,
-        representative.id === triggeringHeartbeatId ? 'heartbeat' : batch[0].kind,
+        representative.id === triggeringHeartbeatId ? 'heartbeat' : batch[0]!.kind,
         state.retryingCount != null,
         composeAutomationAuthors(batch.map(item => item.originAuthor ?? unknownAutomationAuthor('legacy-aggregate-author-unknown'))),
       );
@@ -2042,7 +2042,7 @@ export class PromiseBeacon extends CommitmentEmitter {
     content?: { text: string; kind: string; originAuthor: OriginAutomationAuthor },
   ): Promise<BeaconSendResult> {
     if (!outcome.delivered && outcome.outcome === 'not-delivered' && outcome.originHold) {
-      this.updateHotState(c.id, h => { h.originHold = { ...outcome.originHold!, logicalSendId, recordedAt: this.now(), content }; });
+      this.updateHotState(c.id, h => { h.originHold = { ...outcome.originHold!, logicalSendId, recordedAt: this.now(), ...(content ? { content } : {}) }; });
       this.emit('delivery.origin-held', { id: c.id, topicId: c.topicId, ...outcome.originHold });
       return 'held-origin';
     }

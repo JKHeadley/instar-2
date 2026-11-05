@@ -1,3 +1,4 @@
+// @ts-nocheck -- copied 1.x suite, adapted at its imports; the modules it exercises are strict.
 /**
  * Unit tests for PromiseBeacon UX fixes:
  *  - Heartbeat messages include a "re: <promise excerpt>" suffix.
