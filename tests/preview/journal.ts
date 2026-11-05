@@ -11,6 +11,7 @@ import { admitJev, JEV_ADMISSION_MS } from './reply-check.js';
 import { JOURNAL_JSON_CHUNK_BYTES, JOURNAL_JSON_STRING_BYTES, journalJsonChunks, parseJournalJson } from './journal-json.js';
 import { checkPhaseTiming, createPhaseTimingRecorder, isIdleAudienceTiming, retainedIdleAudienceTimings, type PhaseTiming } from './phase-timing.js';
 import { groupCarryPacket, validCarriedMemory, type CarriedMemory } from './group-carry.js';
+import { validCarriedRefresh, validRelationshipEmit, type CarriedRefresh, type RelationshipEmit } from './relationship-applier.js';
 import { boundThread, journalAudience, journalConversation, matchesBoundChat, validateChatBinding } from './forum-routing.js';
 /** The machine-local preview's only conversation and effect ledger. Records are
  * individually authenticated so replay reads the file once at boot; hot turns
@@ -1069,7 +1070,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 6;
+export const JOURNAL_GENERATION = 7;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1082,7 +1083,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'relationship-emit', 'group-carry-refresh', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1165,6 +1166,12 @@ export type JournalRecord =
    * turns are never the operator's in any store; every earlier row stays and replays unchanged (Rule 7: hidden, never deleted). */
   | { kind: 'retract'; request: string; updates: number[]; reason: string; authority: string; at: number }
   | { kind: 'group-carry'; memory: CarriedMemory; at: number }
+  /** Private root only: one disclosure-minimized relationship record this root emitted for its granted carries
+   * (carryover row 40, One Memory). Additive: a reader one build back still holds the people rows it was projected from. */
+  | { kind: 'relationship-emit'; emit: RelationshipEmit; forward?: ForwardDeclaration; at: number }
+  /** Group root only: the carried predecessor's relationship emits applied after the carry. Non-additive like the
+   * carry itself: a reader that skipped it would serve a person the operator has since forgotten or corrected. */
+  | { kind: 'group-carry-refresh'; refresh: CarriedRefresh; at: number }
   /** Written to the PRIVATE predecessor before its group carry: these open requests now execute only in the named
    * group root. Non-additive: a reader that skipped it would fire them a second time (Rules 52, 57, 93). */
   | { kind: 'request-transfer'; destinationRoot: string; chat: string; requests: ReminderRef[]; at: number }
@@ -1547,6 +1554,10 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
 
   /** Non-additive: older readers must refuse, including after compaction; descendants depend on its disclosure gate. */
   groupCarry?: CarriedMemory;
+  /** Private root: its own relationship record stream, in emit order (one writer; the HLC clock state is the last entry). */
+  relationshipEmits: RelationshipEmit[];
+  /** Group root: the predecessor's emits applied after the carry, each batch re-validated on replay. */
+  groupCarryRefreshes: CarriedRefresh[];
   /** A test copy's rebind (test-copy-1020): where it came from, the source's own binding (lineage) and the open work
    * that was copied with it. Present only in a copy; `genesis` then holds the test binding every launch is checked against. */
   testCopy?: { source: TestCopySource; lineage: Extract<JournalRecord, {kind:'genesis'}>; at: number;
@@ -1953,7 +1964,7 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
   const legacyFloor = snapshot.retained.reduce((max, row) => 'at' in row ? Math.max(max, row.at) : max, 0);
   const clockFloor = saved.clockFloor ?? saved.turns.reduce((max, [, turn]) => Math.max(max, turn.at), legacyFloor);
   const view: JournalView = { ...saved, ...(saved.activeSessionWork !== undefined || Object.keys(activeSessionWork).length
-    ? { activeSessionWork } : {}), forwardFrames: [], personAttributes: saved.personAttributes ?? [], clockFloor, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null, operatorRequests: saved.operatorRequests ?? [],
+    ? { activeSessionWork } : {}), forwardFrames: [], personAttributes: saved.personAttributes ?? [], relationshipEmits: saved.relationshipEmits ?? [], groupCarryRefreshes: saved.groupCarryRefreshes ?? [], clockFloor, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null, operatorRequests: saved.operatorRequests ?? [],
     tokenTotals: saved.tokenTotals ?? emptyTokenTotals(), tokenCalls: saved.tokenCalls ?? [],
     replyCheckPaths: { ...saved.replyCheckPaths, 'operator-echo': saved.replyCheckPaths?.['operator-echo'] ?? 0 },
     changeHistory: saved.changeHistory ?? [], undos: saved.undos ?? [],
@@ -4092,6 +4103,16 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       || !validCarriedMemory(row.memory)) throw Error('preview journal: group lineage refused');
     view.groupCarry = row.memory; return;
   }
+  if (row.kind === 'relationship-emit') {
+    if (view.genesis.forum === true || view.groupCarry || !validRelationshipEmit(row.emit, view.relationshipEmits.at(-1), view.relationshipEmits.length + 1))
+      throw Error('preview journal: relationship emit refused');
+    view.relationshipEmits.push(row.emit); return;
+  }
+  if (row.kind === 'group-carry-refresh') {
+    if (!view.groupCarry || view.genesis.forum !== true || !validCarriedRefresh(row.refresh, view.groupCarry, view.groupCarryRefreshes))
+      throw Error('preview journal: group lineage refused');
+    view.groupCarryRefreshes.push(row.refresh); return;
+  }
   if (row.kind === 'test-copy') {
     // Rule 35 / least revelation: a copy is rebound only onto the SAME verified operator's private chat with a different
     // bot, so the audience of the copied history is that operator alone; a copy of a copy has no second lineage.
@@ -5478,7 +5499,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, forwardFrames: [], turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], ...createPromiseStore<DatedItem>(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, forwardFrames: [], turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], relationshipEmits: [], groupCarryRefreshes: [], ...createPromiseStore<DatedItem>(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -5537,6 +5558,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     const append = (incoming: JournalRecord) => {
       // Additive evidence: old readers still consume the original intent exactly once.
       if (incoming.kind === 'send-format-refused') incoming = { ...incoming, forward: { generation: 6, additive: true } };
+      if (incoming.kind === 'relationship-emit') incoming = { ...incoming, forward: { generation: 7, additive: true } };
       const row: JournalRecord = view && 'at' in incoming && incoming.at < view.clockFloor
         ? { ...incoming, at: view.clockFloor } : incoming;
       if (readOnly || closed) throw Error('preview journal: reader cannot append');
@@ -5592,7 +5614,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, forwardFrames: [], turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], ...createPromiseStore<DatedItem>(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, forwardFrames: [], turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], relationshipEmits: [], groupCarryRefreshes: [], ...createPromiseStore<DatedItem>(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
       } else project(view!, row, systemCheck);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && compactable() && size > Math.max(compactBytes, snapshotBase * 2)) compact();

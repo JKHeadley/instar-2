@@ -231,16 +231,19 @@ describe('capability rows count only enabled, currently proven protection', () =
     expect(degraded.get('preview.channel-memory')!.protection).toBe('off-in-this-launch');
     expect(degraded.get('preview.memory')!.protection).toBe('unproven');
     const lines = proofStatusLines(healthy, [...degraded.values()]);
-    expect(lines[1]).toMatch(/confirmed, \d+ unconfirmed, 0 dark, 1 retired \(preview\.step-check\)/u);
+    expect(lines[1]).toMatch(/confirmed, \d+ unconfirmed, 1 dark \(preview\.relationship-awareness\), 1 retired \(preview\.step-check\)/u);
     expect(lines[1]).not.toMatch(/graduation overdue/u);
-    expect(lines).toHaveLength(2);
+    // The one dark capability (carryover row 40) stands on the record with no stage reached and its declared deadline.
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toBe('Graduation: preview.relationship-awareness — test-agent missing, development-agent missing, fleet missing; deadline 2027-03-31.');
     // The pre-retirement fixture still reads as dark with its recorded deadline.
     const gated = capabilityRows(GATED, { ...base, proofs: healthy, promotions: PRE_RETIREMENT });
     expect(gated.find(r => r.id === 'preview.step-check')).toMatchObject({ protection: 'dark', graduation: { deadline: STEP_DEADLINE, overdue: false,
       stages: { 'test-agent': 'missing', 'development-agent': 'missing', fleet: 'missing' }, deadlineRecorded: { recordedAt: PRE_RETIREMENT.at(-1)!.recordedAt } } });
     const gatedLines = proofStatusLines(healthy, gated);
-    expect(gatedLines[1]).toMatch(/confirmed, \d+ unconfirmed, 1 dark \(preview\.step-check\)/u);
-    expect(gatedLines[2]).toBe('Graduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-21 (recorded 2026-10-18).');
+    expect(gatedLines[1]).toMatch(/confirmed, \d+ unconfirmed, 2 dark \(preview\.step-check, preview\.relationship-awareness\)/u);
+    expect(gatedLines[2]).toBe('Graduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-21 (recorded 2026-10-18); '
+      + 'preview.relationship-awareness — test-agent missing, development-agent missing, fleet missing; deadline 2027-03-31.');
   });
   it('graduation stages come from the promotion record; a passed runtime proof without an entry is observed, not recorded', () => {
     const stepProof = { ...posture('step-check-reached', 'healthy'), capability: 'preview.step-check' };

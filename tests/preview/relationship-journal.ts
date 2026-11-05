@@ -77,7 +77,8 @@ const topicChannel = (view: JournalView, source: string) => {
 
 /** Every person the journal knows, as 1.x relationship records. Operator-confirmed merges join
  *  notes into one record; a later confirmation that was itself corrected or forgotten no longer joins. */
-export function journalRelationships(view: JournalView, now: number, maxRecent = JOURNAL_RECENT_INTERACTIONS): JournalRelationship[] {
+/** `imports: false` leaves imported channel items out (the carried and emitted projections: they never cross the group boundary). */
+export function journalRelationships(view: JournalView, now: number, maxRecent = JOURNAL_RECENT_INTERACTIONS, options: { imports?: boolean } = {}): JournalRelationship[] {
   const people = view.people;
   const eligible = people.map((note, index) => ({ note, index })).filter(({ note }) => own(view, note));
   // Union-find over note indexes: same normalized name, or an active operator-confirmed link.
@@ -114,7 +115,7 @@ export function journalRelationships(view: JournalView, now: number, maxRecent =
     // Imported items join the interaction history (count, span, recent list) but never the identity surface.
     const interactions = [
       ...ordered.map(({ note }) => ({ at: time(note.source), channel: topicChannel(view, note.source), summary: note.quote, source: note.source })),
-      ...importedInteractions(view, aliases, [...names]).map(item => ({ at: item.at, channel: importedChannel(item), summary: item.text.trim(), source: importedItemId(item) })),
+      ...(options.imports === false ? [] : importedInteractions(view, aliases, [...names])).map(item => ({ at: item.at, channel: importedChannel(item), summary: item.text.trim(), source: importedItemId(item) })),
     ].sort((a, b) => a.at - b.at);
     const record: RelationshipRecord = {
       id: `person:${root}`,

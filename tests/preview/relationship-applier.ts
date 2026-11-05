@@ -2,102 +2,90 @@
  * JournalSyncApplier — the RECEIVE (and own-stream SERVE) side of coherence
  * journal replication (P1.3 of multi-machine coherence).
  *
- * Spec: docs/specs/COHERENCE-JOURNAL-SPEC.md §3.4 (replication trust model —
- * ALL seven rules), §3.1 (stream/meta layout), §5 (trust model).
+ * Carried from 1.x `src/core/JournalSyncApplier.ts` (carryover row 40, One Memory). The 1.x spec:
+ * docs/specs/COHERENCE-JOURNAL-SPEC.md §3.4 (replication trust model — ALL seven rules), §3.1
+ * (stream/meta layout), §5 (trust model).
  *
- * This class is PURE and MESH-INDEPENDENT. It owns disk state only; another
- * workstream wires the `journal-sync` MeshRpc verb, the `session-status`
- * advert, and the delta-request loop on top of it. It NEVER imports MeshRpc,
- * the server, or the mesh dispatcher — it is the engine those call.
+ * This class is PURE and MESH-INDEPENDENT. It owns journal state only; the runner wires the
+ * `refresh-group` command and the idle-cycle refresh on top of it. It NEVER imports the server,
+ * the Telegram bridge or the lease — it is the engine those call.
  *
- * Replica layout (§3.1): peer copies of machine M's stream of kind K live at
- *   <stateDir>/state/coherence-journal/peers/<safeMachineId(M)>.<kind>.jsonl
- * with one sidecar
- *   <stateDir>/state/coherence-journal/peers/<safeMachineId(M)>.meta.json
- * holding the stream-set incarnation token (top-level, mirroring the writer's
- * own meta so `CoherenceJournalReader.readIncarnation` parses it) plus per-kind
- * apply bookkeeping (lastHeldSeq, status, suspect/flap counters, gap sentinels)
- * and the bounded quarantine record.
- *
- * The receive-side §4.1 durability rule lives HERE: a replica append fsyncs
- * BEFORE the entries are reported `applied`, so a journal-sync ack is an
- * ack-after-durable-commit. Author-side durability is the writer's separate
- * best-effort flush window — this is the receiver's contract.
+ * THE 2.0 SHAPE. 1.x kept peer replica files (`peers/<machine>.<kind>.jsonl` + a meta sidecar) and
+ * fsynced them before acknowledging. 2.0 has one encrypted, append-only journal per conversation and
+ * replicates it whole, so:
+ *   - the SERVED stream is the private predecessor's `relationship-emit` frames (its own encrypted
+ *     journal, replayed from sealed bytes: durably-flushed-only by construction), read either from
+ *     the predecessor's journal on this machine or from its verified replica copy on the other one;
+ *   - the REPLICA is the group root's own journal: one `group-carry-refresh` frame per applied batch,
+ *     written through the journal's durable append (the receive-side §4.1 ack-after-durable-commit
+ *     rule is the journal's fsync), re-validated record by record on every replay and refused whole
+ *     (`group lineage refused`) when any record does not pass the store schema;
+ *   - the meta sidecar's `lastHeldSeq` is the last refresh frame's `through`; status is in-memory.
  *
  * Trust model enforced (§3.4):
- *  1. FIRST-HOP SENDER BINDING — every entry's `machine` must === the
- *     authenticated sender; the target file derives from the sender, NEVER a
- *     payload field. Forged entries are rejected + counted, never appended.
- *  2. SCHEMA-VALIDATED APPLY — per entry: parseable + size-cap, seq exactly
- *     lastHeldSeq+1, ts parses, kind known-or-ignorable, data passes the kind's
- *     typed schema. ANY failure marks the stream `suspect` and STOPS the batch
- *     at the last valid line. `suspect` self-clears after K=20 consecutive
- *     valid in-order applies.
- *  3. INCARNATION FENCING — a known stream arriving with a NEW incarnation
- *     quarantines the old replica (rename aside, ≤2 kept per stream), starts
- *     fresh, and surfaces a coalesced divergence signal (per-machine 10min
- *     window); >3 flips in the window → status `reset-flapping`, surfaced once.
- *  4. TRUNCATION SIGNALS — a batch may carry `oldestRetainedSeq`; when
- *     lastHeldSeq+1 < oldestRetainedSeq the receiver records a gap sentinel in
- *     the replica meta (NOT a fake journal line), fast-forwards lastHeldSeq to
- *     oldestRetainedSeq-1, and marks the stream `gapped` until the next clean
- *     apply. (Gap re-request PACING is the caller's job; this exposes status.)
+ *  1. FIRST-HOP SENDER BINDING — every entry's `machine` and its envelope `origin` must === the
+ *     predecessor this receiver actually read (`carryOrigin(scope)`), NEVER a payload field. A
+ *     forged entry is rejected + counted and stops the batch.
+ *  2. SCHEMA-VALIDATED APPLY — per entry: parseable + size-cap, seq exactly lastHeldSeq+1, ts
+ *     parses, kind known, data passes the relationship store schema through the generic envelope
+ *     validator. ANY failure marks the stream `suspect` and STOPS the batch at the last valid line.
+ *     `suspect` self-clears after K=20 consecutive valid in-order applies.
+ *  3. LINEAGE FENCING — a predecessor whose genesis identity differs from the one the first refresh
+ *     recorded is REFUSED (1.x quarantined the old replica and started fresh; 2.0's group root never
+ *     adopts a second predecessor history under the same scope: Rule 95 fail direction). The initial
+ *     carry's scope is already fixed; a different source root is `predecessor already fixed`.
+ *  4. TRUNCATION SIGNALS — kept as code: a batch may carry `oldestRetainedSeq`; the 2.0 served stream
+ *     is never truncated (emits survive compaction in the snapshot), so the gap path is dormant.
  *
- * All replica writes go through the injected guardWrite seam (same seam as the
- * writer) and O_APPEND single-line writes. The applier is tolerant + bounded
- * everywhere and NEVER throws into its caller; degradation is surfaced via
- * counters and per-stream status.
+ * The applier is tolerant + bounded everywhere and NEVER throws into its caller; degradation is
+ * surfaced via counters and per-stream status.
  */
 
-import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
-
+import { createHash } from 'node:crypto';
+import type { GroupCarryScope, DisclosureVerdict } from './group-disclosure.js';
+import type { JournalView, openPreviewJournal } from './journal.js';
+import { carryOrigin, guardGroupCarry, type CarriedMemory } from './group-carry.js';
 import {
-  type ThreadlineConversationAction,
-  type GuardLatchAction,
-  JOURNAL_KINDS,
-  sanitizeMachineId,
-  readTailTolerant,
-  type JournalEntry,
-  type JournalKind,
-  type JournalFs,
-  type AutonomousAction,
-  type PlacementReason,
-  type SessionStatus,
-  REPLICATED_RECORD_MAX_ENTRY_BYTES,
-} from './CoherenceJournal.js';
-import {
-  validateReplicatedEnvelope,
-  type ReplicatedKindRegistry,
-  type EnvelopeValidationCounters,
-} from './ReplicatedRecordEnvelope.js';
-import { SafeFsExecutor } from './SafeFsExecutor.js';
+  RELATIONSHIP_KIND_REGISTRATION, RELATIONSHIP_MAX_ENTRY_BYTES, RELATIONSHIP_RECORD_KIND, RELATIONSHIP_STORE_KNOWN_FIELDS,
+  RELATIONSHIP_TOMBSTONE_KNOWN_FIELDS, RESERVED_ENVELOPE_FIELDS, compareHlc, originRecordFromData, validateReplicatedEnvelope,
+  type EnvelopeValidationCounters, type HlcTimestamp, type OriginRecord, type ReplicatedOp, type StoreFieldSchema,
+} from './relationship-store.js';
 
 // ---- tunables (§3.4) -------------------------------------------------------
 
-/** Per-entry size cap on the receive side (§3.4 rule 2). Mirrors the writer's
- *  DEFAULT_MAX_ENTRY_BYTES (source of truth: CoherenceJournal.ts). */
-export const APPLIER_MAX_ENTRY_BYTES = 8 * 1024;
+/** Per-entry size cap on the receive side (§3.4 rule 2). Mirrors the writer's cap (source of truth:
+ *  relationship-store.ts RELATIONSHIP_MAX_ENTRY_BYTES). */
+export const APPLIER_MAX_ENTRY_BYTES = RELATIONSHIP_MAX_ENTRY_BYTES;
 /** Consecutive valid in-order applies that self-clear `suspect` (§3.4 rule 2). */
 export const SUSPECT_CLEAR_THRESHOLD = 20;
-/** Quarantined replica files kept per stream before evicting the oldest (rule 3). */
-export const MAX_QUARANTINE_PER_STREAM = 2;
-/** Incarnation-flap coalescing window per machine (rule 3). */
-export const FLAP_WINDOW_MS = 10 * 60 * 1000;
-/** Flips within the window past this → `reset-flapping`, surfaced once (rule 3). */
-export const FLAP_RESET_THRESHOLD = 3;
-/** Default serve-batch size cap (§3.4 rule 5 — journalSyncMaxBatchBytes). */
-export const DEFAULT_MAX_BATCH_BYTES = 262144;
-/** Reverse-tail read ceiling when reading own stream to serve. */
-const SERVE_READ_BYTE_CEILING = 64 * 1024 * 1024;
+/** Default serve-batch size cap (§3.4 rule 5 — journalSyncMaxBatchBytes): one refresh frame rides the
+ *  same whole-snapshot ceiling as the initial carry (group-carry.ts CARRY_MAX_BYTES; a value, not an import,
+ *  because the two modules import each other and this is read at module load). */
+export const DEFAULT_MAX_BATCH_BYTES = 128 * 1024;
 
 // ---- public types ----------------------------------------------------------
 
-/** Per-stream replication status surfaced to the caller (§3.4 rule 4). */
-export type StreamReplStatus = 'current' | 'behind' | 'gapped' | 'suspect' | 'reset-flapping';
+/** The replicated kinds this receiver applies (1.x JOURNAL_KINDS: the five lifecycle kinds plus the
+ *  registered `*-record` kinds; 2.0 carries one). */
+export const JOURNAL_KINDS: readonly string[] = Object.freeze([RELATIONSHIP_RECORD_KIND]);
+export type JournalKind = typeof RELATIONSHIP_RECORD_KIND;
 
-/** One stream's apply bookkeeping, persisted in the peer meta sidecar. */
+/** One served line of the predecessor's own stream (1.x CoherenceJournal JournalEntry). */
+export interface JournalEntry { seq: number; ts: string; machine: string; kind: string; topic?: number; data: Record<string, unknown> }
+
+/** One emitted relationship record as the private root's journal keeps it (`relationship-emit` frame body). */
+export interface RelationshipEmit { seq: number; recordKey: string; op: ReplicatedOp; hlc: HlcTimestamp; data: Record<string, unknown> }
+
+/** One applied batch as the group root's journal keeps it (`group-carry-refresh` frame body). `records` are the
+ *  validated envelope `data` of emits `from+1 .. through`, in order; `lineage` is the predecessor's genesis identity. */
+export interface CarriedRefresh { scope: GroupCarryScope; lineage: string; from: number; through: number; records: string[]; at: number; digest: string }
+
+/** Per-stream replication status surfaced to the caller (§3.4 rule 4). `lineage-refused` is the 2.0 word for
+ *  1.x `reset-flapping`: a predecessor that is no longer the one this root carried. */
+export type StreamReplStatus = 'current' | 'behind' | 'gapped' | 'suspect' | 'lineage-refused';
+
+/** One stream's apply bookkeeping (1.x: persisted in the peer meta sidecar; 2.0: `lastHeldSeq` and the
+ *  incarnation are read from the refresh frames, the rest is per-instance). */
 export interface PeerKindState {
   /** Highest contiguously-applied seq held locally for this peer+kind. */
   lastHeldSeq: number;
@@ -118,18 +106,16 @@ export interface GapSentinel {
   recordedAt: string;
 }
 
-/** The peer meta sidecar (§3.1) — incarnation top-level (reader-compatible). */
+/** The peer meta (§3.1) — incarnation top-level. */
 export interface PeerMeta {
   incarnation: string;
   /** Per-kind apply bookkeeping. */
   kinds: Partial<Record<JournalKind, PeerKindState>>;
-  /** Incarnation flips observed (timestamps ms) for the flap window. */
-  flipsMs: number[];
-  /** Sticky once a machine has been flagged reset-flapping (surfaced once). */
-  resetFlapping: boolean;
+  /** Sticky once the predecessor's lineage was seen to differ (surfaced once). */
+  lineageRefused: boolean;
 }
 
-/** A divergence signal coalesced per machine within FLAP_WINDOW_MS (rule 3). */
+/** A divergence signal: the predecessor's genesis identity is not the one this root carried (rule 3). */
 export interface DivergenceSignal {
   machineId: string;
   kind: JournalKind;
@@ -159,13 +145,13 @@ export interface ApplyResult {
   invalidEntries: number;
   /** Streams marked suspect in this call (rule 2). */
   suspectStreams: number;
-  /** Streams quarantined for a new incarnation in this call (rule 3). */
+  /** Streams refused for a changed predecessor lineage in this call (rule 3). */
   quarantined: number;
   /** Truncation gaps recorded in this call (rule 4). */
   gapsRecorded: number;
-  /** Append batches skipped because guardWrite refused (never thrown). */
+  /** Append batches the journal refused (never thrown). */
   guardSkips: number;
-  /** Divergence signals emitted (coalesced) in this call (rule 3). */
+  /** Divergence signals emitted in this call (rule 3). */
   signals: DivergenceSignal[];
   /** Per-stream final status after this call. */
   statuses: Record<string, StreamReplStatus>;
@@ -185,76 +171,82 @@ export interface ApplierDegradation {
   signals: number;
 }
 
+/** The replicated-kind registry seam (1.x ReplicatedKindRegistry's receive half). */
+export interface ReplicatedKindRegistry {
+  getByKind(kind: string): { schema: StoreFieldSchema } | undefined;
+  isReplicatedKind(kind: string): boolean;
+}
+
+/** The one registration of 2.0. */
+export const relationshipReceiveRegistry: ReplicatedKindRegistry = Object.freeze({
+  getByKind: (kind: string) => kind === RELATIONSHIP_RECORD_KIND ? { schema: RELATIONSHIP_KIND_REGISTRATION.schema } : undefined,
+  isReplicatedKind: (kind: string) => kind === RELATIONSHIP_RECORD_KIND,
+});
+
+type Journal = ReturnType<typeof openPreviewJournal>;
+
 export interface JournalSyncApplierConfig {
-  /** Absolute path to the agent's `.instar/` directory (the stateDir). */
-  stateDir: string;
-  /**
-   * Injected standby read-only guard (§3.1). Called with the target replica
-   * file path before each append batch; throwing skips the batch + counts.
-   * Same seam the writer uses (`StateManager.guardJournalWrite`).
-   */
-  guardWrite?: (filePath: string) => void;
+  /** The group root's journal: the one durable replica of the predecessor's relationship stream. */
+  destination: Journal;
+  /** The carry scope this root is fixed to; the replica is keyed by it, never by a payload field. */
+  scope: GroupCarryScope;
   /** Optional clock override (tests). */
-  now?: () => Date;
+  now?: () => number;
   /** Optional logger; called once per failure class. */
   logger?: (msg: string) => void;
-  /** Optional fs seam for fault-injection tests. Defaults to node:fs. */
-  fsImpl?: JournalFs;
   /** Per-entry size cap override. Default APPLIER_MAX_ENTRY_BYTES. */
   maxEntryBytes?: number;
   /**
    * The replicated-kind registry (WS2 send-side receive half). Injected so the
-   * applier can VALIDATE + APPLY a registered `*-record` kind a peer serves —
-   * without it, a peer's learning-record would be marked `invalid` and
-   * suspect-flag the stream (the receive-only gap). ABSENT ⇒ unchanged behavior
-   * (only the 5 lifecycle kinds validate). The registry is the SAME instance the
-   * journal writer + the stateSyncReceive advert read (one source of truth).
+   * applier can VALIDATE + APPLY a registered `*-record` kind a peer serves. The
+   * registry is the SAME instance the journal writer reads (one source of truth).
    */
   replicatedRegistry?: ReplicatedKindRegistry;
   /**
-   * Optional derived-index observer for replicated records. Called only after a
-   * peer replica batch has been written and fdatasync has returned, so the index
-   * tracks durable bytes, never uncommitted inbound data.
+   * Optional derived-index observer for replicated records. Called only after the
+   * refresh frame has been durably appended, so the index tracks durable bytes,
+   * never uncommitted inbound data.
    */
   onReplicatedRecordsCommitted?: (senderMachineId: string, kind: JournalKind, entries: JournalEntry[]) => void;
 }
 
-function realFs(): JournalFs {
-  return {
-    openSync: fs.openSync,
-    writeSync: fs.writeSync,
-    fdatasyncSync: fs.fdatasyncSync,
-    closeSync: fs.closeSync,
-    existsSync: fs.existsSync,
-    statSync: fs.statSync,
-    renameSync: fs.renameSync,
-    writeFileSync: fs.writeFileSync,
-    readFileSync: fs.readFileSync,
-    readdirSync: fs.readdirSync,
-    truncateSync: fs.truncateSync,
-    mkdirSync: fs.mkdirSync,
-    readSync: fs.readSync,
-  };
+const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+/** Every field a stored record may carry: the store's own fields of either op branch plus the reserved envelope. */
+const KNOWN_RECORD_FIELDS: ReadonlySet<string> = new Set([...RELATIONSHIP_STORE_KNOWN_FIELDS, ...RELATIONSHIP_TOMBSTONE_KNOWN_FIELDS, ...RESERVED_ENVELOPE_FIELDS]);
+/** The validated form of an envelope: its store fields as the schema clamped them plus the envelope, nothing else. The
+ *  1.x validator DROPS an unknown field (counted) rather than rejecting the record; 2.0 stores only this clean form, so a
+ *  replayed line with any field outside it is a tamper, not a tolerated extra. Null when the envelope does not validate. */
+export function cleanEnvelopeData(data: Record<string, unknown>, counters: EnvelopeValidationCounters = uncountedCounters): Record<string, unknown> | null {
+  const result = validateReplicatedEnvelope(data, RELATIONSHIP_KIND_REGISTRATION.schema, counters);
+  if (!result.ok) return null;
+  const envelope = result.envelope;
+  return { ...result.storeFields, recordKey: envelope.recordKey, hlc: envelope.hlc, op: envelope.op, origin: envelope.origin,
+    ...(envelope.observed !== undefined ? { observed: envelope.observed } : {}) };
 }
+const onlyKnownFields = (data: Record<string, unknown>) => Object.keys(data).every(field => KNOWN_RECORD_FIELDS.has(field));
+const hashBody = (value: unknown) => sha256(JSON.stringify(value));
+const uncountedCounters: EnvelopeValidationCounters = { bumpSchemaReject() {}, bumpDroppedField() {}, bumpJailReject() {} };
+const uncounted = uncountedCounters;
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** The predecessor's lineage identity: its genesis binding, never its path or cursor. A re-seeded root at the same
+ *  path has a different identity and is refused as a changed predecessor. */
+export function lineageOf(view: JournalView): string {
+  const g = view.genesis;
+  return sha256(JSON.stringify([g.bot, g.chat, g.operator, g.grant ?? null, g.configurationDigest ?? null, g.origin ?? 'production']));
 }
 
 export class JournalSyncApplier {
-  private readonly stateDir: string;
-  private readonly guardWrite?: (filePath: string) => void;
-  private readonly now: () => Date;
-  private readonly logger?: (msg: string) => void;
-  private readonly io: JournalFs;
+  private readonly destination: Journal;
+  private readonly scope: GroupCarryScope;
+  private readonly now: () => number;
+  private readonly logger: ((msg: string) => void) | undefined;
   private readonly maxEntryBytes: number;
   /** The replicated-kind registry (WS2 send-side receive half). Settable because the
-   *  applier is constructed before the registry is populated (server.ts boot order);
-   *  the config option is for tests that have the registry up front. */
-  private replicatedRegistry?: ReplicatedKindRegistry;
-  private replicatedCommitObserver?: (senderMachineId: string, kind: JournalKind, entries: JournalEntry[]) => void;
+   *  applier may be constructed before the registry is populated. */
+  private replicatedRegistry: ReplicatedKindRegistry | undefined;
+  private replicatedCommitObserver: ((senderMachineId: string, kind: JournalKind, entries: JournalEntry[]) => void) | undefined;
 
-  /** In-memory meta cache per peer machine (keyed by RAW machineId). */
+  /** In-memory meta per predecessor origin (the persisted half is read from the refresh frames). */
   private metaCache = new Map<string, PeerMeta>();
 
   private degradation: ApplierDegradation = {
@@ -272,22 +264,19 @@ export class JournalSyncApplier {
   private loggedClasses = new Set<string>();
 
   constructor(config: JournalSyncApplierConfig) {
-    this.stateDir = config.stateDir;
-    this.guardWrite = config.guardWrite;
-    this.now = config.now ?? (() => new Date());
+    this.destination = config.destination;
+    this.scope = config.scope;
+    this.now = config.now ?? (() => Date.now());
     this.logger = config.logger;
-    this.io = config.fsImpl ?? realFs();
     this.maxEntryBytes = config.maxEntryBytes ?? APPLIER_MAX_ENTRY_BYTES;
-    this.replicatedRegistry = config.replicatedRegistry;
+    this.replicatedRegistry = config.replicatedRegistry ?? relationshipReceiveRegistry;
     this.replicatedCommitObserver = config.onReplicatedRecordsCommitted;
   }
 
-  /** The per-entry byte cap for a kind — RAISED for replicated `*-record` kinds so
-   *  a fat-but-legal record the writer emitted is not rejected as oversize on
-   *  receive (must match CoherenceJournal.maxEntryBytesForKind). */
+  /** The per-entry byte cap for a kind (the registered record cap for a replicated kind). */
   private maxEntryBytesForKind(kind: JournalKind): number {
     return this.replicatedRegistry?.isReplicatedKind(kind)
-      ? REPLICATED_RECORD_MAX_ENTRY_BYTES
+      ? RELATIONSHIP_MAX_ENTRY_BYTES
       : this.maxEntryBytes;
   }
 
@@ -295,16 +284,13 @@ export class JournalSyncApplier {
     return { ...this.degradation };
   }
 
-  /** Inject the replicated-kind registry (WS2 send-side). Called once at wiring time
-   *  after the concrete stores register, so a peer's registered `*-record` kind
-   *  validates + applies instead of suspect-flagging the stream. Idempotent. */
+  /** Inject the replicated-kind registry (WS2 send-side). Idempotent. */
   setReplicatedKindRegistry(registry: ReplicatedKindRegistry | undefined): void {
     this.replicatedRegistry = registry;
   }
 
   /**
-   * Attach/replace the derived-index observer after boot wiring has constructed
-   * the peer-stream reader. The replica files remain authoritative; this observer
+   * Attach/replace the derived-index observer. The refresh frames remain authoritative; this observer
    * is only an incremental cache update.
    */
   setReplicatedRecordCommitObserver(observer: ((senderMachineId: string, kind: JournalKind, entries: JournalEntry[]) => void) | undefined): void {
@@ -313,18 +299,24 @@ export class JournalSyncApplier {
 
   // ---- advert state (for delta requests) ---------------------------------
 
+  /** The seq this root holds through for the carried predecessor: the last refresh's `through`, else the
+   *  initial carry's `emitsThrough` (emits before the carry are superseded by the snapshot), else 0. */
+  lastHeldSeq(): number {
+    const refreshes = this.destination.view.groupCarryRefreshes;
+    return refreshes.at(-1)?.through ?? this.destination.view.groupCarry?.emitsThrough ?? 0;
+  }
+
   /**
    * What this machine holds per peer stream — `{ machineId → { kind →
    * { incarnation, lastSeq } } }` — so the caller can compare against a peer's
-   * advert and request only the missing ranges (§3.4 rule 5). Sourced from the
-   * persisted peer meta (incarnation + per-kind lastHeldSeq).
+   * advert and request only the missing ranges (§3.4 rule 5).
    */
   getAdvertState(): Record<string, Record<string, { incarnation: string; lastSeq: number }>> {
     const out: Record<string, Record<string, { incarnation: string; lastSeq: number }>> = {};
     for (const machineId of this.discoverPeerMachines()) {
       const meta = this.loadMeta(machineId);
       const perKind: Record<string, { incarnation: string; lastSeq: number }> = {};
-      for (const kind of JOURNAL_KINDS) {
+      for (const kind of JOURNAL_KINDS as JournalKind[]) {
         const ks = meta.kinds[kind];
         // Surface a stream only if we hold something for it (lastHeldSeq > 0)
         // OR it has bookkeeping (a gap/suspect). A bare zero is "nothing held".
@@ -342,17 +334,17 @@ export class JournalSyncApplier {
     const out: Record<string, StreamReplStatus> = {};
     for (const machineId of this.discoverPeerMachines()) {
       const meta = this.loadMeta(machineId);
-      if (meta.resetFlapping) {
-        // A reset-flapping machine surfaces that status across all its kinds.
-        for (const kind of JOURNAL_KINDS) {
-          if (meta.kinds[kind]) out[`${machineId}.${kind}`] = 'reset-flapping';
+      if (meta.lineageRefused) {
+        // A refused lineage surfaces that status across all its kinds.
+        for (const kind of JOURNAL_KINDS as JournalKind[]) {
+          if (meta.kinds[kind]) out[`${machineId}.${kind}`] = 'lineage-refused';
         }
       }
-      for (const kind of JOURNAL_KINDS) {
+      for (const kind of JOURNAL_KINDS as JournalKind[]) {
         const ks = meta.kinds[kind];
         if (!ks) continue;
         const key = `${machineId}.${kind}`;
-        if (out[key]) continue; // reset-flapping already wins
+        if (out[key]) continue; // lineage-refused already wins
         out[key] = ks.status;
       }
     }
@@ -362,9 +354,9 @@ export class JournalSyncApplier {
   // ---- apply (the RECEIVE side, §3.4 rules 1-4) --------------------------
 
   /**
-   * Apply an inbound batch from `senderMachineId` (the AUTHENTICATED envelope
-   * identity). Implements §3.4 rules 1-4. Never throws; the result is fully
-   * observable. The target replica files derive from `senderMachineId` only —
+   * Apply an inbound batch from `senderMachineId` (the predecessor origin this receiver READ,
+   * `carryOrigin(scope)`). Implements §3.4 rules 1-4. Never throws; the result is fully
+   * observable. The refresh frame derives from `senderMachineId` and the fixed scope only —
    * NEVER from any payload field.
    */
   apply(senderMachineId: string, batch: ApplyBatchStream[]): ApplyResult {
@@ -382,6 +374,7 @@ export class JournalSyncApplier {
     };
     try {
       if (!senderMachineId || typeof senderMachineId !== 'string') return result;
+      if (senderMachineId !== carryOrigin(this.scope)) return result;
       const meta = this.loadMeta(senderMachineId);
 
       for (const stream of batch || []) {
@@ -393,14 +386,11 @@ export class JournalSyncApplier {
         }
       }
 
-      // Persist the (possibly mutated) meta once per apply call.
-      this.persistMeta(senderMachineId, meta);
-
       // Final per-stream statuses for the caller.
-      for (const kind of JOURNAL_KINDS) {
+      for (const kind of JOURNAL_KINDS as JournalKind[]) {
         const ks = meta.kinds[kind];
         if (ks) {
-          result.statuses[`${senderMachineId}.${kind}`] = meta.resetFlapping ? 'reset-flapping' : ks.status;
+          result.statuses[`${senderMachineId}.${kind}`] = meta.lineageRefused ? 'lineage-refused' : ks.status;
         }
       }
     } catch (e) {
@@ -422,43 +412,46 @@ export class JournalSyncApplier {
     const kind = stream.kind;
     const incarnation = typeof stream.incarnation === 'string' ? stream.incarnation : '';
 
-    // First batch ever for this peer: adopt its incarnation (no quarantine —
-    // there is no old history to fence against).
+    // First batch ever for this predecessor: adopt its lineage (there is no old history to fence against).
     if (!meta.incarnation) {
-      meta.incarnation = incarnation || this.mintIncarnation();
+      if (!/^[a-f0-9]{64}$/u.test(incarnation)) { this.markRefused(meta, senderMachineId, kind, incarnation, result); return; }
+      meta.incarnation = incarnation;
     }
 
-    // §3.4 rule 3 — INCARNATION FENCING. A KNOWN stream arriving with a NEW
-    // incarnation quarantines the old replica + starts fresh + signals.
-    if (incarnation && incarnation !== meta.incarnation) {
-      this.handleIncarnationFlip(senderMachineId, meta, kind, incarnation, result);
+    // §3.4 rule 3 — LINEAGE FENCING. A KNOWN predecessor arriving with a different genesis identity is
+    // refused whole: no quarantine, no fresh start, nothing written (Rule 95 fail direction).
+    if (incarnation !== meta.incarnation) {
+      this.markRefused(meta, senderMachineId, kind, incarnation, result);
+      return;
     }
 
     const ks = this.ensureKind(meta, kind);
 
-    // §3.4 rule 4 — TRUNCATION SIGNAL. If our next-needed seq fell below what
-    // the peer still retains, record a gap sentinel + fast-forward + mark gapped.
+    // §3.4 rule 4 — TRUNCATION SIGNAL. If our next-needed seq fell below what the peer still retains, record a gap
+    // sentinel + mark gapped. 1.x then fast-forwarded lastHeldSeq past the hole; 2.0 does not: the group journal's
+    // refresh frames are contiguous by replay rule, and the served stream is never truncated (emits survive compaction
+    // in the snapshot), so a watermark above the held seq is a signal to surface, and nothing past the hole is applied.
     if (typeof stream.oldestRetainedSeq === 'number' && Number.isFinite(stream.oldestRetainedSeq)) {
       const nextNeeded = ks.lastHeldSeq + 1;
       if (nextNeeded < stream.oldestRetainedSeq) {
         ks.gaps.push({
           fromSeq: nextNeeded,
           toSeq: stream.oldestRetainedSeq - 1,
-          recordedAt: this.now().toISOString(),
+          recordedAt: new Date(this.now()).toISOString(),
         });
         // Bound the gap record (No Unbounded Loops) — keep the most recent few.
         if (ks.gaps.length > 16) ks.gaps.splice(0, ks.gaps.length - 16);
-        ks.lastHeldSeq = stream.oldestRetainedSeq - 1;
         ks.status = 'gapped';
         ks.consecutiveValid = 0;
         this.degradation.gapsRecorded++;
         result.gapsRecorded++;
+        return;
       }
     }
 
     // §3.4 rules 1 + 2 — validate every entry IN ORDER, append durably, stop at
     // the first failure (suspect), skip duplicates silently.
-    const toAppend: string[] = [];
+    const toAppend: JournalEntry[] = [];
     let stopped = false;
     for (const entry of stream.entries || []) {
       const verdict = this.validateEntry(senderMachineId, kind, entry, ks.lastHeldSeq + toAppend.length);
@@ -487,14 +480,15 @@ export class JournalSyncApplier {
         break;
       }
       // valid + in order → queue for durable append.
-      toAppend.push(JSON.stringify(entry));
+      toAppend.push(entry);
     }
 
     if (toAppend.length === 0) {
+      if (stopped && ks.status === 'current') ks.status = 'behind';
       return; // nothing to durably write (all dup/forged/invalid, or empty)
     }
 
-    const appendedCount = this.durablyAppend(senderMachineId, kind, toAppend, result);
+    const appendedCount = this.durablyAppend(senderMachineId, meta, kind, ks.lastHeldSeq, toAppend, result);
     if (appendedCount > 0) {
       ks.lastHeldSeq += appendedCount;
       // §3.4 rule 2 — `suspect` self-clears after K consecutive valid in-order
@@ -518,7 +512,7 @@ export class JournalSyncApplier {
     }
 
     // If the batch stopped short (invalid/forged) the stream is "behind" the
-    // peer's advert from the caller's POV — but suspect/quarantine status wins.
+    // peer's advert from the caller's POV — but suspect status wins.
     if (stopped && ks.status === 'current') {
       ks.status = 'behind';
     }
@@ -536,8 +530,12 @@ export class JournalSyncApplier {
   ): 'valid' | 'forged' | 'duplicate' | 'invalid' {
     if (!entry || typeof entry !== 'object') return 'invalid';
 
-    // Rule 1: FIRST-HOP SENDER BINDING. entry.machine must === the sender.
+    // Rule 1: FIRST-HOP SENDER BINDING. entry.machine must === the sender, and so must the
+    // envelope's own origin: a record claiming another predecessor is forged, not malformed.
     if (typeof entry.machine !== 'string' || entry.machine !== senderMachineId) {
+      return 'forged';
+    }
+    if (entry.data && typeof entry.data === 'object' && (entry.data as Record<string, unknown>).origin !== senderMachineId) {
       return 'forged';
     }
 
@@ -575,305 +573,90 @@ export class JournalSyncApplier {
   }
 
   /**
-   * §3.2 typed schema validation — MIRRORED from CoherenceJournal.validate()
-   * (source of truth: src/core/CoherenceJournal.ts). The applier validates
-   * STRICTLY (reject on unknown/extra fields too) so a peer's buggy/forged
-   * writer cannot smuggle free text past the receiver. Returns true if the
-   * data is a well-formed instance of the kind's schema.
+   * §3.2 typed schema validation. A registered replicated `*-record` kind validates through the
+   * GENERIC envelope validator + its store schema — the SAME strict discipline the writer applied
+   * (reject free text / unknown fields, jail path-shaped fields, validate hlc + observed). The
+   * counters are a no-op here — the applier surfaces receive degradation via its own
+   * ApplierDegradation counters / suspect status, not these per-field bumps.
    */
   private validateData(kind: JournalKind, data: unknown): boolean {
     if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
     const raw = data as Record<string, unknown>;
-    const keys = Object.keys(raw);
-
-    // WS2 send-side receive half: a registered replicated `*-record` kind
-    // validates through the GENERIC envelope validator + its store schema — the
-    // SAME strict discipline the writer applied (reject free text / unknown fields,
-    // jail path-shaped fields, validate hlc + observed). Without this branch a
-    // peer's learning-record would be `invalid` ⇒ suspect-flag the stream (the
-    // receive-only gap). The counters are a no-op here — the applier surfaces
-    // receive degradation via its own ApplierDegradation counters / suspect status,
-    // not these per-field bumps; we only need the boolean verdict.
     const reg = this.replicatedRegistry?.getByKind(kind);
     if (reg) {
-      const noopCounters: EnvelopeValidationCounters = {
-        bumpSchemaReject: () => {},
-        bumpDroppedField: () => {},
-        bumpJailReject: () => {},
-      };
-      return validateReplicatedEnvelope(raw, reg.schema, noopCounters).ok;
-    }
-
-    if (kind === 'topic-placement') {
-      // KEEP IN SYNC with CoherenceJournal.validate() topic-placement branch (the
-      // emit-side source of truth). WS1.3/Fix #3 (#1311) added the 'reconcile' reason
-      // AND the cooperative-handoff fields (status/transferTo/timestamp/drainInFlight)
-      // on the emit side but NOT here — so a real cross-machine transferring record
-      // failed receive-validation, marked the peer stream `suspect`, and halted
-      // replication so the target never claimed (live two-machine proof catch,
-      // 2026-06-30; in-process tests covered emit + applier-materialize, never this
-      // receive-validation path). Mirror EXACTLY.
-      const reasons: PlacementReason[] = ['user-move', 'placed', 'failover', 'released', 'quota-block-move', 'reconcile'];
-      if (typeof raw.owner !== 'string' || !raw.owner) return false;
-      if (typeof raw.epoch !== 'number' || !Number.isFinite(raw.epoch)) return false;
-      if (typeof raw.reason !== 'string' || !reasons.includes(raw.reason as PlacementReason)) return false;
-      if (raw.prevOwner !== undefined && typeof raw.prevOwner !== 'string') return false;
-      // Fix #3 OPTIONAL handoff fields. Back-compat: an absent `status` is `active`.
-      // A present-but-malformed field rejects the record (never a silent partial accept).
-      if (raw.status !== undefined && raw.status !== 'active' && raw.status !== 'transferring' && raw.status !== 'released') return false;
-      if (raw.transferTo !== undefined && typeof raw.transferTo !== 'string') return false;
-      if (raw.timestamp !== undefined && (typeof raw.timestamp !== 'number' || !Number.isFinite(raw.timestamp))) return false;
-      if (raw.drainInFlight !== undefined && typeof raw.drainInFlight !== 'boolean') return false;
-      const known = ['owner', 'epoch', 'reason', 'prevOwner', 'status', 'transferTo', 'timestamp', 'drainInFlight'];
-      return keys.every((k) => known.includes(k));
-    }
-    if (kind === 'session-lifecycle') {
-      const statuses: SessionStatus[] = ['created', 'completed', 'killed', 'reaped', 'failed'];
-      if (typeof raw.sessionId !== 'string' || !raw.sessionId) return false;
-      if (typeof raw.status !== 'string' || !statuses.includes(raw.status as SessionStatus)) return false;
-      if (raw.reapReason !== undefined && typeof raw.reapReason !== 'string') return false;
-      if (raw.reapLogRef !== undefined && typeof raw.reapLogRef !== 'string') return false;
-      const known = ['sessionId', 'status', 'reapReason', 'reapLogRef'];
-      return keys.every((k) => known.includes(k));
-    }
-    if (kind === 'autonomous-run') {
-      const actions: AutonomousAction[] = ['started', 'stopped'];
-      if (typeof raw.action !== 'string' || !actions.includes(raw.action as AutonomousAction)) return false;
-      if (typeof raw.runId !== 'string' || !raw.runId) return false;
-      if (!Array.isArray(raw.artifactPaths)) return false;
-      if (!raw.artifactPaths.every((p) => typeof p === 'string')) return false;
-      const known = ['action', 'runId', 'artifactPaths'];
-      return keys.every((k) => known.includes(k));
-    }
-    if (kind === 'threadline-conversation') {
-      // P3 §3.1 — the receive-side mirror of CoherenceJournal.validate
-      // (round-1: without this branch the applier rejects the kind and
-      // suspect-flags the sending peer).
-      const actions: ThreadlineConversationAction[] = ['started', 'bound', 'unbound', 'closed'];
-      if (typeof raw.action !== 'string' || !actions.includes(raw.action as ThreadlineConversationAction)) return false;
-      if (typeof raw.conversationId !== 'string' || !raw.conversationId || raw.conversationId.length > 256) return false;
-      if (typeof raw.peerFingerprint !== 'string' || !raw.peerFingerprint || raw.peerFingerprint.length > 256) return false;
-      if (raw.topicId !== undefined && (typeof raw.topicId !== 'number' || !Number.isFinite(raw.topicId))) return false;
-      const known = ['action', 'conversationId', 'peerFingerprint', 'topicId'];
-      return keys.every((k) => known.includes(k));
-    }
-    if (kind === 'guard-latch') {
-      // green-pr-automerge R9/R7 — receive-side mirror of CoherenceJournal.validate.
-      const actions: GuardLatchAction[] = ['set', 'clear'];
-      if (typeof raw.latchKind !== 'string' || !raw.latchKind || raw.latchKind.length > 64) return false;
-      if (typeof raw.latchId !== 'string' || !raw.latchId || raw.latchId.length > 128) return false;
-      if (typeof raw.action !== 'string' || !actions.includes(raw.action as GuardLatchAction)) return false;
-      if (typeof raw.epoch !== 'number' || !Number.isFinite(raw.epoch)) return false;
-      if (typeof raw.seq !== 'number' || !Number.isFinite(raw.seq)) return false;
-      if (raw.reason !== undefined && typeof raw.reason !== 'string') return false;
-      const known = ['latchKind', 'latchId', 'action', 'epoch', 'seq', 'reason'];
-      return keys.every((k) => known.includes(k));
-    }
-    if (kind === 'ssh-direction-proof') {
-      const stringFields = ['sourceMachineId', 'targetMachineId', 'observerBootId', 'endpointId', 'targetHostKeyFingerprint', 'verifiedAt', 'expiresAt', 'challengeDigest', 'machineSignature'];
-      if (!stringFields.every(field => typeof raw[field] === 'string' && String(raw[field]).length >= 1 && String(raw[field]).length <= 512)) return false;
-      const numberFields = ['pairingEpoch', 'sourceClientKeyGeneration', 'targetHostKeyGeneration'];
-      if (!numberFields.every(field => Number.isSafeInteger(raw[field]) && Number(raw[field]) >= 1)) return false;
-      if (Number.isNaN(Date.parse(String(raw.verifiedAt))) || Number.isNaN(Date.parse(String(raw.expiresAt)))) return false;
-      return keys.every(key => stringFields.includes(key) || numberFields.includes(key));
+      return validateReplicatedEnvelope(raw, reg.schema, uncounted).ok;
     }
     return false;
   }
 
-  // ---- incarnation fencing (§3.4 rule 3) ---------------------------------
+  // ---- lineage fencing (§3.4 rule 3) -------------------------------------
 
-  private handleIncarnationFlip(
-    senderMachineId: string,
-    meta: PeerMeta,
-    kind: JournalKind,
-    newIncarnation: string,
-    result: ApplyResult,
-  ): void {
+  private markRefused(meta: PeerMeta, senderMachineId: string, kind: JournalKind, newIncarnation: string, result: ApplyResult): void {
     const oldIncarnation = meta.incarnation;
-
-    // Quarantine every existing replica file for this peer (rename aside),
-    // bounded at MAX_QUARANTINE_PER_STREAM per stream (oldest evicted).
-    for (const k of JOURNAL_KINDS) {
-      this.quarantineReplica(senderMachineId, k);
-    }
     this.degradation.quarantines++;
     result.quarantined++;
-
-    // Reset ALL per-kind apply state — a fresh incarnation is a fresh history.
-    meta.incarnation = newIncarnation;
-    meta.kinds = {};
-
-    // Record the flip in the coalescing window and decide flapping.
-    const nowMs = this.now().getTime();
-    meta.flipsMs.push(nowMs);
-    meta.flipsMs = meta.flipsMs.filter((t) => nowMs - t <= FLAP_WINDOW_MS);
-
-    if (meta.flipsMs.length > FLAP_RESET_THRESHOLD) {
-      // Past the threshold → reset-flapping, surfaced ONCE.
-      if (!meta.resetFlapping) {
-        meta.resetFlapping = true;
-        this.log(
-          `flap-${senderMachineId}`,
-          `[journal-sync] peer ${senderMachineId} is reset-flapping (${meta.flipsMs.length} incarnation flips in window)`,
-        );
-      }
-      // No per-flip divergence signal once flapping — coalesced to the one above.
-    } else {
-      // Coalesce the divergence signal per machine within the window: emit one
-      // signal per flip up to the threshold (these are the "loud" ones), but
-      // only the FIRST flip in a fresh window emits to the caller — subsequent
-      // ones within the window are folded (coalesced) into the lifetime count.
+    this.ensureKind(meta, kind);
+    if (!meta.lineageRefused) {
+      meta.lineageRefused = true;
       const signal: DivergenceSignal = {
         machineId: senderMachineId,
         kind,
         oldIncarnation,
         newIncarnation,
-        at: this.now().toISOString(),
+        at: new Date(this.now()).toISOString(),
       };
-      // Coalescing: only surface to the caller if this is the first flip in the
-      // current window (flipsMs has exactly 1 entry after the filter above).
-      if (meta.flipsMs.length === 1) {
-        result.signals.push(signal);
-        this.degradation.signals++;
-        this.log(
-          `diverge-${senderMachineId}`,
-          `[journal-sync] divergence: peer ${senderMachineId} new incarnation ${newIncarnation.slice(0, 8)} (old ${oldIncarnation.slice(0, 8)})`,
-        );
-      }
-    }
-  }
-
-  /**
-   * Rename a peer replica file aside as `<file>.quarantine.<stamp>`, keeping at
-   * most MAX_QUARANTINE_PER_STREAM per stream (oldest evicted). Bounded disk.
-   */
-  private quarantineReplica(senderMachineId: string, kind: JournalKind): void {
-    const file = this.replicaFilePath(senderMachineId, kind);
-    if (!this.io.existsSync(file)) return;
-    const stamp = this.now().getTime();
-    const safe = sanitizeMachineId(senderMachineId);
-    const target = path.join(this.peersDirPath(), `${safe}.${kind}.quarantine.${stamp}.jsonl`);
-    try {
-      if (this.guardWrite) this.guardWrite(target);
-      this.io.renameSync(file, target);
-    } catch (e) {
-      this.log('quarantine', `[journal-sync] quarantine rename failed for ${kind}: ${(e as Error)?.message}`);
-      return;
-    }
-    this.pruneQuarantine(senderMachineId, kind);
-  }
-
-  private pruneQuarantine(senderMachineId: string, kind: JournalKind): void {
-    const safe = sanitizeMachineId(senderMachineId);
-    const re = new RegExp(`^${escapeRegExp(`${safe}.${kind}.quarantine.`)}(\\d+)\\.jsonl$`);
-    let names: string[];
-    try {
-      names = this.io.readdirSync(this.peersDirPath()) as string[];
-    } catch {
-      return;
-    }
-    const matched: { name: string; stamp: number }[] = [];
-    for (const n of names) {
-      const m = re.exec(n);
-      if (m) matched.push({ name: n, stamp: Number(m[1]) });
-    }
-    if (matched.length <= MAX_QUARANTINE_PER_STREAM) return;
-    matched.sort((a, b) => a.stamp - b.stamp); // oldest first
-    const drop = matched.slice(0, matched.length - MAX_QUARANTINE_PER_STREAM);
-    for (const d of drop) {
-      const p = path.join(this.peersDirPath(), d.name);
-      try {
-        // Receiver-managed peer replica eviction — through the destructive-fs
-        // funnel (mirrors CoherenceJournal.pruneArchives, the source of truth
-        // for journal file deletion).
-        SafeFsExecutor.safeRmSync(p, { force: true, operation: 'journal-sync:prune-quarantine' });
-      } catch (e) {
-        this.log('quarantine-prune', `[journal-sync] quarantine prune failed for ${d.name}: ${(e as Error)?.message}`);
-      }
+      result.signals.push(signal);
+      this.degradation.signals++;
+      this.log(
+        `diverge-${senderMachineId}`,
+        `[journal-sync] divergence: predecessor ${senderMachineId} lineage ${newIncarnation.slice(0, 8)} differs from carried ${oldIncarnation.slice(0, 8)}; refused`,
+      );
     }
   }
 
   // ---- durable append (§4.1 — ack-after-fsync) ---------------------------
 
   /**
-   * Append validated lines to the peer replica file with O_APPEND single-line
-   * writes, then fdatasync BEFORE returning the applied count (§4.1 — the
-   * receiver's durability-before-ack rule lives HERE). Returns the number of
-   * lines durably committed (0 if the guard refused or the open/write failed
-   * before any byte landed). Never throws.
+   * Append the validated entries as ONE `group-carry-refresh` frame through the destination journal's
+   * durable append (its fsync is the ack-after-durable boundary: nothing past the append treats the
+   * entries as committed until the journal returned). Returns the number of entries durably committed
+   * (0 if the journal refused). Never throws.
    */
-  private durablyAppend(senderMachineId: string, kind: JournalKind, lines: string[], result: ApplyResult): number {
-    const file = this.replicaFilePath(senderMachineId, kind);
-    this.ensurePeersDir();
-
-    // Injected standby guard — throwing skips the batch + counts (never thrown).
-    try {
-      if (this.guardWrite) this.guardWrite(file);
-    } catch (e) { /* @silent-fallback-ok: journal observability must never endanger the observed operation (COHERENCE-JOURNAL-SPEC §3.1) */
-      this.degradation.guardSkips++;
-      result.guardSkips++;
-      this.log('guard', `[journal-sync] guardWrite refused ${kind}: ${(e as Error)?.message}`);
-      return 0;
-    }
-
-    let fd: number | null = null;
-    let bytesWritten = false;
+  private durablyAppend(senderMachineId: string, meta: PeerMeta, kind: JournalKind, from: number, entries: JournalEntry[], result: ApplyResult): number {
+    const at = this.now();
+    // Only the validated form is written (validateEntry already accepted every entry): an unknown field a sender
+    // smuggled is dropped here, exactly as the 1.x validator dropped it, and can never be served from this journal.
+    const body = { scope: this.scope, lineage: meta.incarnation, from, through: from + entries.length,
+      records: entries.map(entry => JSON.stringify(cleanEnvelopeData(entry.data))), at };
+    const refresh: CarriedRefresh = { ...body, digest: hashBody(body) };
     let committed = 0;
     try {
-      fd = this.io.openSync(file, 'a');
-      for (const line of lines) {
-        const buf = Buffer.from(line + '\n', 'utf-8');
-        this.io.writeSync(fd, buf, 0, buf.length);
-        bytesWritten = true;
-        committed++;
-      }
-      // §4.1 — fsync BEFORE we report applied. This is the ack-after-durable
-      // boundary: nothing past this line treats the entries as committed until
-      // fdatasync has returned.
-      this.io.fdatasyncSync(fd);
+      if (this.destination.readOnly) throw Error('reader cannot append');
+      this.destination.append({ kind: 'group-carry-refresh', refresh, at });
+      committed = entries.length;
     } catch (e) {
+      // The journal refused the frame (posture, replay validation, stop): nothing landed — the caller advances nothing.
+      this.degradation.guardSkips++;
+      result.guardSkips++;
       this.degradation.appendErrors++;
-      this.log('append', `[journal-sync] replica append/fsync failed for ${kind}: ${(e as Error)?.message}`);
-      if (!bytesWritten) {
-        committed = 0; // nothing landed — caller advances nothing.
-      } else {
-        // Bytes landed but fsync did not confirm. We cannot prove durability,
-        // so we do NOT report them applied (ack-after-durable-commit). A torn
-        // tail is repaired by the tolerant reader; the caller will re-request.
-        committed = 0;
-      }
-    } finally {
-      if (fd !== null) {
-        try {
-          this.io.closeSync(fd);
-        } catch {
-          /* best-effort */
-        }
-      }
+      this.log('append', `[journal-sync] refresh append refused for ${kind}: ${(e as Error)?.message}`);
+      committed = 0;
     }
 
     if (committed > 0) {
       this.degradation.applied += committed;
       result.applied += committed;
-      this.notifyReplicatedRecordsCommitted(senderMachineId, kind, lines.slice(0, committed));
+      this.notifyReplicatedRecordsCommitted(senderMachineId, kind, entries);
     }
     return committed;
   }
 
-  private notifyReplicatedRecordsCommitted(senderMachineId: string, kind: JournalKind, lines: string[]): void {
+  private notifyReplicatedRecordsCommitted(senderMachineId: string, kind: JournalKind, entries: JournalEntry[]): void {
     if (!this.replicatedRegistry?.isReplicatedKind(kind) || !this.replicatedCommitObserver) return;
-    const entries: JournalEntry[] = [];
-    for (const line of lines) {
-      try {
-        const entry = JSON.parse(line) as JournalEntry;
-        if (entry && entry.kind === kind && typeof entry.seq === 'number') entries.push(entry);
-      } catch { /* @silent-fallback-ok: observer notification is derived-index maintenance; replica files remain authoritative and rebuildable. */
-      }
-    }
     if (entries.length === 0) return;
     try {
       this.replicatedCommitObserver(senderMachineId, kind, entries);
-    } catch (e) { /* @silent-fallback-ok: derived-index observer failure must never endanger replica durability or ack accounting; parity/rebuild falls back to disk. */
+    } catch (e) { /* derived-index observer failure must never endanger replica durability or ack accounting; parity/rebuild falls back to the journal. */
       this.log('replicated-commit-observer', `[journal-sync] replicated commit observer failed for ${kind}: ${(e as Error)?.message}`);
     }
   }
@@ -881,77 +664,25 @@ export class JournalSyncApplier {
   // ---- SERVE side (§3.4 rule 5/7 — own stream only, durably-flushed only) -
 
   /**
-   * Build a delta batch from THIS machine's OWN stream for a peer that is
-   * behind (§3.4 rule 5). Reads the FILE (never any queue) so only
-   * durably-flushed entries are served — a §3.4-rule-3 corollary the writer
-   * guarantees by advertising only flushed seqs. First-hop only: this serves
-   * exactly one own stream of one kind.
-   *
-   * @param kind          which own stream to serve.
-   * @param fromSeq       serve entries with seq > fromSeq (the peer's lastSeq).
-   * @param maxBatchBytes total serialized byte cap (default DEFAULT_MAX_BATCH_BYTES).
-   * @param ownMachineId  this machine's id (the producer of the served stream).
+   * Build a delta batch from the PREDECESSOR's OWN stream for a receiver that is behind (§3.4 rule 5).
+   * Reads the replayed journal view (sealed bytes, never a queue) so only durably written entries are
+   * served. First-hop only: this serves exactly one own stream of one kind.
    */
   buildServeBatch(
-    kind: JournalKind,
+    source: JournalView,
     fromSeq: number,
     ownMachineId: string,
     maxBatchBytes = DEFAULT_MAX_BATCH_BYTES,
-  ): { kind: JournalKind; incarnation: string; entries: JournalEntry[]; oldestRetainedSeq?: number } {
-    const out: { kind: JournalKind; incarnation: string; entries: JournalEntry[]; oldestRetainedSeq?: number } = {
-      kind,
-      incarnation: this.readOwnIncarnation(ownMachineId),
-      entries: [],
-    };
-    if (!JOURNAL_KINDS.includes(kind)) return out;
-
-    // Read own current file + archives newest→oldest, collect entries with
-    // seq > fromSeq, then return them ascending and byte-capped.
-    const files = this.ownStreamFilesNewestFirst(ownMachineId, kind);
-    const collected: JournalEntry[] = [];
-    // Track the smallest seq we can still serve (for oldestRetainedSeq honesty).
-    let minServableSeq = Number.POSITIVE_INFINITY;
-
-    for (const f of files) {
-      const read = readTailTolerant(this.io, f, Number.MAX_SAFE_INTEGER, SERVE_READ_BYTE_CEILING);
-      for (const e of read.entries) {
-        if (typeof e.seq !== 'number') continue;
-        if (e.seq < minServableSeq) minServableSeq = e.seq;
-        if (e.seq > fromSeq) collected.push(e);
-      }
-    }
-
-    // Ascending by seq (the apply side requires contiguous in-order).
-    collected.sort((a, b) => a.seq - b.seq);
-
-    // Byte-cap mid-batch: include entries until adding the next would exceed
-    // maxBatchBytes. At least one entry is always included if any exists and it
-    // fits; an entry that alone exceeds the cap is still included (so a single
-    // over-cap line is served rather than the stream stalling forever).
-    let bytes = 0;
-    for (const e of collected) {
-      const lineBytes = Buffer.byteLength(JSON.stringify(e), 'utf-8') + 1; // +newline
-      if (out.entries.length > 0 && bytes + lineBytes > maxBatchBytes) break;
-      out.entries.push(e);
-      bytes += lineBytes;
-    }
-
-    // §3.4 rule 4 — include oldestRetainedSeq when fromSeq has rotated out: the
-    // peer asked from `fromSeq` but the oldest seq we can still serve is higher,
-    // so signal the truncation. Only set it when there IS a hole below what we hold.
-    if (Number.isFinite(minServableSeq) && minServableSeq > fromSeq + 1) {
-      out.oldestRetainedSeq = minServableSeq;
-    }
-
-    return out;
+  ): ApplyBatchStream {
+    return serveRelationshipEmits(source, fromSeq, ownMachineId, maxBatchBytes);
   }
 
-  // ---- meta (load / persist / cache) -------------------------------------
+  // ---- meta (load / cache) -----------------------------------------------
 
   private ensureKind(meta: PeerMeta, kind: JournalKind): PeerKindState {
     let ks = meta.kinds[kind];
     if (!ks) {
-      ks = { lastHeldSeq: 0, status: 'current', consecutiveValid: 0, gaps: [] };
+      ks = { lastHeldSeq: this.lastHeldSeq(), status: 'current', consecutiveValid: 0, gaps: [] };
       meta.kinds[kind] = ks;
     }
     return ks;
@@ -965,170 +696,20 @@ export class JournalSyncApplier {
   private loadMeta(machineId: string): PeerMeta {
     const cached = this.metaCache.get(machineId);
     if (cached) return cached;
-
-    const metaPath = this.metaPath(machineId);
-    let meta: PeerMeta = { incarnation: '', kinds: {}, flipsMs: [], resetFlapping: false };
-    if (this.io.existsSync(metaPath)) {
-      try {
-        const raw = this.io.readFileSync(metaPath, 'utf-8') as string;
-        const obj = JSON.parse(raw) as Partial<PeerMeta>;
-        if (obj && typeof obj === 'object') {
-          meta = {
-            incarnation: typeof obj.incarnation === 'string' ? obj.incarnation : '',
-            kinds: this.normalizeKinds(obj.kinds),
-            flipsMs: Array.isArray(obj.flipsMs) ? obj.flipsMs.filter((n) => typeof n === 'number') : [],
-            resetFlapping: obj.resetFlapping === true,
-          };
-        }
-      } catch {
-        // malformed meta → start clean (tolerant).
-      }
-    }
+    // The persisted half: the lineage the first refresh recorded and the seq held through it.
+    const refreshes = this.destination.view.groupCarryRefreshes;
+    const meta: PeerMeta = { incarnation: refreshes[0]?.lineage ?? '', kinds: {}, lineageRefused: false };
+    if (refreshes.length) this.ensureKind(meta, RELATIONSHIP_RECORD_KIND);
     this.metaCache.set(machineId, meta);
     return meta;
   }
 
-  private normalizeKinds(raw: unknown): Partial<Record<JournalKind, PeerKindState>> {
-    const out: Partial<Record<JournalKind, PeerKindState>> = {};
-    if (!raw || typeof raw !== 'object') return out;
-    const r = raw as Record<string, unknown>;
-    const validStatus: StreamReplStatus[] = ['current', 'behind', 'gapped', 'suspect', 'reset-flapping'];
-    for (const kind of JOURNAL_KINDS) {
-      const ks = r[kind] as Partial<PeerKindState> | undefined;
-      if (!ks || typeof ks !== 'object') continue;
-      out[kind] = {
-        lastHeldSeq: typeof ks.lastHeldSeq === 'number' && Number.isFinite(ks.lastHeldSeq) ? ks.lastHeldSeq : 0,
-        status: validStatus.includes(ks.status as StreamReplStatus) ? (ks.status as StreamReplStatus) : 'current',
-        consecutiveValid: typeof ks.consecutiveValid === 'number' ? ks.consecutiveValid : 0,
-        gaps: Array.isArray(ks.gaps)
-          ? ks.gaps.filter(
-              (g): g is GapSentinel =>
-                !!g && typeof g === 'object' && typeof (g as GapSentinel).fromSeq === 'number',
-            )
-          : [],
-      };
-    }
-    return out;
-  }
+  // ---- peer discovery ----------------------------------------------------
 
-  private persistMeta(machineId: string, meta: PeerMeta): void {
-    this.ensurePeersDir();
-    const metaPath = this.metaPath(machineId);
-    const tmp = metaPath + '.tmp';
-    try {
-      if (this.guardWrite) this.guardWrite(metaPath);
-      this.io.writeFileSync(tmp, JSON.stringify(meta, null, 2), { mode: 0o644 });
-      this.io.renameSync(tmp, metaPath);
-    } catch (e) { /* @silent-fallback-ok: journal observability must never endanger the observed operation (COHERENCE-JOURNAL-SPEC §3.1) */
-      this.log('persist-meta', `[journal-sync] persistMeta failed for ${machineId}: ${(e as Error)?.message}`);
-    }
-  }
-
-  private mintIncarnation(): string {
-    return crypto.randomBytes(12).toString('hex');
-  }
-
-  // ---- peer / own discovery ----------------------------------------------
-
-  /** Discover peer machine ids from the peers/ meta sidecars + replica files. */
+  /** The one predecessor this root carries, once anything of it is held. */
   private discoverPeerMachines(): string[] {
-    const dir = this.peersDirPath();
-    let names: string[];
-    try {
-      names = this.io.readdirSync(dir) as string[];
-    } catch { /* @silent-fallback-ok: journal observability must never endanger the observed operation (COHERENCE-JOURNAL-SPEC §3.1) */
-      return [];
-    }
-    const ids = new Set<string>();
-    // Pull machineIds from `<machineId>.meta.json` first (authoritative set).
-    for (const n of names) {
-      const m = /^(.+)\.meta\.json$/.exec(n);
-      if (m) {
-        ids.add(this.unsanitizeBestEffort(m[1]));
-      }
-    }
-    // Also pull from replica files for machines without a meta yet.
-    for (const kind of JOURNAL_KINDS) {
-      const k = escapeRegExp(kind);
-      const re = new RegExp(`^(.+)\\.${k}(?:\\.(?:\\d+|quarantine\\.\\d+))?\\.jsonl$`);
-      for (const n of names) {
-        const m = re.exec(n);
-        if (m) ids.add(this.unsanitizeBestEffort(m[1]));
-      }
-    }
-    return [...ids];
-  }
-
-  /**
-   * The peer file grammar uses the SANITIZED machine id as the literal. The raw
-   * id is only needed for first-hop binding (which uses the sender id directly,
-   * not a derived one) — for advert/status keys we surface the on-disk literal
-   * (already sanitized + injective), so reverse-mapping is unnecessary and we
-   * keep the literal as the machine key. (sanitizeMachineId is injective, so
-   * the literal is a faithful, stable handle.)
-   */
-  private unsanitizeBestEffort(safeLiteral: string): string {
-    return safeLiteral;
-  }
-
-  /** Own current + archive stream files (newest-first) for serve reads. */
-  private ownStreamFilesNewestFirst(ownMachineId: string, kind: JournalKind): string[] {
-    const safe = sanitizeMachineId(ownMachineId);
-    const dir = this.dirPath();
-    const current = path.join(dir, `${safe}.${kind}.jsonl`);
-    const out: string[] = [];
-    if (this.io.existsSync(current)) out.push(current);
-
-    let names: string[];
-    try {
-      names = this.io.readdirSync(dir) as string[];
-    } catch { /* @silent-fallback-ok: journal observability must never endanger the observed operation (COHERENCE-JOURNAL-SPEC §3.1) */
-      return out;
-    }
-    const re = new RegExp(`^${escapeRegExp(`${safe}.${kind}.`)}(\\d+)\\.jsonl$`);
-    const archives: { file: string; stamp: number }[] = [];
-    for (const n of names) {
-      const m = re.exec(n);
-      if (m) archives.push({ file: path.join(dir, n), stamp: Number(m[1]) });
-    }
-    archives.sort((a, b) => b.stamp - a.stamp); // newest first
-    return [...out, ...archives.map((a) => a.file)];
-  }
-
-  private readOwnIncarnation(ownMachineId: string): string {
-    const safe = sanitizeMachineId(ownMachineId);
-    const metaPath = path.join(this.dirPath(), `${safe}.meta.json`);
-    try {
-      if (!this.io.existsSync(metaPath)) return '';
-      const raw = this.io.readFileSync(metaPath, 'utf-8') as string;
-      const obj = JSON.parse(raw);
-      return typeof obj?.incarnation === 'string' ? obj.incarnation : '';
-    } catch { /* @silent-fallback-ok: journal observability must never endanger the observed operation (COHERENCE-JOURNAL-SPEC §3.1) */
-      return '';
-    }
-  }
-
-  // ---- paths -------------------------------------------------------------
-
-  private dirPath(): string {
-    return path.join(this.stateDir, 'state', 'coherence-journal');
-  }
-
-  private peersDirPath(): string {
-    return path.join(this.dirPath(), 'peers');
-  }
-
-  private replicaFilePath(senderMachineId: string, kind: JournalKind): string {
-    return path.join(this.peersDirPath(), `${sanitizeMachineId(senderMachineId)}.${kind}.jsonl`);
-  }
-
-  private metaPath(machineId: string): string {
-    return path.join(this.peersDirPath(), `${sanitizeMachineId(machineId)}.meta.json`);
-  }
-
-  private ensurePeersDir(): void {
-    const p = this.peersDirPath();
-    if (!this.io.existsSync(p)) this.io.mkdirSync(p, { recursive: true });
+    const origin = carryOrigin(this.scope);
+    return this.metaCache.has(origin) || this.destination.view.groupCarryRefreshes.length ? [origin] : [];
   }
 
   private log(cls: string, msg: string): void {
@@ -1136,4 +717,93 @@ export class JournalSyncApplier {
     this.loggedClasses.add(cls);
     this.logger?.(msg);
   }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// 2.0: serve, replay validation and the top-level refresh (carryover row 40)
+// ───────────────────────────────────────────────────────────────────────────
+
+/** The predecessor's own stream as served lines: emits with seq > fromSeq, ascending, byte-capped mid-batch
+ *  (at least one entry is served when any exists, so an over-cap line never stalls the stream forever). */
+export function serveRelationshipEmits(source: JournalView, fromSeq: number, ownMachineId: string, maxBatchBytes = DEFAULT_MAX_BATCH_BYTES): ApplyBatchStream {
+  const out: ApplyBatchStream = { kind: RELATIONSHIP_RECORD_KIND, incarnation: lineageOf(source), entries: [] };
+  const collected = source.relationshipEmits.filter(emit => emit.seq > fromSeq).sort((a, b) => a.seq - b.seq);
+  let bytes = 0;
+  for (const emit of collected) {
+    const entry: JournalEntry = { seq: emit.seq, ts: new Date(emit.hlc.physical).toISOString(), machine: ownMachineId, kind: RELATIONSHIP_RECORD_KIND, data: emit.data };
+    const lineBytes = Buffer.byteLength(JSON.stringify(entry), 'utf-8') + 1; // +newline
+    if (out.entries.length > 0 && bytes + lineBytes > maxBatchBytes) break;
+    out.entries.push(entry);
+    bytes += lineBytes;
+  }
+  return out;
+}
+
+/** A `relationship-emit` frame as the writer and every replay admit it: contiguous seq, a validated envelope whose
+ *  op, key and clock the frame restates exactly, and a clock strictly after the previous emit (one writer, one order). */
+export function validRelationshipEmit(emit: RelationshipEmit, previous: RelationshipEmit | undefined, expectedSeq: number): boolean {
+  if (!emit || typeof emit !== 'object' || emit.seq !== expectedSeq || typeof emit.recordKey !== 'string'
+    || (emit.op !== 'put' && emit.op !== 'delete') || !emit.data || typeof emit.data !== 'object') return false;
+  if (Buffer.byteLength(JSON.stringify(emit.data)) > RELATIONSHIP_MAX_ENTRY_BYTES || !onlyKnownFields(emit.data)) return false;
+  const record = originRecordFromData(emit.data, uncounted);
+  if (!record || record.envelope.op !== emit.op || record.envelope.recordKey !== emit.recordKey
+    || JSON.stringify(record.envelope.hlc) !== JSON.stringify(emit.hlc)) return false;
+  return previous === undefined || compareHlc(emit.hlc, previous.hlc) > 0;
+}
+
+/** Every record of a refresh frame, validated through the store schema and bound to the predecessor origin. */
+export function refreshedRecords(refresh: CarriedRefresh): OriginRecord[] | null {
+  const origin = carryOrigin(refresh.scope), out: OriginRecord[] = [];
+  for (const text of refresh.records) {
+    let parsed: unknown;
+    try { parsed = JSON.parse(text); } catch { return null; }
+    const data = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+    const record = data && onlyKnownFields(data) ? originRecordFromData(data, uncounted) : null;
+    if (!record || record.origin !== origin) return null;
+    out.push(record);
+  }
+  return out;
+}
+
+/** A `group-carry-refresh` frame as every replay admits it: the fixed scope, one lineage, contiguous `from`/`through`,
+ *  exact bytes under their digest, and every record a validated envelope from this predecessor (else the lineage is refused). */
+export function validCarriedRefresh(refresh: CarriedRefresh, carry: CarriedMemory, previous: readonly CarriedRefresh[]): boolean {
+  if (!refresh || typeof refresh !== 'object' || !Array.isArray(refresh.records) || refresh.records.length === 0) return false;
+  const { digest, ...body } = refresh;
+  if (digest !== hashBody(body) || Buffer.byteLength(JSON.stringify(refresh)) > DEFAULT_MAX_BATCH_BYTES + 4096) return false;
+  if (JSON.stringify(refresh.scope) !== JSON.stringify(carry.scope) || !/^[a-f0-9]{64}$/u.test(refresh.lineage)) return false;
+  const last = previous.at(-1);
+  if (last && last.lineage !== refresh.lineage) return false;
+  const from = last?.through ?? carry.emitsThrough ?? 0;
+  if (refresh.from !== from || refresh.through !== from + refresh.records.length || !Number.isSafeInteger(refresh.at) || refresh.at <= 0) return false;
+  return refreshedRecords(refresh) !== null;
+}
+
+export interface RefreshOutcome { result: ApplyResult; from: number; through: number; remaining: number; lineage: string }
+
+/**
+ * Continuous authorized refresh beyond the initial carry: apply the predecessor's relationship emits the group root
+ * does not hold yet, under exactly the checks the carry itself requires (resolved grant for this scope, verified
+ * operator-only audience, writer posture, stop, scope identity), onto a predecessor already fixed by the carry.
+ * Never writes to the predecessor. A changed predecessor (another source root, or the same root re-seeded) and an
+ * unauthorized one are refused before any read of its records.
+ */
+export function refreshGroupCarry(destination: Journal, source: Pick<Journal, 'view' | 'readOnly'>, scope: GroupCarryScope,
+  permission: DisclosureVerdict, audienceVerified: boolean, now: number, stopped: () => boolean,
+  maxBatchBytes = DEFAULT_MAX_BATCH_BYTES, logger?: (msg: string) => void): RefreshOutcome {
+  guardGroupCarry(destination, source, scope, permission, audienceVerified, now, stopped);
+  const previous = destination.view.groupCarry;
+  if (!previous) throw Error('group carry: no predecessor carried');
+  if (JSON.stringify(previous.scope) !== JSON.stringify(scope)) throw Error('group carry: predecessor already fixed');
+  if (source.view.genesis.forum === true || source.view.genesis.operator !== scope.operator || source.view.genesis.chat !== scope.operator
+    || source.view.genesis.bot !== scope.bot || source.view.groupCarry !== undefined || source.view.channelItems.size)
+    throw Error('group carry: source is not this operator private journal');
+  const lineage = lineageOf(source.view), held = destination.view.groupCarryRefreshes[0]?.lineage;
+  if (held !== undefined && held !== lineage) throw Error('group carry: predecessor lineage changed');
+  const applier = new JournalSyncApplier({ destination, scope, now: () => now, ...(logger ? { logger } : {}) });
+  const from = applier.lastHeldSeq();
+  const origin = carryOrigin(scope);
+  const result = applier.apply(origin, [serveRelationshipEmits(source.view, from, origin, maxBatchBytes)]);
+  const through = applier.lastHeldSeq();
+  return { result, from, through, remaining: Math.max(0, source.view.relationshipEmits.length - through), lineage };
 }

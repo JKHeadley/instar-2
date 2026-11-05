@@ -1,212 +1,170 @@
-// safe-fs-allow: test fixture teardown uses SafeFsExecutor.safeRmSync on tmp dirs only.
-// safe-git-allow: test fixture teardown uses SafeFsExecutor.safeRmSync on tmp dirs only.
 /**
- * Integration test (COHERENCE-JOURNAL-SPEC §3.4): coherence-journal replication
- * over the REAL signed MeshRpc transport, end to end.
+ * Integration (1.x COHERENCE-JOURNAL-SPEC §3.4 round-trip, carried from tests/integration/journal-sync-roundtrip.test.ts):
+ * relationship replication from the private predecessor to the group root, end to end, on one machine and across two.
  *
- * Two in-process machines:
- *  - Machine A runs a CoherenceJournal (the writer) + a JournalSyncApplier (its
- *    own-stream SERVE side). It emits placement entries + flushes.
- *  - Machine B runs a JournalSyncApplier (the RECEIVE side) behind a real
- *    MeshRpcDispatcher exposed over a loopback `/mesh/rpc` route — exactly the
- *    server's wiring.
- *
- * The flow proves the whole chain with NO fakes on the trust path:
- *  1. A.applier.buildServeBatch reads A's OWN flushed stream → a serve batch.
- *  2. The batch is sent as a signed, recipient-bound `journal-sync` envelope from
- *     A to B through MeshRpcClient → the real Ed25519 canonicalize/verify path.
- *  3. B's dispatcher accepts it (RBAC: read/observe class) and B.applier.apply
- *     durably appends it under A's machine id (first-hop sender binding).
- *  4. B's CoherenceJournalReader now answers from the REPLICA stream.
- *  5. A FORGED batch (entry.machine ≠ envelope.sender) is rejected by the applier
- *     (forgedEntries counted, nothing appended) even though the envelope itself
- *     is a valid signature from a registered peer.
+ * 1.x proved A → B over the real signed MeshRpc transport with two in-process machines. 2.0 has no mesh: a conversation's
+ * encrypted journal is replicated whole to the other machine (journal-replication.ts), and the group root reads the
+ * predecessor's emits from the predecessor journal it can verify (its own copy on this machine, or the replica copy the
+ * owner shipped). The flow proves the whole chain with NO fakes on the trust path:
+ *  1. The private root (the writer, machine A) emits per-record relationship envelopes into its own journal as its
+ *     people change: a new attribute is a put, a forget is a tombstone.
+ *  2. The group root applies them under the carry's grant and audience (refreshGroupCarry): first-hop binding to the
+ *     predecessor it read, seq-gated, schema-validated, one durable refresh frame.
+ *  3. The group root's actual worker serves the CURRENT account to its model inside the untrusted-data envelope, and the
+ *     forgotten person is gone; the account survives close/reopen.
+ *  4. Machine B holds only replica copies: the private journal's bytes shipped to B's replica store, verified; the group
+ *     journal shipped, verified and adopted. B's group root refreshes from the predecessor's REPLICA COPY and serves the
+ *     same current account. The predecessor is never written by either refresh.
+ *  5. A second private root (another predecessor) and a re-seeded predecessor are refused by the fixed group root even
+ *     with a valid grant of their own; a tampered copy never opens.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import express from 'express';
-import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
-import type { AddressInfo } from 'node:net';
+import { afterEach, expect, it } from 'vitest';
+import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { appendGroupCarry, carriedRelationshipViews, carryOrigin, groupCarryPacket } from './group-carry.js';
+import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { adoptReceivedCopy, createJournalShipper, localReplicaClient, openReplicaStore } from './journal-replication.js';
+import { resolveGroupDisclosure, verifyGroupAudience } from './group-disclosure.js';
+import { now, key, sealKey, scope, records, authority, membership, permissionFor } from './group-carry-fixture.js';
+import { peopleWorld, place, update } from './relationship-carry-fixture.js';
+import { createRelationshipEmitter, emitRelationshipChanges } from './relationship-emitter.js';
+import { refreshGroupCarry } from './relationship-applier.js';
 
-import { createRoutes } from '../../src/server/routes.js';
-import { MeshRpcDispatcher, type MeshCommand, type MeshEnvelope } from '../../src/core/MeshRpc.js';
-import { MeshRpcClient } from '../../src/core/MeshRpcClient.js';
-import { generateSigningKeyPair, sign, verify } from '../../src/core/MachineIdentity.js';
-import { CoherenceJournal } from '../../src/core/CoherenceJournal.js';
-import { JournalSyncApplier, type ApplyBatchStream } from '../../src/core/JournalSyncApplier.js';
-import { CoherenceJournalReader } from '../../src/core/CoherenceJournalReader.js';
-import { SafeFsExecutor } from '../../src/core/SafeFsExecutor.js';
+const SECRET = 'replication-test-secret-0123456789';
+const GROUP = `telegram/bot-${scope.bot}/chat-${scope.chat}`, PRIVATE = `telegram/bot-${scope.bot}/chat-${scope.operator}`;
+const ORIGIN = carryOrigin(scope);
+const dirs: string[] = [];
+afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+const world = async (options?: Parameters<typeof peopleWorld>[1]) => { const dir = place('relationship-roundtrip-'); dirs.push(dir);
+  mkdirSync(join(dir, 'studio'), { recursive: true }); return { dir, ...await peopleWorld(join(dir, 'studio'), options) }; };
+const permission = () => { const p = resolveGroupDisclosure(scope, authority(), now, records, sealKey); if (p.kind !== 'resolved') throw Error(p.reason); return p; };
+const verify = (path: string) => { openPreviewJournal(path, key, undefined, undefined, true).close(); };
+const served = (view: ReturnType<typeof openPreviewJournal>['view'], question = 'Who is Sam?') =>
+  groupCarryPacket(view.groupCarry!, question, now, 409600, view).entries.filter(entry => entry.kind === 'person').map(entry => entry.text);
 
-const MACHINE_A = 'm_machine_a';
-const MACHINE_B = 'm_machine_b';
-
-interface Server {
-  url: string;
-  close: () => Promise<void>;
+/** The private root has been emitting since its grant existed: two puts (Sam, Ana) before the carry. */
+function emittingPredecessor(w: Awaited<ReturnType<typeof world>>) {
+  const emitter = createRelationshipEmitter(w.source, { now: () => now - 500, origin: ORIGIN, permission });
+  expect(emitRelationshipChanges(w.source, emitter, now - 500, ORIGIN).puts).toHaveLength(2);
+  return emitter;
 }
-async function listen(app: express.Express): Promise<Server> {
-  return new Promise((resolve) => {
-    const srv = app.listen(0, () =>
-      resolve({
-        url: `http://127.0.0.1:${(srv.address() as AddressInfo).port}`,
-        close: () => new Promise<void>((r) => srv.close(() => r())),
-      }),
-    );
-  });
+/** The private root's people change after the carry: Sam gets a city (a put), Ana is forgotten (a tombstone). Returns every emitted seq.
+ *  The default emitter reads a wall clock after the carry; a test may hand in the lagging one to prove the positional serving rule. */
+function changeAfterCarry(w: Awaited<ReturnType<typeof world>>, emitter = createRelationshipEmitter(w.source, { now: () => now + 1000, origin: ORIGIN, permission })) {
+  w.source.view.personAttributes.push({ name: 'Sam Ruiz', attribute: 'city', value: 'Porto', status: 'current', source: w.ids.sam2, quote: 'Porto' });
+  w.source.view.memory.push({ mode: 'forget', source: w.ids.ana, trigger: w.ids.ana, quote: 'Ana Lima' });
+  const changes = emitRelationshipChanges(w.source, emitter, now + 1000, ORIGIN);
+  expect(changes.puts).toHaveLength(1); expect(changes.deletes).toHaveLength(1);
+  return w.source.view.relationshipEmits.map(emit => emit.seq);
 }
 
-describe('journal-sync round-trip (A → B over real signed MeshRpc, §3.4)', () => {
-  let dirA: string;
-  let dirB: string;
-  let server: Server;
-  let journalA: CoherenceJournal;
-  let applierA: JournalSyncApplier;
-  let applierB: JournalSyncApplier;
-  let readerB: CoherenceJournalReader;
-  const keys: Record<string, { priv: string; pub: string }> = {};
-  let n = 0;
+it('A emits after the carry; the group root applies under the carry\'s grant; its worker serves the current account; it survives reopen', async () => {
+  const w = await world();
+  const emitter = emittingPredecessor(w);
+  const audience = await verifyGroupAudience(scope, membership());
+  expect(appendGroupCarry(w.destination, w.source, scope, permission(), audience, now, () => false)).toBe('carried');
+  // The snapshot supersedes the two emits before it: a refresh starts after them.
+  expect(w.destination.view.groupCarry!.emitsThrough).toBe(2);
+  const before = served(w.destination.view);
+  expect(before.some(text => text.includes('Name: Ana Lima'))).toBe(true);
+  expect(before.find(text => text.includes('Name: Sam Ruiz'))).toContain('Notes: job: engineer');
+  // 1. The predecessor's own stream: two emits after the carry (a put and a tombstone) behind the two before it.
+  expect(changeAfterCarry(w)).toEqual([1, 2, 3, 4]);
+  expect(w.source.view.relationshipEmits.at(-1)!.hlc.physical).toBeGreaterThan(now);
+  const privateBytes = w.source.size;
+  // 2. The group root applies only the two after the carry: one durable refresh frame, bound to this predecessor.
+  const outcome = refreshGroupCarry(w.destination, w.source, scope, permission(), audience, now + 2000, () => false);
+  expect(outcome).toMatchObject({ from: 2, through: 4, remaining: 0 });
+  expect(outcome.result).toMatchObject({ applied: 2, forgedEntries: 0, invalidEntries: 0, duplicates: 0 });
+  expect(w.destination.view.groupCarryRefreshes).toHaveLength(1);
+  expect(w.source.size).toBe(privateBytes); // the predecessor is read, never written
+  // 3. Serving: Sam's current account inside the untrusted-data envelope; Ana is gone.
+  const after = served(w.destination.view);
+  expect(after).toHaveLength(1);
+  expect(after[0]!).toContain(`<replicated-untrusted-data origin="${ORIGIN}">`);
+  expect(after[0]!).toContain('Name: Sam Ruiz');
+  expect(after[0]!).toContain('Notes: job: engineer; city: Porto');
+  expect(JSON.stringify(after)).not.toContain('Ana');
+  // The actual worker offers the refreshed account to its model.
+  let context = '';
+  const worker = createJournalWorker(w.destination, { now: () => now + 3000, stopped: () => false, groupDisclosure: async () => true,
+    model: async input => { context = input.context; return 'Sam Ruiz is the engineer, now in Porto.'; }, send: async () => 1, checkOutbound: () => {} });
+  worker.intake([update(5, 'Where is Sam now?', true)]); await worker.drain();
+  expect(context).toContain('city: Porto');
+  // The relationship record is gone; the private conversation's quoted messages carried at the time stay as recall text
+  // (the snapshot's own semantics: refresh keeps relationship records current, not the carried message text).
+  expect(context).not.toContain('Name: Ana Lima');
+  // Survives close/reopen: the refresh frame replays, re-validated, and the same account is served.
+  w.destination.close();
+  const replay = openPreviewJournal(w.target, key);
+  expect(replay.view.groupCarryRefreshes[0]!.through).toBe(4);
+  expect(served(replay.view)).toEqual(after);
+  replay.close(); w.source.close();
+});
 
-  beforeEach(async () => {
-    dirA = fs.mkdtempSync(path.join(os.tmpdir(), 'jsync-a-'));
-    dirB = fs.mkdtempSync(path.join(os.tmpdir(), 'jsync-b-'));
-    for (const id of [MACHINE_A, MACHINE_B]) {
-      const kp = generateSigningKeyPair();
-      keys[id] = { priv: kp.privateKey, pub: kp.publicKey };
-    }
+it('machine B refreshes its adopted group root from the predecessor\'s verified REPLICA COPY and serves the same account; a forged copy never opens', async () => {
+  const w = await world();
+  emittingPredecessor(w);
+  const audience = await verifyGroupAudience(scope, membership());
+  expect(appendGroupCarry(w.destination, w.source, scope, permission(), audience, now, () => false)).toBe('carried');
+  changeAfterCarry(w);
+  // Machine B holds replica copies of both conversations and nothing else.
+  const laptop = join(w.dir, 'laptop'), privateRoot = join(laptop, 'private'), groupRoot = join(laptop, 'group');
+  mkdirSync(privateRoot, { recursive: true }); mkdirSync(groupRoot, { recursive: true });
+  const privateStore = openReplicaStore({ directory: join(privateRoot, 'replica'), conversation: PRIVATE, machine: 'laptop', secret: SECRET });
+  const groupStore = openReplicaStore({ directory: join(groupRoot, 'replica'), conversation: GROUP, machine: 'laptop', secret: SECRET });
+  await createJournalShipper({ path: w.path, size: () => w.source.size, peer: localReplicaClient(privateStore), conversation: PRIVATE,
+    machine: 'studio', secret: SECRET, epoch: () => 1, monotonic: () => 0 }).pump();
+  await createJournalShipper({ path: w.target, size: () => w.destination.size, peer: localReplicaClient(groupStore), conversation: GROUP,
+    machine: 'studio', secret: SECRET, epoch: () => 1, monotonic: () => 0 }).pump();
+  expect(privateStore.copy()).toMatchObject({ machine: 'studio', size: w.source.size });
+  // B becomes the group root's owner from the newest copy it holds; the predecessor stays a read-only copy.
+  const groupPath = join(groupRoot, 'journal.encrypted');
+  expect(adoptReceivedCopy({ root: groupRoot, journalPath: groupPath, store: groupStore, epoch: 2, seed: false, verify })).toEqual({ ok: true, how: 'adopted' });
+  const adopted = openPreviewJournal(groupPath, key);
+  expect(adopted.view.groupCarryRefreshes).toEqual([]);
+  const copy = openPreviewJournal(privateStore.copyPath, key, undefined, undefined, true);
+  expect(copy.view.relationshipEmits).toHaveLength(4);
+  const outcome = refreshGroupCarry(adopted, copy, scope, permission(), audience, now + 2000, () => false);
+  expect(outcome).toMatchObject({ from: 2, through: 4 });
+  expect(outcome.result.applied).toBe(2);
+  const onB = served(adopted.view);
+  expect(onB).toHaveLength(1);
+  expect(onB[0]!).toContain('Notes: job: engineer; city: Porto');
+  expect(onB[0]!).toContain(`origin="${ORIGIN}"`);
+  expect(JSON.stringify(onB)).not.toContain('Ana');
+  // The union read on B agrees: one record, this predecessor's origin, not conflicted.
+  const views = carriedRelationshipViews(adopted.view.groupCarry!, adopted.view.groupCarryRefreshes);
+  expect(views.map(view => [view.data.name, view.origin, view.conflicted])).toEqual([['Sam Ruiz', ORIGIN, false]]);
+  // The predecessor copy was only read.
+  expect(privateStore.copy()!.size).toBe(w.source.size);
+  // A forged copy (bytes altered in place) does not open as a journal, so nothing of it can be served or applied.
+  const forgedPath = join(laptop, 'forged.encrypted'), bytes = readFileSync(privateStore.copyPath);
+  bytes.writeUInt8(bytes.readUInt8(bytes.length - 40) ^ 0x5a, bytes.length - 40); writeFileSync(forgedPath, bytes);
+  expect(() => openPreviewJournal(forgedPath, key, undefined, undefined, true)).toThrow();
+  copy.close(); adopted.close(); privateStore.close(); groupStore.close(); w.destination.close(); w.source.close();
+});
 
-    // ── Machine A: writer + own-stream serve applier ──
-    journalA = new CoherenceJournal({
-      stateDir: dirA,
-      machineId: MACHINE_A,
-      flushIntervalMs: 1_000_000, // manual flush
-    });
-    journalA.open();
-    applierA = new JournalSyncApplier({ stateDir: dirA });
-
-    // ── Machine B: receive applier + reader, behind a real dispatcher ──
-    applierB = new JournalSyncApplier({ stateDir: dirB });
-    readerB = new CoherenceJournalReader({ stateDir: dirB });
-
-    const seen = new Set<string>();
-    const dispatcherB = new MeshRpcDispatcher({
-      verify: {
-        selfMachineId: MACHINE_B,
-        verify: (c, s, sender) => !!keys[sender] && verify(c, s, keys[sender].pub),
-        isRegisteredPeer: (s) => !!keys[s],
-        seenNonce: (s, nn) => seen.has(`${s}:${nn}`),
-        now: () => Date.now(),
-      },
-      // Read/observe class — journal-sync needs no router/owner role.
-      rbac: { routerHolder: () => null, ownerOf: () => null, placementTargetOf: () => null },
-      recordNonce: (s, nn) => seen.add(`${s}:${nn}`),
-      handlers: {
-        'journal-sync': (cmd: MeshCommand, _sender: string, env: MeshEnvelope) => {
-          const c = cmd as MeshCommand & { type: 'journal-sync' };
-          if (c.batch) {
-            // first-hop sender binding: bind to the AUTHENTICATED envelope sender.
-            const r = applierB.apply(env.sender, c.batch as ApplyBatchStream[]);
-            return { ok: true, result: r };
-          }
-          return { ok: true };
-        },
-      },
-    });
-
-    const ctx: any = {
-      config: { authToken: 'test', stateDir: dirB, port: 0 },
-      stateDir: dirB,
-      meshRpcDispatcher: dispatcherB,
-    };
-    const app = express();
-    app.use(express.json());
-    app.use(createRoutes(ctx));
-    server = await listen(app);
-  });
-
-  afterEach(async () => {
-    try {
-      journalA.close();
-    } catch {
-      /* best-effort */
-    }
-    await server.close();
-    SafeFsExecutor.safeRmSync(dirA, { recursive: true, force: true, operation: 'tests/integration/journal-sync-roundtrip.test.ts' });
-    SafeFsExecutor.safeRmSync(dirB, { recursive: true, force: true, operation: 'tests/integration/journal-sync-roundtrip.test.ts' });
-  });
-
-  function clientA(): MeshRpcClient {
-    return new MeshRpcClient({
-      selfMachineId: MACHINE_A,
-      sign: (c) => sign(c, keys[MACHINE_A].priv),
-      nonce: () => `n${++n}`,
-      now: () => Date.now(),
-    });
-  }
-
-  it('A emits + flushes; A serves its own stream; B applies it through a signed envelope; B replica answers', async () => {
-    // 1. A writes placement history and flushes (durable).
-    journalA.emitPlacement(13481, { owner: 'm_owner_1', epoch: 1, reason: 'placed' });
-    journalA.emitPlacement(13481, { owner: 'm_owner_2', epoch: 2, reason: 'user-move', prevOwner: 'm_owner_1' });
-    journalA.flush();
-
-    // 2. A builds its OWN-stream serve batch (peer has nothing → fromSeq 0).
-    const served = applierA.buildServeBatch('topic-placement', 0, MACHINE_A);
-    expect(served.entries.length).toBe(2);
-    expect(served.entries.every((e) => e.machine === MACHINE_A)).toBe(true);
-
-    // 3. Send it A → B as a signed, recipient-bound journal-sync batch.
-    const res = await clientA().send(
-      { machineId: MACHINE_B, url: server.url },
-      { type: 'journal-sync', batch: [served] },
-      0,
-    );
-    expect(res).toMatchObject({ status: 200, ok: true });
-    const applyResult = (res.result as { result: { applied: number; forgedEntries: number } }).result;
-    expect(applyResult.applied).toBe(2);
-    expect(applyResult.forgedEntries).toBe(0);
-
-    // 4. B's reader now answers from the REPLICA stream for machine A.
-    const q = readerB.query({ machine: MACHINE_A, kind: 'topic-placement' });
-    const replicaEntries = q.entries.filter((e) => e.source === 'replica');
-    expect(replicaEntries.length).toBe(2);
-    expect(replicaEntries.map((e) => e.seq).sort((a, b) => a - b)).toEqual([1, 2]);
-    expect(replicaEntries.every((e) => e.machine === MACHINE_A)).toBe(true);
-    // The replica stream status surfaces under A's id.
-    const streamKey = Object.keys(q.streams).find((k) => k.includes('topic-placement'));
-    expect(streamKey).toBeTruthy();
-    expect(q.streams[streamKey as string].source).toBe('replica');
-    expect(q.streams[streamKey as string].lastSeq).toBe(2);
-  });
-
-  it('rejects a FORGED batch (entry.machine ≠ envelope.sender) even with a valid signature from a registered peer', async () => {
-    journalA.emitPlacement(99, { owner: 'm_owner_x', epoch: 1, reason: 'placed' });
-    journalA.flush();
-    const honest = applierA.buildServeBatch('topic-placement', 0, MACHINE_A);
-    expect(honest.entries.length).toBe(1);
-
-    // Forge the entry's `machine` to claim it came from B (a different machine),
-    // while the ENVELOPE is still a genuine, correctly-signed message from A.
-    const forged: ApplyBatchStream = {
-      kind: 'topic-placement',
-      incarnation: honest.incarnation,
-      entries: honest.entries.map((e) => ({ ...e, machine: MACHINE_B })),
-    };
-
-    const res = await clientA().send(
-      { machineId: MACHINE_B, url: server.url },
-      { type: 'journal-sync', batch: [forged] },
-      0,
-    );
-    // The envelope is accepted (signature valid, registered peer), but the
-    // applier's first-hop binding rejects the forged entries.
-    expect(res).toMatchObject({ status: 200, ok: true });
-    const applyResult = (res.result as { result: { applied: number; forgedEntries: number } }).result;
-    expect(applyResult.applied).toBe(0);
-    expect(applyResult.forgedEntries).toBe(1);
-
-    // Nothing landed in B's replica for A.
-    const q = readerB.query({ machine: MACHINE_A, kind: 'topic-placement' });
-    expect(q.entries.filter((e) => e.source === 'replica').length).toBe(0);
-  });
+it('refuses a second predecessor with its own valid grant, and a predecessor re-seeded under the same path, once the group root is fixed', async () => {
+  const w = await world();
+  const lagging = emittingPredecessor(w);
+  const audience = await verifyGroupAudience(scope, membership());
+  expect(appendGroupCarry(w.destination, w.source, scope, permission(), audience, now, () => false)).toBe('carried');
+  // The predecessor's wall clock lags the machine that carried (its emits after the carry carry an earlier HLC than the
+  // snapshot): the refresh still supersedes the snapshot, because a refresh record is positional (seq > emitsThrough).
+  changeAfterCarry(w, lagging);
+  expect(w.source.view.relationshipEmits.at(-1)!.hlc.physical).toBeLessThan(now);
+  expect(refreshGroupCarry(w.destination, w.source, scope, permission(), audience, now + 2000, () => false).result.applied).toBe(2);
+  expect(served(w.destination.view)).toHaveLength(1);
+  // Another private conversation of the same operator, with a valid grant for this group: not this group's predecessor.
+  const b = await world({ extraSamMention: true });
+  const other = { ...scope, sourceRoot: '/test/other-private' };
+  const otherPermission = permissionFor(other); if (otherPermission.kind !== 'resolved') throw Error(otherPermission.reason);
+  expect(() => refreshGroupCarry(w.destination, b.source, other, otherPermission, audience, now + 3000, () => false)).toThrow(/predecessor already fixed/u);
+  // The same root re-seeded (a different genesis) is a changed predecessor: refused, the held history untouched.
+  const reseeded = { view: { ...b.source.view, genesis: { ...w.source.view.genesis, grant: 'TEST-reseeded' } }, readOnly: true };
+  expect(() => refreshGroupCarry(w.destination, reseeded, scope, permission(), audience, now + 4000, () => false)).toThrow(/predecessor lineage changed/u);
+  expect(w.destination.view.groupCarryRefreshes).toHaveLength(1);
+  expect(served(w.destination.view)[0]!).toContain('city: Porto');
+  b.source.close(); b.destination.close(); w.destination.close(); w.source.close();
 });

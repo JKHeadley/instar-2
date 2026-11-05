@@ -11,7 +11,9 @@ import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice } from './reply-ch
 import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin, observeInstalledSessionLogin } from './installed-harness-logins.mjs';
 import { loadHarnessLogins, harnessLoginPoolStatus, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
-import { appendGroupCarry } from './group-carry.js';
+import { appendGroupCarry, carryOrigin } from './group-carry.js';
+import { refreshGroupCarry } from './relationship-applier.js';
+import { createRelationshipEmitter, emitRelationshipChanges } from './relationship-emitter.js';
 import { resolveGroupDisclosure, verifyGroupAudience, createGroupAudienceCache } from './group-disclosure.js';
 import { journalConversation, journalWorkConversation, validateChatBinding } from './forum-routing.js';
 // Small, machine-local preview launcher. Only this file owns process, clock and
@@ -757,7 +759,7 @@ async function main() {
   const retrospectiveEnabled = options.retrospective !== 'false';
   // Part 18 (plan #402): the live sentinels, all on by default; `--sentinels none` (or a subset) is the off-switch.
   const sentinelFamilies = sentinelFamiliesOf(options.sentinels);
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'carry-group', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract', 'install-login', 'prepare-logins', 'test-copy'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'carry-group', 'refresh-group', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract', 'install-login', 'prepare-logins', 'test-copy'].includes(command)) throw Error('preview: unknown command');
   if (command === 'test-copy') {
     // test-copy-1020: a NEW root holding a copy of the source's journal, explicitly rebound (and recorded as rebound) to a
     // test bot and the operator's own private chat on it. The source root is only read; logins, custody and the
@@ -965,6 +967,8 @@ async function main() {
       // Two machines (Rules 2, 32): this root's place in the shared history; absent on a root that never had one.
       ...(sharedView => sharedView ? { sharedHistory: sharedView } : {})(sharedHistoryStatus(root, journalPath)),
       channelItems: view.view.channelItems.size,
+      // Carryover row 40: this root's own relationship record stream, and the predecessor batches a carried root applied.
+      relationshipEmits: view.view.relationshipEmits.length, groupCarryRefreshes: view.view.groupCarryRefreshes.length,
       channelSources: Object.fromEntries(['telegram', 'slack'].map(source => [source, {
         ...(view.view.channelSources.get(source) ?? { offset: 0, scanned: 0, imported: 0, skipped: 0 }),
         error: view.view.channelSourceErrors.get(source) ?? null }])),
@@ -1330,7 +1334,7 @@ async function main() {
     } finally { check.close(); }
   }
   // Rule 35: a test composition never takes the writer lease of a production root (or the reverse).
-  if (['run', 'carry-group', 'install-login', 'prepare-logins'].includes(command) && existsSync(journalPath)) {
+  if (['run', 'carry-group', 'refresh-group', 'install-login', 'prepare-logins'].includes(command) && existsSync(journalPath)) {
     const composed = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT ? 'test' : 'production';
     const peek = openPreviewJournal(journalPath, key(), undefined, undefined, true);
     try { if ((peek.view.genesis.origin ?? 'production') !== composed) throw Error('preview: composition origin differs from journal'); }
@@ -1380,6 +1384,98 @@ async function main() {
       operator: journal.view.genesis.operator, bot: journal.view.genesis.bot };
     return observeAudience(observe => groupAudience.verify(scope, observe));
   };
+  // Carryover row 40 (One Memory): per-record relationship replication beyond the initial carry. A private root emits
+  // its changed people into its own journal while a sealed grant names it as a carry source; a carried group root
+  // applies its predecessor's emits under the carry's own grant and audience. Neither step can fail the serving loop.
+  const relationshipHeld = new Set();
+  const relationshipSay = (cls, line) => { if (!relationshipHeld.has(cls)) { relationshipHeld.add(cls); process.stderr.write(`preview: ${line}\n`); } };
+  /** The emitter's dark gate: the sealed grant that names THIS root as a carry source (no configuration boolean). */
+  const sourceGrantFor = () => {
+    try {
+      const path = options['authority-record'] ?? join(dirname(resolve(required(options, 'activation-record'))), 'activation-authority.json');
+      const record = JSON.parse(readFileSync(path, 'utf8'));
+      const grants = Array.isArray(record?.groupDisclosureGrants) ? record.groupDisclosureGrants : [];
+      let reason = 'no group disclosure grant names this root as source';
+      for (const grant of grants) {
+        const named = grant?.scope;
+        if (!named || typeof named !== 'object' || named.sourceRoot !== root) continue;
+        const verdict = resolveGroupDisclosure(named, record, wallNow(), operatorRecords(options['operator-records']), authoritySealKey(key()));
+        if (verdict.kind === 'resolved') return verdict;
+        reason = verdict.reason;
+      }
+      return { kind: 'refused', reason };
+    } catch { return { kind: 'refused', reason: 'group disclosure authority unavailable' }; }
+  };
+  /** The carried predecessor, read-only and without its writer lease: its journal on this machine, else the replica copy the
+   *  owner shipped here (a copy that does not replay whole does not open; nothing of it is served or applied). */
+  const openPredecessor = sourceRoot => {
+    const local = join(sourceRoot, 'journal.encrypted'), copy = join(sourceRoot, 'replica', 'journal.copy');
+    const path = existsSync(local) ? local : existsSync(copy) ? copy : null;
+    if (!path) throw Error('group carry: predecessor journal unavailable on this machine');
+    return openPreviewJournal(path, key(), undefined, undefined, true);
+  };
+  const RELATIONSHIP_REFRESH_MIN_MS = 30_000;
+  let relationshipEmitter = null, lastRelationshipRefresh = 0;
+  const refreshFromPredecessor = async () => {
+    const scope = journal.view.groupCarry.scope;
+    let permission = groupPermission(scope);
+    if (permission.kind !== 'resolved') throw Error(`group carry: ${permission.reason}`);
+    const audience = await observeAudience(observe => groupAudience.verify(scope, observe));
+    if (!audience) throw Error('group carry: operator-only audience refused');
+    permission = groupPermission(scope);
+    const source = openPredecessor(scope.sourceRoot);
+    try {
+      if ((source.view.genesis.origin ?? 'production') !== (journal.view.genesis.origin ?? 'production')) throw Error('group carry: predecessor origin differs');
+      return refreshGroupCarry(journal, source, scope, permission, audience, wallNow(), () => existsSync(stopPath));
+    } finally { source.close(); }
+  };
+  /** One bounded step per poll cycle: a private root emits its changed people (an unchanged projection emits nothing); a
+   *  carried group root refreshes from its predecessor when the poll was empty, at most every 30 s. */
+  const relationshipStep = async intakeCount => {
+    if (!journal || journal.readOnly || journal.view.stop) return;
+    try {
+      if (journal.view.genesis.forum !== true && !journal.view.groupCarry && !journal.view.testCopy) {
+        const origin = carryOrigin({ sourceRoot: root });
+        relationshipEmitter ??= createRelationshipEmitter(journal, { now: wallNow, origin, permission: sourceGrantFor });
+        const changes = emitRelationshipChanges(journal, relationshipEmitter, wallNow(), origin);
+        if (changes.puts.length || changes.deletes.length) process.stderr.write(`preview: relationship emits ${changes.puts.length} put, ${changes.deletes.length} delete\n`);
+      } else if (journal.view.groupCarry && !journal.view.testCopy && intakeCount === 0 && wallNow() - lastRelationshipRefresh >= RELATIONSHIP_REFRESH_MIN_MS) {
+        lastRelationshipRefresh = wallNow();
+        const outcome = await refreshFromPredecessor();
+        if (outcome.result.applied) process.stderr.write(`preview: relationship refresh applied ${outcome.result.applied} (through ${outcome.through}, ${outcome.remaining} remaining)\n`);
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'failed';
+      relationshipSay(`relationship:${reason}`, `relationship step held: ${reason}`);
+    }
+  };
+  if (command === 'refresh-group') {
+    let destination, source;
+    try {
+      if (posture !== 'single-machine') throw Error('group carry: refresh requires the local exclusive writer');
+      destination = openPreviewJournal(journalPath, key());
+      if (!destination.view.groupCarry) throw Error('group carry: no predecessor carried');
+      const scope = destination.view.groupCarry.scope;
+      if (scope.destinationRoot !== root) throw Error('group carry: destination root differs');
+      let permission = groupPermission(scope);
+      if (permission.kind !== 'resolved') throw Error(`group carry: ${permission.reason}`);
+      // The serving-boundary audience read (cached, observed): a refresh is a serving effect, not the one-time carry.
+      const audience = await observeAudience(observe => groupAudience.verify(scope, observe));
+      if (!audience) throw Error('group carry: operator-only audience refused');
+      permission = groupPermission(scope);
+      source = openPredecessor(scope.sourceRoot);
+      if ((source.view.genesis.origin ?? 'production') !== (destination.view.genesis.origin ?? 'production')) throw Error('group carry: predecessor origin differs');
+      const outcome = refreshGroupCarry(destination, source, scope, permission, audience, wallNow(), () => existsSync(stopPath));
+      // Rule 2: what was applied, what was refused and what remains are all named.
+      process.stdout.write(`${JSON.stringify({ predecessor: scope.sourceRoot, from: outcome.from, through: outcome.through, remaining: outcome.remaining,
+        applied: outcome.result.applied, duplicates: outcome.result.duplicates, forged: outcome.result.forgedEntries, invalid: outcome.result.invalidEntries,
+        refused: outcome.result.quarantined, statuses: outcome.result.statuses })}\n`);
+    } catch (error) {
+      const reason = error instanceof Error && error.message.startsWith('group carry:') ? error.message : 'group carry: refresh failed';
+      process.stderr.write(`${reason}\n`); process.exitCode = 1;
+    } finally { source?.close(); destination?.close(); storage.close(); }
+    return;
+  }
   if (command === 'carry-group') {
     let destination, source, sourceStorage;
     try {
@@ -3203,6 +3299,7 @@ async function main() {
       const batch = shared ? updates.result.filter(update => !(update?.update_id < journal.view.cursor)) : updates.result;
       if (!await untilStopped(() => worker.intake(batch), ended)) break;
       dueWake.refresh();
+      await relationshipStep(batch.length);
       // An approved phone stop latches in the journal; the loop ends without another effect.
       if (journal.view.stop) break;
       if (shared) {

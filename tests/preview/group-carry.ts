@@ -9,8 +9,10 @@ import { liveSummaries, lastRecurringOccurrence, openRequests, operatorWriter, p
 import { type GroupCarryScope, type DisclosureVerdict } from './group-disclosure.js';
 import { localMinute, nextRecurringDay, type DatedItem } from './dated-memory.js';
 import { journalRelationships } from './relationship-journal.js';
-import { buildRelationshipRecordData, originRecordFromData, renderForeignRelationshipContext,
-  type EnvelopeValidationCounters, type OriginRecord } from './relationship-store.js';
+import { buildRelationshipRecordData, mergeUnionToRelationships, originRecordFromData, renderForeignRelationshipContext, unionOfOriginRecords,
+  type EnvelopeValidationCounters, type MergedRelationshipView, type OriginRecord } from './relationship-store.js';
+import { lastEmittedHlc, tickAfter } from './relationship-emitter.js';
+import { refreshedRecords, type CarriedRefresh } from './relationship-applier.js';
 
 export type CarriedEntryKind = 'recall' | 'preference' | 'correction' | 'summary' | 'promise' | 'reminder' | 'person';
 export const CARRIED_ENTRY_KINDS: readonly CarriedEntryKind[] = ['recall', 'preference', 'correction', 'summary', 'promise', 'reminder', 'person'];
@@ -21,6 +23,9 @@ export interface CarriedMemory {
   entries: { kind: CarriedEntryKind; source: string; at: number; text: string }[];
   /** Open requests whose execution this root now owns, verbatim so their keys match the predecessor's transfer. */
   requests: CarriedRequest[];
+  /** The predecessor's relationship emit seq this snapshot supersedes (its emits through here are already in the
+   *  `person` entries); a later refresh applies only emits after it. Absent in snapshots written before refreshes existed. */
+  emitsThrough?: number;
   digest: string;
 }
 export interface CarriedRequest { item: DatedItem; askedAt: number }
@@ -97,10 +102,11 @@ export function buildCarriedMemory(source: JournalView, scope: GroupCarryScope,
   // group root knows who "Sam" is on the first mention there. The projection already withholds corrected
   // and forgotten mentions and redacts every free-text field; the record is the predecessor's claim and
   // is rendered to the model only inside the untrusted-data envelope (groupCarryPacket).
-  const origin = carryOrigin(scope);
-  for (const person of journalRelationships(source, at)) {
-    const data = buildRelationshipRecordData({ record: person.record, origin,
-      hlc: { physical: Date.parse(person.record.lastInteraction), logical: person.record.interactionCount, node: origin } });
+  // The snapshot's clock position is after every emit the predecessor has made (the refresh applies only later ones),
+  // and imported channel items stay out of the projection: they never cross the group boundary.
+  const origin = carryOrigin(scope), hlc = tickAfter(lastEmittedHlc(source), at, origin);
+  for (const person of journalRelationships(source, at, undefined, { imports: false })) {
+    const data = buildRelationshipRecordData({ record: person.record, origin, hlc });
     if (data) entries.push({ kind: 'person', source: person.latestSource, at: person.at, text: JSON.stringify(data) });
   }
   for (const [id, promise] of source.commitments.entries()) if (!source.closed.has(id) && own(promise.source)) {
@@ -136,7 +142,8 @@ export function buildCarriedMemory(source: JournalView, scope: GroupCarryScope,
     return { item: { ...item, ...(last === undefined ? {} : { day: nextRecurringDay(item, last) }) },
       askedAt: sentAt(turn.raw, turn.at) };
   });
-  const body = { scope, sourceDigest: projectionDigest(source), grant: permission.grant, authorityDigest: permission.digest, at, entries, requests };
+  const body = { scope, sourceDigest: projectionDigest(source), grant: permission.grant, authorityDigest: permission.digest, at, entries, requests,
+    emitsThrough: source.relationshipEmits.length };
   const carried = { ...body, digest: hash(body) };
   if (!validCarriedMemory(carried)) throw Error('group carry: snapshot exceeds the bounded carry size');
   return carried;
@@ -158,16 +165,25 @@ const unsettledAfter = (source: JournalView, update: number) => source.order.som
 /** Both writer leases are held by the caller. Order is the exactly-once argument: the predecessor records the
  * transfer before the destination records ownership, so a crash between them leaves each request owned by NEITHER
  * (re-running the carry completes it: the recorded transfer is reused) and never by both. */
-export function appendGroupCarry(destination: ReturnType<typeof openPreviewJournal>, source: ReturnType<typeof openPreviewJournal>,
-  scope: GroupCarryScope, permission: DisclosureVerdict, audienceVerified: boolean, now: number,
-  stopped: () => boolean): 'carried' | 'already-carried' {
+/** The checks every carry effect shares (the initial carry and each later refresh): a resolved disclosure for exactly
+ *  this scope, a verified operator-only audience, writer posture and stop, and the destination's own binding. The
+ *  initial carry additionally requires the predecessor's writer lease (it records the request transfer there); a
+ *  refresh reads the predecessor and may hold it read-only (`writerRequired: false`). */
+export function guardGroupCarry(destination: ReturnType<typeof openPreviewJournal>, source: Pick<ReturnType<typeof openPreviewJournal>, 'view' | 'readOnly'>,
+  scope: GroupCarryScope, permission: DisclosureVerdict, audienceVerified: boolean, now: number, stopped: () => boolean,
+  writerRequired = false): asserts permission is Extract<DisclosureVerdict, { kind: 'resolved' }> {
   const g = destination.view.genesis;
   if (permission.kind !== 'resolved' || !Object.entries(scope).every(([field, value]) =>
     permission.scope[field as keyof GroupCarryScope] === value) || permission.expiresAt !== undefined && permission.expiresAt <= now || !audienceVerified) throw Error('group carry: disclosure permission or audience refused');
-  if (source.readOnly || destination.readOnly || destination.view.stop || stopped() || now >= destination.view.expires)
+  if (writerRequired && source.readOnly || destination.readOnly || destination.view.stop || stopped() || now >= destination.view.expires)
     throw Error('group carry: stopped or incorrect read/write posture');
   if (g.forum !== true || g.chat !== scope.chat || g.operator !== scope.operator || g.bot !== scope.bot
     || (source.view.genesis.origin ?? 'production') !== (g.origin ?? 'production')) throw Error('group carry: destination scope or origin differs');
+}
+export function appendGroupCarry(destination: ReturnType<typeof openPreviewJournal>, source: ReturnType<typeof openPreviewJournal>,
+  scope: GroupCarryScope, permission: DisclosureVerdict, audienceVerified: boolean, now: number,
+  stopped: () => boolean): 'carried' | 'already-carried' {
+  guardGroupCarry(destination, source, scope, permission, audienceVerified, now, stopped, true);
   const previous = destination.view.groupCarry;
   if (previous) {
     if (JSON.stringify(previous.scope) !== JSON.stringify(scope)) throw Error('group carry: predecessor already fixed');
@@ -197,15 +213,36 @@ export function appendGroupCarry(destination: ReturnType<typeof openPreviewJourn
 /** Reuse the journal's signal-only recall selector; omission is counted, never evidence of absence.
  * The durable snapshot is whole. The packet is bounded so a default-size group can use it without
  * raising a spend/context grant, and every selected fact retains its original source and time. */
+/** The predecessor's relationship records as this root currently holds them: the snapshot's `person` entries, then
+ *  every applied refresh in order (a later put replaces, a tombstone removes), then the ported union read across
+ *  origins (append-both-and-flag when two predecessors disagree; one predecessor never conflicts with itself).
+ *  The per-origin materialization is POSITIONAL, not by clock: a refresh record is an emit the snapshot did not cover
+ *  (seq > emitsThrough, replay-checked), so it supersedes the snapshot's record for its key even when the predecessor's
+ *  wall clock lags the machine that carried; within the emit stream the journal already refuses a clock that does not
+ *  advance, so stream order and HLC order agree there (1.x materialized the latest per origin by HLC). */
+export function carriedRelationshipViews(memory: CarriedMemory, refreshes: readonly CarriedRefresh[] = []): MergedRelationshipView[] {
+  const latest = new Map<string, OriginRecord>();
+  const key = (record: OriginRecord) => JSON.stringify([record.origin, record.envelope.recordKey]);
+  for (const item of memory.entries) { const record = carriedPerson(item, memory.scope); if (record) latest.set(key(record), record); }
+  for (const refresh of refreshes) for (const record of refreshedRecords(refresh) ?? []) latest.set(key(record), record);
+  return mergeUnionToRelationships(unionOfOriginRecords([...latest.values()]));
+}
 export function groupCarryPacket(memory: CarriedMemory, question: string, now: number, maxBytes: number, destination?: JournalView, zone = 'America/Los_Angeles') {
   // A carried person is served only as the 1.x foreign-record block: re-validated through the store schema on
-  // this read and quoted inside `<replicated-untrusted-data origin>`, never as the local-authoritative context.
-  memory = { ...memory, entries: memory.entries.flatMap(item => {
-    if (item.kind !== 'person') return [item];
-    const record = carriedPerson(item, memory.scope);
-    const text = record && renderForeignRelationshipContext({ recordKey: record.envelope.recordKey, origin: record.origin, data: record.data, conflicted: false });
-    return text ? [{ ...item, text }] : [];
-  }) };
+  // this read, current through every applied refresh, and quoted inside `<replicated-untrusted-data origin>`,
+  // never as the local-authoritative context. A refreshed record keeps its snapshot entry's source and time when it
+  // has one; a person first emitted after the carry names the refresh that brought it.
+  const refreshes = destination?.groupCarryRefreshes ?? [];
+  const persons = memory.entries.filter(item => item.kind === 'person');
+  const bySnapshot = new Map(persons.flatMap(item => { const record = carriedPerson(item, memory.scope); return record ? [[record.envelope.recordKey, item] as const] : []; }));
+  const views = carriedRelationshipViews(memory, refreshes).flatMap(view => {
+    const text = renderForeignRelationshipContext(view);
+    if (!text) return [];
+    const snapshot = bySnapshot.get(view.recordKey);
+    const at = snapshot?.at ?? refreshes.at(-1)?.at ?? memory.at;
+    return [{ kind: 'person' as const, source: snapshot?.source ?? `refresh:${refreshes.at(-1)?.through ?? 0}`, at, text }];
+  });
+  memory = { ...memory, entries: [...memory.entries.filter(item => item.kind !== 'person'), ...views] };
   // The snapshot remains immutable provenance; every serving read uses the destination correction/forget projection.
   if (destination) memory = { ...memory, entries: memory.entries.map(item => ({ ...item,
     text: projectMemoryClause(destination, item.text, item.source) })).filter(item => item.text.trim()) };

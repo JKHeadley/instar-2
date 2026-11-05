@@ -34,6 +34,8 @@ The journal runner's capability briefing is generated from these lines and the f
 - `preview.rolling-summary`: keeps a faithfulness-checked rolling summary of earlier turns.
   Details: a completed, reviewed prefix can commit during a later reply if its memory basis is unchanged. Exact facts beyond the 20-item structured list stay in the reviewed prose under the existing byte ceiling; pending dated decisions do not gate summary progress. Regression coverage: `proactive-compaction.test.ts` and `summary-item-overflow.test.ts`.
 - `preview.coherence-check`: checks each reply against remembered earlier turns without a model call.
+- `preview.relationship-awareness`: knows who a mentioned person is across topics, the granted group, restarts and machines, from the journal's own people rows.
+  Details: the private journal's people, attributes and operator-confirmed name links are one relationship record per person (the 1.x One Memory record shape, ported). A granted group carry takes them as validated records and keeps them current through per-record emits the predecessor writes into its own journal and the group root applies under the same grant and audience; a forgotten or corrected person leaves as a tombstone. Served to the model only as quoted untrusted data, never as instructions.
   Details: checks each reply against remembered earlier turns, without a model call, and records the findings.
 
 ## Prerequisites and exact invocation
