@@ -3,7 +3,7 @@
 Subject base: 914f43291d936c5f4514296390ca86ce38f48607
 Review state: open
 Reviewed content: none
-Outcome: Extend the existing trusted inventory with redacted, incarnation-bound current checkout references; retain unknown rather than infer non-ownership from a sequential no-match scan. Row03 native completion remains an open acceptance condition.
+Outcome: Extend the existing trusted inventory with redacted, incarnation-bound current checkout references; retain unknown rather than infer non-ownership from a sequential no-match scan. A real descriptor-transfer race disproves sequential no-match exclusion; row03 native completion remains blocked.
 Affected rules: 2, 8, 26, 29, 32, 34, 36, 37, 42, 49, 60, 63, 70, 74, 83, 95, 101, 102, 107, 111, 112, 113, 116; NF-52.
 Affected floors: secrets — no unrelated FD names or contents, existing encrypted intake; spend cap — existing budgets; stop — existing observation/intake/execution guards; no duplicate sends — existing source dedupe and uncertain-effect fences; durable intake — existing original-topic signed request journal.
 Operator questions: none
@@ -20,6 +20,10 @@ Hook bypass: none
 Convergence: none
 Prompt review: No production prompt, output parser or model accept/escalate/refuse decision changes. Existing signed recovery replay remains unchanged; no provider or Telegram call.
 Decision: c03-reference-probe | Use existing lsof metadata authority and a fixed libproc identity reader, not a new observer or permission system. Match only known checkout device/inode identities; names and contents are never requested from lsof. Before/after process identities detect reuse but cannot certify atomic references. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-reference-census-1105-PROGRESS.md
+
+Decision: c03-reference-race | Two real SCM_RIGHTS transfers repeatedly hide continuous checkout possession from sequential per-process reads with unchanged microsecond identities. Both no-match rows must stay unknown. The missing evidence is a consistent reference cut or a kernel change witness covering FD/mapping transitions throughout the observation, not permanent nonaccess. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-reference-census-1105-PROGRESS.md
+
+Evidence: Native reference suite at af05b00e4 passed 11/11; process pair 72719/72721 reproduced the race on two successive scans while the receiving process read the synthetic 28-byte capture. A subsequent ordinary scan detected the holder. Closed-FD mmap and renamed hardlink/transferred-FD neighbors passed. Exact logs and PIDs are in the absolute lanes evidence directory. The existing native positive/unknown-holder pair is a separate acceptance condition, never replaced by these 11 tests.
 
 ## Closing block
 

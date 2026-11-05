@@ -26,7 +26,9 @@ async function worker(mode: 'mapping' | 'pair', file: string, cwd: string) {
   const lines = createInterface({ input: child.stdout })[Symbol.asyncIterator]();
   let errors = ''; child.stderr.on('data', data => { errors += String(data); });
   const next = async () => { const line = await lines.next(); if (line.done) throw Error(`fixture exited: ${errors}`); return line.value; };
-  return { initial: JSON.parse(await next()) as [number, number],
+  const initial = JSON.parse(await next()) as [number, number];
+  console.info('reference fixture', { mode, supervisorPid: child.pid, pids: mode === 'pair' ? initial : [initial[0]] });
+  return { initial,
     command: async (text: string) => { child.stdin.write(`${text}\n`); return Number(await next()); },
     close: async () => { child.stdin.end(); expect(await exit).toEqual({ code: 0, signal: null }); } };
 }
@@ -68,7 +70,7 @@ native('matches passed descriptors and a renamed outside-checkout hardlink by de
     const after = await inv.checkoutReferences(await inv.census(), f.checkout);
     expect(after.processes.get(left)).toMatchObject({ state: 'reference', kinds: ['fd'] });
     expect(after.processes.get(right).state).toBe('no-match');
-    console.info('reference transfer', { left, right, before: [...before.processes], after: [...after.processes] });
+    console.info('reference transfer', JSON.stringify({ left, right, before: [...before.processes], after: [...after.processes] }));
   } finally { await pair.close(); f.close(); }
 });
 
@@ -94,7 +96,7 @@ native('a real SCM_RIGHTS scan race hides continuous possession despite equal in
       expect(result.reason).toBe('sequential-reference-observations');
       expect([...result.processes.values()].map((row: { state: string }) => row.state)).toEqual(['no-match', 'no-match']);
       expect(result.coverage).toBe('non-atomic'); // never a certificate of non-ownership
-      console.info('reference scan race', { pass, left, right, holder, observations: [...result.processes] });
+      console.info('reference scan race', JSON.stringify({ pass, left, right, holder, observations: [...result.processes] }));
     }
     const ordinary = inventory([left, right]);
     expect((await ordinary.checkoutReferences(await ordinary.census(), f.checkout)).processes.get(left).state).toBe('reference');
