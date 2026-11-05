@@ -1,8 +1,8 @@
 # Change review — exact reply review accounting
 
 Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
-Review state: frozen
-Reviewed content: sha256:24e70676cfad6fe65f8f36534faa69c54bb698840363e9095029070d87718950
+Review state: open
+Reviewed content: none
 Outcome: Bind reply-review proof accounting to the actual sent candidate, recorded before-send or after-send phase, and source observation time. Distinguish exact fixed notices and passed revisions from raw answers, and keep attempted, reached, judged, passed, unavailable and adverse outcomes separate. The live capability proof uses the same exact-candidate predicate.
 Affected rules: 9, 13, 26, 36, 38, 41, 42, 43, 49, 58, 70, 73, 74, 95, 101, 111, 112, 113, 116
 Affected floors: secrets — outbound guard unchanged; spend cap — no calls or reservations added; stop — execution checks unchanged; no duplicate sends — no send path or retry changed; durable intake — journal admission and persistence unchanged.
