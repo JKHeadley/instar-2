@@ -582,7 +582,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         }
         while (!closing && !config.stopped() && !state.halt) {
           const next = state.inputs.find(input => input.state === 'queued' || input.state === 'revival-queued');
-          if (!next || config.now() < next.retryAt || !await work(config.batchWaiting && !next.revival ? state.inputs.filter(input => input.state === 'queued' && !input.revival && config.now() >= input.retryAt).map(input => input.request.operation) : [next.request.operation])) break;
+          if (!next || config.now() < next.retryAt || !await work(config.batchWaiting && next.state === 'queued' && !next.revival ? state.inputs.filter(input => input.state === 'queued' && !input.revival && config.now() >= input.retryAt).map(input => input.request.operation) : [next.request.operation])) break;
         }
       })().finally(() => { draining = null; });
       return draining;

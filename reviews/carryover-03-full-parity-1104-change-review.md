@@ -2,7 +2,7 @@
 
 Subject base: 14aaecc7d23d192add125c447d49120d9aa9a95e
 Review state: frozen
-Reviewed content: sha256:06cfe711a5f6cc3d69156d853a673ee9805ca5c7d242c6d6c28b24fbf37285c1
+Reviewed content: sha256:6a3f7f5f6cf6a1e32359f05d3e0aeaab53c3ed47855f8237aa5ceffe989faee8
 Outcome: Carryover row 03 retains a proven-safe lost-worker revival when replacement capacity is unavailable. The original delivery, deadline and allowance survive host restart. The behavior inventory explicitly separates this implemented repair from the complete 1.x parity assessment; no full parity or live claim.
 Affected rules: 1, 4, 26, 28, 29, 34, 36, 37, 46, 49, 55, 60, 61, 63, 68, 70, 74, 101, 102, 111, 112, 113, 114, 116
 Affected floors: secrets — no new credential surface; spend cap — cumulative liability and original deadline survive replacement; stop — checked before replacement and every observation; no duplicate sends — unknown effects and interrupted launch remain uncertain; durable intake — original request and delivery retained in existing host-owned custody.
@@ -25,5 +25,5 @@ Decision: CARRYOVER-03-FULL-1104-2 | Keep 1.x resource holds distinct from faile
 Decision: CARRYOVER-03-FULL-1104-3 | Keep full parity and row 03 OPEN wherever the behavior inventory lacks implementation or evidence; passing the scoped repair tests is not full parity. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-full-parity-1104-PROGRESS.md
 
 simplestRobustRoute: Use the existing durable input queue, owner tick, exact retirement, host admission and original accepted delivery. Add only a retained revival record to distinguish a proven no-launch resource hold from an interrupted dispatch. That distinction prevents both silent abandonment and duplicate replay. Start guards are current ownership/grant, stop, deadline, spend and known effects; end guards are correlated reply/turn-end and retained uncertainty. No unattended shipped-path success is claimed.
-80/20: Two new reproducer cases failed before the repair. Decision-neighbor and recorded-shape tests exercise the new queue path. Remaining full-parity gaps stay named in the inventory rather than being hidden by this repair's passing tests.
+80/20: Two new reproducer cases failed before the repair. Decision-neighbor and recorded-shape tests exercise the new queue path. A strengthened missing-proof/batching assertion failed before the batching-state guard and verifies uncertainty rather than a misleading queued status. Remaining full-parity gaps stay named in the inventory rather than being hidden by this repair's passing tests.
 VERDICT: author submission; independent judgment not asserted.

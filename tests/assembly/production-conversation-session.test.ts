@@ -1281,9 +1281,10 @@ it.each(capturedShapes.otherShapes)('drains a capacity-held revival with recorde
 });
 
 it.each(['stop', 'withdrawn', 'changed-grant', 'unknown-send', 'calls', 'unknown-calls', 'deadline',
-  'owner', 'parent', 'scope', 'placement', 'digest', 'extended-deadline', 'result-path', 'batch', 'count', 'missing-proof'] as const)
+  'owner', 'parent', 'scope', 'placement', 'digest', 'extended-deadline', 'result-path', 'batch', 'count', 'missing-proof', 'missing-proof-batching'] as const)
 ('keeps queued revival custody without a launch across %s', async mode => {
   const f = await capacityHeldRevival(); f.capacity(true); f.advance(60000);
+  if (mode === 'missing-proof-batching') Object.assign(f.config, { batchWaiting: true });
   if (mode === 'stop') f.stop();
   if (mode === 'withdrawn') f.authorize(false);
   if (mode === 'changed-grant') f.grant('different-role');
@@ -1299,11 +1300,13 @@ it.each(['stop', 'withdrawn', 'changed-grant', 'unknown-send', 'calls', 'unknown
   if (mode === 'result-path') delivery = { ...delivery, resultPath: '/other/result' };
   if (mode === 'batch') batch = [f.request.operation, 'other'];
   if (mode === 'count') revival = { ...revival, capacityRefusals: -1 };
-  f.restore({ ...before, inputs: [{ ...input, revival: mode === 'missing-proof' ? null : revival, delivery, ...(batch ? { batch } : {}) }] });
+  f.restore({ ...before, inputs: [{ ...input, revival: mode === 'missing-proof' || mode === 'missing-proof-batching' ? null : revival, delivery, ...(batch ? { batch } : {}) }] });
   const next = f.restart(); await next.maintain();
   expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
   expect(f.state().inputs[0]?.request).toEqual(f.request);
   expect((await next.collect(f.request.operation))?.outcome.state).not.toBe('complete');
+  if (mode === 'missing-proof' || mode === 'missing-proof-batching')
+    expect((await next.collect(f.request.operation))?.outcome).toMatchObject({ state: 'uncertain', detail: 'queued revival proof missing; no automatic replay' });
   await next.close();
 });
 
