@@ -426,6 +426,27 @@ StallTriageNurse's outcome check is held by the existing result-and-Stop receipt
 screen or an empty reply is not a recovered answer. This ports the useful observation/recovery
 behavior without importing legacy timers, direct messages or pane-wide interruptions.
 
+## Pending input after Enter (carryover row 14)
+
+`pending-input.ts` and the session driver's `observe()` carry the 1.x `verifyInjection` and
+`StuckInputSentinel` behavior (legacy-1x/, JKHeadley/instar 4f88880a): Claude Code occasionally
+eats the Enter after a bracketed paste, so an accepted input sits unsubmitted at an idle prompt.
+Every text the driver sends records a durable marker (its first forty visible characters) on the
+session before its Enter. While that turn is open, each observation that finds the marker at an
+idle prompt is one corroborating capture; two agreeing captures, the 1.x rung instants (500, 1500,
+3500 and 6500 ms after the send) and, on the generic `❯` path, a same-pane styled capture proving
+the text renders at normal intensity precede each recovery key (Enter, Enter, C-m, Enter+Enter).
+A dim model-suggested ghost of the text is never pressed and is sticky for that text; an unreadable,
+raced or mixed frame is inconclusive and re-judged next time. The Codex `›` composer relies on the
+marker alone, as in 1.x, because its dim placeholder never equals the sent text. The rung is saved
+before the key, so a cut leaves it consumed and never resent. With every rung spent and the text
+still pending at the 9000 ms verify instant the driver reports `pause-observed` /
+`input-undelivered` to the existing owner, which records the uncertain turn and retires the worker;
+no text is resent, no deadline moves, and no notice is sent from here. An active pane (queued input)
+is never treated as stuck. Design: `docs/18-sentinel-holders/04-the-silently-stopped-matrix.md`
+(input-buffer row) and P14-NF-56; behavior inventory:
+`docs/implementation/carryover-14-safe-input-delivery-1104.md`.
+
 ## Native connection retry exhaustion
 
 The terminal session driver leaves Claude Code's bounded same-turn 529 retry and

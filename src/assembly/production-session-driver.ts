@@ -7,6 +7,8 @@ import type { AssemblyDecodeContext, HarnessObservation } from './contracts.js';
 import type { NativeHarnessDriverPort } from './harness.js';
 import type { Result } from '../index.js';
 import type { SubscriptionToolTurn } from './production-provider.js';
+import { PENDING_INPUT_LADDER, afterPresentation, classifyPromptTextPresentation, pendingInputMarker, pendingInputStep } from './pending-input.js';
+import type { PendingInputRecord } from './pending-input.js';
 
 /** Operator-own-use sessions with the harness's full tool set. `unconfined` makes no confinement claim;
  * `admitted` launches every session with the tool admission hook, so each tool call passes it before dispatch. */
@@ -26,6 +28,10 @@ export interface SessionRecord {
   /** Bounded 1.x persisting-menu observation. A signal only: never authorization or a turn close. */
   readonly promptWait?: Readonly<{ digest: string; firstAt: number; lastAt: number; samples: number }> | null;
   readonly deadlineHalt?: Readonly<{ deadline: number; at: number }>;
+  /** 1.x verifyInjection/StuckInputSentinel port (carryover row 14): the last text this driver sent
+   * into the pane, tracked until it leaves the prompt. A bounded same-input recovery ladder, never
+   * a new input; ghost or inconclusive presentation is never pressed. */
+  readonly pendingInput?: PendingInputRecord | null;
 }
 export interface SessionContinuation {
   readonly pending?: Readonly<{ operation: string; digest: string; deadline: number }>;
@@ -320,6 +326,8 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   const lockedBoundary = <T>(name: string, input: unknown, perform: () => T): Result<T> =>
     boundary(name, input, config.context, () => config.io.exclusive(perform));
   const capture = (name: string) => run(['capture-pane', '-p', '-t', literalTarget(name), '-S', '-80']);
+  /** The same pane with its terminal styling (`-e`), for the pending-input presentation gate. */
+  const captureStyled = (name: string) => run(['capture-pane', '-p', '-e', '-t', literalTarget(name), '-S', '-80']);
   const alive = (name: string) => config.io.tmux(['has-session', '-t', literalTarget(name)]).code === 0;
   const checkStop = () => {
     if (!config.stopped()) return;
@@ -381,7 +389,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     return armed;
   };
   const closeTurn = (session: SessionRecord, at: number): SessionRecord => ({ ...session,
-    closedAt: at, turnDeadline: null, promptWait: null,
+    closedAt: at, turnDeadline: null, promptWait: null, pendingInput: null,
     ...(session.continuation?.state === 'accepted'
       ? { continuation: { ...session.continuation, state: 'completed' as const } } : {}) });
   const sendText = (session: SessionRecord, text: string) => {
@@ -393,6 +401,11 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     if (safe.includes('\n')) run(['send-keys', '-t', target, '\x1b[201~']);
     config.io.sleep(config.framework === 'codex-cli' ? 1500 : safe.includes('\n') ? 500 : 100);
     checkStop(); verifyLive(session);
+    // Durable before the Enter: observe() verifies this exact text left the prompt and owns the
+    // bounded recovery ladder for it (1.x verifyInjection + StuckInputSentinel, carryover row 14).
+    const marker = pendingInputMarker(safe);
+    config.io.save(replaceSession(config.io.load(), { ...loadSession(session.identity), pendingInput: marker === null ? null
+      : { marker, promptText: null, sentAt: config.now(), observations: 0, attempts: 0, pressing: false, presentation: null, undelivered: false } }));
     run(['send-keys', '-t', target, 'Enter']);
     if (config.framework === 'codex-cli') { config.io.sleep(300); checkStop(); run(['send-keys', '-t', target, 'Enter']); }
   };
@@ -730,7 +743,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
               turnBaseline: digestOf(pane) };
             config.io.save(replaceSession(config.io.load(), sending));
             sendText(sending, 'Continue the same interrupted turn from its recorded state. Do not repeat completed actions or sends; leave uncertain actions unresolved.');
-            config.io.save(replaceSession(config.io.load(), { ...sending,
+            config.io.save(replaceSession(config.io.load(), { ...loadSession(session.identity),
               rateRecovery: { ...sending.rateRecovery, state: 'accepted' } }));
             return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit continuation submitted' };
           }
@@ -744,6 +757,40 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           config.io.save(replaceSession(config.io.load(), { ...session, deadlineHalt: { deadline: session.turnDeadline, at: config.now() } }));
           run(['kill-session', '-t', literalTarget(session.name)]);
           return { phase: 'exit-observed' as const, evidence: `safety-ceiling:deadline:${session.identity}`, detail: 'per-turn deadline exceeded', safetyDeadline: session.turnDeadline };
+        }
+        // Carryover row 14 (1.x verifyInjection + StuckInputSentinel): the exact text this driver
+        // sent is still at an idle prompt. Two agreeing captures, the 1.x rung schedule and, for the
+        // generic prompt path, a same-pane styled capture proving normal intensity precede each key.
+        // Dim ghost text and inconclusive frames are never pressed; a spent ladder is reported,
+        // not retried. The record is saved before every key, so a cut leaves the rung consumed.
+        const pending = session.pendingInput;
+        if (pending && session.turnDeadline !== null && session.closedAt === null) {
+          const decided = pendingInputStep(pending, pane, classifyPaneActive(pane), config.now(), config.framework !== 'codex-cli');
+          let judged = decided;
+          if (decided.kind === 'classify') {
+            let styled: string | null = null;
+            try { styled = captureStyled(session.name); } catch { styled = null; }
+            judged = afterPresentation(decided.record, styled === null ? 'inconclusive' : classifyPromptTextPresentation(styled, decided.located.text));
+          }
+          if (judged.kind === 'clear') config.io.save(replaceSession(config.io.load(), { ...session, pendingInput: null }));
+          else {
+            config.io.save(replaceSession(config.io.load(), { ...session, pendingInput: judged.record }));
+            if (judged.kind === 'undelivered')
+              return { phase: 'pause-observed' as const, evidence: session.identity, detail: 'input-undelivered' };
+            if (judged.kind === 'press') {
+              checkStop(); verifyLive(session);
+              const target = literalTarget(session.name);
+              if (judged.action === 'C-m') run(['send-keys', '-t', target, 'C-m']);
+              else {
+                run(['send-keys', '-t', target, 'Enter']);
+                if (judged.action === 'Enter-sleep-Enter') { config.io.sleep(PENDING_INPUT_LADDER.doubleEnterPauseMs); checkStop(); run(['send-keys', '-t', target, 'Enter']); }
+              }
+              config.io.save(replaceSession(config.io.load(), { ...loadSession(session.identity), pendingInput: { ...judged.record, pressing: false } }));
+              return { phase: 'launched' as const, evidence: session.identity, detail: `pending input recovery rung ${judged.attempt} sent` };
+            }
+            if (judged.kind === 'observe' && judged.detail !== 'input queued behind active work')
+              return { phase: 'launched' as const, evidence: session.identity, detail: judged.detail };
+          }
         }
         const baseline = session.turnBaseline ?? config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1)?.baseline;
         // Record native retry progress, not a second retry engine. The current-turn record
