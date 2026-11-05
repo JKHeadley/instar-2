@@ -274,8 +274,8 @@
           "id": "P9-PREVIEW-reply-review-reached",
           "stage": "runtime"
         },
-        "portion": "every sent model answer carries a passing review recorded before its send",
-        "remainder": "the review's semantic quality is graded elsewhere, not by this probe"
+        "portion": "exact sent candidates are bound to review attempts and judgments in their recorded before-send or after-send phase; fixed notices are separate and freshness uses the actual observation time",
+        "remainder": "unavailable and adverse judgments remain visible and cannot establish a passing proof; semantic quality followup is graded elsewhere"
       }
     ]
   },

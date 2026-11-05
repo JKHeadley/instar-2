@@ -50,7 +50,7 @@ const SAMPLE: Record<string, Observed> = { startup: { identity: 12345678, boundB
   'reply-drain': { unfinished: 0, oldestUnfinishedAgeMs: null, backlogOverdue: false, inhibition: null },
   'reply-delivered': delivered, 'held-notice-delivered': delivered, 'reminder-delivered': delivered,
   'status-answered': delivered, 'provider-outcomes': { observedCalls: 1, completed: 1 },
-  'reply-review-reached': { sentAnswers: 1, reviewed: 1, unreviewed: 0 },
+  'reply-review-reached': { sentAnswers: 1, reviewed: 1, reached: 1, unreviewed: 0, pending: 0, violations: 0, unavailable: 0, unsure: 0, futureEvidence: 0, recentObservations: 1 },
   'spend-cap-refusal': { calls: 5, maxCalls: 5, replies: 1, maxReplies: 5, refusals: 1 },
   'summary-checked': { summaries: 1, checked: 1, unchecked: 0, lost: 0 }, 'step-check-reached': { steps: 1, verdicts: 1, pending: 0 },
   'store-agreements': { declared: 4, agree: 3, disagree: 0, unmeasured: 1, unchecked: 0, disagreeing: null, unmeasurable: 'unfinished-at-exit' } };

@@ -25,6 +25,8 @@ import { isStatusCommand } from './status-command.js';
 import { loopHealth } from './obligations.js';
 import { CREDENTIAL_SHAPE_NOTICE, PREVIEW_LIVE_GATES, durableProjection, packetDigest, replyBody, wholeReplyReceipt } from './journal.js';
 import { HOLDING_REPLY } from './reply-check.js';
+import type { ReplyCheckResult } from './reply-check.js';
+import { sha256 } from './model-call-boundary.js';
 import type { JournalView, Turn } from './journal.js';
 
 const MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
@@ -111,11 +113,103 @@ export const replyTurn = (turn: Turn) => turn.accepted && turn.answer !== undefi
 export const statusTurn = (turn: Turn) => turn.accepted && turn.requestedAction === undefined && isStatusCommand(turn.text);
 /** A due turn answering the operator's own earlier requests (an older journal's summary turns excluded). */
 export const requestedActionTurn = (turn: Turn) => turn.requestedAction !== undefined && turn.requestedAction.legacy === undefined;
-/** Sent model answers and whether each reached its before-send reviewer (fixed projections excluded). */
+/** Content-free evidence from the existing projection. Also the recorded-case replay boundary. */
+export interface SentReviewEvidence {
+  intentDigest?: string | undefined; answerDigest?: string | undefined; revisionDigest?: string | undefined;
+  intentAt?: number | undefined; sentAt?: number | undefined; checkDoneAt?: number | undefined; afterSendReview?: true | undefined;
+  jevReserved?: boolean | undefined; jevReservedAt?: number | undefined; reviewReserved?: boolean | undefined; reviewReservedAt?: number | undefined;
+  revisionReviewReserved?: true | undefined; revisionReview?: Pick<NonNullable<Turn['revisionReview']>, 'verdict'> | undefined;
+  checks: Pick<ReplyCheckResult, 'verdict' | 'path' | 'candidateDigest'>[];
+}
+export function sentReviewEvidence(turn: Turn): SentReviewEvidence {
+  const digest = (text: string | undefined) => text === undefined ? undefined : sha256(text);
+  return { intentDigest: digest(turn.intent), answerDigest: digest(turn.answer),
+    revisionDigest: digest(turn.correctionCandidate ?? turn.revisionReviewRemainder ?? turn.revision?.text),
+    intentAt: turn.intentAt, sentAt: turn.sentAt, checkDoneAt: turn.checkDoneAt, afterSendReview: turn.afterSendReview,
+    jevReserved: turn.jevReserved, jevReservedAt: turn.jevReservedAt,
+    reviewReserved: turn.reviewReserved, reviewReservedAt: turn.reviewReservedAt,
+    revisionReviewReserved: turn.revisionReviewReserved, revisionReview: turn.revisionReview && { verdict: turn.revisionReview.verdict },
+    checks: (turn.replyChecks ?? []).map(({ verdict, path, candidateDigest }) => ({ verdict, path,
+      ...(candidateDigest === undefined ? {} : { candidateDigest }) })) };
+}
+const FIXED_REVIEW_NOTICES = [HOLDING_REPLY, CREDENTIAL_SHAPE_NOTICE].map(sha256);
+/** No inference from a pass on another candidate, a suffix resembling a notice, or the probe's clock. */
+export function sentReview(e: SentReviewEvidence) {
+  const fixed = e.intentDigest !== undefined && FIXED_REVIEW_NOTICES.includes(e.intentDigest);
+  const revision = !e.afterSendReview && e.revisionReviewReserved && e.revisionReview !== undefined
+    && e.revisionDigest !== undefined && e.intentDigest === e.revisionDigest;
+  const last = e.checks.at(-1);
+  const verdict = revision ? e.revisionReview!.verdict : last?.verdict;
+  const matches = revision || last?.candidateDigest !== undefined && last.candidateDigest === e.intentDigest;
+  const attempted = !!(e.jevReserved || e.reviewReserved || e.revisionReviewReserved || e.checks.length);
+  const reservedAt = last?.path === 'subscription' ? e.reviewReservedAt : last?.path === 'jev' ? e.jevReservedAt : undefined;
+  const reserved = last?.path === 'subscription' ? e.reviewReserved : last?.path === 'jev' ? e.jevReserved : false;
+  const needsReservation = !revision && (last?.path === 'subscription' || last?.path === 'jev');
+  const timed = e.intentAt !== undefined && e.sentAt !== undefined && e.checkDoneAt !== undefined
+    && (!needsReservation || reserved === true && reservedAt !== undefined);
+  const phase = timed && e.intentAt! <= e.sentAt! && (!needsReservation || reservedAt! <= e.checkDoneAt!)
+    ? e.afterSendReview
+      ? reservedAt !== undefined && e.sentAt! <= reservedAt && reservedAt <= e.checkDoneAt! ? 'after-send' : 'wrong-phase'
+      : e.checkDoneAt! <= e.intentAt! ? 'before-send' : 'wrong-phase'
+    : 'unknown';
+  const reached = !!matches && (phase === 'before-send' || phase === 'after-send') && verdict !== undefined;
+  // A cheap check's pass cannot settle a contextual review that was reserved but never returned.
+  const pending = !!(e.reviewReserved && last?.path === 'jev' && !revision
+    || e.revisionReviewReserved && e.revisionReview === undefined);
+  return { kind: fixed ? 'fixed-notice' : revision ? 'revision' : e.intentDigest === e.answerDigest ? 'raw-answer' : 'changed-answer',
+    attempted, reached, pending, phase, verdict, matches: !!matches,
+    passed: reached && !pending && verdict === 'pass', judged: reached && !pending && (verdict === 'pass' || verdict === 'violation') };
+}
+/** Sent candidates; a fixed notice is not a model answer and a revision is judged on its own bytes. */
 export function sentAnswers(view: JournalView) {
-  const answers = view.order.filter(turn => turn.sent !== undefined && turn.answer !== undefined && !turn.noticeClass
+  const sent = view.order.filter(turn => turn.sent !== undefined && turn.answer !== undefined && !turn.noticeClass
     && !isStatusCommand(turn.text));
-  return { answers, reviewed: answers.filter(turn => turn.replyChecks?.some(check => check.verdict === 'pass')) };
+  const evidence = sent.map(sentReviewEvidence);
+  const answers = sent.filter((_, i) => sentReview(evidence[i]!).kind !== 'fixed-notice');
+  return { answers, reviewed: answers.filter(turn => sentReview(sentReviewEvidence(turn)).passed), evidence };
+}
+
+/** Reached, judgment quality and availability are separate. Historical failures never age out. */
+export function replyReviewOutcome(evidence: readonly SentReviewEvidence[], now: number): ProofOutcome {
+  const all = evidence.map(e => ({ e, result: sentReview(e) }));
+  const rows = all.filter(row => row.result.kind !== 'fixed-notice');
+  const n = (predicate: (row: typeof rows[number]) => boolean) => rows.filter(predicate).length;
+  const reached = n(({ result }) => result.reached);
+  const times = rows.flatMap(({ e, result }) => result.reached && e.checkDoneAt! <= now ? [e.checkDoneAt!] : []);
+  const observedAt = times.length ? Math.max(...times) : null;
+  const observed = { sentAnswers: rows.length, fixedNotices: all.length - rows.length,
+    rawAnswers: n(({ result }) => result.kind === 'raw-answer'), revisions: n(({ result }) => result.kind === 'revision'),
+    attempted: n(({ result }) => result.attempted), reached, unreviewed: rows.length - reached,
+    pending: n(({ result }) => result.pending),
+    judged: n(({ result }) => result.judged), reviewed: n(({ result }) => result.passed),
+    beforeSend: n(({ result }) => result.reached && result.phase === 'before-send'),
+    afterSend: n(({ result }) => result.reached && result.phase === 'after-send'),
+    violations: n(({ result }) => result.reached && result.verdict === 'violation'),
+    unavailable: n(({ result }) => result.reached && result.verdict === 'unavailable'),
+    unsure: n(({ result }) => result.reached && result.verdict === 'unsure'),
+    noAttempt: n(({ result }) => !result.attempted),
+    wrongCandidate: n(({ e, result }) => e.intentDigest !== undefined && !result.matches
+      && (e.checks.at(-1)?.candidateDigest !== undefined || e.revisionReview !== undefined)),
+    wrongPhase: n(({ result }) => result.phase === 'wrong-phase'),
+    incomplete: n(({ result }) => result.attempted && (!result.reached && result.phase === 'unknown'
+      || !result.matches && result.phase !== 'wrong-phase')),
+    futureEvidence: n(({ e }) => (e.checkDoneAt ?? 0) > now || (e.sentAt ?? 0) > now),
+    recentObservations: times.filter(at => now - at < 6 * HOUR).length, latestObservationAt: observedAt,
+    maxAfterSendLatencyMs: Math.max(0, ...rows.flatMap(({ e, result }) => result.reached && result.phase === 'after-send'
+      ? [e.checkDoneAt! - e.sentAt!] : [])),
+    historicalViolationChecks: all.reduce((sum, { e }) => sum + e.checks.filter(c => c.verdict === 'violation').length
+      + Number(e.revisionReview?.verdict === 'violation'), 0),
+    historicalUnavailableChecks: all.reduce((sum, { e }) => sum + e.checks.filter(c => c.verdict === 'unavailable').length
+      + Number(e.revisionReview?.verdict === 'unavailable'), 0),
+    historicalUnsureChecks: all.reduce((sum, { e }) => sum + e.checks.filter(c => c.verdict === 'unsure').length, 0) };
+  if (!rows.length) return outcome('unknown', observed, 'no sent model answer to observe; exact fixed notices are counted separately', null);
+  if (observed.noAttempt || observed.wrongCandidate || observed.wrongPhase || observed.violations)
+    return outcome('failed', observed, 'sent answers include missing attempts, candidate/timing gaps or adverse judgments; historical findings remain', observedAt);
+  if (observed.unreviewed || observed.pending || observed.unavailable || observed.unsure || observed.futureEvidence)
+    return outcome('unknown', observed, 'review evidence is incomplete, undecided or unavailable; an attempt is not a passing judgment', observedAt);
+  if (!observed.recentObservations)
+    return outcome('unknown', observed, 'only historical review observations; reading them again does not renew freshness', observedAt);
+  return outcome('passed', observed, 'exact sent candidates passed at their recorded before-send or after-send phase', observedAt);
 }
 
 interface Attempt { message: number | undefined; attemptAt: number; acceptedAt: number | undefined }
@@ -232,14 +326,12 @@ export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
         : outcome('failed', observed, 'the recent answer calls all failed', recent.at(-1)!.at);
     }),
   cadence('reply-review-reached', 'duty', 'preview.reply-review', 'preview.reply-reviewer', [9, 38, 73],
-    'each sent model answer and the passing review recorded for it before the send', HOUR, 6 * HOUR,
-    o => count(o.sentAnswers) && o.sentAnswers > 0 && o.reviewed === o.sentAnswers && o.unreviewed === 0, ports => {
-      const at = ports.now(), { answers, reviewed } = sentAnswers(ports.liveView());
-      const observed = { sentAnswers: answers.length, reviewed: reviewed.length, unreviewed: answers.length - reviewed.length };
-      if (answers.length === 0) return outcome('unknown', observed, 'no sent answer yet to observe', null);
-      return reviewed.length === answers.length ? outcome('passed', observed, 'every sent answer passed its review first', at)
-        : outcome('failed', observed, `${answers.length - reviewed.length} sent answers have no passing review`, at);
-    }),
+    'exact sent candidates, review attempts and judgments at their recorded before-send or after-send phase, with source observation time', HOUR, 6 * HOUR,
+    o => count(o.sentAnswers) && o.sentAnswers > 0 && o.reviewed === o.sentAnswers && o.reached === o.sentAnswers
+      && o.unreviewed === 0 && o.violations === 0 && o.unavailable === 0 && o.unsure === 0 && o.futureEvidence === 0
+      && o.pending === 0
+      && count(o.recentObservations) && o.recentObservations > 0,
+    ports => replyReviewOutcome(sentAnswers(ports.liveView()).evidence, ports.now())),
   cadence('held-notice-delivered', 'critical-outcome', 'preview.held-reply-notice', 'telegram.bot-api', [43],
     "Telegram's acceptance of the newest held-reply notice and its acceptance time", HOUR, 7 * DAY, deliveryConfirmed,
     ports => delivery(ports.liveView().order.filter(turn => turn.heldNoticeIntent !== undefined)
