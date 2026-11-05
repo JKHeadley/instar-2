@@ -12,7 +12,10 @@ let tenOwner = null;
 export const loadTenOwner = () => tenOwner ??= import('../src/assembly/process-inventory.js')
   .catch(() => import('../dist/assembly/process-inventory.js'));
 
-const CENSUS_COLUMNS = 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=';
+// As in 1.x ExternalHogProcTable, collect the executable name, not argv. Long
+// model prompts in unrelated argv can overflow the bounded host query and blind
+// every launch's accounting/cleanup. Membership uses identities, never this label.
+const CENSUS_COLUMNS = 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,comm=';
 const ADAPTER = 'host-ps-lsof-sandbox-inventory-v2';
 /**
  * The sandbox reading (macOS): the kernel's `sandbox_check` for each named pid, asked from outside the sandbox, so no
