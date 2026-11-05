@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: significant
 Declared tier: critical
 Tier rationale: Incorrect eligibility can destroy user work. Real temporary Git repositories exercise preservation and removal; production activation is outside this repair.
-Side effects: Porcelain includes ignored files and all untracked paths; ignored residue remains kept under the existing residue disposition. Forge lookup explicitly selects the remote repository supplying the base (origin for a local base), requests the base branch, validates returned baseRefName, and keys the existing TTL cache by destination. An unresolvable remote leaves cherry-only evidence. The unconstrained mergedHeads injection is replaced by the existing query port so tests exercise the destination checks.
+Side effects: Generated register replay from committed source 2fbf3cdd1af1b388404e1779c0e93765b10f8c4b refreshes source wiring pins; owner-manifest and grounding repin tools found no changed pins. Porcelain includes ignored files and all untracked paths; ignored residue remains kept under the existing residue disposition. Forge lookup explicitly selects the remote repository supplying the base (origin for a local base), requests the base branch, validates returned baseRefName, and keys the existing TTL cache by destination. An unresolvable remote leaves cherry-only evidence. The unconstrained mergedHeads injection is replaced by the existing query port so tests exercise the destination checks.
 Undo and recovery: Revert this repair commit if necessary while keeping the reaper disabled; reverting alone restores known deletion defects. No store migration or production composition change. Git branches and committed contents remain after eligible checkout removal.
 Multi-machine posture: Deliberately machine-local; existing fresh same-machine process evidence and ownership checks remain. No new shared state or peer dependency.
 Layer below: Actual Git ignored-status and non-forced removal semantics, remote get-url and resolved base refs; existing fresh predicate at its inclusive expiry boundary; forge query arguments and returned baseRefName through injected responses over real local feature commits absent from main.
@@ -24,7 +24,7 @@ Decision: C86-R1 | Include ignored files in the existing cleanliness observation
 Decision: C86-R2 | Reuse fresh(sourceTime, freshForMs, now) on action-time inventory before eligibility can authorize removal. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-86-worktree-reaper-1104-repair-064616-PROGRESS.md
 Decision: C86-R3 | Bind the bounded forge query and cache to the resolved base remote repository and branch; validate baseRefName before exact-head admission. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-86-worktree-reaper-1104-repair-064616-PROGRESS.md
 
-Subject (3 paths): scripts/worktree-reaper-git.mjs, src/assembly/worktree-reaper.ts, tests/assembly/worktree-reaper.test.ts
+Subject (10 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, scripts/worktree-reaper-git.mjs, src/assembly/worktree-reaper.ts, tests/assembly/worktree-reaper.test.ts
 
 ## Closing block
 
