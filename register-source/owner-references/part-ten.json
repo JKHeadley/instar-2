@@ -47,7 +47,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/assembly/production-conversation-session.test.ts",
-        "hash": "sha256:d305dd73e1452354d58033b97deeecdcb66da868c485750873f59a4329fa4d69"
+        "hash": "sha256:fa80110ed1004e317d57bbd7ecc542cd05a166153a45d258f47e7b43823f5df7"
       }
     }
   ],
