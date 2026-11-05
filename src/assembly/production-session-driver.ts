@@ -293,6 +293,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   recoverDelivery(input: Readonly<{ operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }>): Result<string>;
   saveResume(identity: string, sessionId: string): Result<string>;
   recoverContext(identity: string, pending?: { operation: string; digest: string; deadline: number }): Result<string>;
+  observeTranscript(identity: string): Result<HarnessTranscriptObservation | null>;
 }> {
   ensure(config.operatorOwnUse === true && (config.confinement === 'unconfined' || config.confinement === 'admitted'),
     'explicit operator-own-use mode required');

@@ -33,11 +33,15 @@ const looping = (at: number): HarnessTranscriptEntry[] => [1, 2, 3].flatMap(n =>
 ]);
 
 type Options = Partial<ConversationSessionConfig> & { transcript?: boolean; pollMs?: number };
+/** An open child edge of the live claim: the 1.x "active child processes" evidence in 2.0 terms. */
+const childEdge = (): SessionWorkEdge => ({ type: 'SessionWorkEdge', schemaVersion: 1, id: 'child-1:edge', parent: 'claim:process', child: 'child-1',
+  scope: '/scope', owner: 'machine-1', authority: 'existing-role', budget: { steps: 1, deadline: 10_000_000_000, maxResultBytes: 65536, calls: 1, tokens: null },
+  exitTest: 'child work', placement: 'local', transport: 'fake', resultDestination: '/scope/results', openedAt: 1000 });
 function liveWorker(options: Options = {}) {
   const { transcript: withTranscript = true, pollMs = 100, ...rest } = options;
   const f = assemblyRuntimeFixture();
   let clock = 1000, stopped = false, state: ConversationState | null = null;
-  let active: ConversationDelivery | null = null, finish: () => boolean = () => false, pending = 0, delegations: string[] = [];
+  let active: ConversationDelivery | null = null, finish: () => boolean = () => false, pending = 0, delegations: readonly SessionWorkEdge[] = [];
   let entries: HarnessTranscriptEntry[] = [], size = 100, grow = false, paused: string | null = null, compaction: 'resumed' | 'replace-required' | 'refused' = 'resumed';
   const dead = new Set<string>();
   const launches: ConversationWorker[] = [], restores: unknown[] = [], delivered: ConversationDelivery[] = [], notices: { kind: string; detail: string }[] = [];
@@ -94,7 +98,7 @@ function liveWorker(options: Options = {}) {
     advance: (ms: number) => { clock += ms; }, reads: () => transcriptReads,
     transcript: (next: HarnessTranscriptEntry[]) => { entries = next; }, growing: (next: boolean) => { grow = next; },
     finishWhen: (next: () => boolean) => { finish = next; }, prepared: (count: number) => { pending = count; },
-    delegations: (next: string[]) => { delegations = next; }, wall: (reason: string | null) => { paused = reason; },
+    delegations: (next: readonly SessionWorkEdge[]) => { delegations = next; }, wall: (reason: string | null) => { paused = reason; },
     compaction: (next: typeof compaction) => { compaction = next; }, stop: () => { stopped = true; },
     attempts: () => state?.workerRecoveryState?.attempts ?? {}, events: (name: string) => audits.filter(row => row.event === name),
   };
@@ -146,7 +150,7 @@ it('three identical tool failures are an error loop: the worker is retired and r
 
 it('open child work vetoes a detector kill: the worker is producing real work and is kept', async () => {
   const f = liveWorker();
-  f.transcript(stalled(f.now())); f.delegations(['child-1']);
+  f.transcript(stalled(f.now())); f.delegations([childEdge()]);
   // The child closes after two and a half minutes; the turn ends on the next observation after three.
   f.finishWhen(() => { if (f.now() >= 1000 + 2.5 * MINUTE) f.delegations([]); return f.now() >= 1000 + 3 * MINUTE; });
   expect(await f.port.run(f.request('busy'))).toMatchObject({ state: 'complete' });
