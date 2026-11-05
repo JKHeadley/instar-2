@@ -327,7 +327,9 @@ export function collaborationEndpoint(endpoint: AgentEndpoint, hub: Collaboratio
   recover();
   return Object.freeze({ ...endpoint, receive(envelope: AgentTransportEnvelope, at: number, from: string) {
     const receipt = endpoint.receive(envelope, at, from);
-    capture(envelope, receipt);
+    // Use the admitted contract's routing fields, never the transport wrapper's
+    // conversation claim. A valid signature alone is not parent-topic authority.
+    if (receipt.durability !== null && ['durably-queued', 'delivered-to-worker', 'answered'].includes(receipt.state)) recover();
     return receipt;
   }, work(worker: Parameters<AgentEndpoint['work']>[0], at: number) {
     recover(); return endpoint.work(worker, at);

@@ -6,7 +6,7 @@ import { openPreviewJournal, projectionDigest } from './journal.js';
 import { CollaborationSurfacer, collaborationEndpoint, type HubEffect, type HubOutcome } from './collaboration-hub.js';
 import { createNetwork } from '../transport/agent-fault-harness.js';
 import { openReplicaStore, createJournalShipper, localReplicaClient, adoptReceivedCopy } from './journal-replication.js';
-import { offerEnvelope } from '../../src/rungraph/index.js';
+import { offerEnvelope, resultEnvelope, sealEnvelope } from '../../src/rungraph/index.js';
 
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'hub-test', configurationDigest: 'sha256:offline', expires: 9_999_999_999_999,
@@ -175,4 +175,21 @@ it('the actual encrypted replica/adoption path retains an unknown send and its b
     expect(await successor.content({ threadId: 'cold', messageId: 'result', text: 'Reviewed' })).toMatchObject({ kind: 'unknown' });
     expect(sends).toBe(count); expect(successor.list().threads[0]?.parent).toBe(42);
   } finally { journal.close(); store.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('signed result wrapper metadata cannot redirect an admitted contract into another bound conversation', async () => {
+  const f = fixture(), hub = f.make(), network = createNetwork('threadline');
+  const sender = network.add('sender', ['code'], () => null);
+  const receiver = network.add('receiver', ['code'], () => ({ terminal: 'completed', result: 'Reviewed' }));
+  sender.endpoint = collaborationEndpoint(sender.endpoint, hub, sender.ledger);
+  try {
+    const contract = network.delegate(sender, network.request(network.rootAuthority('sender'), 'receiver'));
+    network.tick();
+    const result = receiver.ledger.view().get(contract.id)!.result!;
+    const { digest: _digest, type: _type, schemaVersion: _version, ...fields } = resultEnvelope(contract, result, 1000);
+    const wrapped = sealEnvelope({ ...fields, conversation: 'unrelated-bound-thread' });
+    expect(sender.endpoint.receive(wrapped, 1000, 'receiver').durability).not.toBeNull();
+    expect(hub.list().inbox[0]?.envelope.conversation).toBe(contract.transport.conversation);
+    expect(hub.list().inbox[0]?.envelope.conversation).not.toBe('unrelated-bound-thread');
+  } finally { f.close(); }
 });

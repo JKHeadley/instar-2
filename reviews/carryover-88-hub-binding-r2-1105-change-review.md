@@ -35,6 +35,8 @@ Prompt finding: 85544c20941f | protocol-literal | Existing retained-input acknow
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label grounding instruction is general and names uncertainty; it does not inject a test answer.
 Skip: tests/preview/hub-recorded.test.ts:43 | scope=Private actual-provider recordings are supplied with INSTAR_HUB_CAPTURE_ROOT; absent evidence visibly skips, and never counts as recorded proof. This unit explicitly ran all six cases with hash-verified private bytes.
 
+Decision: AQ88-review-invalidation | Reopen the two prior frozen browser review rounds because their generated register subject changes here; their frozen hashes matched b738936, so neither old pass is reused for this head. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-hub-binding-r2-1105-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: Adapt the existing surfacer's routing to the existing journal and transport endpoint. One serialized consumer prevents concurrent duplicate hub creation. A replicated dispatch fence prevents duplicate effects after owner loss; retained prepared state distinguishes work that can still drain. No new provider, timer, store or execution owner. Physical deployment and unattended shipped-path completion are not claimed by the portable component tests.

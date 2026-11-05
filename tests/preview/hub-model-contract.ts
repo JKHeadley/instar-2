@@ -287,8 +287,10 @@ export function briefRequest(messages: BriefMessageRow[]): HubModelRequest {
 export function conversationBrief(input: { threadId: string; conversation: BriefConversation | null;
   messages: BriefMessageRow[]; raw: string | null; activity?: string }) {
   const conv = input.conversation, messages = input.messages;
-  const peer = (conv?.remoteAgent || conv?.participants?.peers?.[0] || 'agent').replace(/[^\w-]/g, '').slice(0, 24) || 'agent';
-  const slug = scrubName(redact(`${peer} · ${(input.threadId || 'thread').slice(0, 8)}`).text) ?? 'Agent conversation';
+  const peerRaw = conv?.remoteAgent || conv?.participants?.peers?.[0] || 'agent';
+  const peer = hasSecretInRaw(peerRaw) || redact(peerRaw).text !== peerRaw ? 'agent' : peerRaw.replace(/[^\w-]/g, '').slice(0, 24) || 'agent';
+  const thread = hasSecretInRaw(input.threadId) || redact(input.threadId).text !== input.threadId ? 'thread' : input.threadId || 'thread';
+  const slug = scrubName(`${peer} · ${thread.slice(0, 8)}`) ?? 'Agent conversation';
   const template = !conv || !messages.length ? LEGACY_MARKER
     : templateSummary(conv, messages, input.activity ?? 'recently');
   const safeTemplate = scrubSummary(redact(template).text) ?? LEGACY_MARKER;

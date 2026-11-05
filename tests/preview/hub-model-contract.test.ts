@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { hubIntentRequest, hubIntentDecision, briefRequest, conversationBrief } from './hub-model-contract.js';
 const topics = [{ topicId: 42, topicName: 'Build' }];
@@ -42,4 +43,24 @@ it('preserves PURPOSE/body parsing and independent secret/empty fallbacks with n
     expect(brief.topicName.length).toBeGreaterThan(0); expect(brief.topicName.length).toBeLessThanOrEqual(40);
     expect(brief.summary.length).toBeGreaterThan(0); expect(brief.summary.length).toBeLessThanOrEqual(600);
   }
+});
+
+it('checks complete slug inputs for secrets before clipping a field', () => {
+  const brief = conversationBrief({ ...input, threadId: 'github_pat_' + 'x'.repeat(30), conversation: { remoteAgent: 'github_pat_' + 'y'.repeat(30) }, raw: null });
+  expect(brief.topicName).toBe('agent · thread'); expect(brief.summary).not.toContain('github_pat_');
+});
+
+it('foreign recorded summary, Jev and reply-review outputs cannot become hub binding commands', () => {
+  const summary = JSON.parse(readFileSync(new URL('./fixtures/proofroom-summary-cascade-stall-2026-09-30.json', import.meta.url), 'utf8')) as {
+    writer: { id: string; raw: string }[]; review: { id: string; raw: string }[]; jevFaithfulness: { id: string; raw: string }[] };
+  const guidance = JSON.parse(readFileSync(new URL('./fixtures/guidance-live-2026-10-03.json', import.meta.url), 'utf8')) as {
+    samples: { update: number; raw: string }[]; turns: { update: number; replyChecks: object[] }[] };
+  const captures = [...summary.writer, ...summary.review, ...summary.jevFaithfulness,
+    ...guidance.samples.map(row => ({ id: `review:${row.update}`, raw: row.raw }))];
+  expect(captures.length).toBeGreaterThan(9);
+  for (const row of captures) expect(hubIntentDecision(row.raw, topics), row.id).toBeNull();
+  // These are actual projected verdict shapes, explicitly serialized here;
+  // unlike the raw records above, this is not a verbatim provider-byte claim.
+  for (const turn of guidance.turns) for (const check of turn.replyChecks ?? [])
+    expect(hubIntentDecision(JSON.stringify(check), topics), `verdict:${turn.update}`).toBeNull();
 });
