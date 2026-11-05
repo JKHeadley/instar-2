@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { createHostWorktreeRecovery } from '../../scripts/host-worktree-recovery.mjs';
+import { createJournalWorktreeIntake } from './worktree-recovery-intake.js';
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
 import { nextObligationAt } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
@@ -1534,7 +1536,7 @@ async function main() {
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
   let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsResolution = null, toolsOff = null,
-    sessionWork = null, gate = null;
+    sessionWork = null, gate = null, worktreeRecovery = null;
   const workActivity = new Map();
   const conversationSession = conversationSessionOf(options);
   const accountActions = conversationAccountActions(options);
@@ -2704,6 +2706,37 @@ async function main() {
       // shell command runs confined. The state lives beside the working scope, never inside it.
       const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
+      if (conversationSession) {
+        const route = { channel: 'host-worktree-observer', sender: ownerMachine, identityEpoch: conversationOf(g) };
+        worktreeRecovery = await createHostWorktreeRecovery({ scope: project, identity: HOST_IDENTITY,
+          now: wallNow, monotonic: clock.elapsed, stopped: hostStopped,
+          workerUid: () => { try { return sessionHarness?.current().uid ?? null; } catch { return null; } },
+          store: createConversationHostStore(join(root, 'session-work-state', 'worktree-observation.json'), key()),
+          route, intake: sourceFor => createJournalWorktreeIntake({ journal, context, route, machine: HOST_IDENTITY.machine,
+            now: wallNow, stopped: hostStopped, sourceFor, checkText: text => {
+              if (redact(text).text !== text) throw Error('checkout request contains held material');
+            } }),
+          sameTopic: (left, right) => {
+            const a = journal.view.turns.get(left), b = journal.view.turns.get(right);
+            return a?.accepted && b?.accepted && a.thread === b.thread;
+          },
+          liveSources: async () => {
+            const io = physicalFor(), state = io.load(), found = [];
+            for (const row of state.sessions) {
+              if (row.closedAt !== null) continue;
+              const observed = io.tmux(['display-message', '-p', '-t', `=${row.name}:`, '#{pane_pid}:#{session_created}']);
+              if (observed.code !== 0 || `${row.name}:${observed.stdout.trim()}` !== row.identity) continue;
+              const delivery = state.deliveries.filter(item => item.identity === row.identity && item.state === 'accepted').at(-1);
+              const turn = delivery && journal.view.turns.get(delivery.intake);
+              found.push({ pid: Number(observed.stdout.trim().split(':')[0]),
+                source: turn?.accepted ? turn.worktreeRecovery?.source ?? turn.id : null });
+            }
+            return found;
+          } }).catch(error => {
+            revivalAttention.raise('main', 'worktree-observation', `Checkout recovery observation is unavailable: ${redact(String(error?.message ?? error)).text}`);
+            return null;
+          });
+      }
       const configurationFor = (topic, binding, handoff = null) => {
         const contextGrounding = () => join(binding.physical().inboxDirectory, `context-${topic ?? 'main'}.txt`);
         const driverConfiguration = resolveIntake => ({ operatorOwnUse: true, confinement: 'admitted',
@@ -2762,6 +2795,7 @@ async function main() {
           // Carryover row 03: the revival queue's attention, audit and observe-only Tier-1 ports (1.x
           // raiseAggregated, audit, tier1Check) bound to this host's one attention surface, its audit log and
           // its registered Jev judgment; the drainer's durable markers decide when each is raised.
+          retiredWorktree: async () => { await worktreeRecovery?.tick(true); },
           notice: (kind, detail) => revivalAttention.raise(String(topic ?? 'main'), kind, detail),
           audit: event => revivalAttention.audit(String(topic ?? 'main'), event),
           sanityCheck: entry => revivalSanityCheck(entry),
@@ -3130,10 +3164,15 @@ async function main() {
       if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
       // Work observation shares this cycle but must run while the ordinary work lane is busy.
       if (!journal.readOnly) sentinels.observeWork();
+      // Observe while a topic is busy too, so its actual process cwd establishes checkout lineage.
+      void worktreeRecovery?.tick().catch(error => revivalAttention.audit('main',
+        { event: 'worktree-observation-failed', detail: redact(String(error?.message ?? error)).text }));
       sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
         if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
         if (conversationSession) {
           try { sessionWork?.select?.(); } catch { /* unchanged grant bytes keep authorization closed; custody remains */ }
+          await worktreeRecovery?.tick().catch(error => revivalAttention.audit('main',
+            { event: 'worktree-observation-failed', detail: redact(String(error?.message ?? error)).text }));
           await sessionWork?.port.maintain();
         }
         await worker.drain();
@@ -3374,6 +3413,7 @@ async function main() {
       }
     } finally {
       // A delegated session never outlives the launch that owns it.
+      worktreeRecovery?.close();
       try { if (conversationSession) await sessionWork?.port.close(); else sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
       if (gate) { gate.closeAll(); await gate.stop(); }
       for (const proxy of stepEgress.values()) await proxy.close();

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Result } from '../index.js';
-import type { InboundRoute, IntakeDisposition, IntakePort } from '../intake/index.js';
+import type { InboundRoute, IntakeDisposition } from '../intake/index.js';
 import { abandonedWorktrees, type WorktreeFinding } from './worktree-inventory.js';
 
 type Observation = Parameters<typeof abandonedWorktrees>[0];
@@ -11,8 +11,8 @@ type Observation = Parameters<typeof abandonedWorktrees>[0];
  * The route belongs to the installed observer adapter, never an impersonated user.
  * A finding is requester work awaiting normal run admission, not checkout authority.
  * Rules 2/8/26/42/63/83/116. No model, watcher, send or git mutation is added. */
-export function createWorktreeRecovery(ports: Readonly<{
-  intake: Pick<IntakePort, 'receive'>;
+export function createWorktreeRecovery<Disposition = IntakeDisposition>(ports: Readonly<{
+  intake: { receive(raw: string, route: InboundRoute): Result<Disposition> };
   route: Omit<InboundRoute, 'eventId'>;
   machine: string;
   now(): number;
@@ -20,13 +20,13 @@ export function createWorktreeRecovery(ports: Readonly<{
   observe(): Promise<Omit<Observation, 'now'>>;
 }>) {
   return Object.freeze({ async tick(): Promise<readonly Readonly<{
-    finding: WorktreeFinding; disposition: Result<IntakeDisposition>;
+    finding: WorktreeFinding; disposition: Result<Disposition>;
   }>[]> {
     if (ports.stopped()) return [];
     const observation = await ports.observe();
     if (ports.stopped() || observation.worktrees.machine !== ports.machine) return [];
     const findings = abandonedWorktrees({ ...observation, now: ports.now() });
-    const results: { finding: WorktreeFinding; disposition: Result<IntakeDisposition> }[] = [];
+    const results: { finding: WorktreeFinding; disposition: Result<Disposition> }[] = [];
     for (const finding of findings) {
       if (ports.stopped()) break;
       // Re-observations do not create more work; new activity at the same HEAD is a new

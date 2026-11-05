@@ -1082,7 +1082,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['worktree-recovery', 'send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1101,6 +1101,7 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refu
   'summary-reserve', 'summary-review-reserve', 'summary-uncertain', 'tool-turn', 'waiting']);
 
 export type JournalRecord =
+  | { kind: 'worktree-recovery'; id: string; source: string; text: string; raw: string; update: number; writer: WriterRecord; at: number }
   | PhaseTiming
   // Non-additive: an older writer must not discard the no-repeat expectation.
   | { kind: 'media-claim'; id: string; digest: string; at: number }
@@ -1505,6 +1506,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
     presses?: number[] };
   /** Set only on a runner-authored turn that answers the operator's own due requests. `legacy` marks an
    * older requested-summary turn from a removed feature: it replays, and is never answered or sent again. */
+  worktreeRecovery?: { source: string };
   requestedAction?: { items: ReminderRef[]; overflow?: ReminderRef[]; owed?: OwedResultRef[]; legacy?: 'summary' };
   /** Legacy: an older requested summary sent inside another summary turn's one message, and that turn's grouped ids. */
   groupedInto?: string; summaryBatch?: string[];
@@ -2081,7 +2083,7 @@ function verifyPendingEvidence(rows: JournalRecord[], view: JournalView): void {
     if (!(turn.held !== undefined || turn.modelState === 'uncertain'
       || turn.accepted && (turn.intent === undefined || turn.sent === undefined))) continue;
     const found = kinds.get(turn.id);
-    const required = [turn.requestedAction ? turn.requestedAction.legacy ? 'summary-due' : 'action-due' : 'intake', ...(turn.reserved ? ['reserve'] : []),
+    const required = [turn.worktreeRecovery ? 'worktree-recovery' : turn.requestedAction ? turn.requestedAction.legacy ? 'summary-due' : 'action-due' : 'intake', ...(turn.reserved ? ['reserve'] : []),
       ...(turn.modelState === 'uncertain' ? ['model-uncertain'] : []),
       ...(turn.jevReserved ? ['reply-jev-reserve'] : []),
       ...(turn.reviewReserved ? ['reply-review-reserve'] : []),
@@ -3072,7 +3074,7 @@ export function reachedJournalCap(view: JournalView): { reason: 'calls' | 'repli
  * by an intent, so a record this refuses never reaches the journal and nothing is spent past the cap. The turn
  * itself stays recorded and pending, so a raise of the allowance resumes it. */
 export function capacityRefused(view: JournalView, row: JournalRecord): boolean {
-  return ((row.kind === 'intake' || row.kind === 'action-due') && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns
+  return ((row.kind === 'intake' || row.kind === 'action-due' || row.kind === 'worktree-recovery') && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns
       && !(row.kind === 'intake' && row.reserve === true && (!row.accepted || reserveTurnsUsed(view, row.at) < MINIMAL_RESERVE.turns)))
     || (row.kind === 'intake' && row.reserve !== undefined && !view.turns.has(row.id) && view.order.length < view.limits.maxTurns)
     || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
@@ -4566,6 +4568,29 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (!step || !(step.reserved || exhausted) || step.result) throw Error('preview journal: step check result order');
     step.result = row.result; return;
   }
+  if (row.kind === 'worktree-recovery') {
+    const source = view.turns.get(row.source);
+    const prior = view.turns.get(row.id);
+    if (prior) {
+      if (prior.raw !== row.raw || prior.worktreeRecovery?.source !== row.source)
+        throw Error('preview journal: worktree recovery identity conflict');
+      return;
+    }
+    // Rules 29/42/63: this is the observer's request under an existing topic, not
+    // an operator message or new authority. Its original bytes survive replay.
+    if (!source?.accepted || !verifiedOperatorTurn(view, source) || view.stop || row.at >= view.expires
+      || !/^worktree-recovery:[a-f0-9]{64}$/u.test(row.id)
+      || typeof row.raw !== 'string' || Buffer.byteLength(row.raw) > 65536
+      || typeof row.text !== 'string' || !row.text || Buffer.byteLength(row.text) > 65536
+      || row.update !== nextSyntheticUpdate(view) || view.order.length >= view.limits.maxTurns
+      || !row.writer || !(system ?? (() => false))(row.writer, 'worktree-recovery',
+        JSON.stringify([row.id, row.source, row.raw, row.text])))
+      throw Error('preview journal: worktree recovery refused');
+    const turn: Turn = { id: row.id, update: row.update, text: row.text, raw: row.raw,
+      accepted: true, at: row.at, reserved: false, writer: row.writer,
+      ...(source.thread === undefined ? {} : { thread: source.thread }), worktreeRecovery: { source: source.id } };
+    view.turns.set(row.id, turn); view.order.push(turn); return;
+  }
   if (row.kind === 'action-due' && row.owed !== undefined) {
     const refs = row.owed, authorities = Array.isArray(refs) ? refs.map(ref => owedResultAuthority(view, ref)) : [];
     const first = authorities[0];
@@ -5554,7 +5579,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       if (origin !== undefined && (row.kind === 'genesis' ? row.origin : view?.genesis.origin) !== (origin === 'test' ? 'test' : undefined))
         throw Error(`preview journal: ${origin}-origin write refused by a ${(row.kind === 'genesis' ? row.origin : view?.genesis.origin) ?? 'production'} store`);
       if ((row.kind === 'genesis' ? row.origin : view?.genesis.origin) !== 'test'
-        && (row.kind === 'intake' || row.kind === 'action-due') && testOriginWriter(row.writer))
+        && (row.kind === 'intake' || row.kind === 'action-due' || row.kind === 'worktree-recovery') && testOriginWriter(row.writer))
         throw Error('preview journal: test-origin identity refused by a production store');
       if (row.kind === 'genesis' && row.forum !== undefined) validateChatBinding(row);
       if (row.kind === 'genesis' && row.origin !== undefined && row.origin !== 'test') throw Error('preview journal: invalid genesis origin');
@@ -9450,8 +9475,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // Resolve the explicit capability reference before recording, reviewing or sending.
             text = renderCapabilityReply(text, JSON.parse(context));
             if (separatedAnswer !== undefined) separatedAnswer = renderCapabilityReply(separatedAnswer, JSON.parse(context));
-            // A runner-authored due turn carries no operator authority: only its reply text is used.
-            if (turn.requestedAction) { const { directives: _admitted, directiveClosures: _closed, invalidDirective: _invalid, ...agentSide } = obligations;
+            // Runner-authored due and worktree-recovery turns carry no operator authority: only their reply text is used.
+            if (turn.requestedAction || turn.worktreeRecovery) { const { directives: _admitted, directiveClosures: _closed, invalidDirective: _invalid, ...agentSide } = obligations;
               obligations = agentSide; operatorAction = undefined; unreadAction = false;
               memory = undefined; dated = undefined; personMerges = undefined; personAttributes = undefined; undo = undefined;
               conflict = undefined; askConflict = undefined; resolveConflict = undefined; lastNamedPerson = undefined;

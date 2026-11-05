@@ -132,3 +132,24 @@ are the source values.
 Remaining after round 3: a complete proof from every lost-worker origin to dirty-worktree
 recovery (the worktree owner is separate); register regeneration for the trailing source pins
 (desk-owned); live channel, framework and host proof (desk-owned).
+
+## Physical checkout origin continuation (2026-11-05)
+
+`host-worktree-recovery.mjs` binds the existing worktree/process census and classifier to the shipped
+`journal-agent.mjs` cycle and confirmed worker retirement. The installed harness identity supplies the
+worker population; separately observed parent links connect run-as processes to exact live tmux roots.
+A checkout's original accepted topic comes from that ancestry, never a command label. Continuous
+activity coverage, complete fresh census and no live harness process are required; uncertain evidence
+retains the classifier's refusal. This intentionally defers recovery while another harness process is live.
+
+Signed `worktree-recovery` journal intake retains the raw request and original topic without operator
+identity or authority. Source/checkout deduplication survives observer-cache loss, journal compaction,
+restart and the recovery worker's own file activity. The existing worker owns admission, budget and sends.
+The carried detectors, thresholds, revival queue and uncertain-effect rules remain unchanged.
+
+`host-worktree-recovery.test.ts` executes the shipped constructor, cycle and retirement binding, with a
+real child process, parent ancestry and dirty Git checkout. All four loss origins reach signed intake,
+the retained recorded-output file and a consumer reply. Clean, live, unknown, partial, uncovered,
+recent, missing-identity and stopped observations create no request. Disconnecting the shipped tick
+makes the positive test fail. Rules 2/8/26/29/42/63/83/116; source pins and native macOS conformance
+remain desk-owned gates. These are local production-wiring proofs, not a live Telegram certificate.

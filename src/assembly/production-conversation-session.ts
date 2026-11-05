@@ -116,6 +116,8 @@ export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'crea
   /** Host observation only: after a live adapter observation, or null when this input ends.
    * No extra model call and no authority is conferred by a status sample. */
   readonly workingActivity?: (operation: string, claim: string | null, phase: 'start' | 'working' | 'end') => void;
+  /** Read-only host census after exact retirement, before a replacement can acquire the checkout. */
+  readonly retiredWorktree?: () => Promise<void>;
   /** Durable host journal evidence; never reopens the former process's admission. */
   readonly recoveryEdges?: () => readonly (SessionWorkEdge | SessionWorkEdgeClose)[];
   /** The already-admitted parent lifetime; replacing a process cannot extend it. */
@@ -480,6 +482,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       }
     };
     const retire = async () => {
+      const hadWorker = state.worker !== null;
       await harvestHalt();
       if (state.claim) config.io.closeAdmission(state.claim);
       if (state.claim) {
@@ -490,6 +493,9 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       }
       if (lease) { ensure(await lease.release(), 'resource release unconfirmed'); lease = null; }
       persist({ worker: null, claim: null, incarnation: null, authority: null });
+      if (hadWorker && config.retiredWorktree) {
+        try { await config.retiredWorktree(); } catch { notice('worktree-observation', 'Checkout observation failed after retirement; retained checkout work requires reconciliation.'); }
+      }
     };
     const settle = (id: string, result: SessionWorkOutcome) => update(id, { state: 'settled', outcome: result });
     const recover = async () => {
