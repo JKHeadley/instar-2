@@ -3,7 +3,7 @@
 Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
 Review state: open
 Reviewed content: none
-Outcome: Integrate exact main ef4a964232b7baf17d8fc4cf1b8a248a95b6d513 and reviewed send-contract repair eb6953507b58f52eb79cf0b27bfa8b1824649f74 onto the live browser-worker build. Preserve the live browser fixes and the repaired pull-only observation contract. Row 01 remains OPEN; no live producer, grant, delivery or whole-feature parity is claimed.
+Outcome: Integrate exact main ef4a964232b7baf17d8fc4cf1b8a248a95b6d513 and reviewed send-contract repair eb6953507b58f52eb79cf0b27bfa8b1824649f74 onto the live browser-worker build. Preserve the live browser fixes and the repaired pull-only observation contract. Align two stale direct-consumer expectations with the reviewed undated-promise cadence, proving due-time admission, held delivery and later operator-dependency inhibition. Row 01 remains OPEN; no live producer, grant, delivery or whole-feature parity is claimed.
 Affected rules: 1, 4, 8, 26, 32, 33, 34, 36, 37, 42, 49, 52, 53, 55, 60, 61, 63, 65, 69, 70, 74, 83, 87, 88, 89, 90, 91, 101, 102, 105, 109, 111, 112, 113, 116, 119, 120
 Affected floors: Existing secret checks, shared spend caps, stop and ownership checks, durable intake, and no duplicate sends through intent/outcome/receipt uniqueness remain in place. No grant or production configuration is changed.
 Operator questions: none
@@ -53,6 +53,8 @@ Prompt finding: 849db3a6296a | protocol-literal | existing journal.ts text this 
 
 Publication: Regenerated eight outputs at source 547acc3c37c45b71ffe9daede9060526b349b281, generation sha256:682713b7f85044f36bd8d663939b1742dea30a2e3c01008302f753c3f5cba3a0; 297 entries and 120 rules. This record covers the publication commit as well as both merges.
 Decision: train-171-review | Reopen the inherited frozen MCP review after the combined subject changed, preserve its original live evidence and Decisions, and retain the carried literal dispositions in both integration records. No new independent convergence is asserted. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-171-PROGRESS.md
+
+Decision: train-171-consumer | The reviewed CARRYOVER-01-ADMIT-UNDATED decision gives an undated admitted promise a cadence without a duplicate loop. Two older consumer tests still expected no schedule; repair both in one commit. Exercise the before/due boundary, actual worker result with no unsolicited send, and a later recorded operator dependency that inhibits another call. Runtime source is unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-171-PROGRESS.md
 
 ## Closing block
 

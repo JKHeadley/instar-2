@@ -172,16 +172,28 @@ it('works a loop the answer also declared as a promise, and an inbound never pos
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
 
-it('keeps a promise with no declared loop on its next-relevant-reply wait, scheduling no work', async () => {
+it('works an undated promise without a duplicate loop declaration and holds its result for delivery', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-loop-fire-l44-promise-')));
   try {
     const w = world(root, JSON.stringify({ reply: L44_REPLY, memory: [], promises: [{ quote: L44_SENTENCE }] }));
     await w.say(D1);
     const notes = w.journal.view.commitments.filter(note => note.quote === L44_SENTENCE);
     expect(notes).toHaveLength(1);
-    expect(notes[0]!.waitsOn).toBeUndefined();
+    expect(notes[0]).toMatchObject({ owner: 'agent', waitsOn: 'nothing' });
     const key = `commitment:${String(w.journal.view.commitments.indexOf(notes[0]!))}`;
-    expect(obligationSchedule(w.journal.view).some(item => item.key === key)).toBe(false);
+    const source = w.journal.view.turns.get(notes[0]!.source)!;
+    const slot = source.at + REVISIT;
+    expect(obligationSchedule(w.journal.view).find(item => item.key === key)?.slot).toBe(slot);
+    w.clock.now = slot - 1;
+    expect(dueObligationWork(w.journal.view, w.clock.now).some(item => item.key === key)).toBe(false);
+    const sends = w.sent.length;
+    w.clock.now = slot;
+    expect(dueObligationWork(w.journal.view, w.clock.now).some(item => item.key === key)).toBe(true);
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(w.journal.view.obligationWork[key]).toMatchObject({ outcome: 'report' });
+    expect(w.launched.some(id => id.startsWith(`obligation:${key}:`))).toBe(true);
+    expect(w.sent).toHaveLength(sends);
+    expect(obligationSchedule(w.journal.view).find(item => item.key === key)).toMatchObject({ awaitingDelivery: true });
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
