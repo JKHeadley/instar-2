@@ -577,13 +577,17 @@ it('redelivers a prepared no-arrival record once and refuses duplicate operation
 });
 
 // Carryover 08: PendingInjectStore retains a failed readiness delivery for the next recovery.
-it('keeps a never-started accepted question pending across restarts until its original prompt returns', () => {
+const pendingRecoveryShapes = [
+  { kind: 'readiness-wait', id: 'constructed', raw: 'starting' },
+  ...(JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] }).otherShapes,
+];
+it.each(pendingRecoveryShapes)('keeps a never-started accepted question pending across restarts: $kind $id', shape => {
   const f = fixture(), id = f.launch();
   f.onPrepared(() => { throw Error('restart before injection'); });
   refused(f.deliver(id), 'restart before injection');
   expect(f.journal.deliveries[0]?.state).toBe('prepared');
   const input = { operation: 'deliver', processIdentity: id, intake: 'input', digest: hash('hello'), incarnation: 'inc' };
-  f.changePane('starting');
+  f.changePane(shape.raw);
   const restarted = createProductionSessionDriver(f.config);
   expect(value(restarted.bootSweep())).toEqual(['deliver:awaiting-readiness']);
   expect(f.journal.deliveries[0]).toMatchObject({ state: 'prepared', text: 'hello', redeliveries: 0 });
@@ -609,9 +613,9 @@ it('does not replay a pending question at a different ready prompt', () => {
   expect(f.sends).toBe(0);
 });
 
-it('does not keep a started send replayable merely because its pane is not ready', () => {
+it.each(pendingRecoveryShapes)('does not keep a started send replayable at a non-ready pane: $kind $id', shape => {
   const f = fixture(), id = f.launch(); f.failNextSend(); refused(f.deliver(id));
-  f.changePane('starting');
+  f.changePane(shape.raw);
   const restarted = createProductionSessionDriver(f.config);
   expect(value(restarted.bootSweep())).toEqual(['deliver:uncertain']);
   f.changePane('❯ ');
