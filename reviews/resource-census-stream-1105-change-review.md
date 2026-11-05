@@ -34,3 +34,5 @@ simplestRobustRoute: Retain the existing census population, metadata and first40
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Publication: Fixture reference uses the existing owner canonical content hash; replay output is shape-only and does not certify native compatibility or delivered alarms.
+
+Native conformance: Existing merge-live-conformance --renew tool ran the actual ten local native cases before and after. Before9/10 only the stale certificate failed; after10/10 PASS. The tool alone updated the computed conformance hash to sha256:2bfdee011906e84e71d6a3e4e5d2860f5f1d2343342f40c74c734c9ce88bcb61. Evidence: .instar/lanes/resource-census-stream-1105-native-renewal/{before,after}.json; no provider or live model calls.
