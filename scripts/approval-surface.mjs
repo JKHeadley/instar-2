@@ -50,12 +50,19 @@ export function createApprovalSurface(configuration, now = () => Date.now()) {
     && (storeStat.mode & 0o022) === 0, 'surface store must be operator-owned and not writable by others');
   for (const directory of [secret, actsDir]) if (!existsSync(directory)) mkdirSync(directory, { mode: directory === secret ? 0o700 : 0o755 });
   chmodSync(actsDir, 0o755); privateDir(secret);
-  const outboxStat = lstatSync(outbox);
-  check(realpathSync(outbox) === outbox && outboxStat.isDirectory() && (outboxStat.mode & 0o022) === 0,
-    'agent request outbox must be a directory only its owner can write');
+  if (existsSync(outbox)) {
+    const outboxStat = lstatSync(outbox);
+    check(realpathSync(outbox) === outbox && outboxStat.isDirectory() && (outboxStat.mode & 0o022) === 0,
+      'agent request outbox must be a directory only its owner can write');
+  }
   // The published description the runner reads: where the page is, whose it is. Never a secret the
   // agent lacks: the path token only keeps the page out of reach of people without the link.
   const described = existsSync(join(store, 'surface.json')) ? JSON.parse(readFileSync(join(store, 'surface.json'), 'utf8')) : null;
+  // Existing independently owned custody may restart while the owner outbox
+  // is unavailable. First installation still requires that real outbox.
+  check(existsSync(outbox) || (described?.type === 'PreviewApprovalSurface'
+    && described.operator === config.operator && described.publicBase === publicBase
+    && described.ingressGrant === config.ingressGrant), 'owner outbox unavailable before surface installation');
   const token = typeof described?.token === 'string' && /^[a-f0-9]{32}$/u.test(described.token) ? described.token : randomBytes(16).toString('hex');
   const surface = { type: 'PreviewApprovalSurface', schemaVersion: 1, publicBase, origin, rpId, operator: config.operator,
     token, ingressGrant: config.ingressGrant };
@@ -70,16 +77,28 @@ export function createApprovalSurface(configuration, now = () => Date.now()) {
   };
   const request = name => {
     check(/^[a-f0-9]{64}$/u.test(name), 'unknown request');
-    const path = join(outbox, `${name}.request.json`), stat = lstatSync(path);
+    const cached = join(secret, `${name}.request.json`);
+    const source = join(outbox, `${name}.request.json`);
+    const path = existsSync(source) ? source : cached, stat = lstatSync(path);
     check(stat.isFile() && !stat.isSymbolicLink() && (stat.mode & 0o022) === 0 && stat.size <= SURFACE_LIMITS.maxBody, 'unknown request');
     const record = JSON.parse(readFileSync(path, 'utf8'));
     const challenge = checkChallenge(record?.challenge, { operator: config.operator, maxLifetime: SURFACE_LIMITS.maxLifetime, now: now() });
     check(nameFor(challenge.id) === name, 'unknown request');
+    // The existing operator custody retains tracking requests before owner loss.
+    // No journal writer or execution authority is created on this host.
+    if (challenge.action === 'tracking-receipt') {
+      if (existsSync(cached)) check(readFileSync(cached, 'utf8') === canonical(record), 'cached tracking request differs');
+      else {
+        check(readdirSync(secret).filter(file => /^[a-f0-9]{64}\.request\.json$/u.test(file)).length < SURFACE_LIMITS.maxActs,
+          'tracking request custody capacity exhausted');
+        writeOnce(secret, `${name}.request.json`, canonical(record), 0o600);
+      }
+    } else check(path === source, 'only tracking requests have offline custody');
     return { name, challenge, view: renderChallenge(challenge, record.text),
       decided: existsSync(join(secret, `${name}.used`)) };
   };
   /** Pending requests, pull-first and bounded: the stop first, then the newest raises. */
-  const pending = () => readdirSync(outbox).filter(file => /^[a-f0-9]{64}\.request\.json$/u.test(file)).slice(0, 4 * SURFACE_LIMITS.maxRequests)
+  const pending = () => [...new Set([...(existsSync(outbox) ? readdirSync(outbox) : []), ...readdirSync(secret)])].filter(file => /^[a-f0-9]{64}\.request\.json$/u.test(file)).slice(0, SURFACE_LIMITS.maxActs + 4 * SURFACE_LIMITS.maxRequests)
     .flatMap(file => { try { return [request(file.slice(0, 64))]; } catch { return []; } })
     .filter(item => !item.decided).sort((a, b) => (a.view.kind === 'stop' ? 0 : 1) - (b.view.kind === 'stop' ? 0 : 1)
       || b.challenge.issuedAt - a.challenge.issuedAt).slice(0, SURFACE_LIMITS.maxRequests);
@@ -106,7 +125,9 @@ export function createApprovalSurface(configuration, now = () => Date.now()) {
     catch { throw Error('already decided'); }
     const record = { type: ACT_RECORD, schemaVersion: 1, challenge: item.challenge, decision, nonce, assertion, at: now() };
     writeOnce(actsDir, `${name}.json`, canonical(record), 0o644);
-    return { recorded: true, message: item.view.kind === 'stop'
+    return { recorded: true, message: item.view.kind === 'tracking'
+      ? 'Recorded: tracking receipt only. The owner will revalidate it before changing status. No execution was approved.'
+      : item.view.kind === 'stop'
       ? 'Recorded: stop. The agent stops at its next check, normally within seconds.'
       : decision === 'approve' ? 'Recorded: approved. The agent applies it at its next check, normally within seconds, if nothing changed meanwhile.'
         : 'Recorded: declined. Nothing changes.' };

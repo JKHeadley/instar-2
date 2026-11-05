@@ -1,3 +1,4 @@
+const escape = value => String(value).replace(/[&<>"']/gu, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 import { attentionPage, attentionCsrf, attentionReceipt } from './operator-attention.mjs';
 // The authority dashboard, READ-ONLY for approval, served by the agent's own runner (Rules 79, 81; plan #502; tests/preview/README.md
 // "The operator dashboard"). It renders the same views from the same module and the same snapshot as the approval page
@@ -59,7 +60,7 @@ const digest = value => createHash('sha256').update(value).digest('hex');
  * `checkPin(pin)` resolves true only for the operator's PIN. A session is a random value held hashed in memory for 30
  * minutes (at most 64); a runner restart signs everyone out. Five failed sign-ins in five minutes pause sign-in, and PIN
  * checks still in flight count against the same five, so overlapping requests never reach the verifier more than five at once. */
-export function createReadOnlyDashboard({ state, checkPin, attention, now = () => Date.now() }) {
+export function createReadOnlyDashboard({ state, checkPin, attention, collaboration, now = () => Date.now() }) {
   check(typeof state === 'function' && typeof checkPin === 'function', 'read-only dashboard needs a state and a PIN check');
   const sessions = new Map(), failures = [];
   let pending = 0; // PIN checks in flight: each holds an admission slot until it settles (Rule 60: bounded concurrent work)
@@ -82,7 +83,7 @@ export function createReadOnlyDashboard({ state, checkPin, attention, now = () =
     sessions.set(digest(session), now() + DASHBOARD_BOUNDS.sessionMs);
     return { kind: 'ok', session };
   };
-  return Object.freeze({ state, signedIn, signIn, attention });
+  return Object.freeze({ state, signedIn, signIn, attention, collaboration });
 }
 
 const html = (status, body) => ({ status, headers: { ...HEADERS, 'content-type': 'text/html; charset=utf-8' }, body });
@@ -94,18 +95,32 @@ export function readOnlyView(dash, { path, cookie }) {
   const parts = String(path).split('?')[0].split('/').filter(Boolean);
   if (parts[0] !== 'dashboard' || parts.length > 3) return notFound();
   if (!dash.signedIn(cookie)) return html(401, renderPinSignIn(null));
+  if (parts.length === 2 && parts[1] === 'collaboration' && dash.collaboration)
+    return html(200, collaborationPage(dash.collaboration.list(), attentionCsrf(sessionOf(cookie))));
   if (parts.length === 2 && parts[1] === 'attention' && dash.attention)
     return html(200, attentionPage(dash.attention.list(), attentionCsrf(sessionOf(cookie)), '', Number(new URL(String(path), 'http://dashboard.invalid').searchParams.get('offset') ?? 0)));
   const view = parts.length === 1 ? 'overview' : parts.slice(1).join('/');
   const known = view === 'overview' || DASHBOARD_VIEWS.some(item => item.path === view) || DETAIL_PATH.test(view);
   const rendered = renderDashboard({ token: null, view, state: dash.state(), pending: [], readOnly: true });
-  return html(known ? 200 : 404, dash.attention ? rendered.replace('<main', '<a href="/dashboard/attention">Attention</a><main') : rendered);
+  const navigation = `${dash.attention ? '<a href="/dashboard/attention">Attention</a> ' : ''}${dash.collaboration ? '<a href="/dashboard/collaboration">Collaborations</a>' : ''}`;
+  return html(known ? 200 : 404, rendered.replace('<main', `${navigation}<main`));
 }
 
 /** GET views, PIN sign-in, and authenticated Attention tracking forms. Sign-in
  * answers with a session cookie scoped to the dashboard and a front-page redirect. */
 export async function handleReadOnly(dash, { method, path, body, cookie }) {
   if (method === 'GET') return readOnlyView(dash, { path, cookie });
+  if (method === 'POST' && path === '/dashboard/collaboration' && dash.collaboration) {
+    if (!dash.signedIn(cookie)) return html(401, renderPinSignIn(null));
+    const form = new URLSearchParams(typeof body === 'string' && body.length <= READ_ONLY_LIMITS.bodyBytes ? body : '');
+    if (form.get('csrf') !== attentionCsrf(sessionOf(cookie))) return html(403, 'The form expired. Reload.');
+    const threadId = form.get('threadId') || undefined, targetTopicId = Number(form.get('targetTopicId'));
+    try {
+      const result = await dash.collaboration.bind({ threadId, targetTopicId }, attentionReceipt(sessionOf(cookie), [threadId, targetTopicId]));
+      return html(result.ok ? 200 : result.status, collaborationPage(dash.collaboration.list(), attentionCsrf(sessionOf(cookie)),
+        result.ok ? result.outcome === 'bound' ? 'Conversation bound.' : 'Binding saved; confirmation pending.' : result.error));
+    } catch { return html(409, 'Binding refused. Reload the conversation and try again.'); }
+  }
   if (method === 'POST' && path === '/dashboard/attention' && dash.attention) {
     if (!dash.signedIn(cookie)) return html(401, renderPinSignIn(null));
     const form = new URLSearchParams(typeof body === 'string' && body.length <= READ_ONLY_LIMITS.bodyBytes ? body : '');
@@ -117,6 +132,11 @@ export async function handleReadOnly(dash, { method, path, body, cookie }) {
       if (!id && !/^[a-f0-9]{32}$/u.test(requestId ?? '')) throw Error('attention creation receipt required');
       const receipt = attentionReceipt(sessionOf(cookie), [id, title, status, revision, requestId]);
       const result = id ? await dash.attention.acknowledge(id, status, revision, receipt) : await dash.attention.create(title, receipt);
+      if (result.outcome === 'confirmation-required') {
+        const url = new URL(result.url);
+        if (url.protocol !== 'https:' || url.username || url.password) throw Error('invalid operator surface link');
+        return html(200, `<p>Confirm the tracking status on your independent operator page.</p><a href="${escape(result.url)}">Record tracking status</a>`);
+      }
       return html(200, attentionPage(dash.attention.list(), csrf, result.outcome === 'pending'
         ? 'Saved locally; confirmation is pending.' : result.outcome === 'saved' || result.outcome === 'delivered'
           ? 'Saved.' : `Acknowledgement ${result.outcome}. Reload to check the item.`));
@@ -147,4 +167,13 @@ export function serveReadOnly(dash, listen) {
   server.maxConnections = READ_ONLY_LIMITS.connections;
   server.listen(port, host);
   return server;
+}
+
+function collaborationPage(snapshot, csrf, message = '') {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Collaborations</title></head><body><main>
+<h1>Collaborations</h1><p>Bind a retained conversation to an existing topic.</p><p>${escape(message)}</p>
+${snapshot.threads.slice(-100).map(thread => `<article><h2>${escape(thread.peerName)}</h2><p>${escape(thread.subject)}</p>
+<form method="post" action="/dashboard/collaboration"><input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="threadId" value="${escape(thread.threadId)}">
+<label>Topic<select name="targetTopicId">${snapshot.topics.map(topic => `<option value="${topic.topicId}">${escape(topic.topicName)}</option>`).join('')}</select></label><button>Bind conversation</button></form></article>`).join('')}
+<a href="/dashboard">Your agent</a></main></body></html>`;
 }

@@ -75,6 +75,12 @@ export interface TelegramBotApiCustodianPort {
   poll(input: Readonly<{
     token: SecretRef; apiVersion: string; offset: number; limit: number; timeout: number;
   }>): Result<TelegramPolledBatch>;
+  /** Physical transport only. The effect owner must admit a prepared topic-creation
+   * intent under its existing role/binding/scope before calling this method.
+   * Older custodians without this method do not support topic creation. */
+  createForumTopic?(input: Readonly<{
+    token: SecretRef; apiVersion: string; chatId: string; name: string; timeout: number; hiddenRetries: 0;
+  }>): Result<string>;
   sendMessage(input: Readonly<{
     token: SecretRef; apiVersion: string; chatId: string; messageThreadId: number | null;
     text: string; parseMode: 'HTML'; timeout: number; hiddenRetries: 0;

@@ -10,7 +10,7 @@ import type { InboundRoute } from '../intake/index.js';
 import type { VerificationRuntimePort } from '../verification/index.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
 
-type ProviderMethod = 'getMe' | 'getUpdates' | 'sendMessage' | 'getChat' | 'getChatMemberCount' | 'getChatMember';
+type ProviderMethod = 'getMe' | 'getUpdates' | 'createForumTopic' | 'sendMessage' | 'getChat' | 'getChatMemberCount' | 'getChatMember';
 type ProviderBody = Readonly<Record<string, string | number>>;
 type CapturedResponse = Readonly<{ bytes: string; reference: string; hash: Hash }>;
 type IdentityEvidence = Readonly<{
@@ -536,6 +536,26 @@ export function createTelegramBotApiCustodian(options: TelegramBotApiCustodianOp
           if (!metadataFailed) commitPending();
           publicReferences.add(captured.reference);
           return freeze({ updates, response: { reference: captured.reference, hash: captured.hash } });
+        });
+      },
+      createForumTopic(input: Parameters<NonNullable<TelegramBotApiCustodianPort['createForumTopic']>>[0]): Result<string> {
+        return boundary('TelegramBotApiCreateForumTopic', { apiVersion: input.apiVersion, chatId: input.chatId,
+          name: input.name, timeout: input.timeout, hiddenRetries: input.hiddenRetries }, options.context, () => {
+          validateScope(input.token, input.apiVersion);
+          ensure(input.hiddenRetries === 0, 'Telegram topic creation requires zero hidden retries');
+          ensure(typeof input.chatId === 'string' && /^-[1-9][0-9]*$/.test(input.chatId)
+            && Number.isSafeInteger(Number(input.chatId)), 'Telegram forum chat id malformed');
+          ensure(typeof input.name === 'string' && input.name.trim().length > 0
+            && Array.from(input.name).length <= 40 && Buffer.byteLength(input.name, 'utf8') <= 160,
+          'Telegram topic name outside declared bounds');
+          ensure(Number.isSafeInteger(input.timeout) && input.timeout > 0
+            && input.timeout <= (declaration?.limits.timeout ?? 30), 'Telegram topic duration out of range');
+          const captured = call(input.token, 'createForumTopic', { chat_id: input.chatId, name: input.name }, input.timeout, 'createForumTopic');
+          const provider = parsedRecord(captured.bytes, 'Telegram topic response', 'Telegram topic response malformed');
+          const topic = record(provider.result, 'Telegram created topic');
+          ensure(Number.isSafeInteger(topic.message_thread_id) && Number(topic.message_thread_id) > 0
+            && topic.name === input.name, 'Telegram created topic identity differs');
+          return captured.bytes;
         });
       },
       sendMessage(input: Parameters<TelegramBotApiCustodianPort['sendMessage']>[0]): Result<string> {

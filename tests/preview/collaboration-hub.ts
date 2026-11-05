@@ -15,9 +15,9 @@ export interface HubThread {
 export type HubEffect =
   | { kind: 'topic'; name: string }
   | { kind: 'message'; topic: number; text: string; silent: boolean };
-export type HubOutcome = { kind: 'accepted'; id: number }
+export type HubOutcome = { kind: 'accepted'; id: number; receipt?: string }
   | { kind: 'refused' | 'unknown'; reason: string };
-export interface HubAttempt { id: string; effect: HubEffect; dispatched?: true; outcome?: HubOutcome }
+export interface HubAttempt { id: string; effect: HubEffect; authorization?: string; dispatched?: true; outcome?: HubOutcome }
 export interface HubInbox { envelope: AgentTransportEnvelope; receipt: EndpointReceipt; handled: boolean }
 export interface HubState { threads: HubThread[]; attempts: HubAttempt[]; inbox: HubInbox[]; openings: { threadId: string; topicName: string; summary: string }[] }
 export type HubRecord = { kind: 'collaboration'; at: number } & (
@@ -56,6 +56,7 @@ export function applyHubRecord(previous: HubState | undefined, row: HubRecord): 
   } else if (row.action === 'intent') {
     const a = row.attempt, e = a.effect;
     need(validText(a.id, 1024) && a.outcome === undefined && a.dispatched === undefined && !next.attempts.some(x => x.id === a.id), 'invalid or repeated intent');
+    need(a.authorization === undefined || validText(a.authorization, 32768), 'invalid effect authorization');
     need(e.kind === 'topic' ? validText(e.name, 40)
       : e.kind === 'message' && topicId(e.topic) && validText(e.text, 4000) && typeof e.silent === 'boolean', 'invalid effect');
     need(next.attempts.length < 8000, 'effect capacity; evidence retained');
@@ -66,7 +67,7 @@ export function applyHubRecord(previous: HubState | undefined, row: HubRecord): 
   } else if (row.action === 'outcome') {
     const a = next.attempts.find(x => x.id === row.id), o = row.outcome;
     need(a && a.dispatched && !a.outcome, 'outcome without unique intent');
-    need(o.kind === 'accepted' ? topicId(o.id)
+    need(o.kind === 'accepted' ? topicId(o.id) && (o.receipt === undefined || validText(o.receipt, 16384))
       : (o.kind === 'refused' || o.kind === 'unknown') && validText(o.reason, 1024), 'invalid outcome');
     a!.outcome = o;
   } else if (row.action === 'opening') {
@@ -90,6 +91,9 @@ export interface HubHost {
   replicated(): Promise<boolean>;
   /** Existing owner doorway rechecks secrets, scope, stop and current ownership. */
   effect(id: string, effect: HubEffect): Promise<HubOutcome>;
+  /** Exact current grant/binding/policy cause. Null refuses before preparation.
+   * Installed hosts supply this; legacy dispatched outcomes remain evidence. */
+  authorization?(effect: HubEffect): string | null;
   /** Revalidate an existing independently verified operator receipt. A string
    * from the request itself is never authority. No fallback to agent standing. */
   operator(receipt: string): boolean;
@@ -135,16 +139,21 @@ export class CollaborationSurfacer {
   }
   private async effect(id: string, effect: HubEffect, permitted: () => boolean = () => true): Promise<HubOutcome> {
     const old = this.host.state()?.attempts.find(x => x.id === id);
+    const authorization = this.host.authorization?.(effect);
+    if (!old?.dispatched && this.host.authorization && (authorization === null
+      || old && old.authorization !== authorization)) return { kind: 'refused', reason: 'current effect role/binding/scope authorization unavailable or changed' };
     if (old) {
       need(JSON.stringify(old.effect) === JSON.stringify(effect), 'effect identity conflicts with recorded payload');
       if (old.outcome) return old.outcome;
       if (old.dispatched) return { kind: 'unknown', reason: 'dispatch interrupted; reconcile before any retry' };
-    } else this.append({ kind: 'collaboration', action: 'intent', attempt: { id, effect } });
-    if (!await this.host.replicated() || !this.host.admitted() || !permitted())
+    } else this.append({ kind: 'collaboration', action: 'intent', attempt: { id, effect, ...(authorization === undefined || authorization === null ? {} : { authorization }) } });
+    if (!await this.host.replicated() || !this.host.admitted() || !permitted()
+      || this.host.authorization && this.host.authorization(effect) !== authorization)
       return { kind: 'unknown', reason: 'prepared; durability or owner unavailable' };
     this.append({ kind: 'collaboration', action: 'dispatch', id });
     // Replicate the dispatch fence too. Losing it could let a successor replay.
-    if (!await this.host.replicated() || !this.host.admitted() || !permitted())
+    if (!await this.host.replicated() || !this.host.admitted() || !permitted()
+      || this.host.authorization && this.host.authorization(effect) !== authorization)
       return { kind: 'unknown', reason: 'dispatch fence confirmation unavailable' };
     let outcome: HubOutcome;
     try { outcome = await this.host.effect(id, effect); }
@@ -332,4 +341,19 @@ export function collaborationEndpoint(endpoint: AgentEndpoint, hub: Collaboratio
     if (receipt.durability !== null && ['durably-queued', 'delivered-to-worker', 'answered'].includes(receipt.state)) recover();
     return receipt;
   } });
+}
+
+/** Operator adapter, invoked only by the existing authenticated PIN/CSRF HTTP
+ * boundary. A receipt is live only for this exact call, never supplied by a
+ * model, a conversation bearer or retained as reusable effect authority. */
+export function createCollaborationSurface(host: Omit<HubHost, 'operator'>) {
+  const receipts = new Map<string, number>();
+  const hub = new CollaborationSurfacer({ ...host, operator: receipt => (receipts.get(receipt) ?? 0) > 0 });
+  const bind = async (input: { threadId?: string; targetTopicId: number }, receipt: string) => {
+    if (!/^dashboard:[a-f0-9]{64}$/u.test(receipt)) throw Error('verified operator surface required');
+    receipts.set(receipt, (receipts.get(receipt) ?? 0) + 1);
+    try { return await hub.bind({ ...input, operatorReceipt: receipt }); }
+    finally { const left = receipts.get(receipt)! - 1; if (left) receipts.set(receipt, left); else receipts.delete(receipt); }
+  };
+  return Object.freeze({ hub, bind, list: () => ({ threads: hub.list().threads, topics: host.topics() }) });
 }

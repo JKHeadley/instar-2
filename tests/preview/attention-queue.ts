@@ -236,10 +236,10 @@ export class AttentionQueue {
   }
   /** Single owner applies already durable intent; no network send and no model judgment.
    * The owner callback must revalidate the recorded operator grant each time. */
-  drain(authorize: (ack: PendingRemoteAck) => boolean): { delivered: number; pending: number; rejected: number } {
+  drain(authorize: (ack: PendingRemoteAck) => boolean, select: (ack: PendingRemoteAck) => boolean = () => true): { delivered: number; pending: number; rejected: number } {
     let delivered = 0, rejected = 0;
     for (const ack of this.remoteAcks.list()) {
-      if (ack.nextAttemptAt > this.now()) continue;
+      if (!select(ack) || ack.nextAttemptAt > this.now()) continue;
       if (!authorize(ack)) { this.remoteAcks.recordAttempt(ack.itemId, ack.targetMachineId, 'rejected'); rejected++; continue; }
       const item = this.getAttentionItem(ack.itemId);
       if (!item) { this.remoteAcks.recordAttempt(ack.itemId, ack.targetMachineId, 'unreachable'); continue; }

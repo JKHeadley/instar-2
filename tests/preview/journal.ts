@@ -3922,7 +3922,14 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   if (!KNOWN_FRAME_KINDS.has(row.kind)) { admitForwardFrame(view, row); return; }
   if (row.kind === 'collaboration') {
     if (view.stop !== null) throw Error('collaboration: stopped journal');
-    view.collaboration = applyHubRecord(view.collaboration, row); return;
+    // Authorized installed hub messages share the existing reply reservation.
+    // Reserve at intent, including UNKNOWN, and retain one slot for an answer.
+    // Legacy portable rows lack authorization and cannot dispatch in the host.
+    const charged = row.action === 'intent' && row.attempt.effect.kind === 'message' && row.attempt.authorization !== undefined;
+    if (charged && view.replies >= view.limits.maxReplies - 1) throw Error('collaboration: reply allowance reserved for the operator');
+    view.collaboration = applyHubRecord(view.collaboration, row);
+    if (charged) view.replies++;
+    return;
   }
   if (row.kind === 'attention') {
     if (view.stop !== null) throw Error('attention: stopped journal');

@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, lstatSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { ACT_RECORD, actChallenge, canonical, check, checkChallenge, nameFor, readOwnedFile, SURFACE, SURFACE_LIMITS, verifyAssertion,
-  writeOnce } from '../../scripts/approval-surface-core.mjs';
+  writeOnce, checkTracking, trackingText, hex } from '../../scripts/approval-surface-core.mjs';
 import { checkSnapshot, DASHBOARD_BOUNDS, DASHBOARD_FILE } from '../../scripts/operator-dashboard.mjs';
 // Rule 115: a shipped client reaches the core through its public ports only, so this port
 // implementation builds its own plain, frozen Result values (the core's port shape) instead of the
@@ -58,6 +58,7 @@ export function createApprovalSurfaceClient({ store, outbox, operatorUid, agentU
       return success(Object.freeze(challenge));
     }, 'preview:approval-surface'),
     verify: (challenge, proof, decision) => guard(() => {
+      check(challenge.action !== 'tracking-receipt', 'tracking receipts never authorize execution');
       const page = surface(), record = JSON.parse(proof);
       check(record?.type === ACT_RECORD && canonical(record.challenge) === canonical(challenge) && record.decision === decision
         && (decision === 'approve' || decision === 'decline' && challenge.action !== 'emergency-stop'), 'act differs from the exact challenge or decision');
@@ -76,7 +77,61 @@ export function createApprovalSurfaceClient({ store, outbox, operatorUid, agentU
         capture: { reference: `approval-surface:${nameFor(challenge.id)}` } }));
     }, 'preview:approval-surface'),
   });
-  return Object.freeze({ verifier,
+  // Tracking verification is deliberately non-consuming. The owner first persists and
+  // replicates the queue transition; only then is the existing one-use marker written.
+  // A crash in between replays the same signed identity, never a new acknowledgement.
+  const tracking = Object.freeze({
+    issue: (subject, installation) => {
+      checkTracking(subject);
+      const page = surface(), at = now();
+      const digest = `sha256:${hex(canonical(subject))}`;
+      for (const file of readdirSync(outboxDir).filter(name => name.endsWith('.request.json')).slice(0, 4 * SURFACE_LIMITS.maxRequests)) {
+        try { const saved = JSON.parse(readFileSync(join(outboxDir, file), 'utf8')).challenge;
+          if (saved.action === 'tracking-receipt' && saved.requestDigest === digest && saved.expiresAt > at) return saved;
+        } catch { /* invalid requests grant nothing */ }
+      }
+      const result = verifier.issue({ action: 'tracking-receipt', audience: 'attention-tracking',
+        artifact: installation.artifact, generation: installation.generation, base: String(subject.revision),
+        request: `tracking:${hex(canonical(subject))}`, requestDigest: digest,
+        renderingDigest: `sha256:${hex(trackingText(subject))}`, requestedBy: 'attention-owner',
+        operator: page.operator, surface: SURFACE, singleUse: true, scope: 'attention-status-only',
+        issuedAt: at, expiresAt: Math.min(at + SURFACE_LIMITS.maxLifetime, installation.expiresAt), tracking: subject });
+      check(result.kind === 'Success', result.detail ?? 'tracking challenge refused');
+      return result.value;
+    },
+    pending: () => {
+      if (!existsSync(actsDir)) return [];
+      return readdirSync(actsDir).filter(file => /^[a-f0-9]{64}\.json$/u.test(file)
+        && !existsSync(join(outboxDir, `${file.slice(0, 64)}.consumed`))).slice(0, SURFACE_LIMITS.maxActs).flatMap(file => {
+        try { const proof = read(join(actsDir, file));
+          return JSON.parse(proof)?.challenge?.action === 'tracking-receipt' ? [proof] : [];
+        } catch { return []; }
+      });
+    },
+    verify: proof => {
+      const page = surface(), record = JSON.parse(proof), challenge = record?.challenge;
+      checkChallenge(challenge, { operator: page.operator, maxLifetime: SURFACE_LIMITS.maxLifetime, now: now() });
+      check(record.type === ACT_RECORD && challenge.action === 'tracking-receipt'
+        && ['approve', 'decline'].includes(record.decision) && /^[a-f0-9]{64}$/u.test(record.nonce), 'tracking act required');
+      const saved = JSON.parse(readFileSync(join(outboxDir, `${nameFor(challenge.id)}.request.json`), 'utf8'));
+      check(canonical(saved.challenge) === canonical(challenge), 'tracking challenge differs from issued request');
+      check(read(join(actsDir, `${nameFor(challenge.id)}.json`)) === proof, 'tracking act differs from operator store');
+      check(!existsSync(join(outboxDir, `${nameFor(challenge.id)}.consumed`)), 'tracking act already consumed');
+      check(Number.isSafeInteger(record.at) && record.at >= challenge.issuedAt && record.at < challenge.expiresAt
+        && record.at <= now(), 'tracking act time differs');
+      verifyAssertion({ keys: page.keys, origin: page.origin, rpId: page.rpId,
+        expected: actChallenge(challenge, record.decision, record.nonce), assertion: record.assertion });
+      return { subject: challenge.tracking, artifact: challenge.artifact, generation: challenge.generation,
+        operator: challenge.operator, decision: record.decision, authority: `tracking:${nameFor(proof)}`, act: null };
+    },
+    complete: proof => {
+      const record = JSON.parse(proof);
+      // Reverify immediately before consuming; neither request text nor an agent bearer suffices.
+      tracking.verify(proof);
+      writeOnce(outboxDir, `${nameFor(record.challenge.id)}.consumed`, canonical({ decision: record.decision }), 0o600);
+    },
+  });
+  return Object.freeze({ verifier, tracking,
     /** The exact wording a raise will show, handed over before its challenge is issued. */
     wording: (renderingDigest, text) => { wordings.clear(); wordings.set(renderingDigest, text); },
     link: challenge => { const page = surface(); return `${page.origin}/${page.token}/c/${nameFor(challenge.id)}`; },

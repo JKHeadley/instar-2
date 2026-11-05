@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { createCollaborationDispatch } from './collaboration-dispatch.mjs';
+import { createCollaborationSurface } from './collaboration-hub.js';
+import { topicNames } from './journal.js';
 import { createAttentionSurface } from './attention-surface.js';
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
 import { nextObligationAt } from './journal.js';
@@ -2136,14 +2139,35 @@ async function main() {
         approvalSurface?.publish(snapshot);
       } catch { /* the page reads its copy's age */ }
     };
-    let attentionReady = false;
+    let attentionReady = false, sendTelegram;
+    const collaborationAdmitted = () => {
+      if (!attentionReady || workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires) return false;
+      try { requireAuthority(options, activation, activationPath, journal.view, wallNow()); return true; } catch { return false; }
+    };
+    const collaborationAuthorization = effect => {
+      if (!collaborationAdmitted() || g.forum !== true) return null;
+      const policy = effectPolicyOf();
+      const verdict = admitToolCallEffect(effect.kind === 'topic' ? 'mcp__telegram__createForumTopic' : 'mcp__telegram__sendMessage',
+        { chat_id: g.chat }, { ...admissionConfig(), effectPolicy: policy }, wallNow());
+      return verdict.admitted === true ? JSON.stringify({ grant: g.grant, chat: g.chat, bot: g.bot, policy, verdict }) : null;
+    };
+    const collaborationSurface = createCollaborationSurface({ state: () => journal.view.collaboration,
+      append: row => journal.append(row), now: wallNow, admitted: collaborationAdmitted, authorization: collaborationAuthorization,
+      replicated: async () => { if (shared === null) return true; await shared.sync(); return shared.peerCurrent() && ownerHeld(); },
+      topics: () => {
+        const names = new Map(topicNames(journal.view));
+        for (const attempt of journal.view.collaboration?.attempts ?? [])
+          if (attempt.effect.kind === 'topic' && attempt.outcome?.kind === 'accepted') names.set(attempt.outcome.id, attempt.effect.name);
+        return [...names].map(([topicId, topicName]) => ({ topicId, topicName }));
+      }, effect: (id, effect) => dispatchCollaboration(id, effect) });
     const attentionSurface = createAttentionSurface(journal, { now: wallNow, machine: ownerMachine,
+      ...(approvalSurface ? { tracking: { ...approvalSurface.tracking, link: approvalSurface.link } } : {}),
       admitted: () => {
         if (!attentionReady || workerStop.value || existsSync(stopPath) || !ownerHeld()) return false;
         try { requireAuthority(options, activation, activationPath, journal.view, wallNow()); return true; } catch { return false; }
       },
       replicated: async () => { if (shared === null) return true; await shared.sync(); return shared.peerCurrent() && ownerHeld(); } });
-    const readOnlyServer = readOnly && serveReadOnly(createReadOnlyDashboard({ checkPin: readOnly.checkPin, attention: attentionSurface,
+    const readOnlyServer = readOnly && serveReadOnly(createReadOnlyDashboard({ checkPin: readOnly.checkPin, attention: attentionSurface, collaboration: collaborationSurface,
       state: () => dashboardText === null ? { kind: 'missing' } : snapshotState(dashboardText, wallNow()) }),
     `${readOnly.listen.host}:${String(readOnly.listen.port)}`);
     if (readOnlyServer) {
@@ -2410,7 +2434,7 @@ async function main() {
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
       sendAdmits: true,
-      send: async ({ text, expectedText, formatting, chat, thread: signedThread, replyTo, replyMarkup, target, provenance, admit, current, observeSendPhase }) => {
+      send: sendTelegram = async ({ text, expectedText, formatting, chat, thread: signedThread, replyTo, replyMarkup, target, provenance, admit, current, observeSendPhase, silent = false }) => {
         if (!journal.verifyOutbound(provenance, { target, chat, ...(signedThread === undefined ? {} : { thread: signedThread }), body: text }))
           return { kind: 'refused', reason: 'outbound provenance unsigned' };
         if (formatting && !journal.verifyOutbound(formatting.fallback.provenance, { target, chat, ...(signedThread === undefined ? {} : { thread: signedThread }), body: formatting.fallback.text }))
@@ -2479,7 +2503,7 @@ async function main() {
                 return shared === null || await shared.replicated(() => !noticeAllowed() || current && !current()
                   ? 'stopped before plain alternative' : null) === null;
               },
-              body: { chat_id: chat, ...(thread === undefined ? {} : { message_thread_id: thread }),
+              body: { chat_id: chat, ...(silent ? { disable_notification: true } : {}), ...(thread === undefined ? {} : { message_thread_id: thread }),
                 ...(replyTo === undefined ? {} : { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } }),
                 ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
               invoke: body => physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage', body, timeoutMs: 30000 }, token()),
@@ -2933,6 +2957,9 @@ async function main() {
     const physical = createProductionTelegramIO(join(root, '.writer'), { preserve(ref, bytes) {
       if (captures.has(ref) && captures.get(ref) !== bytes) return false; captures.set(ref, bytes); return true;
     }, read: ref => captures.get(ref) ?? null }, offlineEndpoint);
+    const dispatchCollaboration = createCollaborationDispatch({ journal, authorization: collaborationAuthorization,
+      held: heldVerdict(heldSecrets), disclosure: () => requireGroupDisclosure(journal.view), shared, sendTelegram, physical,
+      tokenReference: secretRef('telegram-bot-token'), credential: token });
     if (signalled || existsSync(stopPath)) {
       reportExit(signalName ? `paused by signal ${signalName}` : 'operator stop latched');
       return;

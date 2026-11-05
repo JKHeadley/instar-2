@@ -233,7 +233,7 @@ it('the runner never trusts storage it could have written: same identity, a fore
   const forger = authenticator();
   const forged = { type: 'PreviewApprovalActRecord', schemaVersion: 1, challenge: stop, decision: 'approve', nonce: 'x',
     assertion: forger.get(b64u(randomBytes(32))), at: t.now() };
-  writeFileSync(join(t.store, 'acts', `${nameOf(stop.id)}.json`), JSON.stringify(forged));
+  writeFileSync(join(t.store, 'acts', `${nameOf(stop.id)}.json`), JSON.stringify(forged), { mode: 0o644 });
   expect(t.client.acts()).toEqual([]);
   chmodSync(join(t.store, 'acts'), 0o755);
   expect(t.client.acts()).toHaveLength(1);
@@ -287,4 +287,81 @@ it('serves the page over its own loopback transport; the page script compiles an
   expect((await fetch(`http://127.0.0.1:${port}/`)).status).toBe(404);
   const act = await fetch(`http://127.0.0.1:${port}/${token}/act`, { method: 'POST', body: '{}' });
   expect(act.status).toBe(400);
+});
+
+it('retains a tracking receipt in independent custody across absent owner files and surface restart, then drains once', async () => {
+  const t = setup(); t.enrol();
+  const { createAttentionSurface } = await import('./attention-surface.js');
+  const { renameSync } = await import('node:fs');
+  const path = join(t.root, 'tracking.encrypted'), trackingGenesis = { ...genesis, configurationDigest: `sha256:${'a'.repeat(64)}` };
+  let journal = openPreviewJournal(path, new Uint8Array(32).fill(9), trackingGenesis), owner = true;
+  const host = { now: t.now, machine: 'owner', admitted: () => owner, replicated: async () => true,
+    tracking: { ...t.client.tracking, link: t.client.link } };
+  let attention = createAttentionSurface(journal, host);
+  const item = await attention.create('Review the result', `dashboard:${'b'.repeat(64)}`);
+  const request = await attention.acknowledge(item.id, 'DONE', 1, `dashboard:${'c'.repeat(64)}`);
+  expect(request.outcome).toBe('confirmation-required');
+  const name = new URL(request.url!).pathname.split('/').at(-1)!;
+  const issued = t.surface.request(name); // admitted existing surface takes custody of the exact request
+  expect(issued.view.kind).toBe('tracking');
+  expect(issued.view.effect).toContain('approves no send');
+  expect(journal.view.attention!.items[0]!.status).toBe('OPEN');
+  owner = false; journal.close();
+  // Owner namespace disappears. This is a deterministic absence test, NOT a
+  // claim of an installed second machine. Only the operator store survives.
+  renameSync(t.outbox, `${t.outbox}-offline`);
+  const restarted = createApprovalSurface(t.config, t.now);
+  expect(restarted.pending().some((x: { name: string }) => x.name === name)).toBe(true);
+  const begin = restarted.begin({ name, decision: 'approve' });
+  expect(restarted.act({ name, decision: 'approve', nonce: begin.nonce, assertion: t.phone.get(begin.challenge) })).toMatchObject({ recorded: true });
+  const restartedAgain = createApprovalSurface(t.config, t.now);
+  expect(restartedAgain.request(name).decided).toBe(true);
+  renameSync(`${t.outbox}-offline`, t.outbox);
+  const client = createApprovalSurfaceClient({ store: t.store, outbox: t.outbox, operatorUid: process.getuid!(), agentUid: process.getuid!() + 1, now: t.now });
+  const proof = client.tracking.pending()[0]!;
+  expect(client.verifier.verify(issued.challenge, proof, 'approve').kind).toBe('Refused');
+  expect(client.tracking.verify(proof)).toMatchObject({ act: null, decision: 'approve' });
+  journal = openPreviewJournal(path, new Uint8Array(32).fill(9));
+  attention = createAttentionSurface(journal, { ...host, tracking: { ...client.tracking, link: client.link } });
+  await attention.drainTracking(); expect(journal.view.attention!.items[0]!.status).toBe('OPEN');
+  owner = true; await attention.drainTracking();
+  expect(journal.view.attention!.items[0]!).toMatchObject({ status: 'DONE', revision: 2 });
+  expect(client.tracking.pending()).toHaveLength(0);
+  const bytes = journal.size; await attention.maintain(); expect(journal.size).toBe(bytes);
+  journal.compact(); journal.close(); journal = openPreviewJournal(path, new Uint8Array(32).fill(9));
+  expect(journal.view.attention!.items[0]!.status).toBe('DONE');
+  expect(journal.view.limits).toEqual({ maxCalls: 1, maxReplies: 8, maxTurns: 8, maxBytes: 32768 });
+  expect(t.sent).toEqual([]); journal.close(); t.journal.close();
+});
+
+it('tracking signatures bind revision, status, nonce and installation; expiry, stop and stale revisions never apply', async () => {
+  const t = setup(); t.enrol();
+  const { createAttentionSurface } = await import('./attention-surface.js');
+  const path = join(t.root, 'tracking-refusal.encrypted');
+  const j = openPreviewJournal(path, new Uint8Array(32).fill(8), { ...genesis, configurationDigest: `sha256:${'a'.repeat(64)}` });
+  const attention = createAttentionSurface(j, { now: t.now, machine: 'owner', admitted: () => true, replicated: async () => true,
+    tracking: { ...t.client.tracking, link: t.client.link } });
+  const item = await attention.create('Check', `dashboard:${'b'.repeat(64)}`);
+  const response = await attention.acknowledge(item.id, 'DONE', 1, `dashboard:${'c'.repeat(64)}`);
+  const name = new URL(response.url!).pathname.split('/').at(-1)!;
+  const challenge = t.surface.request(name).challenge;
+  expect(t.decide(name, 'approve', authenticator()).status).toBe(400);
+  expect(t.decide(name, 'approve').status).toBe(200);
+  const proof = t.client.tracking.pending()[0]!;
+  for (const mutate of [
+    (r: any) => { r.challenge.tracking.revision++; },
+    (r: any) => { r.challenge.tracking.status = 'OPEN'; },
+    (r: any) => { r.challenge.tracking.installation = 'another'; },
+    (r: any) => { r.nonce = 'e'.repeat(64); },
+    (r: any) => { r.decision = 'decline'; },
+  ]) { const r = JSON.parse(proof); mutate(r); expect(() => t.client.tracking.verify(JSON.stringify(r))).toThrow(); }
+  const current = j.view.attention!.items[0]!;
+  j.append({ kind: 'attention', action: 'item', at: t.now(), item: { ...current, revision: 2, updatedAt: t.now() } });
+  await attention.drainTracking(); expect(j.view.attention!.items[0]!.status).toBe('OPEN');
+  j.append({ kind: 'stop', reason: 'operator', at: t.now() });
+  const stopped = j.size; await attention.drainTracking(); expect(j.size).toBe(stopped);
+  t.tick(challenge.expiresAt - t.now());
+  expect(() => t.client.tracking.verify(proof)).toThrow(/expired/);
+  expect(t.client.verifier.verify(challenge, proof, 'approve').kind).toBe('Refused');
+  j.close(); t.journal.close();
 });

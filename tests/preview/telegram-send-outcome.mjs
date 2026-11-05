@@ -40,3 +40,18 @@ export function classifyTelegramSend(reply, { chat, expectedText, thread, forum 
     && Number.isSafeInteger(payload.result?.message_id) && payload.result.message_id > 0
     ? { kind: 'accepted', message: payload.result.message_id } : { kind: 'unknown', reason: 'receipt differs from intent' };
 }
+
+/** createForumTopic has no sendMessage receipt. Its exact requested name and
+ * positive thread identity are required; a lost/changed response stays UNKNOWN. */
+export function classifyTelegramTopic(reply, name) {
+  if (reply?.kind !== 'response') return { kind: 'unknown', reason: 'topic transport unconfirmed' };
+  let payload;
+  try { payload = JSON.parse(reply.bytes); } catch { return { kind: 'unknown', reason: 'topic response malformed' }; }
+  if (Number.isSafeInteger(reply.status) && reply.status >= 400 && reply.status < 500 && payload?.ok === false)
+    return { kind: 'refused', reason: `telegram ${reply.status}` };
+  return reply.status === 200 && payload?.ok === true && payload.result?.name === name
+    && typeof reply.bytes === 'string' && reply.bytes.length <= 16384
+    && Number.isSafeInteger(payload.result?.message_thread_id) && payload.result.message_thread_id > 0
+    ? { kind: 'accepted', id: payload.result.message_thread_id, receipt: reply.bytes }
+    : { kind: 'unknown', reason: 'topic receipt differs from intent' };
+}
