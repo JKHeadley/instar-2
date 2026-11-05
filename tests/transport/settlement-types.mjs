@@ -8,6 +8,15 @@ import { effectCommit } from './effect-pin.mjs';
 const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', effectCommit, 'src/effects'],
   { encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL' }).trim().split('\n').filter(p => p.endsWith('.ts'));
 const files = new Map(paths.map(path => [resolve(path), execFileSync('git', ['show', `${effectCommit}:${path}`], { encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL' })]));
+// Current consumers also need additive modules that did not exist at the pin.
+// Retain their real exports without replacing any pinned producer source/type.
+const index = resolve('src/effects/index.ts');
+const current = ts.createSourceFile(index, ts.sys.readFile(index), ts.ScriptTarget.Latest, true);
+for (const statement of current.statements) {
+  if (!ts.isExportDeclaration(statement) || !statement.moduleSpecifier || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+  const target = resolve(dirname(index), statement.moduleSpecifier.text.replace(/\.js$/, '.ts'));
+  if (!files.has(target)) files.set(index, files.get(index) + '\n' + statement.getText(current));
+}
 const seam = resolve('src/settlement-owner-typecheck.ts');
 files.set(seam, `
 import { createTransportAuthority, registerTransportBodies } from './transport/index.js';

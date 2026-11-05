@@ -78,3 +78,22 @@ must use different process ids. Discovery checks compare the actual runner inven
 all tracked test files in unsplit, macOS-only and non-macOS modes. Full-suite qualification
 and repeated real-fixture runs are recorded in the builder's absolute lanes progress record;
 this defect remains open until that evidence establishes zero runner errors.
+
+## train-170 recurrence, 2026-11-05
+
+The supplied gate excerpt for `82cbd027e20b4991e2339116e0a87054884f59f9`
+records one unattributed `onTaskUpdate` timeout alongside three failed tests.
+The session-volume proof synchronously ran its complete disk-image lifecycle
+inside the Vitest worker, and its cleanup hook had a 10-second deadline around
+one detach with a 60-second child bound. The recorded hook timeout is attributed;
+the RPC error is not, so the excerpt does not prove that this file caused it.
+
+The volume proof now awaits the existing asynchronous child helper for the
+entire lifecycle, including cleanup. Its original capacity, multi-file and
+remount assertions run in that child, with an additional physical unmount check
+before removing its root. The existing 120-second test ceiling remains; the
+parent bounds the child at 110 seconds. This removes that file's synchronous
+IPC obstruction and the mismatched cleanup-hook deadline without quarantining
+any case or changing product volume bounds. The focused three-file repair run
+passes ten cases with no runner error. This record remains OPEN: the pipeline's
+full run must establish whether another source of worker starvation remains.
