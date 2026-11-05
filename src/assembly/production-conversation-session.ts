@@ -643,7 +643,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             const followupDue = definitiveIntervention(priorIntervention) && episode !== null
               && episode.lastAt - priorIntervention!.at >= (priorIntervention!.payload.signal === 'SIGINT'
                 ? STALL_RECOVERY_LIMITS.termDelayMs : STALL_RECOVERY_LIMITS.killDelayMs);
-            if (episode && (episode.phase === 'observing' || episode.phase === 'reviewed'
+            if (episode && (!priorIntervention || followupDue) && (episode.phase === 'observing' || episode.phase === 'reviewed'
               && (followupDue || episode.lastAt - (episode.reviewedAt ?? episode.lastAt) >= STALL_RECOVERY_LIMITS.silenceMs))
               && (episode.lastAt - episode.since >= threshold || staleSignal)
               && (row(id).stallReviews ?? 0) < STALL_RECOVERY_LIMITS.reviews && replaySafe() && calls() < config.maxCalls) {

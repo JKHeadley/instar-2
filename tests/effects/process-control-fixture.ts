@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { decode } from '../../src/index.js';
+import { canonical, decode } from '../../src/index.js';
 import { hashBytes } from '../../src/facts/index.js';
 import type { CapturedContent, FactContext } from '../../src/facts/index.js';
 import { createEffectDoorway, decodeProcessControlPayload } from '../../src/effects/index.js';
@@ -16,8 +16,8 @@ import { verificationInput } from '../verification/fixture.js';
 // @ts-expect-error physical host runs outside the ambient-I/O-free core.
 import { createKernelProcessControl, readExactProcessIdentity } from '../../scripts/process-control-kernel.mjs';
 
-export async function startOwnProcessFixture(incarnation = 'worker:fixture', args: readonly string[] = []) {
-  const child = spawn(process.execPath, ['-e', "process.stdout.write('ready\\n'); process.stdin.resume()", '--', ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+export async function startOwnProcessFixture(incarnation = 'worker:fixture', args: readonly string[] = [], acknowledge = false) {
+  const child = spawn(process.execPath, ['-e', (acknowledge ? "let seq=0;for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>process.stdout.write(JSON.stringify({pid:process.pid,signal,seq:++seq})+'\\n'));" : '') + "process.stdout.write('ready\\n'); process.stdin.resume()", '--', ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
   await once(child.stdout, 'data');
   if (!child.pid) throw Error('fixture child missing PID');
   const read = readExactProcessIdentity(child.pid);
@@ -49,7 +49,7 @@ export function processControlFixture(target: ProcessControlTarget = staticTarge
     generation: f.host.current().decode.register.generation.id, episode: 'episode:fixture', step: 'step:fixture', deadline: 500, ...payloadOverrides }, f.host));
   const binding = { adapter: f.definition.adapter, machine: target.machine, incarnation: target.incarnation,
     conversation: payload.conversation, timeout: f.definition.timeout, maxCharge: 0, target,
-    sourceResult: payload.sourceResult, run: payload.run, workerRoot: scopedKernel.workerRoot };
+    sourceResult: payload.sourceResult, run: payload.run, payloadDigest: value(canonical(payload)).hash, workerRoot: scopedKernel.workerRoot };
   const adapter = createProcessControlAdapter(binding, scopedKernel, f.host.boundary);
   const originalCaptures = Object.getOwnPropertyDescriptor(f.ctx, 'captures')!.get!;
   Object.defineProperty(f.ctx, 'captures', { configurable: true, get: () => ({ ...originalCaptures(),
@@ -81,5 +81,24 @@ export function processControlFixture(target: ProcessControlTarget = staticTarge
         source: 'probe', observedAt: f.clock(100), freshFor: 100, strength: 'observation' }), f.ctx.decode)));
     }
   };
-  return { ...f, payload, adapter, api, composition, prepare, runtime, assessment, recordIndependentEvidence };
+  const recordNonfatalEvidence = (operation: string, digest: string, acknowledged: string,
+    actuatorExit: { pid: number; code: number | null; signal: string | null }) => {
+    const ack = JSON.parse(acknowledged);
+    const observed = kernel.observe(target);
+    if (ack.pid !== target.pid || ack.signal !== payload.signal || !Number.isSafeInteger(ack.seq) || ack.seq < 1
+      || observed.state !== 'running' || actuatorExit.code !== 0 || actuatorExit.signal !== null
+      || !Number.isSafeInteger(actuatorExit.pid) || actuatorExit.pid <= 1 || actuatorExit.pid === target.pid)
+      throw Error('independent signal acknowledgment and actuator wait status required');
+    // Actual child stdout and the parent's wait status are distinct observations.
+    // The target remains alive; only the one-shot actuator is quiescent.
+    const bytes = JSON.stringify({ acknowledged, actuatorExit, observed, operation, digest });
+    const reference = `capture:nonfatal:${operation}`;
+    const capture = { reference, hash: f.capture(bytes, reference) };
+    for (const [id, predicate, amount] of [['occurred', 'operation-occurred', undefined],
+      ['quiescent', 'old-executor-quiescent', undefined], ['charged', 'charge-settled', 0]] as const)
+      f.evidence.push(value(decode('Evidence', f.evidenceInput({ id: `process:${operation}:${id}`,
+        claim: { subject: operation, predicate, value: { digest, ...(amount === undefined ? {} : { amount }) } },
+        capture, source: 'probe', observedAt: f.clock(100), freshFor: 100, strength: 'observation' }), f.ctx.decode)));
+  };
+  return { ...f, payload, adapter, api, composition, prepare, runtime, assessment, recordIndependentEvidence, recordNonfatalEvidence };
 }

@@ -126,7 +126,11 @@ function query(input) {
   try {
     const resultBody = JSON.parse(result.stdout);
     if (!resultBody || typeof resultBody.state !== 'string' || typeof resultBody.detail !== 'string') throw Error('invalid response');
-    return resultBody;
+    // Parent-owned wait status is about the one-shot actuator, NOT the target.
+    // A completed actuator cannot submit another delayed signal. Target exit
+    // and signal occurrence still require their own independent observations.
+    return input.mode === 'signal' ? { ...resultBody,
+      actuatorExit: { pid: result.pid, code: result.status, signal: result.signal } } : resultBody;
   } catch { return { state: 'unknown', detail: 'kernel helper observation unreadable' }; }
 }
 

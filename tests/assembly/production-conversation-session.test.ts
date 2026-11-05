@@ -1618,3 +1618,40 @@ it('an unavailable between-turn observation leaves the next input queued without
   expect((await f.port.collect('two'))?.outcome.state).toBe('complete');
   expect(f.counts().stops).toBe(0); expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(2);
 });
+
+it('nonfatal settled intervention retains its escalation delay across an unavailable observation', async () => {
+  const own = await startOwnProcessFixture('incarnation:1', [], true);
+  try {
+    const f = stalledFixture(); f.advance(-900);
+    const formal = processControlFixture(own.target, own.kernel, { episode: 'stall-triage:process-owner:100', signal: 'SIGINT' });
+    const reviewTimes: number[] = []; let sent = false, gap = false;
+    const observe = f.config.stallRecovery!.observe;
+    Object.assign(f.config.stallRecovery!, {
+      observe: (worker: ConversationWorker) => {
+        if (sent && !gap) { gap = true; return null; }
+        return { ...observe(worker)!, stale: { state: 'stalled' as const, lastProgressAt: 1, windowMs: 1 } };
+      },
+      review: async () => {
+        reviewTimes.push(f.config.now());
+        if (reviewTimes.length > 1) { f.finish(true); return 'wait'; }
+        return { kind: 'process-control', payload: formal.payload };
+      },
+      intervention: { run: formal.run.id, machine: own.target.machine,
+        reconcile: async () => { throw Error('already settled'); },
+        intervene: async () => {
+          const acknowledgment = new Promise<string>(resolve => own.child.stdout.once('data', bytes => resolve(String(bytes))));
+          const q = formal.prepare(), observed = value(formal.api.dispatch(q, formal.fence));
+          const receipt = JSON.parse(formal.ctx.captures![observed.capture.reference]!.bytes as string);
+          formal.recordNonfatalEvidence(observed.operation, q.digest, await acknowledgment, receipt.actuatorExit);
+          sent = true;
+          return formal.api.settle(observed.operation);
+        } }
+    });
+    expect(await f.port.run(f.request('process-owner'))).toMatchObject({ state: 'complete', text: '{"answer":"hello"}' });
+    expect(reviewTimes).toHaveLength(2);
+    expect(reviewTimes[1]! - reviewTimes[0]!).toBeGreaterThanOrEqual(15000);
+    expect(own.kernel.observe(own.target).state).toBe('running');
+    expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+    expect(f.state().inputs[0]?.processIntervention?.phase).toBe('settled');
+  } finally { own.close(); }
+}, 60000);

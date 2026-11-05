@@ -1,3 +1,4 @@
+import { once } from 'node:events';
 import { expect, it } from 'vitest';
 import { consumeOutcome } from '../../src/index.js';
 import { createEffectDoorway, decodeProcessControlPayload } from '../../src/effects/index.js';
@@ -109,3 +110,45 @@ it('process payload and durable preparation retain argument identity without sec
     expect(JSON.stringify(value(f.store.read()))).not.toContain(secret);
   } finally { own.close(); }
 }, 30000);
+
+it('an accepted source and target cannot authorize a substituted signal, step or deadline', () => {
+  for (const patch of [{ signal: 'SIGKILL' }, { step: 'unreviewed-step' }, { deadline: 499 }]) {
+    let calls = 0;
+    const f = processControlFixture(undefined, { signal: () => { calls++; return { state: 'signalled', detail: 'fixture' }; },
+      observe: () => ({ state: 'running', detail: 'fixture' }) });
+    const payload = value(decodeProcessControlPayload({ ...f.payload, ...patch }, f.host));
+    const q = value(f.api.prepare({ definition: f.d.id, message: payload, run: f.run, pending: f.pending.id,
+      attempt: 'process-attempt:1', verificationOwner: 'process-verifier', obligation: f.obligation, closure: [], fence: f.fence }));
+    const observation = value(f.api.dispatch(q, f.fence));
+    expect(JSON.parse(f.ctx.captures![observation.capture.reference]!.bytes as string)).toMatchObject({ state: 'refused' });
+    expect(calls).toBe(0);
+  }
+}, 60000);
+
+it('nonfatal SIGINT needs the child acknowledgment and actuator exit, and never means target exit', async () => {
+  const own = await startOwnProcessFixture('worker:fixture', [], true);
+  const neighbor = await startOwnProcessFixture();
+  try {
+    const f = processControlFixture(own.target, own.kernel, { signal: 'SIGINT' });
+    const acknowledgment = once(own.child.stdout, 'data');
+    const q = f.prepare(), observed = value(f.api.dispatch(q, f.fence));
+    const receipt = JSON.parse(f.ctx.captures![observed.capture.reference]!.bytes as string);
+    expect(receipt).toMatchObject({ state: 'signalled', actuatorExit: { code: 0, signal: null } });
+    refused(f.api.settle(observed.operation)); // Receipt alone cannot settle.
+    const [bytes] = await acknowledgment;
+    expect(own.kernel.observe(own.target).state).toBe('running');
+    expect(neighbor.kernel.observe(neighbor.target).state).toBe('running');
+    expect(() => f.recordNonfatalEvidence(observed.operation, q.digest, String(bytes),
+      { ...receipt.actuatorExit, code: null })).toThrow('wait status');
+    expect(() => f.recordNonfatalEvidence(observed.operation, q.digest,
+      JSON.stringify({ pid: neighbor.target.pid, signal: 'SIGINT', seq: 1 }), receipt.actuatorExit)).toThrow('acknowledgment');
+    f.recordNonfatalEvidence(observed.operation, q.digest, String(bytes), receipt.actuatorExit);
+    const restarted = createEffectDoorway(f.composition);
+    const settled = value(restarted.settle(observed.operation));
+    expect(consumeOutcome(settled.outcome, { happened: () => true, 'did-not-happen': () => false, uncertain: () => false })).toBe(true);
+    expect(settled).toMatchObject({ delayedExecutionExcluded: true, finalCharge: 0 });
+    expect(value(restarted.dispatch(q, f.fence)).id).toBe(observed.id);
+    expect(own.kernel.observe(own.target).state).toBe('running');
+    expect(own.child.exitCode).toBeNull(); expect(own.child.signalCode).toBeNull();
+  } finally { own.close(); neighbor.close(); }
+}, 60000);

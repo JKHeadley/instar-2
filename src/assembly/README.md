@@ -478,7 +478,9 @@ retried. The minimal operator responder retains its independent admission.
 `createProcessControlAdapter` delegates an admitted Eight process-control payload
 to the host's kernel identity port only inside the current one-use Six/Eight
 handoff. The trusted binding ties the action to the supervised exact target and
-source result. Read-only observation reports running, exited or unknown; a signal
+source result and the complete accepted payload digest (including signal, step and
+deadline). The adapter snapshots this selection; mutating caller data cannot
+retarget an already composed actuator. Read-only observation reports running, exited or unknown; a signal
 receipt is not quiescence, settlement or completion of a user's work.
 
 The Linux host implementation is `scripts/process-control-kernel.mjs`. It opens a

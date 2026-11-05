@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { consumeResult } from '../../src/index.js';
-import { decodeVerificationAssessment, mergeVerificationRecords } from '../../src/verification/index.js';
+import { createEffectAssessmentPort, decodeVerificationAssessment, mergeVerificationRecords } from '../../src/verification/index.js';
 import { verificationInput } from './fixture.js';
 import { jointVerificationFixture } from './joint-fixture.js';
 import { value } from '../facts/fixtures.js';
@@ -44,3 +44,27 @@ it('N2 historical read and current consumption refuse a logical assessment disag
     .toContain('logical identity');
   expect(called).toBe(false);
 });
+
+it('late independent evidence appends a new assessment while retaining the original request across reconstruction', () => {
+  const f = jointVerificationFixture();
+  const arrived = f.effect.evidence.filter(item => item.id.startsWith('evidence:') && item.id !== 'evidence:charged');
+  for (const item of arrived) f.effect.evidence.splice(f.effect.evidence.indexOf(item), 1);
+  const first = value(f.assessment.assess(f.input));
+  expect(value(f.assessment.read(first, f.input)).outcome.kind).toBe('uncertain');
+  const request = value(f.runtime.inspect()).find(row => row.record.type === 'VerificationRequest')!;
+  f.effect.time(101);
+  expect(value(f.assessment.assess(f.input)).id).toBe(first.id);
+  f.effect.evidence.push(...arrived);
+  expect(refused(f.assessment.read(first, f.input))).toContain('current derived evidence');
+  const restarted = createEffectAssessmentPort(f.host, f.runtime);
+  const later = value(restarted.assess(f.input));
+  expect(later.id).not.toBe(first.id);
+  expect(value(restarted.read(later, f.input)).outcome.kind).toBe('happened');
+  expect(value(restarted.consumeCurrent(later, f.input, current => current.delayedExecutionExcluded))).toBe(true);
+  const rows = value(f.runtime.inspect());
+  expect(rows.filter(row => row.record.type === 'VerificationRequest').map(row => row.fact.id)).toEqual([request.fact.id]);
+  expect(rows.filter(row => row.record.type === 'VerificationAssessment')).toHaveLength(2);
+  expect(mergeVerificationRecords(rows.map(row => row.record)).conflicts).toEqual([]);
+  f.effect.stop();
+  expect(refused(restarted.consumeCurrent(later, f.input, () => 'unsafe'))).toContain('stop');
+}, 30000);

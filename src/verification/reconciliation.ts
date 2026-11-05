@@ -63,7 +63,7 @@ function reservationFact(host: VerificationHost, input: EffectAssessmentInput): 
     && rawRecord(fact)?.operation === input.reservation.operation && rawRecord(fact)?.attempt === input.reservation.attempt);
   ensure(match, 'six-owned reservation fact missing'); return match.id;
 }
-function requestInput(host: VerificationHost, plan: VerificationPlan, planFact: string, input: EffectAssessmentInput): object {
+function requestInput(host: VerificationHost, plan: VerificationPlan, planFact: string, input: EffectAssessmentInput) {
   const evidence = evidenceFor(host, input.reservation.operation, input.request.digest);
   const logicalKey = encoded([input.reservation.operation, input.request.digest, plan.id, plan.bar.version]).hash;
   return { type: 'VerificationRequest', schemaVersion: 1, id: `verification-request:${logicalKey}`,
@@ -79,6 +79,13 @@ function requestInput(host: VerificationHost, plan: VerificationPlan, planFact: 
 function currentCaptureStatuses(host: VerificationHost, evidence: readonly CurrentEvidence[]): VerificationAssessment['captureStatuses'] {
   return evidence.map(item => ({ reference: item.evidence.capture.reference,
     status: host.current().facts.captures[item.evidence.capture.reference]?.status ?? 'missing' as const }));
+}
+// The folded frontier alone omits live evidence. Pin the actual observation
+// consumed by Nine so later independent evidence gets a new immutable identity.
+function observationVector(host: VerificationHost, evidence: readonly CurrentEvidence[]) {
+  return encoded({ folded: host.current().facts.folded,
+    evidence: evidence.map(item => encoded(item.evidence).hash).sort(),
+    captures: currentCaptureStatuses(host, evidence) }).hash;
 }
 function chargeFrom(evidence: readonly CurrentEvidence[], assessment: VerificationAssessment): number | null {
   const accepted = assessment.predicates.find(row => row.predicate === 'charge' && row.verdict === 'satisfied');
@@ -151,7 +158,7 @@ export function createEffectAssessmentPort(host: VerificationHost, runtime: Veri
     'verification assessment request/effect lineage differs');
     const snapshot = host.current(); const currentEvidence = evidenceFor(host, request.operation, request.operationDigest);
     const derived = take(deriveVerificationAssessment({ request, plan, evidence: currentEvidence.map(item => item.evidence),
-      observer: assessment.observer, vectorDigest: encoded(snapshot.facts.folded).hash,
+      observer: assessment.observer, vectorDigest: observationVector(host, currentEvidence),
       knownLineages: Object.keys(snapshot.facts.folded), captureStatuses: currentCaptureStatuses(host, currentEvidence),
       taints: [], now: snapshot.clock, predecessors: assessment.predecessors, supersedes: assessment.supersedes,
       decode: snapshot.decode }, host.boundary));
@@ -178,12 +185,37 @@ export function createEffectAssessmentPort(host: VerificationHost, runtime: Veri
         const plan = planFor(host, runtime, input.bar);
         const planFact = take(runtime.inspectCurrent()).find(row => row.record.type === 'VerificationPlan' && row.record.id === plan.id)?.fact.id;
         ensure(planFact, 'verification plan fact missing');
-        const request = take(runtime.record('VerificationRequest', requestInput(host, plan, planFact, input))) as VerificationRequest;
+        const proposed = requestInput(host, plan, planFact, input);
+        const seeds = take(runtime.inspectCurrent()).filter(row => row.record.type === 'VerificationRequest'
+          && row.record.id === proposed.id);
+        const scoped = checkedIdentityScope(take(runtime.inspectCurrent()), seeds);
+        const prior = scoped.merged.records.filter((record): record is VerificationRequest =>
+          record.type === 'VerificationRequest' && record.id === proposed.id && cleanCanonicalSource(scoped.scoped, record));
+        ensure(seeds.length === 0 || prior.length === 1, 'original verification request missing, ambiguous, or tainted');
+        const original = prior[0];
+        if (original) {
+          // Initial evidence and creation time describe the FIRST assessment.
+          // Later observation appends an assessment, never rewrites that request.
+          for (const field of ['logicalKey', 'operation', 'attempt', 'reservation', 'operationDigest', 'scope',
+            'predicate', 'plan', 'barVersion', 'owner', 'loop', 'sourceGeneration'] as const)
+            ensure(original[field] === proposed[field], 'original verification request binding differs');
+        }
+        const request = original ?? take(runtime.record('VerificationRequest', proposed)) as VerificationRequest;
         const requestFact = take(runtime.inspectCurrent()).find(row => row.record.type === 'VerificationRequest' && row.record.id === request.id)?.fact.id;
         ensure(requestFact, 'verification request fact missing');
         const evidence = evidenceFor(host, request.operation, request.operationDigest);
+        const existing = take(runtime.inspectCurrent()).filter(row => row.record.type === 'VerificationAssessment'
+          && row.record.request === request.id && row.record.barVersion === plan.bar.version
+          && row.record.vectorDigest === observationVector(host, evidence));
+        if (existing.length > 0) {
+          const prior = existing[0]!;
+          const bound = readStored(prior.fact.id, input);
+          ensure(host.current().clock.value >= bound.assessment.validFrom
+            && host.current().clock.value < bound.assessment.validUntil, 'assessment expired');
+          return { owner: 'part-nine' as const, name: 'VerificationAssessment' as const, id: prior.fact.id };
+        }
         const assessment = take(deriveVerificationAssessment({ request, plan, evidence: evidence.map(item => item.evidence), observer: host.principal.id,
-          vectorDigest: encoded(host.current().facts.folded).hash, knownLineages: Object.keys(host.current().facts.folded),
+          vectorDigest: observationVector(host, evidence), knownLineages: Object.keys(host.current().facts.folded),
           captureStatuses: currentCaptureStatuses(host, evidence), taints: [], now: host.current().clock, predecessors: [requestFact],
           decode: host.current().decode }, host.boundary));
         take(runtime.record('VerificationAssessment', assessment));
