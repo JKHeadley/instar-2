@@ -189,7 +189,7 @@ export interface SessionWorkPort {
   stop(): Result<readonly string[]>;
   readonly stepsUsed: () => number;
   /** 1.x funnel counters for the pull surface: restored original workers, nudges, redeliveries, reviews. */
-  status(): Readonly<{ inFlight: boolean; steps: number; restored: number; nudges: number; reinjections: number; reviews: number }>;
+  status(): Readonly<{ inFlight: boolean; steps: number; restored: number; nudges: number; reinjections: number; reviews: number; notice: string | null }>;
 }
 /** The fixed bounds of one delegated step, bound into the reviewed grant's policy digest so an
  * activation names exactly the ceilings it admits. */
@@ -291,7 +291,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
     let steps = new Set((config.recoveryEdges?.() ?? []).filter(record => record.type === 'SessionWorkEdge'
       && record.parent === config.parent && record.drawsOn === undefined).map(record => record.id)).size;
     let inFlight = false;
-    const counters = { restored: 0, nudges: 0, reinjections: 0, reviews: 0 };
+    const counters = { restored: 0, nudges: 0, reinjections: 0, reviews: 0, notice: null as string | null };
     const available = () => !config.stopped() && !inFlight && steps < config.maxSteps;
     const resultPathOf = (operation: string) => `${config.resultDirectory}/work-${slug(operation)}.json`;
     const collect = (operation: string): SessionWorkOutcome | null => {
@@ -534,6 +534,8 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                             digest: digestOf(text), incarnation: config.incarnation })).state === 'redelivered') counters.reinjections += 1;
                         }
                         if (decision.followUpMs !== null) nextReviewAt = config.now() + Math.min(Math.max(decision.followUpMs, 180_000), 1_800_000);
+                        counters.notice = decision.action.startsWith('suggest') || decision.action === 'auto-interrupt'
+                          ? `${request.operation}: ${decision.classification}: ${decision.action === 'auto-interrupt' ? 'suggest-interrupt (no composed process effect)' : decision.action}; ${decision.reason}`.slice(0, 512) : null;
                       }
                     } catch { /* No heuristic action or replay after supervision/receipt failure. */ }
                   }
@@ -574,6 +576,18 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
           config.append(nestedSessionWorkClose(nested, 'uncertain', 'the parent step closed before the delegated agent returned',
             nested.parent, null, config.now()));
           unconfirmed.push(`delegated agent ${nested.child} did not return before the step closed`);
+        }
+        // A restored step's delegations opened before the host restart live only in the journal: each one
+        // still open settles as uncertain here, so nothing is silently lost and the parent is never complete over it.
+        if (adopt) {
+          const records = config.recoveryEdges?.() ?? [];
+          for (const nested of records.filter((record): record is SessionWorkEdge => record.type === 'SessionWorkEdge'
+            && record.parent === edge.id && record.drawsOn === edge.id
+            && !records.some(close => close.type === 'SessionWorkEdgeClose' && close.edge === record.id))) {
+            config.append(nestedSessionWorkClose(nested, 'uncertain', 'the parent step was restored after a host restart before the delegated agent returned',
+              nested.parent, null, config.now()));
+            unconfirmed.push(`delegated agent ${nested.child} opened before the host restart never returned`);
+          }
         }
         // The close records the calls the child made, read once more after it stopped (unknown stays unknown); the
         // step's disposition is judged on that read, so a result is complete only within the declared bound.

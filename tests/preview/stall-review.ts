@@ -64,6 +64,19 @@ export function interpretStallReview(result: { state: string; value?: string }):
   return decision.action === 'none' && decision.classification === 'actively-working' ? 'wait' : 'unknown';
 }
 
+/** The existing longer-lived registered-work watcher (live-sentinels `sentinels.work`, 60 s silence /
+ * 90 min active) as the one-shot stale signal: a 600 000 ms step can never reach the driver's inherited
+ * 1 800 000 ms job window, and neither bound changes. The watcher row is a signal only; protected or
+ * unknown driver observations still hold, and every owner fence still applies. */
+export function registeredWorkStale(sample: StallObservation | null,
+  row: Readonly<{ state: string; lastProgressAt: number; activity?: string | undefined }> | undefined,
+  windows: Readonly<{ silenceMs: number; frozenActiveMs: number }>): StallObservation | null {
+  if (!sample || !row || sample.stale?.state === 'protected' || sample.stale?.state === 'unknown') return sample;
+  if (row.state !== 'stalled' || !Number.isSafeInteger(row.lastProgressAt) || row.lastProgressAt > sample.at) return sample;
+  const windowMs = row.activity === 'active' ? windows.frozenActiveMs : windows.silenceMs;
+  return { ...sample, stale: { state: 'stalled', lastProgressAt: row.lastProgressAt, windowMs } };
+}
+
 /** The host preparation consumer, shared by the live launch and offline recorded-shape replay.
  * The owner has already reserved this call. This function cannot call a model, send or replace a worker; invocation remains inside the launcher boundary. */
 export function prepareStallReview(evidence: import('../../src/assembly/production-conversation-session.js').StallReviewEvidence,

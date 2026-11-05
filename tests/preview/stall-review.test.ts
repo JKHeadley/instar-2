@@ -158,3 +158,52 @@ describe('typed stall triage decision', () => {
       { claim: 'claim', incarnation: 'incarnation', launch: 'exact:123:456' })).toMatchObject({ typedUnsubmitted: true });
   });
 });
+
+// Carryover 02 r4: the existing registered-work watcher is the one-shot stale source; neither the 600 000 ms step
+// lifetime nor the driver's 1 800 000 ms job window changes.
+import { registeredWorkStale } from './stall-review.js';
+import { workSilenceObservations, WORK_SILENCE_MS, WORK_FROZEN_INDICATOR_MS } from './live-sentinels.js';
+import { openPreviewJournal } from './journal.js';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+describe('registered-work watcher as the one-shot stale signal', () => {
+  const windows = { silenceMs: WORK_SILENCE_MS, frozenActiveMs: WORK_FROZEN_INDICATOR_MS };
+  const base = { ...worker, at: 100_000, progress: 'pane-hash', waiting: false, activity: 'idle' as const };
+  it('maps a genuine stalled watcher row onto the observation and holds protected, unknown, fresh and future rows', () => {
+    const root = mkdtempSync(join(tmpdir(), 'stall-watch-'));
+    try {
+      const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(3), { kind: 'genesis', bot: '12345678', chat: '7654321',
+        operator: '7654321', grant: 'grant:watch', configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 40, maxReplies: 20, maxTurns: 20, maxBytes: 8000, cursor: 0 });
+      const edge = { type: 'SessionWorkEdge' as const, schemaVersion: 1 as const, id: 'session-work-edge:job:1', parent: 'launch:c', child: worker.claim,
+        scope: '/scope', owner: 'machine', authority: 'grant', budget: { steps: 1 as const, deadline: 700_000, maxResultBytes: 65536, calls: 24, tokens: null },
+        exitTest: 'result file', placement: 'local', transport: 'tmux', resultDestination: '/scope/work.json', openedAt: 100_000 };
+      journal.append({ kind: 'session-work', record: edge, at: 100_000 });
+      // The watcher keeps 1.x A2(b): an idle prompt is a wait, never a stall; only an unchanged
+      // indeterminate frame (60 s) or an unchanged active frame (90 min) stalls.
+      const activity = (at: number, kind: 'idle' | 'indeterminate') => [{ subject: worker.claim, incarnation: worker.incarnation, launch: worker.launch, at, progress: 'pane-hash', wait: null, activity: kind }];
+      expect(workSilenceObservations(journal.view, 100_000, activity(100_000, 'idle'))[edge.id]).toMatchObject({ state: 'waiting' });
+      const first = workSilenceObservations(journal.view, 100_000, activity(100_000, 'indeterminate'));
+      expect(first[edge.id]).toMatchObject({ state: 'observing', lastProgressAt: 100_000 });
+      const later = workSilenceObservations({ ...journal.view, sentinels: { ...(journal.view.sentinels ?? {}), work: first } } as never, 100_000 + WORK_SILENCE_MS, activity(100_000 + WORK_SILENCE_MS, 'indeterminate'));
+      expect(later[edge.id]).toMatchObject({ state: 'stalled', lastProgressAt: 100_000, activity: 'indeterminate' });
+      const sample = { ...base, activity: 'indeterminate' as const, at: 100_000 + WORK_SILENCE_MS };
+      expect(registeredWorkStale(sample, later[edge.id], windows)).toMatchObject({ stale: { state: 'stalled', lastProgressAt: 100_000, windowMs: WORK_SILENCE_MS } });
+      expect(registeredWorkStale(sample, { ...later[edge.id]!, activity: 'active' }, windows)!.stale!.windowMs).toBe(WORK_FROZEN_INDICATOR_MS);
+      expect(registeredWorkStale(sample, first[edge.id], windows)).toEqual(sample);
+      expect(registeredWorkStale(sample, undefined, windows)).toEqual(sample);
+      expect(registeredWorkStale(null, later[edge.id], windows)).toBeNull();
+      for (const state of ['protected', 'unknown'] as const) {
+        const held = { ...sample, stale: { state, lastProgressAt: 1, windowMs: 1_800_000 } };
+        expect(registeredWorkStale(held, later[edge.id], windows)).toEqual(held);
+      }
+      expect(registeredWorkStale(sample, { ...later[edge.id]!, lastProgressAt: sample.at + 1 }, windows)).toEqual(sample);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  it('the runner consumes the watcher only on the one-shot owner, with the watcher constants', () => {
+    const source = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
+    expect(source).toContain("observe: worker => registeredWorkStale(stallSample(workActivity.get(worker.claim), worker),");
+    expect(source).toContain('{ silenceMs: WORK_SILENCE_MS, frozenActiveMs: WORK_FROZEN_INDICATOR_MS }');
+    expect(source.match(/registeredWorkStale\(/gu)).toHaveLength(1);
+  });
+});

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import { prepareStallReview, interpretStallDecision, stallSample } from './stall-review.js';
+import { prepareStallReview, interpretStallDecision, registeredWorkStale, stallSample } from './stall-review.js';
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
 import { nextObligationAt } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
 import { createClaudePoolQuota } from '../../scripts/claude-pool-quota.mjs';
-import { createWorkingActivities, readWorkingAdmission } from './working-activity.mjs';
+import { createWorkingActivities, readWorkingAdmission, observeSessionDriver } from './working-activity.mjs';
 import { AgentPathRefused, assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
 import { createAudienceTimingObserver, recordPhaseTiming } from './phase-timing.js';
@@ -99,7 +99,7 @@ import { createMediaAdmission } from './media-admission.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
 import { reapNotices } from './reap-notices.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
-import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking } from './live-sentinels.js';
+import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking, WORK_FROZEN_INDICATOR_MS, WORK_SILENCE_MS } from './live-sentinels.js';
 import { SENTINEL_FAMILIES } from './sentinel-record.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
@@ -2850,7 +2850,11 @@ async function main() {
         context, now: wallNow, stopped: conversationSession ? hostStopped : binding.stopped,
         ...(conversationSession ? { callAccounting: 'per-call' } : {}),
         ...(!conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), workRecovery: {
-          observe: worker => stallSample(workActivity.get(worker.claim), worker),
+          // Carryover 02: the registered-work watcher (live-sentinels, 60 s / 90 min) supplies the stale signal a
+          // ten-minute step can reach; the driver's own thirty-minute job window stays unchanged beside it.
+          observe: worker => registeredWorkStale(stallSample(workActivity.get(worker.claim), worker),
+            journal.view.sentinels?.work?.[Object.values(journal.view.activeSessionWork ?? {}).find(edge => edge.child === worker.claim)?.id ?? ''],
+            { silenceMs: WORK_SILENCE_MS, frozenActiveMs: WORK_FROZEN_INDICATOR_MS }),
           allowed: () => !hostStopped() && binding.authorized() && journal.view.order.every(turn => !turn.intent || turn.sent !== undefined),
           reserve: claim => gate.reserveSupervisor(claim),
           record: record => journal.append({ kind: 'session-work', record, at: wallNow() }),

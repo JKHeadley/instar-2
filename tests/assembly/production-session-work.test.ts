@@ -942,3 +942,39 @@ it('a message-lost judgment redelivers the exact step intake at most once and sc
   // The four-minute follow-up lies past this step's deadline, so the review ceiling is never spent on it.
   expect(reviews).toBe(1); expect(port.status()).toMatchObject({ reinjections: 1, reviews: 1 });
 });
+
+it('a restored step settles every delegation it opened before the host restart as uncertain, and is never complete over one', async () => {
+  const f = fixture({ phases: ['launched'] }); const rt = assemblyRuntimeFixture();
+  const host = dyingHost(f, 2);
+  void f.port.run(f.request());
+  for (let i = 0; i < 50 && host.polled() < 2; i++) await settle();
+  host.restore();
+  const [edge] = f.rows as [SessionWorkEdge]; const identity = f.counts().attached[0]!;
+  const nested = nestedSessionWorkEdge(edge, { id: 'call-before-restart', tool: 'Task' }, f.now());
+  f.rows.push(nested);
+  Object.assign(f.driver, {
+    recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }),
+    observe: () => { f.writeNow(recordedWork.workOutput); return rt.success({ phase: 'output-observed', evidence: 'evidence:restored', detail: 'idle prompt fallback' }); } });
+  const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart' }));
+  const outcome = await restarted.run(f.request());
+  expect(outcome).toMatchObject({ state: 'uncertain', edge: edge.id, child: identity, detail: expect.stringContaining('opened before the host restart never returned') });
+  const closes = f.rows.filter((row): row is SessionWorkEdgeClose => row.type === 'SessionWorkEdgeClose');
+  expect(closes.map(row => row.edge)).toEqual([nested.id, edge.id]);
+  expect(closes[0]).toMatchObject({ state: 'uncertain', child: nested.child, detail: expect.stringContaining('restored after a host restart') });
+  expect(closes[1]).toMatchObject({ state: 'uncertain', child: identity });
+  for (const row of f.rows) expect(() => validateSessionWorkRow(row)).not.toThrow();
+  expect(restarted.collect('obligation-commitment-1-2')).toMatchObject({ state: 'uncertain' });
+  expect(f.counts()).toMatchObject({ launches: 1, stops: 1 });
+});
+
+it('a suggest judgment on one-shot work is a pull-only notice, never an action', async () => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 5_000 });
+  f.io.admissionState = () => ({ refused: false, refusalReason: null, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  const port = value(createSessionWorkPort({ ...f.config, workRecovery: {
+    observe: worker => ({ ...worker, at: f.now(), progress: 'idle-frame', activity: 'idle', waiting: false, stale: { state: 'stalled', lastProgressAt: 1, windowMs: 1 } }),
+    reserve: () => {}, allowed: () => true, record: () => {},
+    review: async () => ({ kind: 'triage', classification: 'stuck-on-tool', action: 'suggest-restart', confidence: 0.6, followUpMs: null, reason: 'a build produced nothing' }) } }));
+  expect(await port.run(f.request())).toMatchObject({ state: 'uncertain' });
+  expect(port.status()).toMatchObject({ reviews: 1, reinjections: 0, nudges: 0, notice: 'obligation-commitment-1-2: stuck-on-tool: suggest-restart; a build produced nothing' });
+  expect(f.counts()).toMatchObject({ launches: 1, stops: 1 }); expect(f.delivered).toHaveLength(1);
+});
