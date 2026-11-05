@@ -14,9 +14,10 @@ export function attentionPage(snapshot, csrf, message = '', offset = 0) {
 ${message ? `<p role="status">${escape(message)}</p>` : ''}
 <form method="post" action="/dashboard/attention"><input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="requestId" value="${randomBytes(16).toString('hex')}"><label>Add an item<input class="field" name="title" maxlength="200" required></label><button class="button primary">Save item</button></form>
 <p>${snapshot.items.length} saved items. Showing ${start + (items.length ? 1 : 0)}–${start + items.length}.</p>
+${snapshot.capacity ? '<p role="status">Attention capacity was reached. Existing items and history are retained; some new health items could not be added.</p>' : ''}
 ${start > 0 ? `<a href="/dashboard/attention?offset=${Math.max(0, start - 100)}">Previous items</a>` : ''}
 ${start + 100 < snapshot.items.length ? `<a href="/dashboard/attention?offset=${start + 100}">More items</a>` : ''}
-${items.map(item => `<article class="row"><h2>${escape(item.title)}</h2><p>${escape(item.summary)}</p><p>${escape(item.status)} · ${escape(item.priority)}</p>
+${items.map(item => `<article class="row"><h2>${escape(item.title)}</h2>${item.lane === 'agent-health' ? '<p>Agent Health · silent status</p>' : ''}<p>${escape(item.summary)}</p><p>${escape(item.status)} · ${escape(item.priority)}</p>
 <form method="post" action="/dashboard/attention"><input type="hidden" name="csrf" value="${csrf}"><input type="hidden" name="id" value="${escape(item.id)}"><input type="hidden" name="revision" value="${item.revision}">
 <label>Status<select class="field" name="status">${['OPEN','ACKNOWLEDGED','IN_PROGRESS','DONE','WONT_DO'].map(s => `<option${item.status === s ? ' selected' : ''}>${s}</option>`).join('')}</select></label><button class="button primary">Save status</button></form></article>`).join('')}
 ${snapshot.acknowledgements.filter(a => !['delivered'].includes(a.outcome)).slice(-100).map(a => `<p>Acknowledgement: ${escape(a.outcome)} (${a.attempts} attempts).</p>`).join('')}

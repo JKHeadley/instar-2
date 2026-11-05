@@ -4561,8 +4561,16 @@ compaction and archived evidence preserve every accepted event. Old readers
 refuse the non-additive Attention frame rather than silently lose its lifecycle.
 The page is a pull surface, so a burst cannot create topics or send notifications.
 
+The installed maintenance pass feeds `attention-health.ts` from the existing
+obligation-health projection. Overdue intake, stalled work, unknown delivery and
+unknown recovery become silent Agent Health items on this page. Repeated identical
+observations do not append or reset an acknowledgement. Positive recovery closes
+the item; recurrence reopens that same identity with a retained episode counter.
+The condition and visible item change in one durable frame. These observations
+never resend unknown work or change execution authority.
+
 Row 88 remains OPEN: the peer-receiving standby acknowledgement entry point,
-Threadline hub transport/binding and model inference, proactive producer routing,
+Threadline hub transport/binding and model inference, remaining proactive producers,
 and full channel parity still require implementation and review. These are not
 claimed as replaced by the dashboard. The complete 1.x source/test baseline was
 retained for that adaptation. No hub-specific recorded model outputs were present

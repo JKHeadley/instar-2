@@ -3173,7 +3173,7 @@ async function main() {
       reportCap();
       runDueProof();
       checkDoorways();
-      await attentionSurface.drain();
+      await attentionSurface.maintain();
       publishDashboard();
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       let pollLimit;

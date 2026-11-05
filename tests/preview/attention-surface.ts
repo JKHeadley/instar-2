@@ -7,6 +7,7 @@ import type { openPreviewJournal } from './journal.js';
 import { AttentionQueue } from './attention-queue.js';
 import { normalizeAttentionStatus } from './attention-vocabulary.js';
 import { redact } from '../../src/recall/redact.js';
+import { produceAttentionHealth } from './attention-health.js';
 
 export function createAttentionSurface(journal: ReturnType<typeof openPreviewJournal>, host: {
   now(): number; machine: string; admitted(): boolean; replicated(): Promise<boolean>;
@@ -22,7 +23,7 @@ export function createAttentionSurface(journal: ReturnType<typeof openPreviewJou
   const list = () => ({ items: queue.getAttentionItems().map(i => ({ ...i, title: redact(i.title).text,
     summary: redact(i.summary).text, description: undefined })),
     acknowledgements: (journal.view.attention?.acknowledgements ?? []).map(a => ({ itemId: a.itemId, status: a.status,
-      outcome: a.lastOutcome, attempts: a.attempts })), asOf: now() });
+      outcome: a.lastOutcome, attempts: a.attempts })), capacity: journal.view.attention?.conditionCapacity ?? null, asOf: now() });
   const acknowledge = async (id: string, status: unknown, revision: number, authority: string) => {
     receipt(authority);
     const normalized = normalizeAttentionStatus(status), item = queue.getAttentionItem(id);
@@ -51,5 +52,10 @@ export function createAttentionSurface(journal: ReturnType<typeof openPreviewJou
     queue.drain(a => admitted() && a.operatorUid === journal.view.genesis.operator);
     await host.replicated();
   };
-  return Object.freeze({ list, acknowledge, create, drain });
+  const maintain = async () => {
+    if (!admitted()) return;
+    produceAttentionHealth(journal.view, queue, now());
+    await drain();
+  };
+  return Object.freeze({ list, acknowledge, create, drain, maintain });
 }

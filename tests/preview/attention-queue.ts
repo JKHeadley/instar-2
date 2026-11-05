@@ -27,6 +27,7 @@ export type AttentionRecord = { kind: 'attention'; at: number } & (
   | { action: 'item'; item: AttentionItem }
   | { action: 'condition'; condition: AttentionConditionRecord }
   | { action: 'condition-capacity'; key: string }
+  | { action: 'health'; identity: AttentionConditionIdentity; active: boolean; item: NewAttentionItem }
   | { action: 'ack'; ack: PendingRemoteAck }
   | { action: 'apply'; itemId: string; targetMachineId: string; revision: number; authority: string });
 export interface AttentionJournal {
@@ -46,6 +47,33 @@ const sameAck = (a: PendingRemoteAck, b: { itemId: string; targetMachineId: stri
 export function applyAttentionRecord(previous: AttentionState | undefined, row: AttentionRecord, operator: string): AttentionState {
   const next = clone(previous ?? emptyAttentionState());
   check(count(row.at), 'invalid clock');
+  if (row.action === 'health') {
+    const key = attentionConditionKey(row.identity), current = next.conditions.find(c => c.key === key);
+    const old = next.items.find(i => i.id === row.item.id);
+    check(typeof row.active === 'boolean' && row.item.lane === 'agent-health'
+      && row.item.id === `health:${key}`, 'invalid health identity');
+    check(current || next.conditions.length < 2000, 'condition capacity reached; existing history retained');
+    if (!row.active && !current) return next;
+    const episode = (current?.episode ?? 0) + Number(!current || !current.active && row.active);
+    const condition: AttentionConditionRecord = { ...row.identity, key, scope: row.identity.scope ?? 'global',
+      active: row.active, episode, itemId: `${key}:ep-${episode}`, firstSeenAt: current?.firstSeenAt ?? row.at,
+      lastSeenAt: row.at, ...(!row.active ? { clearedAt: row.at } : {}) };
+    let projected = applyAttentionRecord(next, { kind: 'attention', action: 'condition', condition, at: row.at }, operator);
+    // The condition edge and its visible item are one journal frame. A crash can
+    // never leave an active condition with its first visible item missing.
+    if (row.active) {
+      projected = applyAttentionRecord(projected, { kind: 'attention', action: 'item', at: row.at,
+        item: { ...row.item, status: 'OPEN', createdAt: old?.createdAt ?? row.at,
+          updatedAt: row.at, revision: (old?.revision ?? 0) + 1 } }, operator);
+      // A repeated observation is not a new episode and cannot undo the human's
+      // acknowledgement. A positive recovery followed by recurrence reopens it.
+      if (current?.active && old) projected.items.find(i => i.id === old.id)!.status = old.status;
+    } else if (old) {
+      const item = projected.items.find(i => i.id === old.id)!;
+      item.status = 'DONE'; item.updatedAt = row.at; item.revision++;
+    }
+    return projected;
+  }
   if (row.action === 'item') {
     const x = row.item, old = next.items.find(i => i.id === x.id);
     check(text(x.id, 512) && text(x.title, 200) && typeof x.summary === 'string' && x.summary.length <= 4000
@@ -67,6 +95,7 @@ export function applyAttentionRecord(previous: AttentionState | undefined, row: 
       && (old ? c.firstSeenAt === old.firstSeenAt && c.episode === old.episode + Number(!old.active && c.active)
         : c.episode === 1 && c.active)
       && (c.active ? c.clearedAt === undefined : c.clearedAt === row.at), 'invalid condition episode');
+    check(old || next.conditions.length < 2000, 'condition capacity reached; existing history retained');
     if (old) next.conditions[next.conditions.indexOf(old)] = clone(c); else next.conditions.push(clone(c));
   } else if (row.action === 'condition-capacity') {
     check(text(row.key, 4096), 'invalid capacity identity');
@@ -185,6 +214,25 @@ export class AttentionQueue {
   }
   createOrReopenAgentHealthAttentionItem(item: NewAttentionItem): AttentionItem {
     check(item.lane === 'agent-health', 'agent-health lane required'); return this.upsertAttentionItem(item);
+  }
+  /** Positive observed health transitions, never inferred from absent telemetry.
+   * Reuses the 1.x entity-stable health row and explicit condition episodes. */
+  observeHealth(identity: AttentionConditionIdentity, active: boolean, details: Omit<NewAttentionItem, 'id' | 'lane'>): 'recorded' | 'unchanged' | 'capacity' {
+    const key = attentionConditionKey(identity), id = `health:${key}`;
+    const condition = this.journal.state()?.conditions.find(c => c.key === key), old = this.getAttentionItem(id);
+    if (!active && !condition?.active) return 'unchanged';
+    const state = this.journal.state();
+    if (active && (!condition && (state?.conditions.length ?? 0) >= 2000 || !old && (state?.items.length ?? 0) >= 2000)) {
+      if (!state?.conditionCapacity)
+        this.journal.append({ kind: 'attention', action: 'condition-capacity', key, at: this.now() });
+      return 'capacity';
+    }
+    const item: NewAttentionItem = { ...details, id, lane: 'agent-health' };
+    if (active && condition?.active && old && old.title === item.title && old.summary === item.summary
+      && old.priority === item.priority && old.description === item.description
+      && old.category === item.category && old.machineId === item.machineId) return 'unchanged';
+    this.journal.append({ kind: 'attention', action: 'health', identity, active, item, at: this.now() });
+    return 'recorded';
   }
   /** Single owner applies already durable intent; no network send and no model judgment.
    * The owner callback must revalidate the recorded operator grant each time. */

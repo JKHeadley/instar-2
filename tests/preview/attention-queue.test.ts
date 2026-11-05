@@ -118,6 +118,35 @@ it('a failed durable append cannot return a successful creation', () => {
   const queue = new AttentionQueue({ state: () => undefined, append: () => { throw Error('disk failed'); } }, () => 1000);
   expect(() => queue.createAttentionItem(item)).toThrow('disk failed'); expect(queue.getAttentionItems()).toEqual([]);
 });
+it('health observations are atomic, quiet within an episode, and reopen the same row after positive recovery', async () => {
+  const h = world(); try {
+    const details = { title: 'Work is held', summary: 'One work step', category: 'health', priority: 'NORMAL' as const };
+    h.queue.observeHealth(identity, true, details);
+    const first = h.queue.getAttentionItems()[0]!, frames = h.journal.size;
+    h.queue.observeHealth(identity, true, details); expect(h.journal.size).toBe(frames);
+    await h.surface().acknowledge(first.id, 'ACKNOWLEDGED', first.revision, authority);
+    h.reopen(); h.clock.now++;
+    h.queue.observeHealth(identity, true, { ...details, summary: 'Two work steps' });
+    expect(h.queue.getAttentionItem(first.id)?.status).toBe('ACKNOWLEDGED');
+    h.queue.observeHealth(identity, false, details);
+    expect(h.queue.getAttentionItem(first.id)?.status).toBe('DONE');
+    h.reopen(); h.clock.now++; h.queue.observeHealth(identity, true, details);
+    expect(h.queue.getAttentionItems()).toHaveLength(1);
+    expect(h.queue.getAttentionItem(first.id)?.status).toBe('OPEN');
+    expect(h.journal.view.attention!.conditions[0]).toMatchObject({ active: true, episode: 2 });
+    h.journal.compact(); h.reopen();
+    expect(h.queue.getAttentionItem(first.id)?.status).toBe('OPEN');
+    expect(h.journal.view.attention!.conditions[0]?.episode).toBe(2);
+  } finally { h.close(); }
+});
+it('a health frame cannot retain half a transition when its visible item fails validation', () => {
+  const h = world(); try {
+    const before = h.journal.size;
+    expect(() => h.queue.observeHealth(identity, true, { title: '', summary: '', category: 'health', priority: 'NORMAL' })).toThrow();
+    expect(h.journal.size).toBe(before); expect(h.journal.view.attention).toBeUndefined();
+    h.reopen(); expect(h.journal.view.attention).toBeUndefined();
+  } finally { h.close(); }
+});
 
 it('revalidates ownership after replication before applying a durable intent', async () => {
   const h = world(); try {
