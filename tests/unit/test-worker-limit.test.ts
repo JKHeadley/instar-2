@@ -73,13 +73,23 @@ describe('test worker limit', () => {
       .map(line => line.replace(/#.*/, '').trim()).filter(Boolean);
     const { serialFixtureFiles } = await loadRunnerConfig();
     expect(serialFixtureFiles).toHaveLength(14);
-    for (const split of ['', 'only-macos', 'exclude-macos']) {
+    // The remote gate uses repeated CLI exclusions (including Studio-installed
+    // prerequisites beyond the macOS list), and the Studio runs their complement.
+    // Cover both an ordinary project and an ordered project without running them.
+    const studio = [...new Set([...macos, 'tests/preview/trust-setup.test.ts',
+      'tests/preview/media-understanding.test.ts', 'tests/e2e/register.test.ts'])];
+    const cases = [
+      ...['', 'only-macos', 'exclude-macos'].map(split => ({ split, args: [] as string[],
+        selected: expected.filter(file => split === '' || (split === 'only-macos') === macos.includes(file)) })),
+      { split: '', args: studio.flatMap(file => ['--exclude', file]), selected: expected.filter(file => !studio.includes(file)) },
+      { split: '', args: studio, selected: expected.filter(file => studio.includes(file)) },
+    ];
+    for (const { split, args, selected } of cases) {
       const result = await runChild(process.execPath, ['node_modules/vitest/vitest.mjs', 'list',
-        '--filesOnly', '--json', '--maxWorkers', '1'], { timeout: 20_000,
+        '--filesOnly', '--json', '--maxWorkers', '1', ...args], { timeout: 20_000,
         env: { ...process.env, INSTAR_TEST_PLATFORM_SPLIT: split } });
       expect(result.status, result.stderr).toBe(0);
       const files = JSON.parse(result.stdout) as { file: string; projectName: string }[];
-      const selected = expected.filter(file => split === '' || (split === 'only-macos') === macos.includes(file));
       expect(files.map(row => relative(process.cwd(), row.file)).sort()).toEqual(selected);
       for (const row of files) {
         const file = relative(process.cwd(), row.file);

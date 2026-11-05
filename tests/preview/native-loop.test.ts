@@ -64,7 +64,7 @@ it('the tree-limit fixture isolates the UID allowance while retaining census, id
   expect(calls).toEqual([]);
   const observations: Array<[string, string[]]> = [
     ['/bin/ps', ['-U', String((process.getuid?.() ?? 0) + 1), '-o', 'pid=']],
-    ['/bin/ps', ['-U', String(process.getuid?.()), '-ww', '-o', 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=']],
+    ['/bin/ps', ['-U', String(process.getuid?.()), '-ww', '-o', 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,comm=']],
     ['/bin/ps', ['-o', 'lstart=', '-p', '123']],
     ['/usr/bin/python3', ['-c', 'sandbox-reader', '1', '/scratch', '123']],
     ['/usr/sbin/lsof', ['-a', '-d', 'cwd', '-p', '123', '-Fpn', '-w']],

@@ -128,6 +128,41 @@ describe('launch membership join', () => {
 });
 
 describe('physical inventory adapter (real host)', () => {
+  it('keeps the census complete when sleeping processes carry more argv than the query buffer', async () => {
+    // No CPU load: two idle children reproduce the large builder-prompt shape.
+    // Each argument stays below Linux's per-argument limit, and each child stays
+    // below macOS ARG_MAX. Together their argv exceeds the existing 1 MiB bound.
+    const marker = 'inventory-argv-must-not-be-collected-';
+    const children = Array.from({ length: 2 }, () => spawn(process.execPath,
+      ['-e', 'process.stdout.write("ready"); setTimeout(() => {}, 15000)', '--',
+        ...Array.from({ length: 10 }, () => marker + 'x'.repeat(60_000))],
+      { stdio: ['ignore', 'pipe', 'ignore'], timeout: 20_000 }));
+    const closed = children.map(child => new Promise<void>(resolve => child.once('close', () => resolve())));
+    try {
+      await Promise.all(children.map(child => new Promise<void>((resolve, reject) => {
+        child.once('error', reject);
+        child.stdout!.once('data', () => resolve());
+        child.once('exit', () => reject(new Error('argv fixture exited before readiness')));
+      })));
+      const columns = 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,';
+      // The former query cannot observe even these two children within its bound.
+      expect(await hostQuery('/bin/ps', ['-p', children.map(child => child.pid).join(','),
+        '-ww', '-o', columns + 'command='])).toBeNull();
+      const census = await createProcessInventory({ query: hostQuery, now: () => 1, monotonic: () => 1,
+        identity: HOST_IDENTITY, uid: process.getuid!(), limit: 4096, freshForMs: 2000 }).census();
+      expect(census.status).toBe('complete');
+      for (const child of children) {
+        const row = census.processes.find((p: InventoryProcess) => p.pid === child.pid);
+        expect(row?.resource.state).toBe('reported');
+        expect(row?.command).toContain('node');
+        expect(row?.command).not.toContain(marker);
+      }
+    } finally {
+      for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+      await Promise.all(closed);
+    }
+  });
+
   it('enumerates the current user completely, with reported readings and real working directories', async () => {
     const area = realpathSync(mkdtempSync(join(tmpdir(), 'inventory-')));
     const child = spawn('/bin/sleep', ['10'], { cwd: area, detached: true, stdio: 'ignore' });

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { configDefaults, defineConfig } from 'vitest/config';
+import type { Plugin } from 'vite';
 import { resolveTestWorkerLimit } from './tests/setup/worker-limit.js';
 
 // Bound ordinary file parallelism as before the train-159 serial-all workaround.
@@ -43,6 +44,15 @@ export const serialFixtureFiles = [
 ];
 const include = split === 'only-macos' ? macosOnly : ['tests/**/*.test.ts'];
 const exclude = split === 'exclude-macos' ? [...configDefaults.exclude, ...macosOnly] : [...configDefaults.exclude];
+// Vitest 3 does not forward CLI --exclude into explicit projects. Apply the
+// resolved root exclusions before discovery so the gate's host partition holds
+// in both the ordinary project and every ordered fixture project.
+const inheritRootExcludes: Plugin = {
+  name: 'instar-project-excludes',
+  configureVitest({ project, vitest }) {
+    project.config.exclude = [...new Set([...project.config.exclude, ...vitest.config.exclude])];
+  },
+};
 const shared = {
   // nice-worker: best-effort priority reduction for each worker and its spawned children
   // (a resource optimization, never a correctness gate). yield-worker: an awaited
@@ -84,9 +94,9 @@ export default defineConfig({
     minWorkers: 1,
     maxWorkers: serialGate ? 1 : workerLimit,
     projects: [
-      { test: { ...shared, name: 'parallel', include, exclude: [...exclude, ...serialFixtureFiles],
+      { plugins: [inheritRootExcludes], test: { ...shared, name: 'parallel', include, exclude: [...exclude, ...serialFixtureFiles],
         sequence: { groupOrder: 0 } } },
-      ...serialFixtureFiles.map((file, index) => ({ test: { ...shared, name: file,
+      ...serialFixtureFiles.map((file, index) => ({ plugins: [inheritRootExcludes], test: { ...shared, name: file,
         include: split === 'only-macos' && !macosOnly.includes(file) ? [] : [file], exclude,
         sequence: { groupOrder: index + 1 } } })),
     ],

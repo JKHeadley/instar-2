@@ -12,7 +12,10 @@ let tenOwner = null;
 export const loadTenOwner = () => tenOwner ??= import('../src/assembly/process-inventory.js')
   .catch(() => import('../dist/assembly/process-inventory.js'));
 
-const CENSUS_COLUMNS = 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=';
+// Collect the executable name, not argv: prompts or other unbounded arguments can
+// exhaust the query buffer before any row is decoded. Membership uses PID/start,
+// ancestry and kernel sandbox observations; this name is diagnostic only.
+const CENSUS_COLUMNS = 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,comm=';
 const ADAPTER = 'host-ps-lsof-sandbox-inventory-v2';
 /**
  * The sandbox reading (macOS): the kernel's `sandbox_check` for each named pid, asked from outside the sandbox, so no

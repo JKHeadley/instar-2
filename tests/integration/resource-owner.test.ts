@@ -54,6 +54,43 @@ setInterval(() => keep.length, 1000);`);
     expect.objectContaining({ kind: 'limit-kill', work: 'maintenance', reason: 'memory' })]);
 });
 
+it('enforces a sampled memory ceiling on an idle process and returns its allocation without a load generator', async () => {
+  const root = dir(), pidFile = join(root, 'idle-pid');
+  const idle = script(root, 'idle.mjs', `import { writeFileSync } from 'node:fs';
+writeFileSync(process.argv[2], String(process.pid));
+setTimeout(() => process.stdout.write('within'), Number(process.argv[3]));`);
+  let injectOver = true;
+  const sampled = new Set<number>();
+  const query = async (file: string, args: string[]) => {
+    const table = await hostQuery(file, args);
+    if (table === null || file !== '/bin/ps' || !args.includes('pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,comm=')
+      || !existsSync(pidFile)) return table;
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    return table.split('\n').map((line: string) => {
+      const fields = line.trim().split(/\s+/u);
+      if (Number(fields[0]) !== pid) return line;
+      sampled.add(pid);
+      // Only RSS changes; actual incarnation, membership and cleanup remain real.
+      if (injectOver) fields[4] = String(200 * 1024);
+      return fields.join(' ');
+    }).join('\n');
+  };
+  const limits = ceilings({ launch: { memoryBytes: 160 * 1024 * 1024 } });
+  const owner = createResourceOwner(limits);
+  await owner.attach({ query, ledgerPath: join(root, 'launches.json'), allocation: six(root, limits) });
+  const over = await owner.execute(input(root, idle, [pidFile, '10000']), 'answer');
+  expect(over).toMatchObject({ limited: true, localLimit: 'memory',
+    resources: { cleanup: 'verified', allocation: { state: 'returned' } } });
+  const overPid = Number(readFileSync(pidFile, 'utf8'));
+  expect(sampled.has(overPid)).toBe(true);
+  expect(alive(overPid)).toBe(false);
+  injectOver = false;
+  const within = await owner.execute(input(root, idle, [pidFile, '1500']), 'answer');
+  expect(within).toMatchObject({ code: 0, limited: false, stdout: 'within',
+    resources: { cleanup: 'verified', allocation: { state: 'returned' } } });
+  expect(sampled.has(Number(readFileSync(pidFile, 'utf8')))).toBe(true);
+});
+
 it('kills a launch that forks past its process ceiling and leaves none of its descendants', { timeout: 30000 }, async () => {
   const root = dir(), pids = join(root, 'pids');
   const fork = script(root, 'fork.mjs', `import { spawn } from 'node:child_process'; import { appendFileSync } from 'node:fs';
@@ -305,7 +342,7 @@ it('ordinary settlement returns its debit with more than 64 unrelated cwd candid
   const fake = Array.from({ length: 80 }, (_, i) => 920000 + i);
   const fakeRows = fake.map(pid => `${pid} 1 ${pid} 501 4096 0:00.10 S Mon Nov  3 15:00:00 2027 /bin/sleep 60`).join('\n');
   const query = async (file: string, args: string[]) => {
-    if (file === '/bin/ps' && args[0] === '-U' && args.includes('pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command='))
+    if (file === '/bin/ps' && args[0] === '-U' && args.includes('pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,comm='))
       return (await hostQuery(file, args)) + fakeRows + '\n';
     if (file === '/usr/sbin/lsof' || file === '/usr/bin/sudo') {
       const real = await hostQuery(file, args);
