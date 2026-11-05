@@ -15,6 +15,7 @@ import type { NativeHarnessDriverPort } from '../../src/assembly/harness.js';
 import { openPreviewJournal, validateSessionWorkRow } from '../preview/journal.js';
 import { createLiveSentinels, WORK_SILENCE_MS } from '../preview/live-sentinels.js';
 import type { LiveSentinelPorts } from '../preview/live-sentinels.js';
+import { interpretStallDecision, stallSample as reviewerStallSample } from '../preview/stall-review.js';
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 import { processControlFixture, startOwnProcessFixture } from '../effects/process-control-fixture.js';
@@ -1212,3 +1213,105 @@ it('the journal records reserved-edge call intents contiguously within the reser
   journal.append({ kind: 'session-work', record: { type: 'SessionWorkCall', schemaVersion: 1, edge: perCall.id, ordinal: 1, at: 100_011 }, at: 100_011 });
   expect(journal.view.calls).toBe(4);
 });
+
+it.each(['incarnation-1', 'host-after-restart'])('reviewer: adopted worker keeps its original supervision identity when host is %s', async hostIncarnation => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 5_000 }); const rt = assemblyRuntimeFixture();
+  const { edge, identity } = await dyingStep(f);
+  f.rows.push(callRow(edge, 1)); f.io.modelCalls = () => 1; restorable(f);
+  let nudges = 0;
+  Object.assign(f.driver, {
+    recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }),
+    nudge: (input: { incarnation: string }) => { expect(input.incarnation).toBe('incarnation-1'); nudges++; return rt.success({ state: 'nudged', evidence: 'fixture' }); }
+  });
+  const port = value(createSessionWorkPort({ ...f.config, incarnation: hostIncarnation, workRecovery: {
+    observe: worker => reviewerStallSample({ subject: edge.child, incarnation: 'incarnation-1', launch: identity, at: f.now(),
+      progress: 'typed-frame', activity: 'idle', wait: null, typedUnsubmitted: true }, worker),
+    reserve: () => {}, allowed: () => true, record: () => {}, review: async () => 'unknown'
+  } }));
+  await port.run(f.request());
+  expect(port.status().restored).toBe(1);
+  expect(nudges).toBe(1);
+});
+
+it.each(['same-edge', 'other-edge', 'none'] as const)('reviewer: restored replay preserves durable preparations for %s', async mode => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 5_000 }); const rt = assemblyRuntimeFixture();
+  const { edge, identity } = await dyingStep(f);
+  f.rows.push(callRow(edge, 1)); f.io.modelCalls = () => 1;
+  for (const state of mode === 'none' ? [] : ['prepared', 'observed'] as const) f.rows.push(sessionWorkEffect({ id: digestOf('prior-effect'),
+    edge: mode === 'other-edge' ? 'another-work-edge' : edge.id,
+    operation: 'mcp:mail:send', digest: digestOf('prior-mail'), state, detail: 'recorded effect', at: f.now() }));
+  restorable(f); let reinjections = 0, reviews = 0;
+  Object.assign(f.driver, { recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }),
+    redeliver: (input: { incarnation: string }) => { expect(input.incarnation).toBe('incarnation-1'); reinjections++; return rt.success({ state: 'redelivered', evidence: 'fixture' }); } });
+  const port = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart', workRecovery: {
+    observe: worker => ({ ...worker, at: f.now(), progress: 'idle-frame', activity: 'idle', waiting: false,
+      stale: { state: 'stalled', lastProgressAt: 1, windowMs: 1 } }), reserve: () => {}, allowed: () => true, record: () => {},
+    review: async () => { reviews++; return { kind: 'triage', classification: 'message-lost', action: 'reinject', confidence: 0.95, followUpMs: null, reason: 'idle' }; }
+  } }));
+  await port.run(f.request());
+  expect(port.status().restored).toBe(1); expect(reviews).toBe(1);
+  expect(reinjections).toBe(mode === 'same-edge' ? 0 : 1);
+  expect(f.counts().launches).toBe(1); expect(f.delivered).toHaveLength(1);
+});
+
+it.each(['claim', 'incarnation', 'launch'] as const)('adopted supervision still refuses a substituted %s sample', async field => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 5_000 }); const rt = assemblyRuntimeFixture();
+  const { edge, identity } = await dyingStep(f);
+  f.rows.push(callRow(edge, 1)); f.io.modelCalls = () => 1; restorable(f);
+  let nudges = 0;
+  Object.assign(f.driver, {
+    recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }),
+    nudge: () => { nudges++; return rt.success({ state: 'nudged', evidence: 'fixture' }); }
+  });
+  const port = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart', workRecovery: {
+    observe: worker => ({ ...worker, [field]: 'substituted', at: f.now(), progress: 'typed-frame', activity: 'idle',
+      waiting: false, typedUnsubmitted: true }),
+    reserve: () => {}, allowed: () => true, record: () => {}, review: async () => 'unknown'
+  } }));
+  await port.run(f.request());
+  expect(port.status().restored).toBe(1); expect(nudges).toBe(0);
+});
+
+it.each(['incarnation-1', 'host-after-restart'])('adopted process intervention validates the physical incarnation against %s', async targetIncarnation => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 5_000 }); const rt = assemblyRuntimeFixture();
+  const { edge, identity } = await dyingStep(f);
+  f.rows.push(callRow(edge, 1)); f.io.modelCalls = () => 1; restorable(f);
+  const target = { ...processControlFixture().payload.target, incarnation: targetIncarnation };
+  const formal = processControlFixture(target, undefined, { episode: `stall-triage:${f.request().operation}:${f.now()}`, signal: 'SIGINT', deadline: f.now() + 1_000 });
+  let interventions = 0;
+  Object.assign(f.driver, { recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }) });
+  const port = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart', workRecovery: {
+    observe: worker => ({ ...worker, at: f.now(), progress: 'idle-frame', activity: 'idle', waiting: false,
+      stale: { state: 'stalled', lastProgressAt: 1, windowMs: 1 } }),
+    reserve: () => {}, allowed: () => true, record: row => f.rows.push(row), review: async () => ({ kind: 'process-control', payload: formal.payload }),
+    intervention: { run: formal.run.id, machine: formal.payload.target.machine,
+      reconcile: async () => { throw Error('not expected'); },
+      intervene: async () => { interventions++; throw Error('uncertain fixture actuation'); } }
+  } }));
+  await port.run(f.request());
+  expect(port.status()).toMatchObject({ restored: 1, reviews: 1 });
+  expect(interventions).toBe(targetIncarnation === 'incarnation-1' ? 1 : 0);
+});
+
+it.each(recordedWork.negativeOutputs as { id: string; shape: string; output: string }[])(
+  'adopted supervision replays recorded $shape ($id) through the shipped parser and keeps serving the worker', async sample => {
+    const f = fixture({ phases: ['launched'], deadlineMs: 5_000 }); const rt = assemblyRuntimeFixture();
+    const { edge, identity } = await dyingStep(f);
+    f.rows.push(callRow(edge, 1)); f.io.modelCalls = () => 1; restorable(f);
+    Object.assign(f.driver, { recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }) });
+    let reviews = 0;
+    const port = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart', workRecovery: {
+      observe: worker => reviewerStallSample({ subject: edge.child, incarnation: 'incarnation-1', launch: identity, at: f.now(),
+        progress: 'idle-frame', activity: 'idle', wait: null, stale: { state: 'stalled', lastProgressAt: 1, windowMs: 1, episode: 1, indeterminateStreak: 0, longIndeterminate: false } }, worker),
+      reserve: () => {}, allowed: () => true, record: () => {}, review: async () => {
+        reviews++;
+        const decision = interpretStallDecision({ state: 'complete', value: sample.output });
+        expect(decision).toBe('unknown');
+        f.writeNow(recordedWork.workOutput);
+        return decision;
+      }
+    } }));
+    expect(await port.run(f.request())).toMatchObject({ state: 'complete', text: recordedWork.workOutput });
+    expect(port.status()).toMatchObject({ restored: 1, reinjections: 0, reviews: 1 });
+    expect(reviews).toBe(1); expect(f.counts().launches).toBe(1); expect(f.delivered).toHaveLength(1);
+  });

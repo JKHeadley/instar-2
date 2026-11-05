@@ -369,7 +369,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
       // worker that is still live under its registered claim, holding the exact accepted intake, is
       // adopted under the ORIGINAL edge, deadline, allowance and result destination. Nothing is
       // launched, delivered or replayed; its result keeps the original identity.
-      let adopt: Readonly<{ edge: SessionWorkEdge; identity: string; lease: SessionWorkLease }> | null = null;
+      let adopt: Readonly<{ edge: SessionWorkEdge; identity: string; incarnation: string; lease: SessionWorkLease }> | null = null;
       {
         // Custody is mandatory even when diagnosis is disconnected. A missing
         // triage supplier cannot turn an UNKNOWN original effect into a new run.
@@ -392,7 +392,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
               if (lease !== null) {
                 let restored = false;
                 try { restored = await config.io.restoreAdmission(open.child, open, restore) === true; } catch { restored = false; }
-                if (restored && !config.stopped()) adopt = { edge: open, identity: worker.identity, lease };
+                if (restored && !config.stopped()) adopt = { edge: open, identity: worker.identity, incarnation: worker.incarnation, lease };
                 else { try { await lease.release(); } catch { /* an unreleased lease is the resource owner's own record */ } }
               }
             }
@@ -402,6 +402,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
       }
       ensure(adopt !== null || available(), 'session work unavailable: stopped, in flight, or at its step ceiling');
       inFlight = true;
+      const workerIncarnation = adopt?.incarnation ?? config.incarnation;
       try {
         if (!adopt) steps += 1;
         const openedAt = adopt ? adopt.edge.openedAt : config.now();
@@ -443,7 +444,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                 return settledAs('failed', 'a leftover result is still present at the destination', 'no-child');
               launched = true;
               child = take(driver.launch({ operation: request.operation, claim, artifact: config.artifact,
-                incarnation: config.incarnation, workingScope: config.workingScope, handles: [] }));
+                incarnation: workerIncarnation, workingScope: config.workingScope, handles: [] }));
             } else counters.restored += 1;
             await lease.attach(child!);
             if (!adopt && driver.continuationReady) while (!take(driver.continuationReady(child!))) {
@@ -453,13 +454,13 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
             const initialAdmission = config.io.admissionState(claim);
             const initialPreparations = initialAdmission?.toolPreparations;
             if (!adopt) take(driver.deliver({ operation: request.operation, processIdentity: child!, intake: request.operation,
-              digest: digestOf(text), incarnation: config.incarnation }));
+              digest: digestOf(text), incarnation: workerIncarnation }));
             // The previous poll's present result, or null; and whether the child's turn has closed.
             let seen: string | null = null, turnClosed: string | null = null, emptyAfterClose = 0;
             let reviewedAt: number | null = null, reviewAttempts = 0, interventionAttempted = false;
             let nudgeRequested = false, reinjected = false, nextReviewAt = 0;
             const identity: string = child!;
-            const worker = { claim, incarnation: config.incarnation, launch: identity };
+            const worker = { claim, incarnation: workerIncarnation, launch: identity };
             for (;;) {
               if (config.stopped()) return settledAs('uncertain', 'stop authority active while the step was open', identity);
               if (config.now() >= deadline) return settledAs('uncertain', 'session work deadline exceeded', identity);
@@ -502,10 +503,10 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                 if (driver.nudge && recovery && !nudgeRequested && present === null && observation.phase === 'launched') {
                   let sample: ReturnType<typeof recovery.observe> = null;
                   try { sample = recovery.observe(worker); } catch { /* unknown stays observation only */ }
-                  if (sample?.typedUnsubmitted === true && sample.claim === claim && sample.launch === identity && sample.incarnation === config.incarnation
+                  if (sample?.typedUnsubmitted === true && sample.claim === claim && sample.launch === identity && sample.incarnation === workerIncarnation
                     && sample.activity !== 'active' && Number.isSafeInteger(sample.at) && sample.at <= config.now() && config.now() - sample.at <= 5000) {
                     nudgeRequested = true;
-                    try { if (take(driver.nudge({ processIdentity: identity, claim, incarnation: config.incarnation,
+                    try { if (take(driver.nudge({ processIdentity: identity, claim, incarnation: workerIncarnation,
                       reason: `stall-triage:${request.operation}:typed-unsubmitted` })).state === 'nudged') counters.nudges += 1; }
                     catch { /* uncertain: never a second keystroke from this step */ }
                   }
@@ -514,7 +515,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                   && (reviewedAt === null || config.now() - reviewedAt >= 180_000) && config.now() >= nextReviewAt) {
                   let sample = null;
                   try { sample = recovery.observe(worker); } catch { /* UNKNOWN remains observation only. */ }
-                  const validSample = sample && sample.claim === claim && sample.incarnation === config.incarnation && sample.launch === identity
+                  const validSample = sample && sample.claim === claim && sample.incarnation === workerIncarnation && sample.launch === identity
                     && Number.isSafeInteger(sample.at) && sample.at <= config.now() && config.now() - sample.at <= 5000
                     && typeof sample.progress === 'string' && sample.progress.length > 0
                     && ['active', 'idle', 'indeterminate'].includes(sample.activity) && !sample.waiting && sample.stale?.state !== 'protected' && sample.stale?.state !== 'unknown';
@@ -540,14 +541,14 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                       const fresh = recovery.observe(worker);
                       if (typeof decision === 'object' && decision.kind === 'process-control' && recovery.intervention && safe()
                         && (afterReview.phase === 'launched' || afterReview.phase === 'pause-observed')
-                        && fresh && fresh.launch === identity && fresh.claim === claim && fresh.incarnation === config.incarnation
+                        && fresh && fresh.launch === identity && fresh.claim === claim && fresh.incarnation === workerIncarnation
                         && fresh.progress === sample.progress && fresh.activity === sample.activity && !fresh.waiting
                         && fresh.stale?.state !== 'protected' && fresh.stale?.state !== 'unknown'
                         && Number.isSafeInteger(fresh.at) && fresh.at >= sample.at && fresh.at <= config.now() && config.now() - fresh.at <= 5000
                         && config.io.readResult(resultPath, config.maxResultBytes) === null) {
                         const payload = decision.payload;
                         ensure(payload.target.machine === recovery.intervention.machine && payload.run === recovery.intervention.run
-                          && payload.target.incarnation === config.incarnation && payload.signal === 'SIGINT'
+                          && payload.target.incarnation === workerIncarnation && payload.signal === 'SIGINT'
                           && payload.episode === `stall-triage:${request.operation}:${sample.at}`
                           && payload.deadline <= deadline && payload.deadline > config.now(), 'work intervention differs from admitted review');
                         const id = digestOf(JSON.stringify([edge.id, payload]));
@@ -566,13 +567,17 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                         // 1.x TriageOrchestrator typed actions on one-shot work: an exact redelivery of the lost
                         // step input at most once, and a scheduled follow-up at or above the nurse cooldown. A
                         // restart of a one-shot step is its deadline's business; auto-interrupt stays uncomposed.
-                        if (decision.action === 'reinject' && driver.redeliver && !reinjected && safe()
+                        // An observed effect clears uncertainty, but never restores the original no-effect replay fence.
+                        // Admission counters restart on adoption; the existing durable preparation rows do not.
+                        const preparedSinceDispatch = adopt !== null && (config.recoveryEdges?.() ?? []).some(record =>
+                          record.type === 'SessionWorkEffect' && record.edge === edge.id && record.state === 'prepared');
+                        if (decision.action === 'reinject' && driver.redeliver && !reinjected && safe() && !preparedSinceDispatch
                           && (afterReview.phase === 'launched' || afterReview.phase === 'pause-observed')
                           && fresh && fresh.launch === identity && fresh.activity !== 'active' && !fresh.waiting
                           && config.io.readResult(resultPath, config.maxResultBytes) === null) {
                           reinjected = true;
                           if (take(driver.redeliver({ operation: request.operation, processIdentity: identity, intake: request.operation,
-                            digest: digestOf(text), incarnation: config.incarnation })).state === 'redelivered') counters.reinjections += 1;
+                            digest: digestOf(text), incarnation: workerIncarnation })).state === 'redelivered') counters.reinjections += 1;
                         }
                         if (decision.followUpMs !== null) nextReviewAt = config.now() + Math.min(Math.max(decision.followUpMs, 180_000), 1_800_000);
                         counters.notice = decision.action.startsWith('suggest') || decision.action === 'auto-interrupt'
