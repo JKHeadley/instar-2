@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { configDefaults, defineConfig } from 'vitest/config';
+import { parseCLI } from 'vitest/node';
 import { resolveTestWorkerLimit } from './tests/setup/worker-limit.js';
 
 // Bound ordinary file parallelism as before the train-159 serial-all workaround.
@@ -42,7 +43,11 @@ export const serialFixtureFiles = [
   'tests/assembly/fixed-installation-peer.test.ts',
 ];
 const include = split === 'only-macos' ? macosOnly : ['tests/**/*.test.ts'];
-const exclude = split === 'exclude-macos' ? [...configDefaults.exclude, ...macosOnly] : [...configDefaults.exclude];
+// Vitest 3.2 applies --exclude only to the root, not its inline projects. The desk
+// uses CLI exclusions so split state cannot leak into child gate checks. Reuse
+// Vitest's parser (including repeated flags/globs) and carry them to every project.
+const cliExclude = parseCLI(['vitest', ...process.argv.slice(2)], { allowUnknownOptions: true }).options.exclude ?? [];
+const exclude = [...configDefaults.exclude, ...(split === 'exclude-macos' ? macosOnly : []), ...cliExclude];
 const shared = {
   // nice-worker: best-effort priority reduction for each worker and its spawned children
   // (a resource optimization, never a correctness gate). yield-worker: an awaited

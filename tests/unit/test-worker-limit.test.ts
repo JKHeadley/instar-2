@@ -88,6 +88,34 @@ describe('test worker limit', () => {
     }
   });
 
+  it('honors CLI host exclusions in every project and keeps the other half complete', async () => {
+    const expected = execFileSync('git', ['ls-files', 'tests'], { encoding: 'utf8' }).trim().split('\n')
+      .filter(file => file.endsWith('.test.ts')).sort();
+    const macos = readFileSync('tests/platform/macos-only.txt', 'utf8').split('\n')
+      .map(line => line.replace(/#.*/, '').trim()).filter(Boolean);
+    // The desk also assigns host-tool cases to the Studio. Include the failing
+    // portable-list neighbors and a serial project, as its --exclude CLI does.
+    const studio = [...new Set([...macos, 'tests/preview/media-understanding.test.ts',
+      'tests/preview/trust-setup.test.ts', 'tests/e2e/register.test.ts'])].sort();
+    const list = async (args: string[], split = '') => {
+      const result = await runChild(process.execPath, ['node_modules/vitest/vitest.mjs', 'list',
+        '--filesOnly', '--json', '--maxWorkers', '1', ...args], { timeout: 20_000,
+        env: { ...process.env, INSTAR_TEST_PLATFORM_SPLIT: split } });
+      expect(result.status, result.stderr).toBe(0);
+      const rows = JSON.parse(result.stdout) as { file: string }[];
+      return rows.map(row => relative(process.cwd(), row.file)).sort();
+    };
+    const remote = await list(studio.flatMap(file => ['--exclude', file]));
+    const local = await list(studio);
+    expect(remote).toEqual(expected.filter(file => !studio.includes(file)));
+    expect(local).toEqual(studio);
+    expect([...remote, ...local].sort()).toEqual(expected);
+    // Equal-sign globs and CLI + environment exclusions must compose, too.
+    const globbed = await list(['--exclude=tests/preview/**', '--exclude=tests/e2e/**'], 'exclude-macos');
+    expect(globbed).toEqual(expected.filter(file => !macos.includes(file)
+      && !file.startsWith('tests/preview/') && !file.startsWith('tests/e2e/')));
+  });
+
   it('the shipped projects overlap ordinary files but serialize each heavy fixture in a fresh process', async () => {
     const root = mkdtempSync(join(process.cwd(), '.worker-limit-'));
     try {
