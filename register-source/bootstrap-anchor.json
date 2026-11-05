@@ -3,7 +3,7 @@
   "approvalBasis": "Repository replay publication pin; exact operator approval is recorded in PR/changelog history; replay has no entering-force authority.",
   "shape": "sha256:25ee29a3eac960ce783f87fe1cd329833c4643cab7cfa7195e44b09d363b688c",
   "documents": {
-    "docs/01-the-rules.md": "sha256:abac822a0fbcc392f2b0a30e8d3403639d1a3cac08e5c5697f4d9fe42f3579cf",
+    "docs/01-the-rules.md": "sha256:14241ee4d871d86563b119642911276953540c7bfd3abe1e1c33649af819f0ba",
     "docs/02-the-register.md": "sha256:9e229cfae1fb784736286f72b16124a461e473f93cbe0e284cd75f1e7c282db5",
     "docs/03-the-glossary.md": "sha256:68ca7a31f025c270a1b90ced1df965671c3e188df7076e6dde1c50d3c9f7cba0",
     "docs/07-the-declarations.md": "sha256:be690d1a07a73287d36b4e3dff9d927271c1b94e5d90611b33b215b69408734b",
@@ -543,6 +543,11 @@
     {
       "number": 120,
       "declarationHash": "sha256:b1eede22589d8e01165ba5ea03bc96d762171e5a2e6803dbf6455db755aa0456",
+      "owner": "part-three-bootstrap:operator-policy-prerequisite"
+    },
+    {
+      "number": 121,
+      "declarationHash": "sha256:9087f7484d21d2c91ada807b6787d5d3843ba92c2d2f1e1f48fb8162f9d999a9",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
