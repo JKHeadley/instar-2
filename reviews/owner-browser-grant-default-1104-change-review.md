@@ -23,6 +23,7 @@ Convergence: none
 Decision: owner-grant-1104-scope-only | approve scope only with zero cost, matching the reviewed contract and documentation, rather than the writer's usual scope-and-resources grant | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/owner-browser-grant-default-1104-repair-211857-PROGRESS.md
 Decision: owner-grant-1104-no-setup-question | leave the four fixed terminal questions alone and take the grant through the existing revise or setup request, because free-text role answers must not become account authority | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/owner-browser-grant-default-1104-repair-211857-PROGRESS.md
 Decision: owner-grant-1104-older-grants | never rewrite an existing grant; setup refuses different choices and tighten refuses added pages, so only a new operator revise changes it | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/owner-browser-grant-default-1104-repair-211857-PROGRESS.md
+Decision: owner-grant-1104-repair-record-only | Correct provenance and rule citations in this existing record because the independent reviewer found no behavioral regression; the checker excludes review-only subjects, so this record covers the editorial repair commits too | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/owner-browser-grant-default-1104-repair-211857-PROGRESS.md
 Prompt review: no prompt, parser or model dispatch change.
 
 ## Closing block
