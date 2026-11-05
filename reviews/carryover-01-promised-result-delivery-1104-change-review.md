@@ -20,6 +20,10 @@ Bug evidence: reproducer=tests/preview/journal-obligations.test.ts
 Hook bypass: none
 Convergence: none
 Prompt review: No prompt, parser, model acceptance or refusal change. The test replays recorded provider bytes through the existing conversation-session adapter; a constructed later-due declaration is prepended to exercise competing work.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged action-claim guidance requires evidence of an attempted avenue; the fixture verifies that instruction, not an expected model verdict.
+Prompt finding: 85544c20941f | protocol-literal | Unchanged durable-intake status reply tells the user that retained messages need not be resent; no phrase-trigger decision is added.
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged recall provenance instruction requires source labels and disclosure of unknown sources; ordering adds no model classification.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged deterministic empty-memory status text is asserted by its consumer test; no prompt answer is supplied by this change.
 Decision: CARRYOVER-01-DUE-ORDER | Select eligible work by durable deadline, stable on ties, preserving the existing single-step worker and requested-result doorway; leave the whole carryover row OPEN for live proof. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-01-promised-result-delivery-1104-PROGRESS.md
 
 simplestRobustRoute: Sort the existing eligible due-work list by its recorded slot. This is the simplest route; it preserves PromiseBeacon's deadline-directed dispatch without another queue, timer, store or notification. Existing admission, receipt and limit checks remain the start/end/floor guards. No unattended shipped-path completion is claimed.
