@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:0e52f72b1773bee61a6371488a6996fb929678014b86dda1aa6ad47053942eab
-Source commit: c8195e11ea3cf9570167824fbb5b50cf1f59ab1a
+Register generation: sha256:df96659440049dd9f30609b0ae2b887f27b3030535143bc365f3b1932ed7e1cb
+Source commit: 8d49872e2c8d1173d253087e6c33ba130c866046
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -179,6 +179,13 @@ An Instar agent does all the research, account management and operation its pers
 
 Check: An outbound check that holds a message giving the person any task other than a decision, a requested change or a credential, tested on both sides with paraphrases, including that a link to finished work passes. A live proof for each supported service: a fresh agent enables it through a real conversation, and the record shows the person did nothing but approve and supply credentials.
 Terms: term:surface
+
+## 121. Attributed Statements Trace to Their Source
+
+Any statement credited to a person, whether in a message, note, rule or memory, carries a pointer to the logged message it came from and that person's own words. The pointer is checked when the statement is written and again when it is cited or enforced. A heading or label written by the agent is never evidence of who said something. Without a source, the statement says "source unknown" or is labeled the agent's own, and it never becomes that person's rule. Later changes stay traceable back to the origin. This holds for every agent, channel and machine, and needs no purchased service.
+
+Check: Nothing checks this yet; the checks are being built. Owed: a check when a credited statement is written to memory, notes or rules, and another when it is sent, cited or enforced, each resolving the pointer to a logged message from that person and comparing the words, tested on both sides with paraphrases. Whether the words support the claim made from them is a judgment, held by a model or an independent review, not a script. The 1.x design is `docs/specs/attribution-paper-trail.md` in JKHeadley/instar, not yet merged. The 2.0 form of the pointer is not designed.
+Terms: (none)
 
 ## 13. Quantitative Claims Must Bind a Subject
 
