@@ -37,9 +37,18 @@ it('installed HTTP consumer refuses unsigned writes, persists acknowledgements, 
     const cookie = signed.headers.get('set-cookie')!.split(';')[0]!;
     const page = await (await fetch(`${url}/dashboard/attention`, { headers: { cookie } })).text();
     const csrf = /name="csrf" value="([a-f0-9]+)"/u.exec(page)![1]!;
+    const requestId = /name="requestId" value="([a-f0-9]+)"/u.exec(page)![1]!;
     expect((await request('/dashboard/attention', { title: 'bad csrf' }, cookie)).status).toBe(403);
-    const created = await request('/dashboard/attention', { title: 'Review <result>', csrf }, cookie);
-    expect(created.status).toBe(200); expect(await created.text()).toContain('Review &lt;result&gt;');
+    expect((await request('/dashboard/attention', { title: 'missing receipt', csrf }, cookie)).status).toBe(409);
+    expect(journal.view.attention).toBeUndefined();
+    const created = await request('/dashboard/attention', { title: 'Review <result>', csrf, requestId }, cookie);
+    expect(created.status).toBe(200); const createdPage = await created.text(); expect(createdPage).toContain('Review &lt;result&gt;');
+    expect((await request('/dashboard/attention', { title: 'Review <result>', csrf, requestId }, cookie)).status).toBe(200);
+    expect(journal.view.attention!.items).toHaveLength(1);
+    const freshId = /name="requestId" value="([a-f0-9]+)"/u.exec(createdPage)![1]!;
+    expect(freshId).not.toBe(requestId);
+    expect((await request('/dashboard/attention', { title: 'Review <result>', csrf, requestId: freshId }, cookie)).status).toBe(200);
+    expect(journal.view.attention!.items).toHaveLength(2);
     const item = journal.view.attention!.items[0]!;
     const ack = await request('/dashboard/attention', { id: item.id, revision: '1', status: 'done', csrf }, cookie);
     expect(ack.status).toBe(200); expect(await ack.text()).toContain('confirmation is pending');
@@ -47,7 +56,7 @@ it('installed HTTP consumer refuses unsigned writes, persists acknowledgements, 
     expect(journal.view.attention!.acknowledgements[0]!.lastOutcome).toBe('pending');
     // Lost owner cannot admit another operator mutation, and its old cookie conveys no new grant.
     admitted = false;
-    expect((await request('/dashboard/attention', { title: 'lost owner', csrf }, cookie)).status).toBe(409);
+    expect((await request('/dashboard/attention', { title: 'lost owner', csrf, requestId: 'f'.repeat(32) }, cookie)).status).toBe(409);
     // Real sealed bytes, real receipt, actual takeover routine. No hand-built state copy.
     up = true; now += 10000; await shipper.pump();
     const before = projectionDigest(journal.view); journal.close();

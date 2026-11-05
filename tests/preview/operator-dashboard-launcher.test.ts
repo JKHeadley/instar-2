@@ -138,12 +138,14 @@ globalThis.fetch = async (url, init) => String(url).startsWith('http://127.0.0.1
     expect(attentionPage.status).toBe(200);
     const attentionText = await attentionPage.text(), csrf = /name="csrf" value="([a-f0-9]+)"/u.exec(attentionText)?.[1];
     expect(csrf).toBeTruthy();
+    const requestId = /name="requestId" value="([a-f0-9]+)"/u.exec(attentionText)?.[1];
+    expect(requestId).toBeTruthy();
     const changeAttention = async fields => fetch(`${base}/dashboard/attention`, { method: 'POST',
       headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ csrf, ...fields }) });
     // Startup may still be finishing its authority checks when the listener announces itself.
     let createdText = '';
     for (let attempt = 0; attempt < 40 && !createdText.includes('Review the launch'); attempt++) {
-      const created = await changeAttention({ title: 'Review the launch' }); createdText = await created.text();
+      const created = await changeAttention({ title: 'Review the launch', requestId }); createdText = await created.text();
       if (created.status !== 200) await new Promise(done => setTimeout(done, 100));
     }
     expect(createdText).toContain('Review the launch');

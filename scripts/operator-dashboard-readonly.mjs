@@ -113,7 +113,9 @@ export async function handleReadOnly(dash, { method, path, body, cookie }) {
     if (form.get('csrf') !== csrf) return html(403, 'The form expired. Reload Attention.');
     const id = form.get('id'), title = form.get('title'), status = form.get('status'), revision = Number(form.get('revision'));
     try {
-      const receipt = attentionReceipt(sessionOf(cookie), [id, title, status, revision]);
+      const requestId = form.get('requestId');
+      if (!id && !/^[a-f0-9]{32}$/u.test(requestId ?? '')) throw Error('attention creation receipt required');
+      const receipt = attentionReceipt(sessionOf(cookie), [id, title, status, revision, requestId]);
       const result = id ? await dash.attention.acknowledge(id, status, revision, receipt) : await dash.attention.create(title, receipt);
       return html(200, attentionPage(dash.attention.list(), csrf, result.outcome === 'pending'
         ? 'Saved locally; confirmation is pending.' : result.outcome === 'saved' || result.outcome === 'delivered'
