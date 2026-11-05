@@ -1,8 +1,8 @@
 # Change review — retain the initial relationship carry baselines
 
 Subject base: e4eeff1a3d285f5e9d3923a69ccd1fd37091a88f
-Review state: frozen
-Reviewed content: sha256:e507dee889d905a62113bbc344e67920f2645da5f452076be4c4efd6162dafe0
+Review state: open
+Reviewed content: none
 Outcome: A person carried before the ordinary emitter has run can subsequently be forgotten, and the first refresh refuses a replacement predecessor. Establish all current relationship emit witnesses before publishing the initial carry, then retain its source genesis identity for refresh and replay. Row 40 remains OPEN for installed/live/two-runner acceptance; this is the bounded source repair requested by the independent review.
 Affected rules: purpose constraint 2 and least revelation; 31, 32, 34, 44, 49, 70, 74, 78, 83, 84, 95, 101, 102, 111, 113, 116, 117.
 Affected floors: secrets — existing disclosure grant, verified audience, redacted projection and encrypted journal remain the boundaries; spend cap — no added model calls or larger context budget; stop — carry admission and pre-append stop checks remain; no duplicate sends — relationship baselines are context records, request ownership remains source-first; durable intake — baseline witnesses must be accepted by the existing journal sink before publishing the snapshot.
@@ -31,3 +31,12 @@ Prompt review: No prompt wording, model parser or model routing change. Existing
 simplestRobustRoute: Record both baselines in the existing carry/emitter path and reuse the applier's existing lineage check. This is that route; no service, protocol, gate or capability restriction is added. The existing writer, disclosure, audience, stop and journal-byte boundaries remain the guards. No unattended live completion is claimed.
 80/20: Both reproduced source defects are addressed with focused boundary and retry evidence. Broader live acceptance remains on row 40 and is not claimed by this submission.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+
+Train-183 integration: this review is reopened because the combined constitution and generated register change its frozen subject. The original relationship source repair is retained unchanged; reviews/train-183-change-review.md submits the combined tree.
+
+Prompt finding: 4106b49fff07 | protocol-literal | Existing source-bound action claim protocol in journal.ts, retained unchanged; this change adds two frame kinds and view fields to journal.ts and touches no prompt literal; the test checks the protocol rather than a desired verdict.
+Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory display literal in journal.ts, retained unchanged, not an added semantic classification rule.
+Prompt finding: 85544c20941f | protocol-literal | Existing held-session notice literal in journal.ts, retained unchanged by this change (frame kinds and view fields only); the test checks the delivered notice, not a desired semantic answer.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing sourceLabel attribution instruction in journal.ts, retained unchanged; the regression checks delivered guidance, not a desired semantic answer.
+Deferral: generated/conversion.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
+Deferral: generated/register.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
