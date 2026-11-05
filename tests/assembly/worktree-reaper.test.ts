@@ -180,6 +180,37 @@ describe('reap — exec-time re-validation closes the enumerate→reclaim race',
       expect(result.raced).toHaveLength(allowed ? 0 : 1);
       if (!allowed) expect(result.evaluations[0]!.reason).toBe('reclaim-recheck-error');
     });
+  it.each([
+    ['checkout expires during merge', 100, 1000, 10101, false],
+    ['process census expires during merge', 1000, 100, 10101, false],
+    ['both remain valid at inclusive expiry', 100, 100, 10100, true],
+  ] as const)('%s', async (_name, checkoutLife, processLife, afterMerge, allowed) => {
+    let now = NOW;
+    let mergeCalls = 0;
+    const remove = vi.fn(async () => ({ removed: true as const }));
+    const current = observation([wt()], {
+      worktrees: inventory([wt()], { freshForMs: checkoutLife }),
+      processes: processes([proc()], { freshForMs: processLife }),
+    });
+    const result = await live({
+      now: () => now,
+      remove,
+      recheck: async () => current,
+      merged: async () => {
+        if (++mergeCalls === 2) now = afterMerge;
+        return true;
+      },
+    }).reap();
+    expect(mergeCalls).toBe(2);
+    expect(remove).toHaveBeenCalledTimes(allowed ? 1 : 0);
+    expect(result.reaped).toEqual(allowed ? ['/wt/a'] : []);
+    expect(result.raced).toEqual(allowed ? [] : [{
+      path: '/wt/a', reason: 'reclaim-recheck-error', evaluatedBranch: 'echo/feature',
+    }]);
+    expect(result.evaluations[0]).toMatchObject(allowed
+      ? { verdict: 'reap-eligible', reason: 'merged-clean-idle' }
+      : { verdict: 'keep', reason: 'reclaim-recheck-error' });
+  });
   it('main moved and un-merged it at recheck → KEEP', async () => {
     let calls = 0;
     const res = await live({ merged: async () => ++calls === 1 }).reap();

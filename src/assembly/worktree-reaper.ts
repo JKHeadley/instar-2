@@ -383,6 +383,10 @@ export function createWorktreeReaper(ports: WorktreeReaperPorts, config?: Partia
       // If so, the merge evidence is stale and must NOT authorize a delete.
       if (row.branch !== info.branch || row.head !== info.head) return 'raced-changed-since-eval';
       const again = await evaluate(row, current);
+      // Merge verification can outlast either observation; validate freshness after the await.
+      const now = ports.now();
+      if (!fresh(current.worktrees.sourceTime, current.worktrees.freshForMs, now)
+        || processCensusGap(current.processes, current.worktrees.machine, now) !== null) return 'reclaim-recheck-error';
       if (again.verdict === 'reap-eligible') return null;
       if (again.reason === 'in-use' || again.reason === 'owner-unknown') return 'raced-now-in-use';
       if (again.reason === 'uncommitted-changes' || again.reason === 'residue-only') return 'raced-now-dirty';
