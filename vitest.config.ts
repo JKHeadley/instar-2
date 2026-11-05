@@ -95,3 +95,11 @@ export default defineConfig({
     minWorkers: 1,
     maxWorkers: serialGate ? 1 : workerLimit,
     projects: [
+      { plugins: [projectCliExcludes], test: { ...shared, name: 'parallel', include, exclude: [...exclude, ...serialFixtureFiles],
+        sequence: { groupOrder: 0 } } },
+      ...serialFixtureFiles.map((file, index) => ({ plugins: [projectCliExcludes], test: { ...shared, name: file,
+        include: split === 'only-macos' && !macosOnly.includes(file) ? [] : [file], exclude,
+        sequence: { groupOrder: index + 1 } } })),
+    ],
+  },
+});
