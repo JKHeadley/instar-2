@@ -34,7 +34,7 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label groundin
 
 Decision: AQ88-r3-publication | Regenerate the existing source roster and capabilities from the pushed implementation; retain shape-only authority and the genuine native-certificate mismatch. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-host-offline-r3-1105-PROGRESS.md
 
-Publication: source 55a2bc90582cad0dfaca1535329aea6eb2789e88, generation sha256:0b53ad697d46030f486c5e777314a85edc196b12bbc21278247128378d942fa8; 297 entries, 118 rules, 34 terms, 48 warnings, 110 prerequisites. Replay is shape-only, never an activation. The native macOS certificate is unchanged and requires the Studio's real contract run.
+Publication: source 9bf6b4489dc93be35675b89234f15d76e6f99e0e, generation sha256:375081c2fc702a6226caaccf624ed3d2a2f935c0af6a3494da89c8f5045f0c90; 297 entries, 118 rules, 34 terms, 48 warnings, 110 prerequisites. Replay is shape-only, never an activation. The native macOS certificate is unchanged and requires the Studio's real contract run.
 
 Recovery refinement: independent custody read or consumption failure leaves the signed act pending and never stops the main owner loop. An already delivered journal acknowledgement is consumed on recovery without applying it again; the real passkey/owner test injects both failure boundaries.
 
