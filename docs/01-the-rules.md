@@ -344,8 +344,10 @@ weaker agent and is never told why.
 
 **Value — rationale for Rule 122.** Rules 23 and 82 say when to ask the person and how; Rule 120 says what their part is.
 None says what a warning owes them. In 1.x, on 2026-11-05, the app showed "Degraded" on every agent and "The agent says something
-is degraded." with nothing to tap, while all 13 reasons behind the word were internal and already handled. A status word that is
-true for a machine and useless to a person teaches them to ignore it, and the operator said he had repeated this many times.
+is degraded." with nothing to tap, while the 13 reasons behind the word on one agent were all internal notes. A status word that is
+true for a machine and useless to a person teaches them to ignore it. The operator: "I'm going to continue to repeat this many
+many many times: all notifications that imply that something is wrong or something needs to user should have an immediately
+actionable button or link or path" [source: telegram 134088/139023 2026-11-05].
 
 **Value — rationale for Rule 121.** Rule 89 says who a delivered message is really from, and Rule 58 logs what a
 model judged. Neither covers a later claim about what a person said, once that claim lives in a note or a memory. In 1.x
