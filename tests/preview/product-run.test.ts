@@ -5,6 +5,16 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 // @ts-expect-error Product operator entry is JavaScript.
 import { buildRunArgv } from '../../scripts/product-run.mjs';
+// @ts-expect-error Installer JavaScript: the standing trust record `instar2 setup` writes.
+import { configureTrust } from './trust-setup.mjs';
+// @ts-expect-error The runner's effect doorway and its empty default.
+import { DEFAULT_EFFECT_POLICY, currentEffectPolicy } from './effect-doorway.mjs';
+// @ts-expect-error The shipped tool-call effect admission.
+import { admitToolCallEffect } from './tool-admission.mjs';
+// @ts-expect-error The owner GitHub read tool's name.
+import { OWNER_BROWSER_TOOL } from './owner-browser-contract.mjs';
+// @ts-expect-error The root MCP reader.
+import { readRootMcp } from './tool-turn.mjs';
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 const save = (root: string, name: string, value: unknown) => writeFileSync(join(root, name), JSON.stringify(value));
@@ -22,6 +32,13 @@ function fixture() {
     authority: join(root, 'authority.json'), toolsActivation: join(root, 'tools.json'), sessionActivation: join(root, 'session.json') };
   save(root, 'harness-logins.json', { version: 1, logins: [login] });
   for (const name of ['profile', 'activation', 'authority', 'tools', 'session', 'yes']) save(root, `${name}.json`, { fixture: true });
+  // The standing trust `instar2 setup` records: one connected-account server with a listed read and a granted write.
+  configureTrust(root, 'setup', { source: 'terminal-setup:agent:fixture', custodian: 'local-installer:uid:fixture',
+    recovery: 'The installation owner can revise or revoke standing trust.', resourceLevelUsd: 0,
+    effects: [{ effect: 'tool:mcp', target: 'mcp__fakeacct__post_note', recovery: 'delete the note',
+      registration: { reversibility: 'reversible', consequence: 'data', costUsd: 0 } }],
+    mcp: { mcpServers: { fakeacct: { command: '/usr/bin/true' } }, reads: ['mcp__fakeacct__lookup'] },
+    role: { description: 'fixture', trust: 'fixture', accounts: [], channels: [] }, policySensitive: [] });
   writeFileSync(join(root, 'journal.encrypted'), 'fixture-only: never opened by argv builder');
   return { root, options, login };
 }
@@ -33,12 +50,50 @@ it('reconstructs every launcher flag from root records and documented limits', (
     '--activation-record', l.activation, '--authority-record', l.authority, '--operator-records', root,
     '--explicit-yes-installation', o['explicit-yes-installation'], '--review-repository', o['review-repository'],
     '--harness-user', '_instarharness', '--model', 'claude-opus-4-6', '--tools-activation', l.toolsActivation,
-    '--conversation-session', 'on', '--session-work-activation', l.sessionActivation,
+    '--conversation-session', 'on', '--session-work-activation', l.sessionActivation, '--effect-policy', join(root, 'effect-policy.json'),
     '--max-calls', '16', '--max-replies', '16', '--max-turns', '20', '--max-context-bytes', '32768']);
 });
 it.each(['run-config.json', 'model-setting.json', 'harness-logins.json', 'activation.json', 'authority.json', 'profile.json',
-  'tools.json', 'session.json', 'yes.json', 'journal.encrypted'])('refuses missing %s before launch', name => {
+  'tools.json', 'session.json', 'yes.json', 'journal.encrypted', 'effect-policy.json'])('refuses missing %s before launch', name => {
   const { root } = fixture(); unlinkSync(join(root, name)); expect(() => buildRunArgv(root)).toThrow(/Run refused:/);
+});
+it('carries the installed standing trust to the runner: recorded grants decide connected-account effects in a copy', () => {
+  const { root } = fixture();
+  const argv = buildRunArgv(root);
+  const policyPath = argv[argv.indexOf('--effect-policy') + 1];
+  expect(policyPath).toBe(join(root, 'effect-policy.json'));
+  // What the runner decides with (journal-agent.mjs: a policy is loaded only from --effect-policy, else the empty default).
+  const installed = currentEffectPolicy(() => readFileSync(policyPath, 'utf8'));
+  const mcpReads = readRootMcp(root).reads;
+  const decide = (effectPolicy: unknown, tool: string, input: unknown) =>
+    admitToolCallEffect(tool, input, { operations: [], effectPolicy, mcpReads }, 1000).admitted;
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')).otherShapes;
+  for (const row of [...recorded, { id: 'plain', raw: 'hello' }]) {
+    // Listed connector reads are ordinary work under either policy; the recorded grant admits the account write only
+    // when the installed file reaches the doorway; an ungranted write is refused under both.
+    expect(decide(DEFAULT_EFFECT_POLICY, 'mcp__fakeacct__lookup', { key: row.raw }), row.id).toBe(true);
+    expect(decide(installed, 'mcp__fakeacct__lookup', { key: row.raw }), row.id).toBe(true);
+    expect(decide(DEFAULT_EFFECT_POLICY, 'mcp__fakeacct__post_note', { text: row.raw }), row.id).toBe(false);
+    expect(decide(installed, 'mcp__fakeacct__post_note', { text: row.raw }), row.id).toBe(true);
+    expect(decide(installed, 'mcp__fakeacct__delete_all', { text: row.raw }), row.id).toBe(false);
+  }
+  // The owner GitHub read grant as the desk recorded it in a live root (INSTANCE-ONLY row 16): the same seam.
+  const ownerGithub = { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [],
+    registered: [{ effect: 'tool:mcp', target: OWNER_BROWSER_TOOL, consequence: 'data', reversibility: 'reversible', reach: 'agent', costUsd: 0, source: 'operator:read' }],
+    grants: [{ id: 'echo-owned-github-profile-read-1103', ownerBrowserPages: ['account-profile', 'account-repositories'], effect: 'tool:mcp',
+      target: OWNER_BROWSER_TOOL, approves: ['scope'], source: 'operator:read', custodian: 'owner', recovery: 'withdraw the grant' }] };
+  writeFileSync(policyPath, JSON.stringify(ownerGithub));
+  expect(decide(DEFAULT_EFFECT_POLICY, OWNER_BROWSER_TOOL, { page: 'account-profile' })).toBe(false);
+  expect(decide(currentEffectPolicy(() => readFileSync(policyPath, 'utf8')), OWNER_BROWSER_TOOL, { page: 'account-profile' })).toBe(true);
+  // Withdrawn (expired) grant, and a file that no longer decodes: nothing outward, including the listed read while unreadable.
+  writeFileSync(policyPath, JSON.stringify({ ...ownerGithub, grants: [{ ...ownerGithub.grants[0], expiresAt: 999 }] }));
+  expect(decide(currentEffectPolicy(() => readFileSync(policyPath, 'utf8')), OWNER_BROWSER_TOOL, { page: 'account-profile' })).toBe(false);
+  writeFileSync(policyPath, '{"type":"PreviewEffectPolicy"');
+  const unreadable = currentEffectPolicy(() => readFileSync(policyPath, 'utf8'));
+  expect(decide(unreadable, 'mcp__fakeacct__post_note', { text: 'x' })).toBe(false);
+  expect(decide(unreadable, 'mcp__fakeacct__lookup', { key: 'x' })).toBe(false);
+  // The argv builder reads a bounded record, never its meaning: a malformed file refuses launch plainly.
+  expect(() => buildRunArgv(root)).toThrow('standing trust policy is missing or unreadable');
 });
 it('uses only the root model, never an environment setting or activation hint', () => {
   const { root } = fixture(); save(root, 'activation.json', { model: 'claude-other' });
