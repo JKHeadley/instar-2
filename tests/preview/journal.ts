@@ -2349,7 +2349,10 @@ export function loopRevisits(view: JournalView): Map<number, number> {
 /** A commitment is open until a recorded closure, an operator forgetting, or its source's removal ends it. */
 export function commitmentOpen(view: JournalView, id: number): boolean {
   const note = view.commitments[id], source = note && view.turns.get(note.source);
-  return !!note && !!source && !view.closed.has(id) && !probeTurn(view, source) && !view.memory.some(change => change.mode === 'forget'
+  const inherited = note?.threadline && note.source.startsWith('threadline:')
+    && collaborationTopicForOperation(view.collaboration, note.source) !== null
+    && view.collaboration?.origins?.some(origin => origin.edge === note.threadline!.edge && origin.source === note.source);
+  return !!note && !view.closed.has(id) && (!!source && !probeTurn(view, source) || !!inherited) && !view.memory.some(change => change.mode === 'forget'
     && change.source === note.source && note.quote.includes(change.quote));
 }
 /** What an open commitment waits on now: a completed work step may have moved it onto the operator or an outside party. */
@@ -2535,7 +2538,13 @@ export function currentActionFacts(view: JournalView, now: number, operatorOnly:
     kind: 'effect', operation: redact(item.operation).text.slice(0, 160), topic: item.topic,
     source: item.source, subject: item.subject, state: item.state === 'prepared' ? 'prepared, outcome unknown' : 'tool returned, success not established',
   }));
-  const items = [...requests, ...effects];
+  const delegated = view.commitments.flatMap((note, id) => note.threadline ? [{
+    kind: 'delegated-work', operation: 'Threadline task', topic: String(note.threadline.topic ?? 'unbound'),
+    source: ref(note.source), subject: ref(note.threadline.edge),
+    state: view.closed.has(id) ? 'closed by recorded cause' : commitmentOpen(view, id)
+      ? 'open; awaiting external result delivery' : 'withdrawn from conversation context',
+  }] : []).slice(-32);
+  const items = [...requests, ...effects, ...delegated];
   const siblingWords = currentTopic === undefined ? undefined : currentSiblingWords(view, currentTopic,
     Math.max(0, 30000 - Buffer.byteLength(JSON.stringify(items))), zone);
   return { items, ...(siblingWords?.items.length ? { siblingWords } : {}), bounded: true,
@@ -2565,7 +2574,7 @@ function currentSiblingWords(view: JournalView, currentTopic: string, maxBytes: 
       ...excerpt(turn, turn.intent!) })).reverse();
   const promises = view.commitments.flatMap((note, id) => {
     const turn = view.turns.get(note.source);
-    if (note.in !== 'reply' || !turn || !eligible(turn)) return [];
+    if (note.threadline || note.in !== 'reply' || !turn || !eligible(turn)) return [];
     const state = view.closed.has(id) ? 'closed' : commitmentOpen(view, id) ? 'open' : 'withdrawn';
     return [{ kind: 'promise', ...origin(turn), id, state, ...excerpt(turn, note.quote) }];
   }).reverse();
@@ -6897,7 +6906,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const openFor = (through: number, limit: number) => journal.view.commitments
     .map((note, id) => ({ id, note, turn: journal.view.turns.get(note.source),
       due: note.agentPromise?.due ? dueState(note.agentPromise.due, ports.now()) !== 'upcoming' : dueSoon(note.quote) }))
-    .filter(item => !journal.view.closed.has(item.id) && item.turn !== undefined && item.turn.update <= through
+    .filter(item => !item.note.threadline && !journal.view.closed.has(item.id) && item.turn !== undefined && item.turn.update <= through
       && !affectedNote(item.note))
     .sort((a, b) => Number(b.due && !!b.note.agentPromise) - Number(a.due && !!a.note.agentPromise)
       || Number(b.due) - Number(a.due) || Number(!!b.note.agentPromise) - Number(!!a.note.agentPromise)
@@ -7454,7 +7463,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     for (const [id, note] of journal.view.commitments.entries()) {
       const source = journal.view.turns.get(note.source);
-      if (!source || source.update >= turn.update || affectedNote(note) || !relevant(`${note.quote} ${source.text}`)) continue;
+      if (note.threadline || !source || source.update >= turn.update || affectedNote(note) || !relevant(`${note.quote} ${source.text}`)) continue;
       groups[2]!.push({ kind: 'commitment', source: sourceOf(note.source), date: dated(source),
         from: note.in === 'reply' ? 'agent reply' : speakerOf(source), text: clean(redact(note.quote).text, true),
         status: journal.view.closed.has(id) ? 'closed by verified operator' : 'open' });

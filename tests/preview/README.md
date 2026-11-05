@@ -4710,3 +4710,12 @@ projection is likewise silent. The broader 1.x machine-specific monitoring
 producers are not represented as newly ported monitors by this composition.
 Historical 44 unresolved/101 unfinished files and five r3 failures remain
 unverified. No declaration or native certificate was altered to hide them.
+
+Nested Threadline commitments use their retained authenticated parent receipt,
+not a fabricated Telegram turn, for the open-obligation population. The verified
+operator's existing action-facts packet carries bounded opaque delegated-work
+state. Task questions are excluded from the quoted-utterance/summary-closure
+inventory: they are work records, not words the agent previously said. The seven
+historical summary/Jev/review/reply shapes are replayed through the ordinary
+worker with this packet. Missing delegation-owner evidence leaves health unknown;
+only actual checked recovery clears its condition.

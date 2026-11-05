@@ -87,6 +87,10 @@ Decision: AQ88-r4-owner-reference-refresh | Derive existing reference hashes fro
 
 Final health boundary: absence of the optional canonical delegation owner leaves prior conditions unknown; only an available ledger can report recovery. The real installed consumer test verifies no append/false DONE after owner absence. An additional physical lifecycle case checks cancellation after work returned, exact checked outcome retention, no second physical response and positive health closure. Its injected execution clock and charge limits remain unchanged; the physical test yields between synchronous phases so test-runner RPC receipts can be consumed.
 
+Nested source/consumer closure: a Threadline-origin commitment is open only while its actual parent receipt and canonical origin are retained. Open-obligation timing uses the local origin thread timestamp; no synthetic Telegram turn is created. Delegated tasks appear as bounded opaque work records in the verified operator's currentActionFacts. They are excluded from generic spoken-promise/own-word/summary-closure inventories, which would falsely label a task question as something the agent said. Seven recorded foreign shapes reach the ordinary worker with this exact packet, retaining the delegated obligation; non-operator context withholds the work records. Tests also retain compaction and the invalid-parent refusal.
+
+Decision: AQ88-r4-nested-provenance | Use authenticated parent receipts for nested open work and bounded work metadata for model awareness; never invent a turn or quoted utterance. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-production-composition-r4-1105-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: Use one recorded model boundary and existing journal reservations, and fixed reads through the existing private file API. Cache exact owner-issued requests in the existing operator store; verify passkey acts against the owner challenge on return. A batch-wide deadline bounds offline service waits.
