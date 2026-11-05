@@ -7,7 +7,7 @@ import { join, resolve, relative, isAbsolute } from 'node:path';
 import { homedir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { assertAgentPaths } from './agent-paths.mjs';
-import { hostResources, limitedFileArgv } from './resource-owner.mjs';
+import { hostResources, limitedFileArgv, LIMIT_SHELL, uidLimitQuery } from './resource-owner.mjs';
 
 /** Read native nonsecret preferences without following links or replacing malformed state. */
 function readInteractiveConfig(path) {
@@ -65,15 +65,28 @@ export function prepareSubscriptionInteractive(configDirectory, workingDirectory
   return changed || settingsChanged;
 }
 
+/** The finite transport runtime fits Linux's unchanged four-task headroom. A single
+ * V8 worker and a single libuv worker plus main and scheduler need four tasks;
+ * no inspector listener is needed. Unsupported Node options refuse startup,
+ * never trigger an unbounded fallback. Darwin's runtime settings are unchanged. */
+export function transportEnvironment(hostPlatform = process.platform) {
+  return { PATH: '/usr/bin:/bin', NODE_OPTIONS: '--max-old-space-size=256',
+    ...(hostPlatform === 'linux' ? {
+      NODE_OPTIONS: '--max-old-space-size=256 --v8-pool-size=1 --disable-sigusr1', UV_THREADPOOL_SIZE: '1',
+    } : {}) };
+}
+
 /** The transport child's own bounds: per-process handles, and user-ID process headroom. */
 const TRANSPORT_LIMITS = Object.freeze({ handleCount: 256, processCount: 4 });
-/** The user ID's current process count plus the transport headroom, or null when it cannot be read.
+/** The user ID's current kernel-accounted usage plus the unchanged transport headroom.
+ * Linux counts tasks (threads included); Darwin counts processes. A census is not a reservation.
+ * Returns null when it cannot be read.
  * Its subject is the user ID, not the transport's tree: it caps a fork burst, never the tree's size. */
 function transportProcessLimit() {
   const uid = typeof process.getuid === 'function' ? process.getuid() : null;
   if (uid === null || uid === 0) return null;
   let count = 0;
-  try { count = execFileSync('/bin/ps', ['-U', String(uid), '-o', 'pid='], { encoding: 'utf8', timeout: 2000, env: { PATH: '/usr/bin:/bin' },
+  try { count = execFileSync('/bin/ps', uidLimitQuery(uid), { encoding: 'utf8', timeout: 2000, env: { PATH: '/usr/bin:/bin' },
     stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(line => line.trim()).length; } catch { count = 0; }
   return count > 0 ? count + TRANSPORT_LIMITS.processCount : null;
 }
@@ -132,12 +145,15 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
     // bound: see resource-owner.mjs). Its V8 heap is capped through NODE_OPTIONS (argv is unchanged),
     // and its elapsed time and output by the bounds below. Its RSS is not held by any unprivileged
     // kernel limit on this host.
-    const env = { PATH: '/usr/bin:/bin', NODE_OPTIONS: '--max-old-space-size=256' };
+    const processLimit = transportProcessLimit();
+    // An unreadable or inapplicable UID fence is not permission to omit it.
+    if (processLimit === null) return null;
+    const env = transportEnvironment();
     // The request stays at argv[1] (the file shim's label), as the recorded transports read it.
     return { env, timeout: input.timeoutMs + 2000, argv: limitedFileArgv({ label: request, executable: process.execPath,
       args: [fileURLToPath(new URL('../src/assembly/telegram-bot-api-bridge.mjs', import.meta.url)), request],
       handles: TRANSPORT_LIMITS.handleCount, cpuSeconds: Math.ceil((input.timeoutMs + 2000) / 1000) + 1,
-      processLimit: transportProcessLimit(), env }) };
+      processLimit, env }) };
   };
   /** Exit codes the transport only ever produces BEFORE its network call, so nothing can have reached
    * the provider: the limit shim's own refusal (every `exit 125` in limit-exec.sh precedes its `exec`,
@@ -174,8 +190,10 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
   return Object.freeze({
     /** Sequential and waited on synchronously: short calls (identity, send, acknowledge). */
     invoke(input, credential) {
-      const { env, timeout, argv } = launch(input);
-      const child = spawnSync('/bin/sh', argv, { input: credential, encoding: 'utf8', timeout, maxBuffer: MAX_TRANSPORT_BYTES,
+      const prepared = launch(input);
+      if (prepared === null) return settle(125, '');
+      const { env, timeout, argv } = prepared;
+      const child = spawnSync(LIMIT_SHELL, argv, { input: credential, encoding: 'utf8', timeout, maxBuffer: MAX_TRANSPORT_BYTES,
         env, stdio: ['pipe', 'pipe', 'ignore'] });
       // Rule 26: an error label is no proof. Only a child that never got a process id sent nothing.
       if (child.error) return settle(null, '', !child.pid);
@@ -185,10 +203,12 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
      * long poll froze every concurrent launch's timers and exit events for its whole wait, so a
      * finished provider preflight was judged timed out (live 2026-09-29, cint-L4). */
     poll(input, credential) {
-      const { env, timeout, argv } = launch(input);
+      const prepared = launch(input);
+      if (prepared === null) return Promise.resolve(settle(125, ''));
+      const { env, timeout, argv } = prepared;
       return new Promise(resolve => {
         let child;
-        try { child = spawn('/bin/sh', argv, { env, stdio: ['pipe', 'pipe', 'ignore'] }); }
+        try { child = spawn(LIMIT_SHELL, argv, { env, stdio: ['pipe', 'pipe', 'ignore'] }); }
         catch { resolve(settle(null, '')); return; }
         let chunks = [], size = 0, failed = false;
         const fail = () => { failed = true; chunks = []; try { child.kill('SIGKILL'); } catch { /* already gone */ } };

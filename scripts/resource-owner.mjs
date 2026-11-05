@@ -15,6 +15,8 @@
 //     hard), inherited by every descendant, including one that leaves the group;
 //   - per user ID: RLIMIT_NPROC, lowered to the user's process count at launch plus
 //     the launch's process ceiling (subject: the user ID, reported as `uidProcesses`).
+//     On Linux this stricter kernel fence counts tasks, including threads; it is not
+//     a reservation, and unrelated UID activity can exhaust it before launch.
 // Enforced on observation (`sampled`): the tree's memory and process count against its
 // ceiling, and the aggregate; the tree's total handles are not observed (`unsupported`).
 //
@@ -99,10 +101,24 @@ const UNKNOWN = Symbol('unknown');
 // lowered, so no substitution forks under a lowered process limit (a count that rose
 // since it was read made that fork fail: a sent message read UNKNOWN). The shell's own variables (PWD, SHLVL, OLDPWD) are
 // removed by env(1), which execs in place, unless the caller supplied them.
+// Both supported hosts ship bash; dash's process-limit option is incompatible.
+// No fallback to an unbounded shell if this executable is absent.
+export const LIMIT_SHELL = '/bin/sh';
+const LIMIT_BACKEND = '/bin/bash';
+
+/** RLIMIT_NPROC counts Linux tasks (including threads), Darwin process rows.
+ * This is a usage observation, not a reservation or a per-tree bound. */
+export function uidLimitQuery(uid, hostPlatform = platform()) {
+  return hostPlatform === 'linux'
+    ? ['-U', String(uid), '-L', '-o', 'lwp='] : ['-U', String(uid), '-o', 'pid='];
+}
+
 const SHELL_VARIABLES = Object.freeze(['PWD', 'SHLVL', 'OLDPWD']);
-const LIMIT_SCRIPT = [
+const LIMIT_BODY = [
   'if [ "$5" = gate ]; then read -r go <&3 || exit 125; [ "$go" = go ] || exit 125; exec 3<&-; fi',
   'lim() {',
+  '  case "$2" in ""|*[!0-9]*) exit 125;; esac',
+  '  [ "$2" -ge 0 ] 2>/dev/null || exit 125',
   '  s=$(ulimit -S "$1") || exit 125',
   '  h=$(ulimit -H "$1") || exit 125',
   '  if [ "$s" = unlimited ] || [ "$s" -gt "$2" ]; then ulimit -S "$1" "$2" || exit 125; fi',
@@ -111,6 +127,13 @@ const LIMIT_SCRIPT = [
   'if [ -n "$1" ]; then lim -n "$1"; fi; if [ -n "$2" ]; then lim -t "$2"; fi; if [ -n "$3" ]; then lim -u "$3"; fi',
   'u=; for v in $4; do u="$u -u $v"; done; shift 5',
   'exec /usr/bin/env $u "$@"'].join('\n');
+
+// Keep the outer shell/file argv contract (request label at argv[1]). Exec in
+// place into the fixed primitive provider. -p prevents BASH_ENV, SHELLOPTS and
+// exported functions from replacing ulimit before the child fences are applied.
+// The executable check and primitive failures refuse before env/Node/network.
+const shellQuote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+const LIMIT_SCRIPT = `if [ ! -x ${LIMIT_BACKEND} ]; then exit 125; fi\nexec ${LIMIT_BACKEND} -p -c ${shellQuote(LIMIT_BODY)} instar-launch "$@"`;
 
 /** The same shim as a file, for a caller whose first argument is a fixed label (the Telegram bridge keeps
  * its request at argv[1]): the file drops the label, then runs LIMIT_SCRIPT unchanged. */
@@ -559,9 +582,10 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
   async function processLimit() {
     const uid = typeof process.getuid === 'function' ? process.getuid() : null;
     if (uid === null || uid === 0) return { state: 'unavailable', subject: null, limit: null };
-    const listed = pids(await query('/bin/ps', ['-U', String(uid), '-o', 'pid=']));
+    const listed = pids(await query('/bin/ps', uidLimitQuery(uid)));
     return listed === null || listed.length === 0 ? { state: 'unavailable', subject: null, limit: null }
-      : { state: 'hard', subject: `uid:${uid}`, limit: listed.length + ceilings.launch.processCount };
+      : { state: 'hard', subject: `uid:${uid}`, limit: listed.length + ceilings.launch.processCount,
+        unit: platform() === 'linux' ? 'tasks' : 'processes' };
   }
   /** This launch's live members in one census (recorded incarnations, group, ancestry and working
    * area); `null` when the census failed or was partial: absence is then unproven. */
@@ -645,7 +669,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     return new Promise(resolve => {
       let child;
       try {
-        child = spawn('/bin/sh', limitedArgv({ executable: input.executable, args: input.args, handles, cpuSeconds,
+        child = spawn(LIMIT_SHELL, limitedArgv({ executable: input.executable, args: input.args, handles, cpuSeconds,
           processLimit: limitValue, env: input.env, gated: true }), {
           cwd: input.cwd, env: { ...input.env, __CF_USER_TEXT_ENCODING: undefined, NODE_V8_COVERAGE: undefined },
           shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });
@@ -842,7 +866,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     }
   }
   async function observeInherited() {
-    const text = await query('/bin/sh', ['-c', 'ulimit -S -n; ulimit -H -n; ulimit -S -t; ulimit -H -t; ulimit -S -u; ulimit -H -u']);
+    const text = await query(LIMIT_BACKEND, ['-p', '-c', 'ulimit -S -n; ulimit -H -n; ulimit -S -t; ulimit -H -t; ulimit -S -u; ulimit -H -u']);
     const values = text?.trim().split('\n').map(v => v.trim() === 'unlimited' ? 'unlimited' : Number(v));
     if (!values || values.length !== 6 || values.some(v => v !== 'unlimited' && !Number.isSafeInteger(v))) {
       inherited = { state: 'unknown' }; return inherited;
