@@ -23,6 +23,8 @@ Prompt review: No model prompt, model-output parsing or judgment change; only th
 
 Decision: HPROBE-MINIMAL-1105 | Reuse only the proven stdout flush and real slow-reader regression, retaining existing refusal, identity and resource behavior. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/harness-probe-drain-minimal-1105-PROGRESS.md
 
+Decision: HPROBE-MINIMAL-PUBLISH-1105 | Regenerate the existing shape-only publication from committed source and reopen inherited frozen publication scopes through existing tools; no product behavior beyond the flush. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/harness-probe-drain-minimal-1105-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: drain the existing stream before its existing success exit. Start guards remain identity and probe syntax, end guards remain complete valid rows, and limit guards remain the existing timeout, buffer and authority boundaries. No new framework, retry or diagnostic is needed.
