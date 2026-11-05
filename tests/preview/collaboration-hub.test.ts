@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { openPreviewJournal, projectionDigest } from './journal.js';
 import { CollaborationSurfacer, collaborationEndpoint, type HubEffect, type HubOutcome } from './collaboration-hub.js';
 import { createNetwork } from '../transport/agent-fault-harness.js';
+import { openReplicaStore, createJournalShipper, localReplicaClient, adoptReceivedCopy } from './journal-replication.js';
 import { offerEnvelope } from '../../src/rungraph/index.js';
 
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -18,8 +19,8 @@ function fixture() {
   const sent: { id: string; effect: HubEffect }[] = [];
   const make = () => new CollaborationSurfacer({ state: () => journal.view.collaboration,
     append: r => journal.append(r), now: () => now, admitted: () => admitted && journal.view.stop === null && now < journal.view.expires,
-    replicated: async () => replicated, topics: () => [{ topicId: 42, topicName: 'Build' }],
-    effect: async (id, effect) => { sent.push({ id, effect }); return answer ?? { kind: 'accepted', id: effect.kind === 'topic' ? 77 : sent.length }; } });
+    replicated: async () => replicated, operator: receipt => receipt === 'verified-operator', topics: () => [{ topicId: 42, topicName: 'Build' }],
+    effect: async (id, effect) => { sent.push({ id, effect }); return answer ?? { kind: 'accepted', id: effect.kind === 'topic' ? (effect.name === 'Threadline' ? 77 : 100 + sent.length) : sent.length }; } });
   return { get journal() { return journal; }, make, sent, setAnswer: (v: HubOutcome | null) => { answer = v; },
     setOwner: (v: boolean) => { admitted = v; }, setTime: (v: number) => { now = v; }, setReplicated: (v: boolean) => { replicated = v; },
     restart() { const digest = projectionDigest(journal.view); journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
@@ -37,9 +38,9 @@ it('one silent hub survives restart; parent routing and housekeeping stay separa
     await Promise.all([hub.surface(cold), hub.surface({ ...cold, threadId: 'cold2' })]);
     expect(f.sent.filter(x => x.effect.kind === 'topic')).toHaveLength(1);
     expect(f.sent.filter(x => x.effect.kind === 'message').every(x => x.effect.kind === 'message' && x.effect.silent && x.effect.topic === 77)).toBe(true);
-    expect(await hub.bind({ targetTopicId: 42 })).toMatchObject({ ok: false, status: 409 });
-    expect(await hub.bind({ threadId: 'cold', targetTopicId: 99 })).toMatchObject({ ok: false, status: 400 });
-    expect(await hub.bind({ threadId: 'cold', targetTopicId: 42 })).toMatchObject({ ok: true, outcome: 'bound' });
+    expect(await hub.bind({ operatorReceipt: 'verified-operator', targetTopicId: 42 })).toMatchObject({ ok: false, status: 409 });
+    expect(await hub.bind({ operatorReceipt: 'verified-operator', threadId: 'cold', targetTopicId: 99 })).toMatchObject({ ok: false, status: 400 });
+    expect(await hub.bind({ operatorReceipt: 'verified-operator', threadId: 'cold', targetTopicId: 42 })).toMatchObject({ ok: true, outcome: 'bound' });
     hub = f.restart();
     expect(await hub.surface(cold)).toMatchObject({ reason: 'has-parent-topic' });
     await hub.content({ threadId: 'cold', messageId: 'result1', text: 'The build passed' });
@@ -66,7 +67,7 @@ it('unknown creation and sends never retry after restart; stopped, expired and u
   } finally { f.close(); }
   const g = fixture();
   try {
-    let bound = g.make(); await bound.surface(cold); await bound.bind({ threadId: 'cold', targetTopicId: 42 });
+    let bound = g.make(); await bound.surface(cold); await bound.bind({ operatorReceipt: 'verified-operator', threadId: 'cold', targetTopicId: 42 });
     g.setAnswer({ kind: 'unknown', reason: 'accepted but receipt lost' });
     expect(await bound.content({ threadId: 'cold', messageId: 'r1', text: 'Result' })).toMatchObject({ kind: 'unknown' });
     const count = g.sent.length; bound = g.restart();
@@ -118,4 +119,60 @@ it('boot recovers endpoint custody without redelivery, and prepared effects resu
     await recovered.drain(async () => ({ warrants: true, parentTopicId: null }));
     expect(recovered.list().inbox[0]?.handled).toBe(true); expect(f.sent).toHaveLength(2);
   } finally { f.close(); }
+});
+
+it('model command uncertainty passes through; verified open binds and preserves its original brief across restart', async () => {
+  const f = fixture(); let hub = f.make();
+  const input = { id: 'op1', text: 'open this', context: [], operatorReceipt: 'verified-operator' };
+  const rows = () => [{ direction: 'in' as const, text: 'Review please', remoteAgentName: 'peer', timestamp: '' },
+    { direction: 'out' as const, text: 'Reviewing', remoteAgentName: 'me', timestamp: '' }];
+  try {
+    await hub.surface(cold);
+    await expect(hub.bind({ threadId: 'cold', targetTopicId: 42, operatorReceipt: 'forged' })).rejects.toThrow(/operator/);
+    for (const raw of [null, 'uncertain', '{}', '{"intent":"open","confidence":0.84}']) {
+      expect(await hub.command(input, async () => raw, rows)).toEqual({ handled: false });
+      expect(hub.list().threads[0]?.parent).toBeNull();
+    }
+    const calls: string[] = [];
+    const result = await hub.command(input, async (_id, request) => {
+      calls.push(request.promptId);
+      return request.promptId === 'hub-intent-v1' ? '{"intent":"open","confidence":0.95}' : 'PURPOSE: Build review pending\n\nThe peer awaits review.';
+    }, rows);
+    expect(result.handled).toBe(true); expect(calls).toEqual(['hub-intent-v1', 'open-conversation-brief-v1']);
+    expect(f.sent.at(-1)?.effect).toMatchObject({ kind: 'message', text: 'The peer awaits review.', silent: false });
+    const count = f.sent.length; hub = f.restart();
+    await hub.open({ threadId: 'cold', topicName: 'Different title', summary: 'Different summary', operatorReceipt: 'verified-operator' });
+    expect(f.sent).toHaveLength(count);
+    expect(hub.list().openings[0]?.topicName).toBe('Build review pending');
+  } finally { f.close(); }
+});
+
+it('the actual encrypted replica/adoption path retains an unknown send and its binding on the successor', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'hub-handoff-')), path = join(root, 'journal.encrypted');
+  let journal = openPreviewJournal(path, key, genesis), owner = true, sends = 0;
+  const peerRoot = join(root, 'peer'), secret = 'hub-replication-fixture';
+  const store = openReplicaStore({ directory: join(peerRoot, 'replica'), conversation: 'hub', machine: 'peer', secret });
+  const shipper = createJournalShipper({ path, size: () => journal.size, peer: localReplicaClient(store), conversation: 'hub', machine: 'owner', secret,
+    epoch: () => 1, monotonic: () => 1000 });
+  const host = { state: () => journal.view.collaboration, append: (row: import('./collaboration-hub.js').HubRecord) => journal.append(row),
+    now: () => 1000, admitted: () => owner, operator: (receipt: string) => receipt === 'operator-proof',
+    topics: () => [{ topicId: 42, topicName: 'Build' }],
+    replicated: async () => { await shipper.pump(); return shipper.covers(shipper.token()); },
+    effect: async (_id: string, effect: HubEffect): Promise<HubOutcome> => {
+      sends++; return effect.kind === 'topic' ? { kind: 'accepted', id: 77 } : { kind: 'unknown', reason: 'platform receipt lost' };
+    } };
+  try {
+    const hub = new CollaborationSurfacer(host);
+    await hub.surface(cold); await hub.bind({ threadId: 'cold', targetTopicId: 42, operatorReceipt: 'operator-proof' });
+    await hub.content({ threadId: 'cold', messageId: 'result', text: 'Reviewed' });
+    await shipper.pump(); const before = projectionDigest(journal.view), count = sends;
+    owner = false; journal.close();
+    const successorPath = join(peerRoot, 'journal.encrypted');
+    const verify = (file: string) => { const read = openPreviewJournal(file, key, undefined, undefined, true); read.close(); };
+    expect(adoptReceivedCopy({ root: peerRoot, journalPath: successorPath, store, epoch: 2, seed: false, verify })).toMatchObject({ ok: true });
+    journal = openPreviewJournal(successorPath, key); expect(projectionDigest(journal.view)).toBe(before);
+    const successor = new CollaborationSurfacer({ ...host, admitted: () => true, replicated: async () => true });
+    expect(await successor.content({ threadId: 'cold', messageId: 'result', text: 'Reviewed' })).toMatchObject({ kind: 'unknown' });
+    expect(sends).toBe(count); expect(successor.list().threads[0]?.parent).toBe(42);
+  } finally { journal.close(); store.close(); rmSync(root, { recursive: true, force: true }); }
 });

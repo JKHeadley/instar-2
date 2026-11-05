@@ -3,9 +3,9 @@
 Subject base: b7389364305899f9d20baa11f51b073901342f6b
 Review state: open
 Reviewed content: none
-Outcome: Adapt the 1.x CollaborationSurfacer and explicit hub binding to the existing encrypted owner journal and authenticated Threadline endpoint. Row 88 remains OPEN until production composition, model contracts/capture, independent standby receipts and channel parity are complete.
+Outcome: Adapt the 1.x CollaborationSurfacer and explicit hub binding to the existing encrypted owner journal and authenticated Threadline endpoint. Row 88 remains OPEN until production composition, production model composition, independent standby receipts and channel parity are complete.
 Affected rules: 1, 4, 7, 14, 26, 28, 31, 32, 34, 39, 42, 44, 46, 49, 52, 53, 60, 63, 74, 79, 84, 87, 95, 101, 102, 105, 113, 116
-Affected floors: secrets — existing redactor and encrypted journal; spend — no model invocation; stop — current host admission before append or dispatch; no duplicate sends — durable dispatch fence and stable effect identity; intake — authenticated endpoint custody retained before hub processing.
+Affected floors: secrets — existing redactor and encrypted journal; spend — model requests require the injected existing reserved model doorway; portable tests make no provider calls; stop — current host admission before append or dispatch; no duplicate sends — durable dispatch fence and stable effect identity; intake — authenticated endpoint custody retained before hub processing.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
@@ -19,11 +19,13 @@ Bug class: unit
 Bug evidence: reproducer=tests/preview/collaboration-hub.test.ts
 Hook bypass: none
 Convergence: none
-Prompt review: No prompt, model parser or classifier was changed. The injected review result in transport tests is a deterministic routing fixture, not recorded model evidence.
+Prompt review: Exact 1.x hub-intent-v1 and open-conversation-brief-v1 prompt functions and parsers are adapted in hub-model-contract.ts. Request defaults remain .85 confidence, 6/400/40 classifier context, 200 tokens/4s and 10/800 brief context, 320 tokens/15s, 40-character name/600-character summary. Hash tests compare prompts against independently evaluated original source. hub-model-contract.test.ts uses explicit fixtures. hub-recorded.test.ts additionally hash-verifies six private actual isolated Studio provider outputs from carryover-88-hub-capture-1105-evidence and replays them through command/open/bind. No live-user acceptance or Telegram update IDs exist for those authored-corpus observations. The bounded production doorway remains required before acceptance.
 
 Decision: AQ88-hub-custody | Consume admitted envelopes through the existing authenticated endpoint without changing its receipts, lookup or execution authority. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-hub-binding-r2-1105-PROGRESS.md
 Decision: AQ88-hub-routing | Preserve one silent hub, parent content routing, explicit ambiguous-binding 409 and stable thread/notice identities in the existing encrypted journal. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-hub-binding-r2-1105-PROGRESS.md
 Decision: AQ88-hub-fence | Separate prepared intents from replicated dispatch fences so unsent prepared work can resume while unknown effects never repeat. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-hub-binding-r2-1105-PROGRESS.md
+
+Decision: AQ88-model-contract | Preserve the original prompt/parser/bounds and per-field fallback; require operator proof for bind/open, retain the chosen brief, and pass uncertain judgments through. The host must enforce call reservation/deadlines; six genuine isolated capture replays are supplied separately from deterministic neighbors; production composition remains outstanding. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-hub-binding-r2-1105-PROGRESS.md
 
 ## Closing block
 

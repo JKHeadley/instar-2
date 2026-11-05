@@ -3,6 +3,7 @@
  * Intent precedes dispatch; UNKNOWN is retained across restart, never retried.
  * All state is projected in the existing encrypted, replicated owner journal.
  */
+import { conversationBrief, hubIntentDecision, hubIntentRequest, briefRequest, type ConversationTurn, type HubModelRequest, type BriefMessageRow } from './hub-model-contract.js';
 import { redact } from '../../src/recall/redact.js';
 import { offerEnvelope, resultEnvelope, semanticDigest } from '../../src/rungraph/index.js';
 import type { DelegationLedger, AgentEndpoint, AgentTransportEnvelope, EndpointReceipt } from '../../src/rungraph/index.js';
@@ -18,7 +19,7 @@ export type HubOutcome = { kind: 'accepted'; id: number }
   | { kind: 'refused' | 'unknown'; reason: string };
 export interface HubAttempt { id: string; effect: HubEffect; dispatched?: true; outcome?: HubOutcome }
 export interface HubInbox { envelope: AgentTransportEnvelope; receipt: EndpointReceipt; handled: boolean }
-export interface HubState { threads: HubThread[]; attempts: HubAttempt[]; inbox: HubInbox[] }
+export interface HubState { threads: HubThread[]; attempts: HubAttempt[]; inbox: HubInbox[]; openings: { threadId: string; topicName: string; summary: string }[] }
 export type HubRecord = { kind: 'collaboration'; at: number } & (
   | { action: 'thread'; thread: HubThread }
   | { action: 'intent'; attempt: HubAttempt }
@@ -26,13 +27,14 @@ export type HubRecord = { kind: 'collaboration'; at: number } & (
   | { action: 'outcome'; id: string; outcome: HubOutcome }
   | { action: 'receive'; envelope: AgentTransportEnvelope; receipt: EndpointReceipt }
   | { action: 'handled'; key: string }
+  | { action: 'opening'; threadId: string; topicName: string; summary: string }
   | { action: 'bind'; threadId: string; topic: number });
 type NewHubRecord = HubRecord extends infer R ? R extends HubRecord ? Omit<R, 'at'> : never : never;
 const validText = (s: unknown, max: number): s is string => typeof s === 'string' && s.length > 0 && s.length <= max;
 const topicId = (n: unknown): n is number => Number.isSafeInteger(n) && Number(n) > 0;
 const need = (yes: unknown, reason: string) => { if (!yes) throw Error(`collaboration: ${reason}`); };
 export function applyHubRecord(previous: HubState | undefined, row: HubRecord): HubState {
-  const next: HubState = structuredClone(previous ?? { threads: [], attempts: [], inbox: [] });
+  const next: HubState = structuredClone({ threads: [], attempts: [], inbox: [], ...previous, openings: previous?.openings ?? [] });
   need(Number.isSafeInteger(row.at) && row.at >= 0, 'invalid time');
   if (row.action === 'receive') {
     const { envelope: e, receipt: r } = row;
@@ -67,6 +69,10 @@ export function applyHubRecord(previous: HubState | undefined, row: HubRecord): 
     need(o.kind === 'accepted' ? topicId(o.id)
       : (o.kind === 'refused' || o.kind === 'unknown') && validText(o.reason, 1024), 'invalid outcome');
     a!.outcome = o;
+  } else if (row.action === 'opening') {
+    need(next.threads.some(t => t.threadId === row.threadId) && !next.openings.some(o => o.threadId === row.threadId), 'opening missing thread or repeated');
+    need(validText(row.topicName, 40) && validText(row.summary, 600), 'invalid opening brief');
+    next.openings.push({ threadId: row.threadId, topicName: row.topicName, summary: row.summary });
   } else if (row.action === 'bind') {
     const t = next.threads.find(x => x.threadId === row.threadId);
     need(t && topicId(row.topic) && t.parent === null, 'thread missing or already bound');
@@ -84,6 +90,9 @@ export interface HubHost {
   replicated(): Promise<boolean>;
   /** Existing owner doorway rechecks secrets, scope, stop and current ownership. */
   effect(id: string, effect: HubEffect): Promise<HubOutcome>;
+  /** Revalidate an existing independently verified operator receipt. A string
+   * from the request itself is never authority. No fallback to agent standing. */
+  operator(receipt: string): boolean;
   topics(): readonly { topicId: number; topicName: string }[];
 }
 export type HubBindResult = { ok: true; threadId: string; topicId: number; outcome: 'bound' | 'pending' }
@@ -124,18 +133,18 @@ export class CollaborationSurfacer {
     need(this.host.admitted(), 'owner, stop or grant refused');
     this.host.append({ ...row, at: this.host.now() } as HubRecord);
   }
-  private async effect(id: string, effect: HubEffect): Promise<HubOutcome> {
+  private async effect(id: string, effect: HubEffect, permitted: () => boolean = () => true): Promise<HubOutcome> {
     const old = this.host.state()?.attempts.find(x => x.id === id);
     if (old) {
       need(JSON.stringify(old.effect) === JSON.stringify(effect), 'effect identity conflicts with recorded payload');
       if (old.outcome) return old.outcome;
       if (old.dispatched) return { kind: 'unknown', reason: 'dispatch interrupted; reconcile before any retry' };
     } else this.append({ kind: 'collaboration', action: 'intent', attempt: { id, effect } });
-    if (!await this.host.replicated() || !this.host.admitted())
+    if (!await this.host.replicated() || !this.host.admitted() || !permitted())
       return { kind: 'unknown', reason: 'prepared; durability or owner unavailable' };
     this.append({ kind: 'collaboration', action: 'dispatch', id });
     // Replicate the dispatch fence too. Losing it could let a successor replay.
-    if (!await this.host.replicated() || !this.host.admitted())
+    if (!await this.host.replicated() || !this.host.admitted() || !permitted())
       return { kind: 'unknown', reason: 'dispatch fence confirmation unavailable' };
     let outcome: HubOutcome;
     try { outcome = await this.host.effect(id, effect); }
@@ -148,7 +157,7 @@ export class CollaborationSurfacer {
     const out = await this.effect('hub:create', { kind: 'topic', name: 'Threadline' });
     return out.kind === 'accepted' ? out.id : null;
   }
-  list(): HubState { return structuredClone(this.host.state() ?? { threads: [], attempts: [], inbox: [] }); }
+  list(): HubState { const state = this.host.state(); return structuredClone({ threads: [], attempts: [], inbox: [], ...state, openings: state?.openings ?? [] }); }
   /** Only the wrapper below calls this, after the real endpoint admits the
    * authenticated envelope. It never supplies execution authority. */
   capture(envelope: AgentTransportEnvelope, receipt: EndpointReceipt): void {
@@ -214,15 +223,16 @@ export class CollaborationSurfacer {
       const topic = await this.hub();
       if (topic === null) return { kind: 'unknown' as const, reason: 'hub-unconfirmed' };
       const peer = input.peerName ? ` — ${readablePeer(input.peerName)}` : '';
-      return this.effect(`notice:${input.threadId}:${input.id}`, { kind: 'message', topic, silent: true,
+      return this.effect(`notice:${JSON.stringify([input.threadId, input.id])}`, { kind: 'message', topic, silent: true,
         text: `🧵 ${readableHubGist(input.title)}${peer}\n${readableHubGist(input.body)}` });
     });
   }
   /** Explicit API binding. Model-directed most-recent choice must resolve its
    * thread first; a scripted ambiguous request never silently chooses one. */
-  bind(args: { threadId?: string; targetTopicId: number }): Promise<HubBindResult> {
+  bind(args: { threadId?: string; targetTopicId: number; operatorReceipt: string }): Promise<HubBindResult> {
     return this.serial(async () => {
       need(this.host.admitted(), 'owner, stop or grant refused');
+      need(this.host.operator(args.operatorReceipt), 'verified operator required');
       const mru = this.mostRecentUnbound();
       if (!args.threadId && mru.ambiguous) return { ok: false, status: 409, error: 'More than one unbound conversation — specify threadId' };
       const thread = args.threadId ? this.list().threads.find(t => t.threadId === args.threadId) : mru.record;
@@ -234,13 +244,62 @@ export class CollaborationSurfacer {
       return { ok: true, threadId: thread.threadId, topicId: args.targetTopicId, outcome: durable ? 'bound' : 'pending' };
     });
   }
+  /** The caller supplies its existing bounded/reserved model doorway. Null,
+   * unavailable or malformed judgments leave the user's message unconsumed. */
+  async command(input: { text: string; context: ConversationTurn[]; operatorReceipt: string; id: string },
+    model: (id: string, request: HubModelRequest) => Promise<string | null>,
+    messages: (threadId: string) => BriefMessageRow[]) {
+    if (!this.host.admitted() || !this.host.operator(input.operatorReceipt)) return { handled: false as const };
+    const prepared = hubIntentRequest(input.text, input.context, [...this.host.topics()]);
+    let raw: string | null;
+    try { raw = await model(`classify:${input.id}`, prepared.request); } catch { raw = null; }
+    const command = hubIntentDecision(raw, prepared.topics);
+    if (!command || !this.host.admitted() || !this.host.operator(input.operatorReceipt)) return { handled: false as const };
+    // 1.x model-interpreted "this" selects most-recent; explicit API bind keeps
+    // its 409 above. Snapshot before an awaited brief to avoid a moving target.
+    const thread = this.mostRecentUnbound().record;
+    if (!thread) return { handled: false as const };
+    if (command.action === 'tie') {
+      const result = await this.bind({ threadId: thread.threadId, targetTopicId: command.targetTopicId, operatorReceipt: input.operatorReceipt });
+      return { handled: result.ok, result };
+    }
+    const rows = messages(thread.threadId);
+    let briefRaw: string | null = null;
+    if (rows.length >= 2 && !this.list().openings.some(o => o.threadId === thread.threadId)) {
+      try { briefRaw = await model(`brief:${input.id}`, briefRequest(rows)); } catch { /* original template fallback */ }
+    }
+    const brief = conversationBrief({ threadId: thread.threadId, conversation: { remoteAgent: thread.peerName }, messages: rows, raw: briefRaw });
+    const result = await this.open({ threadId: thread.threadId, operatorReceipt: input.operatorReceipt, ...brief });
+    return { handled: result.ok, result };
+  }
+  open(args: { threadId: string; operatorReceipt: string; topicName: string; summary: string }): Promise<HubBindResult> {
+    return this.serial(async () => {
+      need(this.host.admitted() && this.host.operator(args.operatorReceipt), 'verified operator and owner required');
+      const thread = this.list().threads.find(t => t.threadId === args.threadId);
+      if (!thread) return { ok: false, status: 404, error: 'Conversation not found' };
+      let opening = this.list().openings.find(o => o.threadId === args.threadId);
+      if (!opening) {
+        if (thread.parent !== null) return { ok: false, status: 409, error: 'Conversation already bound' };
+        opening = { threadId: args.threadId, topicName: redact(args.topicName).text, summary: redact(args.summary).text };
+        this.append({ kind: 'collaboration', action: 'opening', ...opening });
+      }
+      const topic = await this.effect(`open:${args.threadId}`, { kind: 'topic', name: opening.topicName }, () => this.host.operator(args.operatorReceipt));
+      if (topic.kind !== 'accepted') return { ok: false, status: 503, error: 'Topic creation unconfirmed; do not repeat outside reconciliation' };
+      need(this.host.operator(args.operatorReceipt), 'operator receipt expired');
+      if (thread.parent !== null && thread.parent !== topic.id) return { ok: false, status: 409, error: 'Conversation already bound elsewhere' };
+      if (thread.parent === null) this.append({ kind: 'collaboration', action: 'bind', threadId: args.threadId, topic: topic.id });
+      if (!await this.host.replicated()) return { ok: true, threadId: args.threadId, topicId: topic.id, outcome: 'pending' };
+      const intro = await this.effect(`intro:${args.threadId}`, { kind: 'message', topic: topic.id, text: opening.summary, silent: false }, () => this.host.operator(args.operatorReceipt));
+      return { ok: true, threadId: args.threadId, topicId: topic.id, outcome: intro.kind === 'accepted' ? 'bound' : 'pending' };
+    });
+  }
   /** Bound content uses the parent's existing route. Housekeeping never calls
    * this path, and a repeated message key never repeats an uncertain send. */
   content(input: { threadId: string; messageId: string; text: string }) {
     return this.serial(async () => {
       const thread = this.list().threads.find(t => t.threadId === input.threadId);
       if (!thread || thread.parent === null) return { kind: 'refused' as const, reason: 'No bound parent' };
-      return this.effect(`content:${input.threadId}:${input.messageId}`, { kind: 'message', topic: thread.parent,
+      return this.effect(`content:${JSON.stringify([input.threadId, input.messageId])}`, { kind: 'message', topic: thread.parent,
         silent: false, text: redact(input.text).text.slice(0, 4000) });
     });
   }

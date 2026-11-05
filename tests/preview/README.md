@@ -4599,3 +4599,19 @@ Its injected judgments and effect receipts are deterministic fixtures, not live
 model or Telegram evidence. Production composition, model capture/contract replay,
 independent standby receipts, commitment binding and complete channel parity are
 tracked by row 88 and the builder report; this component does not certify them.
+
+`hub-model-contract.ts` carries the original 1.x prompt functions and parser
+semantics with their tuned request bounds. `CollaborationSurfacer.command`
+consumes those contracts through a supplied reserved model doorway and verifies
+operator standing before binding. `open` retains its first brief and creation
+identity so restart cannot create another topic or replace the chosen brief.
+The request's timeout/token limits are a host contract, not a claim that an
+unwired callback enforces spend or time. The deterministic tests are not genuine
+model-output recordings. Physical topic creation, production Threadline/model
+composition, commitment projection and independent standby receipts remain open.
+
+`hub-recorded.test.ts` replays six exact isolated Studio captures through the
+binding consumer. Set `INSTAR_HUB_CAPTURE_ROOT` to the private capture evidence
+directory (with its `repaired/` child). Without that directory the test visibly
+skips; a skipped run is not model evidence. Inputs/outputs stay private, hashes
+are committed. The captures have no live-user Telegram update IDs.
