@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createProductUpdater } from '../../scripts/update-product.mjs';
+import { observeUpdateBound } from '../../scripts/update-runner.mjs';
 import { initializeUpdateRuntime } from '../../scripts/update.mjs';
 import { observeUpdateBoot, drainUpdateRestart } from '../../scripts/update-runner.mjs';
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
@@ -2947,6 +2948,7 @@ async function main() {
     proofRecords = readProofs(proofsPath).proofs;
     const supervisors = { replyReview: true, summaryReview: true, stepCheck: stepCheckEnabled };
     proofPorts = { now: wallNow, liveView: () => journal.view, boundBot: Number(g.bot), supervisors, storeAgreements,
+      updateBound: () => observeUpdateBound(root, updateController, hostResources.snapshot()),
       durableView: () => { const copy = openJournal(journalPath, key(), undefined, undefined, true); try { return copy.view; } finally { copy.close(); } },
       botIdentity: () => {
         try {

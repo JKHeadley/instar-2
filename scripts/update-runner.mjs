@@ -2,6 +2,29 @@
 // A request is not health evidence. Healthy means this launch completed a real channel poll.
 import { installedUpdate, readUpdateRuntime, writeUpdateRuntime } from './update.mjs';
 import { UpdateRestartHandshake } from './update-handshake.mjs';
+// Read the real controller and a fresh transaction replay from outside the
+// updater's decisions. Missing/corrupt evidence is unknown, never a green label.
+export function observeUpdateBound(root, controller, resources) {
+  if (!controller) return null;
+  const u = controller.updater, saved = readUpdateRuntime(root).updater;
+  if (!saved) return null;
+  const failures = saved.failureState?.failures ?? [];
+  if (!Array.isArray(failures) || (!saved.lastCheck && !failures.length)) return null;
+  return {
+    failures: failures.length, lastFailureAt: failures.at(-1)?.at ?? null,
+    pausedAt: saved.failureState?.pausedAt ?? null,
+    nextAttemptAt: saved.nextAttemptAt, lastCheck: saved.lastCheck,
+    pressureMatches: JSON.stringify(saved.failureState ?? null) === JSON.stringify(u.failureState ?? null)
+      && saved.nextAttemptAt === u.nextAttemptAt,
+    stopped: u.stopped === true,
+    timers: [u.interval, u.applyTimer, u.deferralTimer, u.batchedRestartTimer].filter(Boolean).length,
+    intervalMinutes: u.config.checkIntervalMinutes,
+    resourceAllocation: resources.allocation.state,
+    activeLaunches: resources.active.length, launchCeiling: resources.ceilings.aggregate.launches,
+    answerReserve: resources.ceilings.reserveLaunches,
+    maintenanceLaunches: resources.active.filter(row => row.work === 'maintenance').length,
+  };
+}
 export function observeUpdateBoot(root, { version, launch, healthy, pid = process.pid }) {
   if (!healthy) return { kind: 'not-healthy' };
   const handshake = new UpdateRestartHandshake(root);

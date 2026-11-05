@@ -149,5 +149,47 @@
       116
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "update.periodic-bound",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-update-bound",
+      "cadence": 60000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "none",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      26,
+      43,
+      55,
+      60,
+      61
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "fixture",
+          "id": "PREVIEW-UPDATE-BOUND",
+          "stage": "build"
+        },
+        "portion": "The due-proof runner reads the actual updater timers, fresh durable failure pressure and shared resource admission; missing evidence is unknown and broken bounds fail.",
+        "remainder": "Live installed evidence and independent review remain required; this does not prove standalone resource admission or candidate health."
+      }
+    ]
   }
 ]

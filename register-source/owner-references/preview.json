@@ -159,7 +159,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/proofs.test.ts",
-        "hash": "sha256:b84d1410fd6f663997907d804dd2a01c364a6d3320bc98d22dcad48ed34f72c8"
+        "hash": "sha256:45a08e4a6db93c5b4a88278870c47e65486fa6505c18da5cf304f7375cbfab66"
       }
     },
     {
@@ -177,9 +177,27 @@
         "path": "tests/preview/update-runtime.test.ts",
         "hash": "sha256:fc952d39d5ef575961385f6acdf454bb49068173b51e76a791c659bfff7c29e1"
       }
+    },
+    {
+      "id": "PREVIEW-UPDATE-BOUND",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/update-bound.test.ts",
+        "hash": "sha256:2d76399cce28150d58cf78004e7e570fea0c6113b7db307e289e785e3a2246c8"
+      }
     }
   ],
-  "probes": [],
+  "probes": [
+    {
+      "id": "P9-PREVIEW-update-bound",
+      "cadence": 60000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/update-bound.test.ts",
+        "hash": "sha256:2d76399cce28150d58cf78004e7e570fea0c6113b7db307e289e785e3a2246c8"
+      }
+    }
+  ],
   "decoders": [],
   "documents": [],
   "captures": [

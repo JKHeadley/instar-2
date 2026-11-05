@@ -220,3 +220,22 @@ admission, the periodic service needs its actual registered critical-outcome bou
 and live probe, and unresolved dynamic/nested consumer domains need owning-row review.
 The isolated process proof, independent Astra compliance review and live installed
 proof are distinct evidence tiers; only the first is supplied by this test.
+
+## Periodic bound observation
+
+The existing due-proof runner executes `P9-PREVIEW-update-bound` at a one-minute
+cadence (two-minute evidence window), using `observeUpdateBound` to replay the
+update transaction and inspect the actual controller timers and shared resource
+owner. It checks durable pressure against the running controller, the retained
+three-failure pause, retry delay, one-to-1440-minute check cadence, stopped timers,
+Six allocation attachment and the maintenance answer reserve. Missing, malformed
+or never-attempted evidence is unknown; a violated predicate fails. The normal
+proof log retains both results. It performs no canary install, model call or send.
+
+`update-bound.test.ts` exercises actual transaction writes, failure/backoff and
+controller recreation, including corrupted input and deliberately broken timer
+and capacity observations. These are build tests; the resource observations in
+the predicate tests are controlled inputs. They do not prove a live installation
+or independently authorize a standalone CLI process. The periodic feature's
+unbounded declaration stays visible until the complete enforcement composition
+is established.

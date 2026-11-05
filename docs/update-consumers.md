@@ -10,8 +10,8 @@ It finds 152 calls, 118 literal reads with 82 distinct literal read keys, and 93
 including writes and same-file literal constants. All 77 predecessor keys are present.
 The first use and count below retain repeated consumers rather than silently deduplicating
 coverage. This is a finite syntactic inventory, not complete semantic enumeration.
-Aliases across functions/modules, reflection, plugin code, object-block nested fields,
-computed paths and generic wrappers still need owner review. No claim of full parity
+The ten computed call sites and named object blocks have the owner review below.
+Aliases across functions/modules, reflection and plugin code remain outside this scan. No claim of full parity
 follows from a similarly named 2.x feature.
 
 ## Owners and dispositions
@@ -144,15 +144,53 @@ its positive/negative tests exercise real disk changes and actual consumers.
 | `updates.autoApply` | `src/core/AutoUpdater.ts:428` (get) | 2 | update |
 | `updates.restartImmediately` | `src/core/AutoUpdater.ts:433` (get) | 1 | update |
 
-## Computed-path limits
+## Computed-path owner review
 
-- `server.ts:6024`: `createLeaseFlapSwitchGetter` supplies `configPath`; belongs to ownership rows 25/28/74. Its wrapper's domain must be reviewed, not guessed from this call.
-- `server.ts:24656`: `buildCoherenceAdvert` supplies live keys from its manifest; belongs to row 28. Advertising configuration is not proof of runtime state.
-- `server.ts:30321`: guarded rollout `STAGE_CONFIG_PATH` write; protected row 74, not a free settings writer.
-- `CommitmentTracker.ts:1722,1790`: persisted commitment chooses `configPath` and expected value. This is data-dependent and cannot be exhaustively enumerated from source; rows 01/19 must bind mutation to original authority.
-- `AgentServer.ts:8765`: generic configuration write callback; authority classification depends on the actual requested path.
-- `routes.ts:32246–32247,36177–36178`: `actionClaim.${leaf}` and `messaging.actionClaim.${leaf}` wrappers, rows 04/33. A literal-key scan cannot cover their leaf domains.
-- Whole-object reads (especially intelligence, jobs, machineMaintenance, messaging, messageOrigin, subscriptionPool, threadline, watchdog and sessionPool) include nested fields beyond these 93 keys. The group dispositions apply to those blocks, but do not certify every nested consumer.
+These are the ten computed call sites from the pinned scan above. Each row follows
+its caller into the real path producer. Read-side observation is not mutation authority.
+No entry is silently classified as superseded by a similarly named 2.x component.
+
+| Call site | Actual path domain and source | Owner, authority and 2.x disposition |
+| --- | --- | --- |
+| `server.ts:6024` get | `leaseLiveness.ts:72–84` closes `name` to `liveness` and `unconfirmedWriteAlert`, producing `multiMachine.leaseFlapFix.{name}`. Both default true and are reread per use. | Rows 25/28/74, lease admission and observation. `src/transport/authority.ts` owns the typed lease; its fence is not a mutable switch. The 1.x lease-flap wrapper is absent here; importing a switch alone would bypass rather than carry that feature. |
+| `server.ts:24656` get | `machineCoherenceAdvert.ts` uses `machineCoherenceManifest.ts:392–460`. Live branches read `intelligence.selfActionGovernor.emergencyDisable`, the two class-mode entries, and `multiMachine.sessionPool` (`stage`). Class mode prefers the actual governor runtime callback. `exactlyOnceIngress` reads its explicit setting from the boot block, then live pool stage; the manifest's live label alone does not mean every field is live. Other manifest entries use boot data. | Row 28 advert, rows 22/49/50 governor, row 74 pool. `production-installation.ts` and `src/transport/` own installed identity/fences; no advert value grants them. The 1.x advert/controller consumer is absent and remains an explicit dependency. |
+| `server.ts:30321` set | `guardMod.STAGE_CONFIG_PATH` is `multiMachine.sessionPool.stage`; `StageAdvancer` supplies `STAGE_WRITE_TOKEN`, fresh proof and current build identity. | Row 74 owns rollout admission. Do not turn this token-protected write into a generic runtime setting or infer a stage from settings bytes. |
+| `CommitmentTracker.ts:1722` get | `verifyConfigChange` reads the persisted commitment's `configPath` and compares `configExpectedValue` by deep equality. The domain is data-dependent, not a finite set of source literals. | Rows 01/19 own commitment evidence. 2.x `tests/preview/obligations.ts` tracks commitments; it has no equivalent arbitrary config-change verifier. Original authorization and safe field ownership must be retained by that carryover. |
+| `CommitmentTracker.ts:1790` set | `attemptAutoCorrection` writes the same persisted path/value, then calls `verifyConfigChange` and records correction history. Missing path/value refuses. | Rows 01/19. A stored expected value is not independent permission to change credentials, caps, grants or installation identity. No generic writer is added here. |
+| `AgentServer.ts:8765` set | `MaturationLadderService.ts:595–650` calls the callback for `entry.start.set`, a rung's `advance.set`, guarded restoration of `move.old`, and `maturation.ladder.holds`. It checks standard risk, development-agent status, coherence-critical keys, fresh prior values and post-write equality; reversion checks the exact prior move. | Rule 72 / row 45 rollout owner. `src/register/workflow.ts` owns governed promotion, not this 1.x maturation registry. The callback's domain is registry/data-dependent; a config-only imitation cannot replace its review and audit. |
+| `routes.ts:32246` get | Canonical `actionClaim.${leaf}` in `registerUnifiedFutureClaims`: `enabled`, `slack.enabled`, `slack.dryRun`, `perTopicCap`, `expiresHours`. | Rows 01/04/33. Commitment registration also requires conversation binding; the 2.x obligation owner is not a generic settings reader. Activation/binding stay protected; safe cap/expiry tuning depends on the actual carried registration consumer. |
+| `routes.ts:32247` get | Same five leaves under legacy `messaging.actionClaim.${leaf}`, only when the canonical result is nullish. A real adapter-array `messaging` has no such object property. | Same owners and dependency. Preserve canonical-over-legacy precedence if the owning feature adopts it; do not replace the adapter array with a settings object. |
+| `routes.ts:36177` get | Canonical wrapper in `/action-claim/observe`: the same five leaves. Parallel activity is recorded before the enable/registration decision; conversation bind, shared arbiter, topic cap and expiry still govern registration. | Rows 01/04/33/38. `journal-agent.mjs` and `obligations.ts` are the current foundations; the old HTTP route and its live wrapper are absent. No model-facing policy is changed by this mapping. |
+| `routes.ts:36178` get | Legacy nullish fallback for that route, with the same object-versus-array limit. | Same dependency; legacy configuration is never a new grant. |
+
+## Nested block ownership
+
+The source-level block review follows the read into its receiving owner rather than
+calling every key in an object mutable. These are owner-domain conclusions, not an
+exhaustive enumeration of arbitrary user-defined keys or plugins.
+
+| Read block | Actual receiving owner / consumed region | Disposition |
+| --- | --- | --- |
+| `intelligence` | `server.ts:8448` Jev job-completion audit; the other callbacks pass the block to Jev signal shadow, correction shadow, circles shadow, machine-load assessment and memory picker. Each chooses its named sub-block and reads secrets separately. | Rows 32/43/55/57. These are separate model-call, retention and rollout owners. Current 2.x journal learning/supervision is not proof that their tunings are equivalent. No whole-block refresh that could change spend or a model decision is added. |
+| `jobs` | `AgentServer.ts:6101` passes live jobs to the script-triage handler. | Rows 19/57/79. Scheduled manifests exist, but script-triage configuration is a distinct consumer dependency. |
+| `machineMaintenance`, `.wedgeRestart`, `.browserCare` | `server.ts:24850,24928` feeds `normalizeSettings`; `24905` feeds `normalizeWedgeSettings`; `24960` feeds `normalizeBrowserCare`. The services own host drains, OS restart/canary checks and browser lifecycle. | Rows 02/11/23/100. Host watchdog presence is not ownership of these services or their effect permissions. No updater setting can authorize host reboot or browser termination. |
+| `monitoring.watchdog` | `server.ts:13003` supplies `stuckCommandSec` and `hardCeilingSec` to `SessionWatchdog`; construction still depends on boot `enabled`. | Rows 02/23. 2.x host-watch and resource-owner have their own enforced ceilings. Replacing them with mutable 1.x timeout values would weaken their owner; tuning needs that owner's adaptation and tests. |
+| `multiMachine.reconcile` | `ReplicatedStoreReconciler` consumes the block at `server.ts:14370`. | Rows 25/28. 2.x facts/transport own replicated state; the 1.x reconciler policy is an absent-feature dependency. |
+| `multiMachine.sessionPool` | `server.ts:28851,29894,29900` reads enabled/stage for routing; the coherence advert additionally reads stage. | Row 74. Pool activation, routing and stage proofs cannot be granted through runtime-settings. The authoritative 2.x transport and ownership admission remain unchanged. |
+| `subscriptionPool` | `server.ts:22516` supplies `WallRescueConfigView` to `UsageWallRescue`; account resolution and swaps use separate recorded account custody. | Rows 29/30/54/55. Existing 2.x login-pool selection does not implement this wall-rescue tuning. Credentials and quota/cap authority remain excluded. |
+| `threadline` | `server.ts:12375` selects only `inboundIdLedger`, with the boot sub-block as fallback. | Rows 70/72/76. Durable intake and duplicate suppression are floors; an absent 1.x ledger controller is not replaced by a live off switch in 2.x transport. |
+| `messageOrigin`, `messaging` | Origin configuration and adapter-specific origin settings, including `server.ts:29937` selecting the Telegram array entry's `config.messageOrigin` and forwarding-to-holder policy. | Rows 59/63/67–73. Sender identity, provenance and holder routing remain with custody/transport. Do not expose the whole adapter block to runtime mutation. |
+| `toneGate`, `responseReview.conversationalContext` | `server.ts:20877` resolves tone policy; `21075` supplies enabled, message/character limits and other context fields to the response-review owner. Development rollout is read separately. | Rows 33/34/43/45. Safe display/context tuning still changes what a model sees and needs recorded-shape replay in that owner's change. It is not implemented by this host-update unit. |
+| `intelligence.selfActionGovernor.classes`, `monitoring.standDown` | Class-specific governor modes and stand-down enabled/dry-run decisions. | Rows 22/49/50 and 25/74. Resource and stop floors are not freely mutable; operator policy and runtime demotion must be distinguished. |
+
+The extant non-authority consumers owned by this update feature remain the updater
+and template repair switches listed in `update.md`. `update-runtime.test.ts` proves
+changed bytes, same-mtime replacement, invalid input retention, and each repair
+switch at the actual MCP reader. No additional safe existing equivalent consumer
+was found among the ten computed sites. This is not evidence that the absent
+features are superseded. The exact residual is cross-module aliases/reflection,
+plugins and data-supplied paths, plus leaf-level normalization inside absent feature
+owners; the 152-call scan is still a lower bound, not complete semantic enumeration.
 
 ## Template owners
 
@@ -179,7 +217,8 @@ stop and outcome evidence. An `installedUpdate` observation launches no subproce
 `update.test.ts` refuses resource-limited installation even with exit code zero and proves
 schema incompatibility stops before migrations. Standalone CLI installation still has its
 inherited finite subprocess path and lacks durable resource-owner composition; that remains
-an explicit Rule 60 blocker. The feature declaration still honestly says periodic repetition
-is unbounded: a registered live critical-outcome bound/probe for the complete service is
-not established by unit tests. Rule 55/43 compliance remains open rather than relabeling a
-service as a finite retry. Existing three-failure pressure and stop/expiry remain in force.
+an explicit Rule 60 blocker. The existing due-proof runner now records `P9-PREVIEW-update-bound` each minute,
+reading fresh durable pressure, actual timer state and resource-owner admission.
+The feature still declares unbounded repetition: this observed-bound check does not
+turn the whole service into a registered finite loop or establish standalone admission.
+Complete Rule 55/60 compliance remains open. Existing three-failure pressure and stop/expiry remain in force.
