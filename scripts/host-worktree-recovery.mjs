@@ -6,7 +6,7 @@ import { createProcessInventory } from './process-inventory.mjs';
 import { createWorktreeInventory } from './worktree-inventory.mjs';
 
 const inside = (path, scope) => path === scope || path.startsWith(`${scope}/`);
-export const queryWorktreeHost = (file, args) => new Promise(resolve => {
+const queryHost = (file, args) => new Promise(resolve => {
   const executable = file === '/usr/sbin/lsof' && process.platform === 'linux' ? '/usr/bin/lsof' : file;
   execFile(executable, args, { encoding: 'utf8', timeout: 5000, maxBuffer: 1024 * 1024 },
     (error, stdout, stderr) => {
@@ -16,6 +16,14 @@ export const queryWorktreeHost = (file, args) => new Promise(resolve => {
       resolve(error && !emptySelection ? null : stdout);
     });
 });
+// Match the resource owner's existing settlement read: the runner cannot read
+// another UID's cwd on Darwin. This uses the installed read authority only;
+// denied observation stays unknown and never changes installation permissions.
+export const queryWorktreeHost = async (file, args) => {
+  if (process.platform === 'darwin' && file === '/usr/sbin/lsof')
+    return await queryHost('/usr/bin/sudo', ['-n', file, ...args]) ?? queryHost(file, args);
+  return queryHost(file, args);
+};
 
 /** The owner calls tick on its existing cycle. Scope and UID come from the held
  * harness installation, not from a checkout or a model. Unknown installation,

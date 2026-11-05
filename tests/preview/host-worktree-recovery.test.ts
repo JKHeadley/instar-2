@@ -57,7 +57,7 @@ async function setup(dirty = true) {
         if (partial) return 'unreadable row\n';
         return child.exitCode !== null ? '' : execFileSync('/bin/ps', ['-p', String(child.pid), '-ww', '-o', args.at(-1)!], { encoding: 'utf8' });
       }
-      if (file === '/usr/sbin/lsof') return execFileSync('/usr/bin/lsof', args, { encoding: 'utf8' });
+      if (file === '/usr/sbin/lsof') return queryWorktreeHost(file, args);
       return execFileSync(file, args, { encoding: 'utf8', timeout: 5000 });
     },
     liveSources: async () => child.exitCode !== null || unknownSource ? [] : [{ pid: child.pid, source }],
@@ -156,7 +156,10 @@ it.each(['clean', 'live', 'unknown', 'partial', 'activity-gap', 'recent', 'missi
 
 
 it('reads an empty real ps selection while retaining diagnostic failures as unknown', async () => {
-  expect(await queryWorktreeHost('/bin/ps', ['-p', '2147483647', '-o', 'pid='])).toBe('');
+  const child = spawn(process.execPath, ['-e', ''], { stdio: 'ignore' });
+  children.push(child);
+  await new Promise<void>(resolve => child.once('exit', () => resolve()));
+  expect(await queryWorktreeHost('/bin/ps', ['-p', String(child.pid), '-o', 'pid='])).toBe('');
   expect(await queryWorktreeHost('/bin/ps', ['--not-a-valid-option-for-this-census'])).toBeNull();
 });
 
