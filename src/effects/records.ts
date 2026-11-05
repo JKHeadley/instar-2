@@ -1,4 +1,4 @@
-import { decode, decodeMeasurement, grantLiveness, isValid, scopeIncludes } from '../index.js';
+import { consumeOutcome, decode, decodeMeasurement, grantLiveness, isValid, scopeIncludes } from '../index.js';
 import type { Json, Result } from '../index.js';
 import { authorAndAppend, causalCone, registerOwnedBody, walkVersions } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
@@ -393,7 +393,10 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
 }
 export function effectSchemas(host: EffectHost): readonly FactSchema[] {
   return Object.keys(effectShapes).map(name => ({ kind: kindFor(name), version: 1,
-    fields: { record: { kind: 'owned', owner: 'part-eight', name } }, machineScope: 'shared',
+    fields: { record: { kind: 'owned', owner: 'part-eight', name },
+      ...(name === 'EffectSettlement' ? { outcome: { kind: 'constitutional' as const, type: 'Outcome' as const },
+        evidence: { kind: 'constitutional' as const, type: 'Evidence' as const } } : {}) },
+    ...(name === 'EffectSettlement' ? { optional: ['outcome', 'evidence'] } : {}), machineScope: 'shared',
     standing: 'requester', action: 'work', scope: host.scope, causallyBound: false,
     requiredReferences: [], authority: 'none' }));
 }
@@ -467,13 +470,43 @@ export function readHarnessLiveInputCapture(spine: EffectSpine, capture: { refer
   return stored.bytes;
 }
 export function createEffectSpine(host: EffectHost, author: EffectAuthor, store: FactStorePort): EffectSpine {
-  const spine = Object.freeze({ store, append: (record: EffectRecord | NativeProcessRecord, required: readonly string[]) => authorAndAppend({
-    kind: kindFor(record.type), schemaVersion: record.schemaVersion, machine: host.machine,
-    principal: json(host.principal), provenance: json(host.principal.provenance), at: json(host.current().clock),
-    body: { record: record.schemaVersion === 1 ? wire(record) : json(record) }, required,
-  }, author.context, store, author.privateKey) });
+  const spine = Object.freeze({ store, append: (record: EffectRecord | NativeProcessRecord, required: readonly string[]) => {
+    let completion: Record<string, Json> = {};
+    if (record.type === 'EffectSettlement') {
+      const request = rows(take(store.read())).find(row => row.record.type === 'EffectRequest'
+        && row.record.id === record.request)?.record;
+      ensure(request?.type === 'EffectRequest', 'settlement request absent');
+      const definition = rows(take(store.read())).find(row => row.record.type === 'OperationDefinition'
+        && row.record.id === request.definition)?.record;
+      ensure(definition?.type === 'OperationDefinition', 'settlement definition absent');
+      const bytes = encoded({ settlement: record.id, operation: record.operation }).bytes;
+      const capture = take(host.capture(bytes));
+      const held = author.context.captures[capture.reference];
+      ensure(held?.status === 'available' && held.hash === capture.hash && held.bytes === bytes,
+        'settlement observation capture unavailable');
+      const claimClosed = consumeOutcome(record.outcome, { happened: () => true,
+        'did-not-happen': () => record.delayedExecutionExcluded, uncertain: () => false });
+      // Older Eight hosts publish only opaque capture custody. Their existing
+      // settlement remains usable by Six, but cannot claim Five's additional
+      // constitutional observation until the host exposes it to P1/P2. The
+      // actual production capture adapter publishes both views atomically.
+      if (host.current().decode.captures[capture.reference] === bytes) {
+        const evidence = take(decode('Evidence', { type: 'Evidence', schemaVersion: 1, id: `run-settlement:${record.id}`,
+          claim: { subject: request.semanticMessage, predicate: 'operation-settled',
+            value: { digest: request.digest, claimClosed, chargeSettled: record.finalCharge !== null } },
+          source: host.principal.provenance.adapter, observedAt: host.current().clock, freshFor: definition.timeout,
+          capture, strength: 'observation' }, host.current().decode));
+        completion = { outcome: json(record.outcome), evidence: json(evidence) };
+      }
+    }
+    return authorAndAppend({ kind: kindFor(record.type), schemaVersion: record.schemaVersion, machine: host.machine,
+      principal: json(host.principal), provenance: json(host.principal.provenance), at: json(host.current().clock),
+      body: { record: record.schemaVersion === 1 ? wire(record) : json(record), ...completion }, required,
+    }, author.context, store, author.privateKey);
+  } });
   liveInputAuthors.set(spine, author); return spine;
 }
+
 export function installOperationDefinition(input: unknown, host: EffectHost, spine: EffectSpine): Result<OperationDefinition> {
   return boundary('OperationDefinitionInput', input, host.boundary, () => {
     const safe = json(input); shapeCheck(safe, effectShapes.OperationDefinition!);

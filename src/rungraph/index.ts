@@ -26,11 +26,17 @@ export type { DelegationAuthority, DelegationRequest, DelegationContract, Delega
   CapabilityAdvertisement, PlacementDecision } from './delegation.js';
 export { createAgentEndpoint, createLocalAgentTransport, offerEnvelope, cancelEnvelope, resultEnvelope, resultFor, resultKey, sealEnvelope,
   envelopeIntact, semanticDigest, evidenceFromReceipt } from './agent-transport.js';
-export type { AgentTransportPort, AgentTransportEnvelope, AgentEnvelopeKind, AgentEndpoint, EndpointReceipt, DelegatedWorker,
+export type { AgentTransportPort, AgentTransportEnvelope, AgentEnvelopeKind, AgentEndpoint, EndpointReceipt, DelegatedWorker, DelegatedAsyncWorker,
   WorkerOutcome, SendMode, DelegatedRunAuthority } from './agent-transport.js';
+export { createDelegatedRunAuthority, createDelegatedRunProposals, isDelegatedRunAuthority } from './delegated-authority.js';
+export type { DelegatedRunOwnerInput, DelegatedRunProposals, ProductionDelegatedRunAuthority } from './delegated-authority.js';
 
 export { reconcileRunCompletion, RUN_COMPLETION_LIMIT } from './completion.js';
 export type { RunCompletionItem } from './completion.js';
 
 export { createPromiseStore, recordCommitments, closeCommitment, recordReplyLoop, schedulePromise, promiseRetryDelay, COMMITMENT_WAITS_ON, OBLIGATION_FORMAT_RETRIES, OBLIGATION_FORMAT_RETRY_MS } from './promises.js';
+export { findCommitmentByThread, recordThreadlineCommitment, bindThreadlineCommitment } from './promises.js';
 export type { PromiseStore, CommitmentNote, CommitmentClosure, CommitmentWaitsOn, AgentPromise, ReplyLoop, PromiseWork, PromiseScheduleInput, ScheduledPromise } from './promises.js';
+
+export { createDelegatedRunSteps } from './delegated-steps.js';
+export type { DelegatedWorkReferences } from './delegated-steps.js';

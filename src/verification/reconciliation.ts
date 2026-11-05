@@ -63,7 +63,7 @@ function reservationFact(host: VerificationHost, input: EffectAssessmentInput): 
     && rawRecord(fact)?.operation === input.reservation.operation && rawRecord(fact)?.attempt === input.reservation.attempt);
   ensure(match, 'six-owned reservation fact missing'); return match.id;
 }
-function requestInput(host: VerificationHost, plan: VerificationPlan, planFact: string, input: EffectAssessmentInput): object {
+function requestInput(host: VerificationHost, plan: VerificationPlan, planFact: string, input: EffectAssessmentInput): Omit<VerificationRequest, 'verificationValue'> {
   const evidence = evidenceFor(host, input.reservation.operation, input.request.digest);
   const logicalKey = encoded([input.reservation.operation, input.request.digest, plan.id, plan.bar.version]).hash;
   return { type: 'VerificationRequest', schemaVersion: 1, id: `verification-request:${logicalKey}`,
@@ -79,6 +79,14 @@ function requestInput(host: VerificationHost, plan: VerificationPlan, planFact: 
 function currentCaptureStatuses(host: VerificationHost, evidence: readonly CurrentEvidence[]): VerificationAssessment['captureStatuses'] {
   return evidence.map(item => ({ reference: item.evidence.capture.reference,
     status: host.current().facts.captures[item.evidence.capture.reference]?.status ?? 'missing' as const }));
+}
+function assessmentVector(host: VerificationHost, input: EffectAssessmentInput, evidence: readonly CurrentEvidence[]) {
+  const facts = host.current().facts;
+  const related = new Set(relatedFacts(host, input));
+  return encoded({ folded: facts.folded,
+    sources: facts.facts.filter(fact => related.has(fact.id)).map(fact => [fact.id, fact.contentHash]).sort(),
+    evidence: evidence.map(item => encoded(item.evidence).hash).sort(),
+    captures: currentCaptureStatuses(host, evidence) }).hash;
 }
 function chargeFrom(evidence: readonly CurrentEvidence[], assessment: VerificationAssessment): number | null {
   const accepted = assessment.predicates.find(row => row.predicate === 'charge' && row.verdict === 'satisfied');
@@ -151,7 +159,7 @@ export function createEffectAssessmentPort(host: VerificationHost, runtime: Veri
     'verification assessment request/effect lineage differs');
     const snapshot = host.current(); const currentEvidence = evidenceFor(host, request.operation, request.operationDigest);
     const derived = take(deriveVerificationAssessment({ request, plan, evidence: currentEvidence.map(item => item.evidence),
-      observer: assessment.observer, vectorDigest: encoded(snapshot.facts.folded).hash,
+      observer: assessment.observer, vectorDigest: assessmentVector(host, input, currentEvidence),
       knownLineages: Object.keys(snapshot.facts.folded), captureStatuses: currentCaptureStatuses(host, currentEvidence),
       taints: [], now: snapshot.clock, predecessors: assessment.predecessors, supersedes: assessment.supersedes,
       decode: snapshot.decode }, host.boundary));
@@ -178,12 +186,35 @@ export function createEffectAssessmentPort(host: VerificationHost, runtime: Veri
         const plan = planFor(host, runtime, input.bar);
         const planFact = take(runtime.inspectCurrent()).find(row => row.record.type === 'VerificationPlan' && row.record.id === plan.id)?.fact.id;
         ensure(planFact, 'verification plan fact missing');
-        const request = take(runtime.record('VerificationRequest', requestInput(host, plan, planFact, input))) as VerificationRequest;
+        const candidate = requestInput(host, plan, planFact, input);
+        const rows = take(runtime.inspectCurrent());
+        const seeds = rows.filter(row => row.record.type === 'VerificationRequest' && row.record.id === candidate.id);
+        const scope = checkedIdentityScope(rows, seeds);
+        const prior = scope.merged.records.find((record): record is VerificationRequest =>
+          record.type === 'VerificationRequest' && record.id === candidate.id);
+        // New observations refine the assessment, never rewrite the original
+        // request's initial evidence, creation time or causal prefix.
+        if (prior) ensure(cleanCanonicalSource(scope.scoped, prior)
+          && prior.operation === candidate.operation && prior.attempt === candidate.attempt
+          && prior.reservation === candidate.reservation && prior.operationDigest === candidate.operationDigest
+          && prior.plan === candidate.plan && prior.barVersion === candidate.barVersion
+          && prior.sourceGeneration === candidate.sourceGeneration, 'verification recovery request differs');
+        const request = prior ?? take(runtime.record('VerificationRequest', candidate)) as VerificationRequest;
         const requestFact = take(runtime.inspectCurrent()).find(row => row.record.type === 'VerificationRequest' && row.record.id === request.id)?.fact.id;
         ensure(requestFact, 'verification request fact missing');
         const evidence = evidenceFor(host, request.operation, request.operationDigest);
+        const vector = assessmentVector(host, input, evidence);
+        const previous = take(runtime.inspectCurrent()).find(row => row.record.type === 'VerificationAssessment'
+          && row.record.request === request.id && row.record.barVersion === plan.bar.version
+          && row.record.vectorDigest === vector);
+        if (previous) {
+          // An unchanged causal/evidence view retains its original validity.
+          // Advancing the clock cannot mint a fresh observation or rewrite it.
+          readStored(previous.fact.id, input);
+          return { owner: 'part-nine' as const, name: 'VerificationAssessment' as const, id: previous.fact.id };
+        }
         const assessment = take(deriveVerificationAssessment({ request, plan, evidence: evidence.map(item => item.evidence), observer: host.principal.id,
-          vectorDigest: encoded(host.current().facts.folded).hash, knownLineages: Object.keys(host.current().facts.folded),
+          vectorDigest: vector, knownLineages: Object.keys(host.current().facts.folded),
           captureStatuses: currentCaptureStatuses(host, evidence), taints: [], now: host.current().clock, predecessors: [requestFact],
           decode: host.current().decode }, host.boundary));
         take(runtime.record('VerificationAssessment', assessment));

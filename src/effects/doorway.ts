@@ -39,6 +39,41 @@ export function isHarnessLiveInputExecution(port: object, store: FactStorePort):
   return liveInputStores.get(port) === store;
 }
 
+/** Five consumes the current Eight settlement plus Six's exact accounting.
+ * The historical fact alone is not a current settlement capability. */
+export function readEffectRunSettlement(doorway: EffectDoorway,
+  reference: import('../index.js').FactEnvelopeReference, step: import('../rungraph/index.js').RunStep):
+  ReturnType<import('../rungraph/index.js').RunGraphDependencies['settlement']['read']> {
+  const composition = doorwayOrigins.get(doorway);
+  if (!composition) throw new Error('run settlement requires a genuine Eight doorway');
+  return boundary('EffectRunSettlement', reference, composition.host.boundary, () => {
+    const rows = take(doorway.inspect());
+    const saved = rows.find(row => row.fact.id === reference.id && row.record.type === 'EffectSettlement');
+    ensure(saved?.record.type === 'EffectSettlement', 'run settlement missing');
+    const body = saved.fact.body as { outcome?: unknown; evidence?: unknown };
+    ensure(body.outcome && body.evidence, 'run settlement constitutional projection unavailable');
+    const settlement = take(doorway.settle(saved.record.operation));
+      const accounting = take(composition.transport.inspect()).find(row => row.record.type === 'SettlementApplication'
+        && row.record.settlementFact === saved.fact.id && row.record.settlementHash === saved.fact.contentHash
+        && row.record.settlement === settlement.id && row.record.request === settlement.request
+        && row.record.operation === settlement.operation && row.record.digest === settlement.digest
+        && row.record.unresolved === 0 && row.record.capViolation === 0);
+      ensure(accounting, 'run settlement requires exact closed Six accounting');
+    return take(consumeEffectSettlement(settlement, composition.host.boundary, current => {
+      ensure(encoded(wire(current)).bytes === encoded(wire(saved.record)).bytes, 'run settlement changed');
+      const request = rows.find(row => row.record.type === 'EffectRequest' && row.record.id === current.request)?.record;
+      ensure(request?.type === 'EffectRequest' && request.run === step.run
+        && request.semanticMessage === step.operation.key && request.digest === step.operation.digest,
+      'run settlement operation binding differs');
+
+      return { record: reference, outcome: current.outcome,
+        claimClosed: consumeOutcome(current.outcome, { happened: () => true,
+          'did-not-happen': () => current.delayedExecutionExcluded, uncertain: () => false }),
+        chargeSettled: current.finalCharge !== null };
+    }));
+  });
+}
+
 export function createEffectDoorway(composition: EffectComposition): EffectDoorway {
   const { host, spine, transport, durability, custody, adapter, assessment } = composition;
   const checked = <T>(name: string, input: unknown, fn: () => T): Result<T> => boundary(name, input, host.boundary, fn);
@@ -56,7 +91,10 @@ export function createEffectDoorway(composition: EffectComposition): EffectDoorw
     const prior = rows(snapshot()).find(v => v.record.type === record.type && v.record.id === record.id);
     if (prior) { ensure(encoded(wire(prior.record)).bytes === encoded(wire(record)).bytes, 'immutable effect collision'); return prior.record as T; }
     const receipt = take(spine.append(record, [...new Set(required)]));
-    ensure(!receipt.taint.length && encoded(receipt.fact.body).bytes === encoded({ record: wire(record) }).bytes, 'append was tainted or changed bytes');
+    ensure(!receipt.taint.length && encoded((receipt.fact.body as { record: unknown }).record).bytes === encoded(wire(record)).bytes
+      && (record.type !== 'EffectSettlement' || (receipt.fact.body as { outcome?: unknown }).outcome === undefined
+        || encoded((receipt.fact.body as { outcome?: unknown }).outcome).bytes === encoded(record.outcome).bytes),
+    'append was tainted or changed bytes');
     return freeze(record);
   };
   const factsFor = (ids: readonly string[]) => {

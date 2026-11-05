@@ -4544,7 +4544,7 @@ meaning. Replaced doorway entries remain retired history and do not appear as ac
 unavailable models in status, capability context or reply notices. Restarting an
 existing root applies this reconciliation without another store or probe.
 
-## Attention queue carryover (row 88; partial)
+## Attention queue carryover (row 88)
 
 The installed journal runner's PIN-authenticated dashboard has an Attention link.
 The operator can add a tracking item and save its status from a phone. This does
@@ -4573,12 +4573,11 @@ the item; recurrence reopens that same identity with a retained episode counter.
 The condition and visible item change in one durable frame. These observations
 never resend unknown work or change execution authority.
 
-Row 88 remains OPEN: the peer-receiving standby acknowledgement entry point,
-Threadline hub transport/binding and model inference, remaining proactive producers,
-and full channel parity still require implementation and review. These are not
-claimed as replaced by the dashboard. The complete 1.x source/test baseline was
-retained for that adaptation. No hub-specific recorded model outputs were present
-in the supplied summary/review fixtures; those fixtures cannot prove hub parsers.
+The independent passkey surface below retains exact signed status receipts while
+the owning machine is unreachable. The installed optional production composition
+now supplies authenticated Threadline custody, current Run authority, topic
+origins and commitment consumption. Source checks do not certify installation,
+remote-host usefulness or the outstanding independent full gate.
 
 ### Row 88 collaboration consumer
 
@@ -4586,9 +4585,9 @@ in the supplied summary/review fixtures; those fixtures cannot prove hub parsers
 encrypted journal. `collaborationEndpoint` wraps the actual authenticated
 AgentEndpoint: only admitted envelopes enter the hub intake; lookup, refusal,
 unknown receipts and worker authority remain the endpoint's. A host supplies its
-existing effect doorway and current owner/stop/expiry checks. This component is
-not yet the journal runner's production Threadline composition; row 88 remains
-OPEN and its declaration remains dark.
+existing effect doorway and current owner/stop/expiry checks. The journal runner connects this consumer when the booted application's
+`owners.delegation` is configured. Its existing activation declarations remain
+unchanged; this addition does not install or authorize a serving route.
 
 The routing retains one silent Threadline hub, one first-contact notice per
 conversation, parent-bound content, hub-only housekeeping, explicit target-topic
@@ -4600,19 +4599,18 @@ populations refuse new identities at their bounds without deleting evidence.
 `collaboration-hub.test.ts` exercises actual signed/encrypted transport custody,
 endpoint admission, encrypted journal restart/compaction and both routing sides.
 Its injected judgments and effect receipts are deterministic fixtures, not live
-model or Telegram evidence. Production composition, model capture/contract replay,
-independent standby receipts, commitment binding and complete channel parity are
-tracked by row 88 and the builder report; this component does not certify them.
+model or Telegram evidence. The separate production-delegation test uses the booted canonical owners;
+the network fixture here is additional routing evidence, not production authority.
 
 `hub-model-contract.ts` carries the original 1.x prompt functions and parser
 semantics with their tuned request bounds. `CollaborationSurfacer.command`
 consumes those contracts through a supplied reserved model doorway and verifies
 operator standing before binding. `open` retains its first brief and creation
 identity so restart cannot create another topic or replace the chosen brief.
-The request's timeout/token limits are a host contract, not a claim that an
-unwired callback enforces spend or time. The deterministic tests are not genuine
-model-output recordings. Physical topic creation, production Threadline/model
-composition, commitment projection and independent standby receipts remain open.
+The installed `hub-model-route.ts` passes these limits through the existing
+recorded provider boundary and journal reservations. Provider acceptance enforces
+the answer allowance; it does not claim a provider-total generation ceiling.
+The deterministic tests are additional controls, not genuine model recordings.
 
 `hub-recorded.test.ts` replays six exact isolated Studio captures through the
 binding consumer. Set `INSTAR_HUB_CAPTURE_ROOT` to the private capture evidence
@@ -4662,6 +4660,53 @@ subscription boundary with journal reservations and the original 200/320 answer
 allowances and 4000/15000 ms deadlines. Noncommands and uncertainty use the normal
 answer path. The new envelope preserves each copied question, but the recorded
 six-case corpus predates this envelope; replay proves consumption, not a fresh
-provider invocation. Production delegated Run/Threadline custody, conversation
-routing and full producer/commitment binding are still incomplete, so this row is
-not release-ready.
+provider invocation. Independent review, combined full gates, actual installation
+and fresh live usefulness are separately required before release.
+
+
+### Canonical delegated work and journal installation boundary
+
+`bootProductionApplication` constructs `owners.delegation` inside the existing
+`ProductionApplicationHost.configure(installation, storage)` boundary. Its
+configuration references existing enrolled Threadline keys and epochs, relay,
+Ten byte custody, the local policy Run, current decode context and Six fence.
+`work` supplies placement and recorded completion; native work also supplies
+its existing operation planner/settlement, or `provider` selects the actual
+composed Seven/Eight provider owners and their existing policy. The source
+installs no parser declaration, peer enrollment, grant or provider approval.
+Missing current standing refuses at the corresponding owner.
+
+The existing installed host's `run(application)` can call the exported
+`runJournalAgent(application, args)` using its current journal arguments. This
+connects the one journal projection, pumps authenticated Four intake, collects
+at most 32 due edges per maintenance pass and invokes the installed work owner.
+The same canonical delegation port accepts an actual parent Run for outgoing
+work; callers cannot supply parent authority or a topic claim. The direct
+journal CLI still runs without an optional delegated application. This is the
+concrete source installation boundary; no serving configuration was changed.
+
+| Producer | Existing owner and consumer |
+| --- | --- |
+| Operator tracking item/status | PIN/CSRF dashboard → Attention journal; independent passkey requests/acts return through the same queue |
+| Overdue intake, stalled steps, unknown recovery/delivery | Obligation projection → silent Attention Agent Health items |
+| Delegated conflict, overdue task, unconfirmed cancellation | Canonical Five ledger → the same Attention health projection |
+| Encrypted peer offer | Ten custody → Four authenticated Intent → Five receiving Run; admitted receipt → hub first contact or bound parent |
+| Checked peer result | Five/Eight/Nine/Six completion → exact endpoint receipt → bound content; only confirmed delivery closes its promise |
+| Cancellation housekeeping | Canonical cancellation edge → silent hub notice; never a claimed completion |
+| Operator binding/open command | Existing admitted operator turn or PIN boundary → bounded copied classifier/brief → current topic effect doorway |
+| Active thread commitment | Existing promise projection → explicit operator move and exact peer/result delivery; excluded from the ordinary second-worker scheduler |
+
+First origin is immutable; an explicit current operator move changes the active
+binding and its commitment. Self-targeted work emits no collaboration chatter.
+General/private Telegram work and parentless authenticated Threadline work gain
+no inferred forum topic. A missing exact forum origin refuses before the first
+offer; a proven pre-send refusal can retry the same edge, while possibly-sent
+work only looks up its retained identity. Current Six fencing protects new
+submissions and cancellations from an old process after handoff.
+
+The 1.x source comparison is pinned in the change review. In particular, routine
+Agent Health observations without `needsUser` are held in 1.x too; the 2.0
+projection is likewise silent. The broader 1.x machine-specific monitoring
+producers are not represented as newly ported monitors by this composition.
+Historical 44 unresolved/101 unfinished files and five r3 failures remain
+unverified. No declaration or native certificate was altered to hide them.

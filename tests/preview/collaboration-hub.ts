@@ -5,12 +5,14 @@
  */
 import { conversationBrief, hubIntentDecision, hubIntentRequest, briefRequest, type ConversationTurn, type HubModelRequest, type BriefMessageRow } from './hub-model-contract.js';
 import { redact } from '../../src/recall/redact.js';
-import { offerEnvelope, resultEnvelope, semanticDigest } from '../../src/rungraph/index.js';
+import { offerEnvelope, resultEnvelope, semanticDigest, envelopeIntact } from '../../src/rungraph/index.js';
 import type { DelegationLedger, AgentEndpoint, AgentTransportEnvelope, EndpointReceipt } from '../../src/rungraph/index.js';
 
 export interface HubThread {
   threadId: string; peerName: string; subject: string; surfacedAt: number;
   parent: number | null;
+  /** Original admitted route survives an explicit operator move. */
+  originTopic?: number;
 }
 export type HubEffect =
   | { kind: 'topic'; name: string }
@@ -20,8 +22,10 @@ export type HubOutcome = { kind: 'accepted'; id: number; receipt?: string }
 export interface HubAttempt { id: string; effect: HubEffect; authorization?: string; dispatched?: true; outcome?: HubOutcome }
 export interface HubInbox { envelope: AgentTransportEnvelope; receipt: EndpointReceipt; handled: boolean }
 export interface HubModelCall { id: string; promptId: string; maxTokens: number; deadline: number; settled?: true }
-export interface HubState { modelCalls?: HubModelCall[]; threads: HubThread[]; attempts: HubAttempt[]; inbox: HubInbox[]; openings: { threadId: string; topicName: string; summary: string }[] }
+export interface HubState { modelCalls?: HubModelCall[]; origins?: { edge: string; digest: string; topic: number; source: string }[];
+  threads: HubThread[]; attempts: HubAttempt[]; inbox: HubInbox[]; openings: { threadId: string; topicName: string; summary: string }[] }
 export type HubRecord = { kind: 'collaboration'; at: number } & (
+  | { action: 'origin'; envelope: AgentTransportEnvelope; topic: number; source: string }
   | { action: 'model-reserve'; id: string; promptId: 'hub-intent-v1' | 'open-conversation-brief-v1'; maxTokens: number; deadline: number; maxInputTokens: number }
   | { action: 'model-settle'; id: string; usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }
   | { action: 'thread'; thread: HubThread }
@@ -39,7 +43,25 @@ const need = (yes: unknown, reason: string) => { if (!yes) throw Error(`collabor
 export function applyHubRecord(previous: HubState | undefined, row: HubRecord): HubState {
   const next: HubState = structuredClone({ threads: [], attempts: [], inbox: [], ...previous, openings: previous?.openings ?? [] });
   need(Number.isSafeInteger(row.at) && row.at >= 0, 'invalid time');
-  if (row.action === 'model-reserve') {
+  if (row.action === 'origin') {
+    const e = row.envelope, c = e.contract;
+    need(envelopeIntact(e) && e.kind === 'offer' && c && offerEnvelope(c).digest === e.digest && e.sender === c.owner
+      && e.recipient === c.recipient && e.conversation === c.transport.conversation
+      && topicId(row.topic) && validText(row.source, 1024), 'exact admitted outgoing delegation required');
+    const thread = next.threads.find(item => item.threadId === e.conversation);
+    need(!thread || (thread.originTopic ?? thread.parent) === row.topic, 'automatic origin cannot redirect a conversation');
+    const origins = next.origins ??= [], prior = origins.find(item => item.edge === c!.id);
+    need(!prior || prior.digest === c!.digest && prior.topic === row.topic && prior.source === row.source, 'delegation origin differs');
+    if (!prior) {
+      need(origins.length < 8000, 'origin capacity; history retained');
+      origins.push({ edge: c!.id, digest: c!.digest, topic: row.topic, source: row.source });
+    }
+    if (!thread) {
+      need(next.threads.length < 2000, 'thread capacity; history retained');
+      next.threads.push({ threadId: e.conversation, peerName: readablePeer(e.recipient),
+        subject: readableHubGist(c!.task.question), surfacedAt: row.at, parent: row.topic, originTopic: row.topic });
+    } else thread.originTopic = row.topic;
+  } else if (row.action === 'model-reserve') {
     const calls = next.modelCalls ??= [];
     const limits = row.promptId === 'hub-intent-v1' ? [200, 4000] : row.promptId === 'open-conversation-brief-v1' ? [320, 15000] : null;
     need(limits && row.maxTokens === limits[0] && Number.isSafeInteger(row.deadline)
@@ -63,7 +85,7 @@ export function applyHubRecord(previous: HubState | undefined, row: HubRecord): 
   } else if (row.action === 'thread') {
     const t = row.thread;
     need(validText(t.threadId, 512) && validText(t.peerName, 120) && validText(t.subject, 240)
-      && t.surfacedAt === row.at && (t.parent === null || topicId(t.parent)), 'invalid thread');
+      && t.surfacedAt === row.at && (t.parent === null || topicId(t.parent)) && t.originTopic === undefined, 'invalid thread');
     need(!next.threads.some(x => x.threadId === t.threadId), 'thread already retained');
     need(next.threads.length < 2000, 'thread capacity; history retained');
     next.threads.push(t);
@@ -90,7 +112,7 @@ export function applyHubRecord(previous: HubState | undefined, row: HubRecord): 
     next.openings.push({ threadId: row.threadId, topicName: row.topicName, summary: row.summary });
   } else if (row.action === 'bind') {
     const t = next.threads.find(x => x.threadId === row.threadId);
-    need(t && topicId(row.topic) && t.parent === null, 'thread missing or already bound');
+    need(t && topicId(row.topic), 'thread missing or invalid topic');
     t!.parent = row.topic;
   } else throw Error('collaboration: unknown action');
   return next;
@@ -115,6 +137,17 @@ export interface HubHost {
 }
 export type HubBindResult = { ok: true; threadId: string; topicId: number; outcome: 'bound' | 'pending' }
   | { ok: false; status: number; error: string };
+
+/** Session input is a principal (R29). Resolve only an actually retained
+ * endpoint receipt plus its operator/origin binding, never a caller's topic. */
+export function collaborationTopicForOperation(state: HubState | undefined, operation: string): number | null {
+  const received = state?.inbox.find(item => operation === `threadline:${item.envelope.key}`);
+  if (!received || received.receipt.durability === null
+    || !['durably-queued', 'delivered-to-worker', 'answered'].includes(received.receipt.state)
+    || received.receipt.key !== received.envelope.key
+    || received.receipt.digest !== semanticDigest(received.envelope)) return null;
+  return state!.threads.find(thread => thread.threadId === received.envelope.conversation)?.parent ?? null;
+}
 
 // The 1.x readable-gist algorithm and 240-character bound, with the existing
 // secret redactor applied before anything can reach a topic title or message.
@@ -261,8 +294,7 @@ export class CollaborationSurfacer {
       const thread = args.threadId ? this.list().threads.find(t => t.threadId === args.threadId) : mru.record;
       if (!thread) return { ok: false, status: 404, error: 'Conversation not found' };
       if (!this.host.topics().some(t => t.topicId === args.targetTopicId)) return { ok: false, status: 400, error: 'Target topic is not available' };
-      if (thread.parent !== null && thread.parent !== args.targetTopicId) return { ok: false, status: 409, error: 'Conversation already bound elsewhere' };
-      if (thread.parent === null) this.append({ kind: 'collaboration', action: 'bind', threadId: thread.threadId, topic: args.targetTopicId } as HubRecord);
+      if (thread.parent !== args.targetTopicId) this.append({ kind: 'collaboration', action: 'bind', threadId: thread.threadId, topic: args.targetTopicId } as HubRecord);
       const durable = await this.host.replicated();
       return { ok: true, threadId: thread.threadId, topicId: args.targetTopicId, outcome: durable ? 'bound' : 'pending' };
     });

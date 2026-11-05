@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { createHubModelRoute } from './hub-model-route.js';
+import { connectProductionCollaboration } from './production-collaboration.js';
+import { fileURLToPath } from 'node:url';
 import { createCollaborationDispatch } from './collaboration-dispatch.mjs';
-import { createCollaborationSurface } from './collaboration-hub.js';
+import { createCollaborationSurface, collaborationTopicForOperation } from './collaboration-hub.js';
 import { topicNames } from './journal.js';
 import { createAttentionSurface } from './attention-surface.js';
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
@@ -757,8 +759,10 @@ const stepCheckView = view => ({ total: view.stepChecks.size,
     reserved: item.reserved === true, result: item.result ?? null })) });
 
 
-async function main() {
-  const { command, options } = parse(process.argv.slice(2));
+/** Existing installation-host.run(application) may supply its booted canonical
+ * owners. No installation, credential, parser or grant is created here. */
+export async function runJournalAgent(application, args = process.argv.slice(2)) {
+  const { command, options } = parse(args);
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   // Retired 2026-10-20 by the operator's review (promotion record): no live evidence, so it can no longer be turned on.
   if (options['step-check'] === 'true') throw new PlainRefusal('preview: the step check is retired (2026-10-20, no live evidence); launch without --step-check true');
@@ -2185,12 +2189,16 @@ async function main() {
           timestamp: new Date(envelope.at).toISOString(), text: envelope.contract?.task.question ?? envelope.result?.result ?? '' }))
     });
     const attentionSurface = createAttentionSurface(journal, { now: wallNow, machine: ownerMachine,
+      delegations: () => [...(application?.owners.delegation?.ledger.view().values() ?? [])],
       ...(approvalSurface ? { tracking: { ...approvalSurface.tracking, link: approvalSurface.link } } : {}),
       admitted: () => {
         if (!attentionReady || workerStop.value || existsSync(stopPath) || !ownerHeld()) return false;
         try { requireAuthority(options, activation, activationPath, journal.view, wallNow()); return true; } catch { return false; }
       },
       replicated: async () => { if (shared === null) return true; await shared.sync(); return shared.peerCurrent() && ownerHeld(); } });
+    const collaboration = application?.owners.delegation ? connectProductionCollaboration({ owners: application.owners,
+      hub: collaborationSurface.hub, view: () => journal.view, append: row => journal.append(row),
+      now: wallNow, admitted: collaborationAdmitted }) : null;
     const readOnlyServer = readOnly && serveReadOnly(createReadOnlyDashboard({ checkPin: readOnly.checkPin, attention: attentionSurface, collaboration: collaborationSurface,
       state: () => dashboardText === null ? { kind: 'missing' } : snapshotState(dashboardText, wallNow()) }),
     `${readOnly.listen.host}:${String(readOnly.listen.port)}`);
@@ -2954,6 +2962,11 @@ async function main() {
           maxSessions: sessionLimits.maxSessions, idleMs: sessionLimits.idleMs, topicConfig: topicConfiguration,
           capacity: createTopicWorkerCapacity(sessionLimits),
           topicOf: operation => {
+            if (operation.startsWith('threadline:')) {
+              const topic = collaborationTopicForOperation(journal.view.collaboration, operation);
+              if (topic === null) throw Error('preview: Threadline input lacks admitted custody and a bound topic');
+              return String(topic);
+            }
             // A repair inherits only its admitted parent's topic, never its execution identity.
             // The durable one-repair reservation is required; a suffix alone grants nothing.
             const parent = /^telegram:[0-9]+:update:[0-9]+:format-retry$/u.test(operation)
@@ -3237,6 +3250,8 @@ async function main() {
       runDueProof();
       checkDoorways();
       await attentionSurface.maintain();
+      await collaboration?.maintain();
+      await collaboration?.work();
       publishDashboard();
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       let pollLimit;
@@ -3427,7 +3442,7 @@ async function main() {
   }
 }
 
-try { await main(); } catch (error) {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) try { await runJournalAgent(); } catch (error) {
   reportExit('error (details suppressed)');
   process.stderr.write(error instanceof AgentPathRefused || error instanceof PlainRefusal ? `${error.message}\n`
     : 'preview refused to start or continue; details suppressed\n');

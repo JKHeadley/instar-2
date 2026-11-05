@@ -55,6 +55,7 @@ export type WorkerOutcome = Readonly<{ terminal: DelegationResult['terminal']; r
 /** The actual worker. `null` means still working (e.g. waiting on its own children).
  * Throwing models worker loss: nothing is recorded as done and the child stays owned. */
 export type DelegatedWorker = (contract: DelegationContract, authority: Readonly<{ localRun: string; reservation: string }>) => WorkerOutcome | null;
+export type DelegatedAsyncWorker = (contract: DelegationContract, authority: Readonly<{ localRun: string; reservation: string }>) => Promise<WorkerOutcome | null>;
 /**
  * The receiving agent's Run owner (parts five and six), supplied by the host. The endpoint never
  * decides authority, resources or closure itself; it only refuses to act without this seam's answer.
@@ -64,6 +65,15 @@ export type DelegatedWorker = (contract: DelegationContract, authority: Readonly
  * - `close`: the run's terminal transition, returning its RunExit identity and resource accounting.
  */
 export interface DelegatedRunAuthority {
+  /** Finish recorded work through Five/Eight/Nine; never restarts a worker. */
+  reconcile?(contract: DelegationContract, localRun: string, at: number): Result<Readonly<{
+    outcome: WorkerOutcome; runExit: string; spent: number;
+  }> | null>;
+  /** Read an already checked terminal result after a crash, without starting or
+   * closing work again. Legacy test owners may omit this additive read port. */
+  collect?(contract: DelegationContract, localRun: string): Result<Readonly<{
+    outcome: WorkerOutcome; runExit: string; spent: number;
+  }> | null>;
   admit(contract: DelegationContract, at: number): Result<Readonly<{ localRun: string }>>;
   start(contract: DelegationContract, localRun: string, at: number): Result<Readonly<{ reservation: string }>>;
   close(contract: DelegationContract, localRun: string, outcome: WorkerOutcome, at: number): Result<Readonly<{ runExit: string; spent: number }>>;
@@ -80,6 +90,7 @@ export interface AgentEndpoint {
   lookup(key: string, digest: string, from: string): EndpointReceipt;
   /** Offer each admitted, unanswered child to the worker once per call; returns result envelopes to return. */
   work(worker: DelegatedWorker, at: number): readonly AgentTransportEnvelope[];
+  workAsync(worker: DelegatedAsyncWorker, at: number): Promise<readonly AgentTransportEnvelope[]>;
 }
 
 export function sealEnvelope(fields: Omit<AgentTransportEnvelope, 'type' | 'schemaVersion' | 'digest'>): AgentTransportEnvelope {
@@ -129,7 +140,7 @@ const succeeded = <T>(result: Result<T>): T | undefined => consumeResult(result,
  * ledger, each only from the contract party entitled to send it.
  */
 export function createAgentEndpoint(input: Readonly<{ principal: string; ledger: DelegationLedger;
-  advertisement: () => CapabilityAdvertisement; authority: DelegatedRunAuthority }>): AgentEndpoint {
+  advertisement: () => CapabilityAdvertisement; authority: DelegatedRunAuthority; now?: () => number }>): AgentEndpoint {
   const { principal, ledger, authority } = input;
   const refuse = (envelope: AgentTransportEnvelope, authoritative: string): EndpointReceipt => freeze({ key: envelope.key,
     digest: semanticDigest(envelope), state: 'refused', refusedWhat: 'receiving-admission', authoritative, result: null, durability: null });
@@ -145,6 +156,14 @@ export function createAgentEndpoint(input: Readonly<{ principal: string; ledger:
   };
   const receipt = (key: string, digest: string, from: string): EndpointReceipt => {
     for (const edge of ledger.view().values()) {
+      const cancellation = edge.cancellationRequest;
+      if (edge.contract.recipient === principal && from === edge.contract.owner && cancellation?.message?.key === key
+        && edge.cancellation !== 'none' && edge.conflicts.length === 0) {
+        return freeze({ key, digest, state: cancellation.message.digest === digest ? 'durably-queued' : 'refused',
+          ...(cancellation.message.digest === digest ? {} : { refusedWhat: 'receiving-admission' as const }),
+          authoritative: `cancel:${edge.contract.id}`, result: null,
+          durability: cancellation.message.digest === digest ? edge.contract.durability : null });
+      }
       const asRecipient = edge.contract.recipient === principal && key === offerKey(edge.contract);
       const asOwner = edge.contract.owner === principal && key === resultKey(edge.contract);
       if (!asRecipient && !asOwner) continue;
@@ -175,6 +194,50 @@ export function createAgentEndpoint(input: Readonly<{ principal: string; ledger:
     const result = resultFor(contract, outcome, { localRun, runExit: exit.runExit, spent: exit.spent });
     return succeeded(ledger.submit(result, at)) ? resultEnvelope(contract, result, at) : null;
   };
+  function* workItems(at: number): Generator<Readonly<{
+    contract: DelegationContract; localRun: string; reservation: string;
+  }>, readonly AgentTransportEnvelope[], WorkerOutcome | null> {
+      const out: AgentTransportEnvelope[] = [];
+      for (const edge of ledger.view().values()) {
+        if (edge.contract.recipient !== principal || !edge.acceptance || !edge.executable || edge.result) continue;
+        const localRun = edge.acceptance.localRun;
+        // A result already closed but retained below demand is re-appended as-is: never a second worker or close.
+        if (edge.retained) {
+          if (succeeded(ledger.submit(edge.retained, at))) out.push(resultEnvelope(edge.contract, edge.retained, at));
+          continue;
+        }
+        const recovered = authority.collect && succeeded(authority.collect(edge.contract, localRun))
+          || authority.reconcile && succeeded(authority.reconcile(edge.contract, localRun, at));
+        if (recovered) {
+          const result = resultFor(edge.contract, recovered.outcome,
+            { localRun, runExit: recovered.runExit, spent: recovered.spent });
+          if (succeeded(ledger.submit(result, at))) out.push(resultEnvelope(edge.contract, result, at));
+          continue;
+        }
+        if (edge.cancellation !== 'none') {
+          // A cancellation confirms no more than descendant settlement proves: wait while any child this
+          // run delegated is still unsettled (its own cancellation unconfirmed, no result).
+          if (openChildren(edge.contract.childRun).length > 0) continue;
+          const envelope = close(edge.contract, localRun, { terminal: 'cancelled', result: 'cancelled before completion' }, at);
+          if (envelope) out.push(envelope);
+          continue;
+        }
+        // Expired or revoked work stays inhibited and owned: no worker start, no manufactured result.
+        if (at >= edge.contract.expiresAt) continue;
+        const started = succeeded(authority.start(edge.contract, localRun, at));
+        if (!started) continue;
+        if (!edge.proven.includes('delivered-to-worker'))
+          ledger.record({ type: 'DeliveryEvidence', schemaVersion: 1, key: offerKey(edge.contract), digest: offerEnvelope(edge.contract).digest,
+            edge: edge.contract.id, conversation: edge.contract.transport.conversation, state: 'delivered-to-worker',
+            witness: { kind: 'recipient', principal }, authoritative: `worker:${localRun}`, attempt: `consume:${at}`,
+            observedAt: at, freshFor: edge.contract.collectionCadence });
+        const outcome = yield { contract: edge.contract, localRun, reservation: started.reservation };
+        if (outcome === null) continue;
+        const envelope = close(edge.contract, localRun, outcome, input.now?.() ?? at);
+        if (envelope) out.push(envelope);
+      }
+      return out;
+  }
   return freeze({
     principal,
     advertisement: input.advertisement,
@@ -207,7 +270,8 @@ export function createAgentEndpoint(input: Readonly<{ principal: string; ledger:
         // An answered edge has nothing left to cancel: the cancel did not happen.
         if (edge.result) return refuse(envelope, `answered:${envelope.edge}`);
         // Custody of the cancellation is acknowledged only from the cancel's own achieved append.
-        if (!succeeded(ledger.cancel(envelope.edge, from, envelope.reason ?? 'cancelled', at))) return refuse(envelope, 'cancel-durability');
+        if (!succeeded(ledger.cancel(envelope.edge, from, envelope.reason ?? 'cancelled', at,
+          { key: envelope.key, digest: envelope.digest, at: envelope.at }))) return refuse(envelope, 'cancel-durability');
         return freeze({ key: envelope.key, digest: envelope.digest, state: 'durably-queued', authoritative: `cancel:${envelope.edge}`,
           result: null, durability: edge.contract.durability });
       }
@@ -220,38 +284,22 @@ export function createAgentEndpoint(input: Readonly<{ principal: string; ledger:
       return refuse(envelope, 'unsupported');
     },
     work: (worker, at) => {
-      const out: AgentTransportEnvelope[] = [];
-      for (const edge of ledger.view().values()) {
-        if (edge.contract.recipient !== principal || !edge.acceptance || !edge.executable || edge.result) continue;
-        const localRun = edge.acceptance.localRun;
-        // A result already closed but retained below demand is re-appended as-is: never a second worker or close.
-        if (edge.retained) {
-          if (succeeded(ledger.submit(edge.retained, at))) out.push(resultEnvelope(edge.contract, edge.retained, at));
-          continue;
-        }
-        if (edge.cancellation !== 'none') {
-          // A cancellation confirms no more than descendant settlement proves: wait while any child this
-          // run delegated is still unsettled (its own cancellation unconfirmed, no result).
-          if (openChildren(edge.contract.childRun).length > 0) continue;
-          const envelope = close(edge.contract, localRun, { terminal: 'cancelled', result: 'cancelled before completion' }, at);
-          if (envelope) out.push(envelope);
-          continue;
-        }
-        // Expired or revoked work stays inhibited and owned: no worker start, no manufactured result.
-        if (at >= edge.contract.expiresAt) continue;
-        const started = succeeded(authority.start(edge.contract, localRun, at));
-        if (!started) continue;
-        if (!edge.proven.includes('delivered-to-worker'))
-          ledger.record({ type: 'DeliveryEvidence', schemaVersion: 1, key: offerKey(edge.contract), digest: offerEnvelope(edge.contract).digest,
-            edge: edge.contract.id, conversation: edge.contract.transport.conversation, state: 'delivered-to-worker',
-            witness: { kind: 'recipient', principal }, authoritative: `worker:${localRun}`, attempt: `consume:${at}`,
-            observedAt: at, freshFor: edge.contract.collectionCadence });
-        const outcome = worker(edge.contract, { localRun, reservation: started.reservation });
-        if (outcome === null) continue;
-        const envelope = close(edge.contract, localRun, outcome, at);
-        if (envelope) out.push(envelope);
+      const execution = workItems(at);
+      let next = execution.next();
+      while (!next.done) {
+        const { contract, localRun, reservation } = next.value;
+        next = execution.next(worker(contract, { localRun, reservation }));
       }
-      return out;
+      return next.value;
+    },
+    workAsync: async (worker, at) => {
+      const execution = workItems(at);
+      let next = execution.next();
+      while (!next.done) {
+        const { contract, localRun, reservation } = next.value;
+        next = execution.next(await worker(contract, { localRun, reservation }));
+      }
+      return next.value;
     },
   });
 }

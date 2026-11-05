@@ -60,6 +60,10 @@ it('P8-NF-21 P8-NF-23 P8-NF-38 duplicate settlement returns one record and absen
   const a = value(f.api.settle(o.operation)), b = value(f.api.settle(o.operation));
   expect(a.id).toBe(b.id);
   expect(value(f.api.inspect()).filter(v => v.record.type === 'EffectSettlement')).toHaveLength(1);
+  // This legacy host exposes opaque custody only, not constitutional capture
+  // inputs. Six settlement survives; it gains no new Five closure evidence.
+  const saved = value(f.api.inspect()).find(v => v.record.type === 'EffectSettlement')!;
+  expect((saved.fact.body as { evidence?: unknown }).evidence).toBeUndefined();
   expect(f.calls()).toBe(1);
   f.assess('uncertain', null); refused(f.api.settle(o.operation), 'disagreement');
   // P6 has no settlement-consumption API yet: zero release is honest, not a

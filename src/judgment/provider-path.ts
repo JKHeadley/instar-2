@@ -54,6 +54,8 @@ export interface ProviderAnswerAcceptanceInput {
 }
 export interface ProviderJudgmentPort {
   readonly owner: 'part-seven';
+  /** Exact invocation bytes from the same policy as prepare; confers no authority. */
+  preview(input: ProviderQuestionInput): Result<Readonly<{ submitted: string; digest: import('../index.js').Hash }>>;
   prepare(input: ProviderQuestionInput, fence: FenceToken): Result<PreparedProviderJudgment>;
   readPrepared(reference: OwnedReference<'part-seven', 'JudgmentRequest'>, fence?: FenceToken): Result<PreparedProviderJudgment>;
   recordReceipt(receipt: ProviderReceipt): Result<OwnedReference<'part-seven', 'JudgmentAttemptRecord'>>;
@@ -344,6 +346,17 @@ export function createProviderJudgmentPort(p: ProviderJudgmentDependencies): Pro
     for (const id of q.evidence) { const e = now.decode.evidence?.find(e => e.id === id); ensure(e, 'judgment evidence absent'); take(readEvidence(e, now.clock, p.boundary.preserved)); }
     ensure(encoded(p.host.floor).hash === q.floorDigest, 'judgment floor changed');
   };
+  const preview: ProviderJudgmentPort['preview'] = input => checked('PreviewProviderJudgment', input, () => {
+      const d = p.host.description;
+      for (const n of [p.maxTokens, p.maxCaptureBytes, p.timeout, d.maxInputBytes, d.maxOutputBytes, d.maxCharge, input.deadline]) ensure(Number.isSafeInteger(n) && n >= 0, 'finite provider bound');
+      ensure(d.automaticRetries === 0 && d.measured === false && d.basis.length > 0 && p.disclosure.length > 0, 'registered route basis required');
+      ensure(p.settings.automaticRetries === 0 && p.settings.maxTokens === p.maxTokens, 'submitted settings exceed token/retry bounds');
+      const submitted = encoded({ provider: d.provider, model: d.model, route: d.route, messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: input.context }], attachments: [], tools: [], settings: p.settings, outputSchema: p.outputSchema,
+        floor: p.host.floor, evidence: input.evidence, point: p.host.point, generation: p.host.transport.current().generation.id }).bytes;
+      ensure(new TextEncoder().encode(submitted).length <= d.maxInputBytes && p.maxTokens > 0 && p.timeout > 0, 'provider input/token/time bound exceeded');
+      return { submitted, digest: encoded(submitted).hash };
+  });
   const readPrepared: ProviderJudgmentPort['readPrepared'] = (ref, fence) => checked('ReadPreparedProviderJudgment', ref, () => {
     ensure(ref.owner === 'part-seven' && ref.name === 'JudgmentRequest', 'preparation owner mismatch');
     const all = facts(), f = all.find(f => f.id === ref.id && f.kind === 'judgment-provider-ProviderJudgmentRequest' && f.schemaVersion === 1);
@@ -553,6 +566,7 @@ export function createProviderJudgmentPort(p: ProviderJudgmentDependencies): Pro
       }));
     });
   const port = Object.freeze({ owner: 'part-seven', readPrepared, decodeCapturedProviderDecision, recordProviderAnswerAcceptance,
+    preview,
     prepare: (input, fence) => checked('PrepareProviderJudgment', input, () => {
       ensure(Object.keys(input).sort().join(',') === 'context,deadline,evidence,id,ordinal,question,run,semanticMessage,step', 'closed provider question');
       ensure(input.run.owner === 'part-five' && input.run.name === 'Run', 'Five run required');
@@ -561,15 +575,7 @@ export function createProviderJudgmentPort(p: ProviderJudgmentDependencies): Pro
         'accepted provider reply Run cannot request another model operation');
       ensure(pending && view.pending.some(s => s.id === input.step), 'real Five pending step required');
       ensure(Number.isSafeInteger(input.ordinal) && input.ordinal >= 0 && input.id.length > 0 && input.semanticMessage.length > 0, 'bounded question identity');
-      const d = p.host.description;
-      for (const n of [p.maxTokens, p.maxCaptureBytes, p.timeout, d.maxInputBytes, d.maxOutputBytes, d.maxCharge, input.deadline]) ensure(Number.isSafeInteger(n) && n >= 0, 'finite provider bound');
-      ensure(d.automaticRetries === 0 && d.measured === false && d.basis.length > 0 && p.disclosure.length > 0, 'registered route basis required');
-      ensure(p.settings.automaticRetries === 0 && p.settings.maxTokens === p.maxTokens, 'submitted settings exceed token/retry bounds');
-      const submitted = encoded({ provider: d.provider, model: d.model, route: d.route, messages: [{ role: 'user', content: input.question },
-        { role: 'context', content: input.context }], attachments: [], tools: [], settings: p.settings, outputSchema: p.outputSchema,
-        floor: p.host.floor, evidence: input.evidence, point: p.host.point, generation: p.host.transport.current().generation.id }).bytes;
-      ensure(new TextEncoder().encode(submitted).length <= d.maxInputBytes && p.maxTokens > 0 && p.timeout > 0, 'provider input/token/time bound exceeded');
-      const digest = encoded(submitted).hash;
+      const d = p.host.description, { submitted, digest } = take(preview(input));
       ensure(view.pending.some(s => s.id === input.step && s.operation.key === input.semanticMessage && s.operation.digest === digest), 'Five pending input digest differs');
       const prior = facts().find(f => f.kind === 'judgment-provider-ProviderJudgmentRequest' && f.schemaVersion === 1 && (raw(f)?.id === input.id
         || raw(f)?.run === input.run.id && raw(f)?.step === input.step && raw(f)?.ordinal === input.ordinal));

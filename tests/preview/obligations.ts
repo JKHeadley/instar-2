@@ -26,11 +26,11 @@ export function openLoops(view: JournalView, now: number): OpenLoop[] {
     const source = view.turns.get(note.source);
     if (!source || !commitmentOpen(view, id)) return;
     const waitsOn = commitmentWaitsOn(view, id);
-    const nextAt = (revisits.get(id) ?? source.at) + revisit;
+    const nextAt = note.threadline ? null : (revisits.get(id) ?? source.at) + revisit;
     const defect: LoopDefect | undefined = note.agentPromise?.due && dueState(note.agentPromise.due, now) === 'overdue'
       ? 'overdue-check-in' : waitsOn === undefined ? 'undeclared-dependency' : undefined;
     loops.push({ kind: 'commitment', id: `commitment:${id}`, source: note.source, owner: note.owner ?? note.agentPromise?.owner ?? 'agent',
-      waitsOn: waitsOn ?? 'undeclared', openedAt: source.at, nextAt, revisitDue: now >= nextAt, ...(defect ? { defect } : {}) });
+      waitsOn: waitsOn ?? 'undeclared', openedAt: source.at, nextAt, revisitDue: nextAt !== null && now >= nextAt, ...(defect ? { defect } : {}) });
   });
   for (const { id, note } of openDirectives(view)) loops.push({ kind: 'directive', id: `directive:${id}`, source: note.source,
     owner: 'agent', waitsOn: 'completion or supersession', openedAt: note.at, nextAt: null, revisitDue: false });

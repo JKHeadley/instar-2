@@ -112,11 +112,17 @@ are admitted only from the authenticated contract party. Six's
 Threadline reference adapter (`src/transport`: signed, sealed frames; the relay
 sees routing identifiers and ciphertext only).
 
-This is preparatory core, not Rule 114 closure: the Run decoder still refuses
-non-root depth, no production Run owner implements `DelegatedRunAuthority` yet,
-and no live surface delegates. P5-NF-14/19/21/30/31/33–37/40/41 therefore stay
-in the skipped residuals until a bounded delegation completes through the real
-Run owner.
+`delegated-authority.ts` now implements that port over the same Five graph,
+Four admitted causes, Six admission and signed delegation ledger. Each receiving
+Run is a local root narrowed from the installed policy; recursive depth and
+allocation remain in the signed contract and its parent mapping. The decoder's
+root-only rule is preserved. `delegated-steps.ts` constructs the actual start,
+observation and exit candidates; configuration cannot supply arbitrary transitions.
+Closure needs recorded Eight settlement, closed Six accounting and Nine's
+result-bound independent check. Cancellation without a checked terminal result
+remains owned. `production-delegation.test.ts` exercises these real owners over
+isolated installed fixture standing. This is source composition evidence, not a
+live remote-host certificate, and it does not clear historical skipped residuals.
 
 Built additively beside the legacy graph: `createRunClosureGraph`
 (`closure-service.ts`) admits signed `ExhaustionRecord` and unreachable

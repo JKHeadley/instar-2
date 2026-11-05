@@ -9,7 +9,7 @@ import { createRunGraph } from '../rungraph/index.js';
 import type { AcceptedProviderAnswerReadPort, AcceptedProviderAnswerView, RunGraphDependencies } from '../rungraph/index.js';
 import { createOperatorSurface } from '../operator/index.js';
 import type { OperatorSurfaceComposition, MinimalDependency } from '../operator/index.js';
-import { createEffectDoorway } from '../effects/index.js';
+import { createEffectDoorway, readEffectRunSettlement } from '../effects/index.js';
 import type { EffectComposition } from '../effects/index.js';
 import { createProductionGroundingReader } from './context-delivery.js';
 import type { ProductionGroundingReaderInput } from './context-delivery.js';
@@ -18,16 +18,19 @@ import type { ProductionProviderOwnersInput } from './production-provider-owners
 import { createProductionMinimalResponder } from './production-responder.js';
 import { isProductionTelegramCustodian } from './production-telegram.js';
 import { createTelegramReplyOperationAdapter } from '../conversation/index.js';
-import { createEffectAssessmentPort } from '../verification/index.js';
+import { createEffectAssessmentPort, createRunExitCheck } from '../verification/index.js';
 import type { TelegramBotApiCustodianPort } from '../conversation/index.js';
 import type { AssemblyComposition, AssemblyProductionComposition } from './contracts.js';
 import { boundary, ensure, take } from './boundary.js';
+import { composeProductionDelegation } from './production-delegation.js';
+import type { ProductionDelegationConfiguration } from './production-delegation.js';
 
 export interface ProductionOwnerCompositionInput {
   readonly assembly: Omit<AssemblyComposition, 'production' | 'model'>;
   readonly grounding: ProductionGroundingReaderInput;
   readonly run: Omit<RunGraphDependencies, 'grounding' | 'assemblyHistory'>;
   readonly intake: IntakeDependencies;
+  readonly delegation?: ProductionDelegationConfiguration;
   readonly scheduled?: Readonly<{ intake: IntakeDependencies;
     runner: Omit<ScheduledRunnerDependencies, 'intake'> }>;
   readonly telegram: TelegramBotApiCustodianPort;
@@ -75,6 +78,8 @@ export function composeProductionOwners(input: ProductionOwnerCompositionInput) 
     const scheduled = scheduledIntake && input.scheduled
       ? createScheduledRunner({ ...input.scheduled.runner, intake: scheduledIntake }) : undefined;
     let acceptedTarget: AcceptedProviderAnswerReadPort | undefined;
+    let settlementTarget: RunGraphDependencies['settlement'] | undefined;
+    let exitTarget: RunGraphDependencies['exitCheck'] | undefined;
     const acceptedAnswer: AcceptedProviderAnswerReadPort = Object.freeze({ owner: 'part-eight' as const,
       consumeAcceptedProviderAnswer<T>(reference: import('../index.js').OwnedReference<'part-seven', 'ProviderAnswerAcceptance'>,
         consumer: (view: AcceptedProviderAnswerView) => T): Result<T> {
@@ -82,11 +87,22 @@ export function composeProductionOwners(input: ProductionOwnerCompositionInput) 
         return acceptedTarget.consumeAcceptedProviderAnswer(reference, consumer);
       } });
     const run = take(createRunGraph({ ...input.run, acceptedAnswer,
+      ...(input.delegation ? { settlement: { owner: 'part-eight' as const, read: (...args: Parameters<RunGraphDependencies['settlement']['read']>) => {
+        ensure(settlementTarget, 'delegated settlement owner is not yet composed'); return settlementTarget.read(...args);
+      } }, exitCheck: { owner: 'part-nine' as const, verify: (...args: Parameters<RunGraphDependencies['exitCheck']['verify']>) => {
+        ensure(exitTarget, 'delegated exit owner is not yet composed'); return exitTarget.verify(...args);
+      } } } : {}),
       assemblyHistory: input.grounding.runtime.history!, grounding: createProductionGroundingReader(input.grounding) }));
     const provider = take(createProductionProviderOwners({ ...input.provider,
       judgment: { ...input.provider.judgment, runs: run } }));
     acceptedTarget = provider.eight;
+    exitTarget = createRunExitCheck({ host: input.provider.verification, runtime: provider.nine, store });
     const effect = createEffectDoorway(input.effect);
+    settlementTarget = { owner: 'part-eight', read: (reference, step) => {
+      const fact = take(store.read()).find(row => row.id === reference.id);
+      return fact?.kind === 'effect-provider-ProviderEffectSettlement'
+        ? provider.eight.readRunSettlement(reference, step) : readEffectRunSettlement(effect, reference, step);
+    } };
     const surface = take(createOperatorSurface({ ...input.operator,
       intake: { owner: 'part-four', operation: 'admitVerifiedAct', port: intake } }));
     const responder = createProductionMinimalResponder({ id: input.names.responder, budgets: input.budgets,
@@ -114,8 +130,18 @@ export function composeProductionOwners(input: ProductionOwnerCompositionInput) 
       admitAcceptedProviderReply(input.provider.judgment.authority, run, command, fence,
         { owner: 'part-five', name: 'Run', id: replyRun }, policy, input.assembly.host.boundary);
     const serving = createSequentialServingAdmission(input.provider.judgment.authority, input.assembly.host.boundary);
+    const delegation = input.delegation ? take(composeProductionDelegation({ configuration: input.delegation,
+      intake: input.intake, graph: run, store, admission: input.run.admission,
+      author: { context: input.provider.judgment.context, privateKey: input.provider.judgment.privateKey,
+        principal: input.assembly.host.principal, machine: input.assembly.host.machine },
+      exitCheck: exitTarget, effect,
+      provider, judgment: input.provider.judgment,
+      transport: input.provider.judgment.authority, current: () => {
+        const current = input.assembly.host.current();
+        return { clock: current.clock, stopped: current.stopped, principal: input.assembly.host.principal.id };
+      } })) : undefined;
     return Object.freeze({ composition, intake, scheduledIntake, scheduled, run, provider, responder,
-      reply, admitReply, serving, transport: input.provider.judgment.authority, telegram: input.telegram });
+      reply, admitReply, serving, delegation, transport: input.provider.judgment.authority, telegram: input.telegram });
   });
 }
 

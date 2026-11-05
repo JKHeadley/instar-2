@@ -8,6 +8,7 @@ import { AttentionQueue } from './attention-queue.js';
 import { normalizeAttentionStatus } from './attention-vocabulary.js';
 import { redact } from '../../src/recall/redact.js';
 import { produceAttentionHealth } from './attention-health.js';
+import type { EdgeView } from '../../src/rungraph/delegation.js';
 
 export interface TrackingSubject {
   installation: string; itemId: string; targetMachineId: string; revision: number; status: string;
@@ -24,6 +25,8 @@ export interface AttentionTrackingPort {
 export function createAttentionSurface(journal: ReturnType<typeof openPreviewJournal>, host: {
   now(): number; machine: string; admitted(): boolean; replicated(): Promise<boolean>;
   tracking?: AttentionTrackingPort;
+  /** Read-only canonical Five ledger, supplied by the installed application. */
+  delegations?(): readonly EdgeView[];
 }) {
   const now = () => Math.max(host.now(), journal.view.clockFloor);
   const admitted = () => host.admitted() && journal.view.stop === null && now() < journal.view.expires;
@@ -114,7 +117,7 @@ export function createAttentionSurface(journal: ReturnType<typeof openPreviewJou
   };
   const maintain = async () => {
     if (!admitted()) return;
-    produceAttentionHealth(journal.view, queue, now());
+    produceAttentionHealth(journal.view, queue, now(), host.delegations?.());
     await drainTracking();
     await drain();
   };

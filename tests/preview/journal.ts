@@ -1,6 +1,7 @@
-import { applyHubRecord, type HubRecord, type HubState } from './collaboration-hub.js';
+import { applyHubRecord, collaborationTopicForOperation, type HubRecord, type HubState } from './collaboration-hub.js';
 import { applyAttentionRecord, type AttentionRecord, type AttentionState } from './attention-queue.js';
-import { createPromiseStore, recordCommitments, closeCommitment, recordReplyLoop, schedulePromise, promiseRetryDelay as workRetryDelay, COMMITMENT_WAITS_ON } from '../../src/rungraph/promises.js';
+import { createPromiseStore, recordCommitments, closeCommitment, recordReplyLoop, schedulePromise, promiseRetryDelay as workRetryDelay, COMMITMENT_WAITS_ON,
+  recordThreadlineCommitment, bindThreadlineCommitment, findCommitmentByThread } from '../../src/rungraph/promises.js';
 import type { CommitmentNote as CoreCommitmentNote, CommitmentClosure, CommitmentWaitsOn, ReplyLoop } from '../../src/rungraph/promises.js';
 export { COMMITMENT_WAITS_ON, OBLIGATION_FORMAT_RETRIES, OBLIGATION_FORMAT_RETRY_MS } from '../../src/rungraph/promises.js';
 export type { CommitmentClosure, CommitmentWaitsOn, ReplyLoop } from '../../src/rungraph/promises.js';
@@ -2378,6 +2379,9 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
     return Math.max(first, work ? work.last + workRetryDelay(work, revisit) : first); };
   view.commitments.forEach((note, id) => {
     const source = view.turns.get(note.source), key = `commitment:${id}`, work = view.obligationWork[key];
+    // TopicLinkage's beaconEnabled:false: the canonical delegated Run owns
+    // collection. This routing promise must not start a second model worker.
+    if (note.threadline) return;
     if (!commitmentOpen(view, id) || !source || !operatorTurn(view, source) || !(note.owner === 'agent' || note.agentPromise)) return;
     const due = note.agentPromise?.due;
     const item = schedulePromise({ id, openedAt: source.at, ...(source.sentAt === undefined ? {} : { sentAt: source.sentAt }),
@@ -3929,7 +3933,36 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (charged && view.replies >= view.limits.maxReplies - 1) throw Error('collaboration: reply allowance reserved for the operator');
     if (row.action === 'model-reserve' && (view.calls >= view.limits.maxCalls || row.deadline > view.expires
       || row.maxInputTokens !== view.limits.maxBytes)) throw Error('collaboration: model call allowance or lifetime exhausted');
+    if (row.action === 'origin') {
+      const source = view.turns.get(row.source);
+      const inherited = row.source.startsWith('threadline:')
+        && collaborationTopicForOperation(view.collaboration, row.source) === row.topic;
+      if ((!source?.accepted || source.thread !== row.topic) && !inherited)
+        throw Error('collaboration: admitted origin turn and topic required');
+    }
+    const repeatedOrigin = row.action === 'origin' && view.collaboration?.origins?.some(item => item.edge === row.envelope.edge);
     view.collaboration = applyHubRecord(view.collaboration, row);
+    if (row.action === 'origin' && !repeatedOrigin) {
+      const c = row.envelope.contract!;
+      // Self-delegation is not a promise to a remote counterpart.
+      if (c.owner !== c.recipient) recordThreadlineCommitment(view, {
+        thread: c.transport.conversation, edge: c.id, peer: c.recipient,
+        topic: view.collaboration.threads.find(thread => thread.threadId === c.transport.conversation)!.parent!,
+        source: row.source, quote: c.task.question });
+    } else if (row.action === 'bind') bindThreadlineCommitment(view, row.threadId, row.topic);
+    else if (row.action === 'outcome' && row.outcome.kind === 'accepted' && row.outcome.receipt) {
+      // Receipt of the peer's result is not delivery to the person. Only the
+      // existing effect owner's exact confirmed topic send closes this promise.
+      const attempt = view.collaboration.attempts.find(item => item.id === row.id);
+      const input = view.collaboration.inbox.find(item => item.envelope.kind === 'result'
+        && `content:${JSON.stringify([item.envelope.conversation, item.envelope.key])}` === row.id);
+      const linked = input && findCommitmentByThread(view, input.envelope.conversation);
+      if (linked && attempt?.effect.kind === 'message' && !attempt.effect.silent
+        && linked.note.threadline!.edge === input!.envelope.edge
+        && linked.note.threadline!.peer === input!.envelope.sender
+        && linked.note.threadline!.topic === attempt.effect.topic)
+        closeCommitment(view, { id: linked.id, source: row.outcome.receipt, quote: attempt.effect.text });
+    }
     if (row.action === 'model-reserve') {
       reserveTokens(view, `hub:${row.id}`, 'replyCheck', row.maxInputTokens, row.maxTokens); view.calls++;
     } else if (row.action === 'model-settle') settleTokens(view, `hub:${row.id}`, row.usage);

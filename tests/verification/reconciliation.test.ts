@@ -44,3 +44,33 @@ it('N2 historical read and current consumption refuse a logical assessment disag
     .toContain('logical identity');
   expect(called).toBe(false);
 });
+
+it('recovery preserves the original request and assessment while the same evidence remains current', () => {
+  const f = jointVerificationFixture();
+  const first = value(f.assessment.assess(f.input));
+  const before = value(f.runtime.inspect()).map(row => row.record);
+  f.effect.time(101);
+  expect(value(f.assessment.assess(f.input))).toEqual(first);
+  expect(value(f.runtime.inspect()).map(row => row.record)).toEqual(before);
+  expect(value(f.assessment.consumeCurrent(first, f.input, current => current.outcome.kind))).toBe('happened');
+});
+
+it('new evidence refines an unknown assessment without rewriting its immutable request or accepting the old view', () => {
+  const f = jointVerificationFixture();
+  const index = f.effect.evidence.findIndex(item => item.id === 'evidence:occurred');
+  const evidence = f.effect.evidence.splice(index, 1);
+  const unknown = value(f.assessment.assess(f.input));
+  expect(value(f.assessment.read(unknown, f.input)).outcome.kind).toBe('uncertain');
+  const request = value(f.runtime.inspect()).find(row => row.record.type === 'VerificationRequest')!.record;
+  f.effect.evidence.push(...evidence); f.effect.time(101);
+  const current = value(f.assessment.assess(f.input));
+  expect(current.id).not.toBe(unknown.id);
+  expect(value(f.assessment.read(current, f.input)).outcome.kind).toBe('happened');
+  expect(refused(f.assessment.read(unknown, f.input))).toContain('current derived evidence');
+  expect(value(f.runtime.inspect()).filter(row => row.record.type === 'VerificationRequest').map(row => row.record)).toEqual([request]);
+  expect(mergeVerificationRecords(value(f.runtime.inspect()).map(row => row.record)).conflicts).toEqual([]);
+  f.captures[f.evidenceCapture] = { ...f.captures[f.evidenceCapture]!, status: 'missing' };
+  let called = false;
+  refused(f.assessment.consumeCurrent(current, f.input, () => { called = true; }));
+  expect(called).toBe(false);
+});

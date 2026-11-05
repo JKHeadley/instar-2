@@ -19,7 +19,7 @@ function fixture() {
   const sent: { id: string; effect: HubEffect }[] = [];
   const make = () => new CollaborationSurfacer({ state: () => journal.view.collaboration,
     append: r => journal.append(r), now: () => now, admitted: () => admitted && journal.view.stop === null && now < journal.view.expires,
-    replicated: async () => replicated, operator: receipt => receipt === 'verified-operator', topics: () => [{ topicId: 42, topicName: 'Build' }],
+    replicated: async () => replicated, operator: receipt => receipt === 'verified-operator', topics: () => [{ topicId: 42, topicName: 'Build' }, { topicId: 43, topicName: 'Review' }],
     effect: async (id, effect) => { sent.push({ id, effect }); return answer ?? { kind: 'accepted', id: effect.kind === 'topic' ? (effect.name === 'Threadline' ? 77 : 100 + sent.length) : sent.length }; } });
   return { get journal() { return journal; }, make, sent, setAnswer: (v: HubOutcome | null) => { answer = v; },
     setOwner: (v: boolean) => { admitted = v; }, setTime: (v: number) => { now = v; }, setReplicated: (v: boolean) => { replicated = v; },
@@ -28,6 +28,20 @@ function fixture() {
     close() { journal.close(); rmSync(root, { recursive: true, force: true }); } };
 }
 const cold = { threadId: 'cold', senderName: 'peer', text: 'Please verify the build', warrants: true, hasParentTopic: false };
+
+it('an explicit current operator can move a bound conversation; forged receipts cannot redirect later content', async () => {
+  const f = fixture();
+  try {
+    let hub = f.make(); await hub.surface(cold);
+    await hub.bind({ threadId: 'cold', targetTopicId: 42, operatorReceipt: 'verified-operator' });
+    await expect(hub.bind({ threadId: 'cold', targetTopicId: 43, operatorReceipt: 'forged' })).rejects.toThrow(/operator/);
+    expect(hub.list().threads[0]?.parent).toBe(42);
+    expect(await hub.bind({ threadId: 'cold', targetTopicId: 43, operatorReceipt: 'verified-operator' })).toMatchObject({ outcome: 'bound' });
+    hub = f.restart();
+    await hub.content({ threadId: 'cold', messageId: 'moved-result', text: 'Result for review' });
+    expect(f.sent.at(-1)?.effect).toMatchObject({ topic: 43, silent: false });
+  } finally { f.close(); }
+});
 
 it('one silent hub survives restart; parent routing and housekeeping stay separate and deduplicate by identity', async () => {
   const f = fixture(); let hub = f.make();
