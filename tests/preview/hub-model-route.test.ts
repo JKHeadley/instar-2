@@ -1,9 +1,9 @@
 import { it, expect } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHubModelRoute } from './hub-model-route.js';
-import { hubIntentRequest } from './hub-model-contract.js';
+import { hubIntentDecision, hubIntentRequest } from './hub-model-contract.js';
 import { openPreviewJournal } from './journal.js';
 import { subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 
@@ -39,5 +39,36 @@ it('retains a single charged invocation across loss, refuses current stop and ba
     expect(calls).toBe(2); expect(journal.view.calls).toBe(3);
     await expect(route()('over-cap', request)).rejects.toThrow(/allowance/);
     expect(calls).toBe(2);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('replays actual foreign summary, uncertain, Jev, review, delivered and empty-context bytes through the new route without authorizing a hub command', async () => {
+  const corpus = JSON.parse(readFileSync('tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', 'utf8')) as {
+    otherShapes: { kind: string; id: string; raw: string }[] };
+  expect(corpus.otherShapes.map(row => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided',
+    'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
+  const root = mkdtempSync(join(tmpdir(), 'hub-foreign-replay-'));
+  const journal = openPreviewJournal(join(root, 'journal'), new Uint8Array(32).fill(4), {
+    kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'isolated-replay',
+    configurationDigest: 'sha256:offline', expires: 100000, maxCalls: 16, maxReplies: 8, maxTurns: 8, maxBytes: 32768, cursor: 0 });
+  const topics = [{ topicId: 42, topicName: 'Build' }];
+  try {
+    for (const row of corpus.otherShapes) {
+      let invoked = false;
+      const route = createHubModelRoute({ view: () => journal.view, now: () => 1000, admitted: () => true,
+        append: record => journal.append(record), model: 'claude-sonnet-4-6',
+        policy: subscriptionConversationPolicy('claude-sonnet-4-6'), replicated: async () => true,
+        recordedCall: async (_judgment, _bytes, bounds) => {
+          invoked = true; expect(bounds.maxTokens).toBe(200);
+          // These are historical raw bytes, not newly captured outputs of this envelope.
+          return { state: 'complete', bytes: row.raw, providerOperation: null, retryBlocked: false,
+            usage: { inputTokens: null, outputTokens: null, charge: null, source: 'historical replay; usage not inferred' } };
+        } });
+      const output = await route(row.id, hubIntentRequest('open this', [], topics).request);
+      expect(invoked, row.id).toBe(true);
+      expect(hubIntentDecision(output, topics), row.id).toBeNull();
+    }
+    expect(journal.view.calls).toBe(7);
+    expect(journal.view.collaboration?.attempts).toEqual([]);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
