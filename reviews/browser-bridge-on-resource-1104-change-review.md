@@ -28,6 +28,11 @@ Decision: BROWSER-MERGE-1104-2 | Reopen the copied resource-recovery review whos
 
 Deferral: generated/conversion.json:1 | not-a-deferral=regenerated one-line output carries existing governing text; the combined train introduces no new deferral
 
+Prompt finding: 4106b49fff07 | protocol-literal | Carried fixed protocol guidance unchanged by integration — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"
+Prompt finding: 849db3a6296a | protocol-literal | Carried fixed protocol guidance unchanged by integration — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
+Prompt finding: 85544c20941f | protocol-literal | Carried fixed protocol guidance unchanged by integration — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-conversation-session.test.ts: "your messages are kept and i'll answer them then; you don't need to resend them."
+Prompt finding: e8708c7fea24 | protocol-literal | Carried fixed protocol guidance unchanged by integration — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
+
 ## Closing block
 
 simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.

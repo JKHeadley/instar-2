@@ -21,6 +21,7 @@ Convergence: none
 Decision: train180-repair-merge | Preserve both parents and derive approvedConversion from the canonically hashed merged anchor; regenerate outputs with the existing builder instead of choosing either parent's generated hash. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-180-repair-130006-PROGRESS.md
 Decision: train180-repair-checks | Use targeted portable checks and the delegated owner-manifest and chain repin tools; native and full-suite evidence remains the Studio gate's responsibility. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-180-repair-130006-PROGRESS.md
 Decision: train180-repair-closing | Move existing deferral dispositions above the closing blocks in two inherited browser reviews, preserving every statement and restoring the Rule 116 required last-three-line layout. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-180-repair-130006-PROGRESS.md
+Decision: train180-repair-prompts | Carry the four existing train-180 protocol-literal prompt dispositions into each reopened browser review so its combined subject has explicit findings of its own; wording and runtime policy remain unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-180-repair-130006-PROGRESS.md
 Deferral: generated/conversion.json:1 | not-a-deferral=regenerated output carries existing governing text, not a new deferral
 Deferral: generated/register.json:1 | not-a-deferral=regenerated output carries existing governing text, not a new deferral
 
