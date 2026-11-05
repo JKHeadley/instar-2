@@ -30,7 +30,7 @@ export type ConversationSessionOutcome = SessionWorkOutcome | Readonly<{
 }>;
 export interface ConversationInput {
   readonly request: SessionWorkRequest; readonly digest: string; readonly acceptedAt: number;
-  readonly state: 'queued' | 'dispatching' | 'accepted' | 'settled';
+  readonly state: 'queued' | 'revival-queued' | 'dispatching' | 'accepted' | 'settled';
   readonly delivery: ConversationDelivery | null; readonly cursor: number;
   readonly reply: string | null; readonly outcome: SessionWorkOutcome | null;
   readonly attempts: number; readonly retryAt: number;
@@ -38,6 +38,11 @@ export interface ConversationInput {
   readonly effectsAtDispatch?: number;
   readonly contextRecovery?: 'compacting' | 'restoring' | 'continued';
   readonly workerRecovery?: 'restoring' | 'continued';
+  /** Carryover row 03: a revival queued only AFTER exact retirement and a proven
+   * no-launch capacity refusal. A starting/unknown attempt is never retry authority. */
+  readonly revival?: Readonly<{ authority: string; parent: string; owner: string; scope: string;
+    placement: string; deadline: number; digest: string; capacityRefusals: number }> | null;
+
 }
 export interface IdleCleanupState {
   readonly candidate: Readonly<{ fingerprint: string; firstAt: number; lastAt: number;
@@ -357,11 +362,22 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         budget: { ...edge.budget, deadline: state.deadline, calls: config.maxCalls - calls() } });
       config.append(processEdge);
       await config.io.prepareAdmission(claim, processEdge); guard();
+      if (restore) ensure(config.contextRecoveryAllowed?.() === true, 'restoration has unknown outward sends at dispatch; no automatic replay');
       const worker = await adapter.launch({ operation: claim, claim, artifact: config.artifact, incarnation, workingScope: config.workingScope, ...(restore ? { restore } : {}) });
       ensure(worker.claim === claim && worker.incarnation === incarnation && worker.launch, 'launch identity differs from admission');
       persist({ worker }); await lease.attach(worker.launch); guard();
       persist({ idleCleanup: { candidate: null, ...(state.idleCleanup?.inhibited ? { inhibited: true } : {}) } });
       return true;
+    };
+    // ResumeQueueDrainer keeps resource holds separate from failed spawn attempts.
+    // Its 60-second drain cadence is retained; the original lifetime is the brake.
+    // Existing durable input custody and the owner's tick supply persistence/scheduling.
+    const queueRevival = (id: string, authority: string, delivery: ConversationDelivery, deadline: number) => {
+      ensure(!state.worker && !state.claim, 'revival requires confirmed retirement and no replacement claim');
+      const capacityRefusals = (row(id).revival?.capacityRefusals ?? 0) + 1;
+      const revival = { authority, parent: config.parent, owner: config.owner, scope: config.workingScope,
+        placement: config.placement, deadline, digest: delivery.digest, capacityRefusals };
+      update(id, { revival, state: 'revival-queued', retryAt: Math.min(deadline, config.now() + 60_000) });
     };
     const work = async (waiting: readonly string[]) => {
       let ids = waiting;
@@ -375,65 +391,94 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         if (config.prepareTurn && !await config.prepareTurn({ claim: state.claim, retire })) return false;
         ensure(!state.halt, 'conversation safety halt retained');
         const request = { ...row(id).request, authority: config.currentAuthority() };
-        let replaceNeeded = !state.worker || state.turns >= config.maxSteps || config.now() >= state.deadline || state.authority !== request.authority;
-        if (state.worker && !replaceNeeded) {
-          const observed = await adapter.observe({ ...state.worker, delivery: null, cursor: 0, limit: 2 });
-          ensure(observed.complete, 'observation gap requires reconciliation');
-          for (const event of observed.observations)
-            if (event.kind === 'exit' && event.safetyDeadline !== undefined) halt('deadline', event.safetyDeadline);
-          replaceNeeded = observed.observations.some(event => event.kind === 'exit');
-          ensure(!observed.observations.some(event => event.kind === 'paused'), 'paused worker requires reconciliation');
+        let delivery: ConversationDelivery;
+        const revival = row(id).revival;
+        ensure(row(id).state !== 'revival-queued' || revival != null, 'queued revival proof missing; no automatic replay');
+        if (revival) {
+          ids = [id]; guard();
+          const prior = row(id).delivery;
+          ensure(row(id).workerRecovery === 'restoring' && row(id).state === 'revival-queued' && prior !== null
+            && !state.worker && !state.claim && row(id).batch?.length === 1
+            && revival.parent === config.parent && revival.owner === config.owner
+            && revival.scope === config.workingScope && revival.placement === config.placement
+            && revival.authority === request.authority && revival.digest === prior.digest && digest(prior.text) === prior.digest
+            && prior.operation === id && prior.maxBytes === config.maxResultBytes
+            && prior.resultPath === `${config.resultDirectory}/conversation-${slug(id)}.json`
+            && Number.isSafeInteger(revival.capacityRefusals) && revival.capacityRefusals > 0,
+          'queued revival identity or grant changed; no automatic replay');
+          ensure(config.contextRecoveryAllowed?.() === true, 'queued revival has unknown outward sends; no automatic replay');
+          ensure(Number.isSafeInteger(revival.deadline) && config.now() < revival.deadline
+            && revival.deadline === state.deadline && revival.deadline <= parentDeadline(), 'queued revival lifetime exhausted; work retained');
+          ensure(calls() < config.maxCalls, 'queued revival allowance exhausted; work retained');
+          // Persist starting BEFORE any launch. A crash here becomes uncertain in
+          // recover(), just like every other interrupted dispatch.
+          update(id, { state: 'dispatching' });
+          if (!await replace(request, { operation: id, digest: prior.digest, deadline: revival.deadline })) {
+            queueRevival(id, request.authority, prior, revival.deadline); return false;
+          }
+          delivery = { ...prior, ...state.worker! };
+          update(id, { delivery, state: 'accepted', workerRecovery: 'continued', cursor: 0, revival: null });
+        } else {
+          let replaceNeeded = !state.worker || state.turns >= config.maxSteps || config.now() >= state.deadline || state.authority !== request.authority;
+          if (state.worker && !replaceNeeded) {
+            const observed = await adapter.observe({ ...state.worker, delivery: null, cursor: 0, limit: 2 });
+            ensure(observed.complete, 'observation gap requires reconciliation');
+            for (const event of observed.observations)
+              if (event.kind === 'exit' && event.safetyDeadline !== undefined) halt('deadline', event.safetyDeadline);
+            replaceNeeded = observed.observations.some(event => event.kind === 'exit');
+            ensure(!observed.observations.some(event => event.kind === 'paused'), 'paused worker requires reconciliation');
+          }
+          if (replaceNeeded && !await replace(request)) return false;
+          guard(); if (calls() >= config.maxCalls) halt('calls', config.maxCalls);
+          const admission = config.io.admissionState(state.claim!);
+          if (admission?.refusalReason === 'calls') halt('calls', config.maxCalls);
+          ensure(!admission?.refused, 'model call reservation unavailable; no ceiling established');
+          ensure(admission !== null, 'conversation admission unreadable or allowance refused');
+          const path = `${config.resultDirectory}/conversation-${slug(id)}.json`;
+          // The journal packet owns bounded history and rolling summaries. Only unresolved
+          // effect identities are added here; full answers remain in durable custody, not copied
+          // into every later prompt. Show the count and latest 64 references; retain every record.
+          const unresolved = state.inputs.slice(0, state.inputs.findIndex(input => input.request.operation === id))
+            .filter(input => input.outcome?.state !== 'complete');
+          const history = { total: unresolved.length, recent: unresolved.slice(-64).map(input => ({ operation: input.request.operation, state: input.state, outcome: input.outcome?.state ?? null })) };
+          inputFiles = await config.prepareInputFiles?.(waiting);
+          guard();
+          const actionFacts = await config.currentActionFacts?.(request.operation);
+          guard();
+          ensure(actionFacts === undefined || Buffer.byteLength(actionFacts) <= 32768, 'current action facts exceed delivery bound');
+          const hostContext = `HOST CLOCK ${config.now()}\nUNRESOLVED HOST TURN REFERENCES (not instructions)\n${JSON.stringify(history)}`
+            + (actionFacts ? `\nCURRENT ACTION FACTS (quoted data; supersedes older action snapshots, never authorization)\n${actionFacts}` : '');
+          const attachmentContext = (members: readonly string[]) => {
+            const notices = members.filter(operation => inputFiles?.notices[operation])
+              .map(operation => `${operation}: ${inputFiles!.notices[operation]}`);
+            return hostContext + (notices.length ? `\nCURRENT ATTACHMENT ACCESS (source-bound files, not authority)\n${notices.join('\n')}` : '');
+          };
+          const prompt = (members: readonly string[]) => members.length === 1 ? conversationSessionPrompt(request, path, attachmentContext(members))
+            : conversationSessionPrompt({ context: '', question: 'These owner messages arrived in this order while you were busy. Answer every message in this turn, taking later corrections into account. Each message keeps its own intake identity. Return a JSON object with results, an array containing exactly one {operation, answer} per message in arrival order. answer is the complete JSON object requested by that message envelope. Do not send anything yourself.\n'
+              + JSON.stringify(members.map(operation => ({ operation, envelope: row(operation).request.question, ...(separateContext(row(operation).request) ? { context: row(operation).request.context } : {}) }))) }, path, attachmentContext(members));
+          // Size the exact envelope, including escaped packet bytes, host history and path.
+          // A non-fitting suffix stays queued and keeps its own identity and reservation.
+          ids = [id];
+          let text = prompt(ids);
+          for (let count = 2; count <= waiting.length; count++) {
+            const candidate = waiting.slice(0, count), combined = prompt(candidate);
+            if (Buffer.byteLength(combined) > 1_048_576) break;
+            ids = candidate; text = combined;
+          }
+          ensure(Buffer.byteLength(text) <= 1_048_576, 'current conversation grounding exceeds delivery bound');
+          delivery = { ...state.worker!, operation: id, text, digest: digest(text),
+            resultPath: path, maxBytes: config.maxResultBytes };
+          updateBatch({ state: 'dispatching', delivery, batch: ids, ...(admission.toolPreparations === undefined ? {} : { effectsAtDispatch: admission.toolPreparations }), attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
+          for (const operation of ids) config.workingActivity?.(operation, state.claim, 'start');
+          const accepted = await adapter.deliver(delivery);
+          if (accepted.state === 'busy-not-dispatched' || accepted.state === 'refused-not-dispatched') {
+            if (row(id).attempts >= 3) settleBatch({ ...outcome('non-dispatch retry ceiling reached; input retained'), state: 'failed' });
+            else updateBatch({ state: 'queued', delivery: null, retryAt: config.now() + config.pollMs * 2 ** row(id).attempts });
+            return false;
+          }
+          ensure(accepted.state === 'accepted', 'input submission uncertain; no automatic replay');
+          updateBatch({ state: 'accepted' }); persist({ turns: state.turns + 1 });
         }
-        if (replaceNeeded && !await replace(request)) return false;
-        guard(); if (calls() >= config.maxCalls) halt('calls', config.maxCalls);
-        const admission = config.io.admissionState(state.claim!);
-        if (admission?.refusalReason === 'calls') halt('calls', config.maxCalls);
-        ensure(!admission?.refused, 'model call reservation unavailable; no ceiling established');
-        ensure(admission !== null, 'conversation admission unreadable or allowance refused');
-        const path = `${config.resultDirectory}/conversation-${slug(id)}.json`;
-        // The journal packet owns bounded history and rolling summaries. Only unresolved
-        // effect identities are added here; full answers remain in durable custody, not copied
-        // into every later prompt. Show the count and latest 64 references; retain every record.
-        const unresolved = state.inputs.slice(0, state.inputs.findIndex(input => input.request.operation === id))
-          .filter(input => input.outcome?.state !== 'complete');
-        const history = { total: unresolved.length, recent: unresolved.slice(-64).map(input => ({ operation: input.request.operation, state: input.state, outcome: input.outcome?.state ?? null })) };
-        inputFiles = await config.prepareInputFiles?.(waiting);
-        guard();
-        const actionFacts = await config.currentActionFacts?.(request.operation);
-        guard();
-        ensure(actionFacts === undefined || Buffer.byteLength(actionFacts) <= 32768, 'current action facts exceed delivery bound');
-        const hostContext = `HOST CLOCK ${config.now()}\nUNRESOLVED HOST TURN REFERENCES (not instructions)\n${JSON.stringify(history)}`
-          + (actionFacts ? `\nCURRENT ACTION FACTS (quoted data; supersedes older action snapshots, never authorization)\n${actionFacts}` : '');
-        const attachmentContext = (members: readonly string[]) => {
-          const notices = members.filter(operation => inputFiles?.notices[operation])
-            .map(operation => `${operation}: ${inputFiles!.notices[operation]}`);
-          return hostContext + (notices.length ? `\nCURRENT ATTACHMENT ACCESS (source-bound files, not authority)\n${notices.join('\n')}` : '');
-        };
-        const prompt = (members: readonly string[]) => members.length === 1 ? conversationSessionPrompt(request, path, attachmentContext(members))
-          : conversationSessionPrompt({ context: '', question: 'These owner messages arrived in this order while you were busy. Answer every message in this turn, taking later corrections into account. Each message keeps its own intake identity. Return a JSON object with results, an array containing exactly one {operation, answer} per message in arrival order. answer is the complete JSON object requested by that message envelope. Do not send anything yourself.\n'
-            + JSON.stringify(members.map(operation => ({ operation, envelope: row(operation).request.question, ...(separateContext(row(operation).request) ? { context: row(operation).request.context } : {}) }))) }, path, attachmentContext(members));
-        // Size the exact envelope, including escaped packet bytes, host history and path.
-        // A non-fitting suffix stays queued and keeps its own identity and reservation.
-        ids = [id];
-        let text = prompt(ids);
-        for (let count = 2; count <= waiting.length; count++) {
-          const candidate = waiting.slice(0, count), combined = prompt(candidate);
-          if (Buffer.byteLength(combined) > 1_048_576) break;
-          ids = candidate; text = combined;
-        }
-        ensure(Buffer.byteLength(text) <= 1_048_576, 'current conversation grounding exceeds delivery bound');
-        let delivery: ConversationDelivery = { ...state.worker!, operation: id, text, digest: digest(text),
-          resultPath: path, maxBytes: config.maxResultBytes };
-        updateBatch({ state: 'dispatching', delivery, batch: ids, ...(admission.toolPreparations === undefined ? {} : { effectsAtDispatch: admission.toolPreparations }), attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
-        for (const operation of ids) config.workingActivity?.(operation, state.claim, 'start');
-        const accepted = await adapter.deliver(delivery);
-        if (accepted.state === 'busy-not-dispatched' || accepted.state === 'refused-not-dispatched') {
-          if (row(id).attempts >= 3) settleBatch({ ...outcome('non-dispatch retry ceiling reached; input retained'), state: 'failed' });
-          else updateBatch({ state: 'queued', delivery: null, retryAt: config.now() + config.pollMs * 2 ** row(id).attempts });
-          return false;
-        }
-        ensure(accepted.state === 'accepted', 'input submission uncertain; no automatic replay');
-        updateBatch({ state: 'accepted' }); persist({ turns: state.turns + 1 });
         for (;;) {
           guard(); if (config.now() >= state.deadline) halt('deadline', state.deadline); calls();
           const admission = config.io.admissionState(state.claim!);
@@ -461,8 +506,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             // one existing respawn funnel. PendingInjectStore custody is preserved;
             // its historical at-least-once replay is not permission for tool effects.
             updateBatch({ workerRecovery: 'restoring' });
-            ensure(await replace(request, { operation: id, digest: delivery.digest, deadline: state.deadline }),
-              'lost worker replacement admission unavailable; input retained');
+            const originalDeadline = state.deadline;
+            if (!await replace(request, { operation: id, digest: delivery.digest, deadline: originalDeadline })) {
+              queueRevival(id, request.authority, delivery, originalDeadline); return false;
+            }
             delivery = { ...delivery, ...state.worker! };
             updateBatch({ delivery, workerRecovery: 'continued', cursor: 0 });
             continue;
@@ -530,12 +577,12 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       draining = (async () => {
         await retiring; await recover();
         if (state.halt) return;
-        if (config.prepareTurn && !state.inputs.some(input => input.state === 'queued')) {
+        if (config.prepareTurn && !state.inputs.some(input => input.state === 'queued' || input.state === 'revival-queued')) {
           guard(); await config.prepareTurn({ claim: state.claim, retire });
         }
         while (!closing && !config.stopped() && !state.halt) {
-          const next = state.inputs.find(input => input.state === 'queued');
-          if (!next || config.now() < next.retryAt || !await work(config.batchWaiting ? state.inputs.filter(input => input.state === 'queued' && config.now() >= input.retryAt).map(input => input.request.operation) : [next.request.operation])) break;
+          const next = state.inputs.find(input => input.state === 'queued' || input.state === 'revival-queued');
+          if (!next || config.now() < next.retryAt || !await work(config.batchWaiting && !next.revival ? state.inputs.filter(input => input.state === 'queued' && !input.revival && config.now() >= input.retryAt).map(input => input.request.operation) : [next.request.operation])) break;
         }
       })().finally(() => { draining = null; });
       return draining;
@@ -545,7 +592,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     const currentOutcome = (id: string): ConversationSessionOutcome => row(id).outcome
       ?? (state.halt || closing || config.stopped() || config.now() >= parentDeadline()
         ? outcome('queued input retained after conversation lifetime or stop boundary')
-        : { ...outcome('input durably queued; not dispatched'), state: 'queued' });
+        : { ...outcome(row(id).revival ? 'lost worker revival durably queued after confirmed retirement; waiting for capacity' : 'input durably queued; not dispatched'), state: 'queued' });
     const collect = async (operation: string) => {
       if (!row(operation)) return null;
       await draining;

@@ -42,6 +42,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
   let journal = open();
   const f = assemblyRuntimeFixture();
   let now = 1000, launches = 0, calls = 0, fallback = 0, stopped = false, edges = 0;
+  let loseWorker = false, capacity = true;
   let destination = '', answer = JSON.stringify({ reply: 'A useful answer.', memory: [] });
   const files = new Map<string, string>(), delivered: string[] = [], sent: string[] = [], speakers: string[] = [];
   let state: ConversationTopicsState | null = null, busy = false;
@@ -60,11 +61,15 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
     createDriver: resolve => ({ owner: 'part-eight', launch: () => { launches++; return f.success('session:123:1'); },
       deliver: input => { if (checkIntake) expect(journal.view.order.some(turn => (turn.id === input.intake || `${turn.id}:format-retry` === input.intake && turn.answerRetried) && turn.reserved)).toBe(true);
         delivered.push(resolve(input.intake, input.digest)); calls++; files.set(destination, answer); return f.success('accepted'); },
-      observe: () => f.success({ phase: 'output-observed', evidence: 'turn-closed:fake:1', detail: 'closed' }), stop: () => f.success(['123']) }),
+      observe: () => {
+        if (loseWorker) { loseWorker = false; capacity = false;
+          return f.success({ phase: 'exit-observed', evidence: 'exact-worker-exit', detail: 'lost' }); }
+        return f.success({ phase: 'output-observed', evidence: 'turn-closed:fake:1', detail: 'closed' });
+      }, stop: () => f.success(['123']) }),
     io: { clearResult: path => { destination = path; files.delete(path); }, readResult: path => files.get(path) ?? null,
       wait: async ms => { now += ms; }, modelCalls: () => calls, prepareAdmission: () => {}, closeAdmission: () => {},
       admissionState: () => ({ refused: false, openDelegations: [] }) },
-    resources: { admit: async () => ({ attach: async () => {}, release: async () => true }) },
+    resources: { admit: async () => capacity ? ({ attach: async () => {}, release: async () => true }) : null },
     context: f.c, now: () => now, stopped: () => stopped,
     append: record => { journal.append({ kind: 'session-work', record, at: now }); if (record.type === 'SessionWorkEdge' && !record.drawsOn) edges++; }, parent: 'runner', owner: 'machine',
     placement: 'local', transport: 'fake', workingScope: '/scope', resultDirectory: '/scope', artifact: 'worker',
@@ -88,6 +93,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
     checkOutbound: text => { if (text.includes('SECRET')) throw Error('credential'); }, ...extra });
   let worker = openWorker();
   return { root, get journal() { return journal; }, get worker() { return worker; }, get model() { return model; }, get port() { return port; }, sent, speakers, delivered, edges: () => edges, counts: () => ({ launches, calls, fallback }),
+    config, loseWorker: () => { loseWorker = true; }, capacity: (value: boolean) => { capacity = value; },
     boundary: (next: typeof turnBoundary) => { turnBoundary = next; },
     evidence: (value: unknown) => { sources = [value]; },
     busy: (value: boolean) => { busy = value; }, advance: (ms: number) => { now += ms; },
@@ -988,4 +994,28 @@ it('the shipped host wires the worker capacity read to its real login pool (null
   const read = (loginPool: unknown) => (Function('loginPool', `return ${line!};`)(loginPool) as () => unknown)();
   expect(read(null)).toBeNull();
   expect(read({ outage: () => ({ resetAt: 7 }) })).toEqual({ resetAt: 7 });
+});
+
+
+it('the shipped journal consumer keeps a capacity-held revival and sends its collected answer once', async () => {
+  const f = fixture();
+  Object.assign(f.config, { contextRecoveryAllowed: () => true, deadlineMs: 900000 });
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  try {
+    await f.restart(true);
+    f.loseWorker();
+    f.worker.intake([update(73001, 'Keep this question through worker loss')]);
+    await f.worker.drain();
+    expect(f.sent).toEqual([]);
+    expect(f.state().inputs[0]?.state).toBe('revival-queued');
+    expect(f.journal.view.order[0]?.sent).toBeUndefined();
+    await f.restart(true);
+    f.capacity(true); f.advance(60000);
+    await f.port.maintain(); await f.worker.drain(); await f.worker.drain();
+    expect(f.sent).toEqual(['A useful answer.']);
+    expect(f.delivered).toHaveLength(1);
+    expect(f.counts().launches).toBe(2);
+    expect(await f.replay()).toBeDefined();
+    expect(f.sent).toEqual(['A useful answer.']);
+  } finally { await f.close(); }
 });

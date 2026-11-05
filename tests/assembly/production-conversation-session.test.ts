@@ -1218,3 +1218,135 @@ it('replays the failed email turn: missing result stays uncertain, and the actua
   expect(prompt).toContain('never invent account contents or completed actions');
   await f.port.close();
 });
+
+
+it.each([false, true])('retains a proven-safe lost-worker revival through capacity refusal (restart=%s)', async restart => {
+  const f = fixture();
+  Object.assign(f.config, { contextRecoveryAllowed: () => true, deadlineMs: 900000, allowanceDeadline: 1000000 });
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  const observe = f.adapter.observe, admit = f.config.resources.admit;
+  let exited = false, capacity = true;
+  Object.assign(f.config.resources, { admit: async () => capacity ? admit() : null });
+  f.adapter.observe = async input => {
+    if (input.delivery && !exited) {
+      exited = true; capacity = false;
+      return { observations: [{ kind: 'exit', evidence: 'exact worker absent' }], cursor: input.cursor, complete: true };
+    }
+    return observe(input);
+  };
+  const request = f.request('lost-under-pressure');
+  expect(await f.port.run(request)).toMatchObject({ state: 'queued' });
+  expect(f.state().inputs[0]?.request).toEqual(request);
+  expect(f.state().worker).toBeNull(); expect(f.delivered).toHaveLength(1);
+  const port = restart ? f.restart() : f.port;
+  capacity = true;
+  await port.maintain(); expect(f.launches).toHaveLength(1);
+  f.advance(60000); await port.maintain();
+  expect(await port.collect(request.operation)).toMatchObject({ outcome: { state: 'complete' } });
+  expect(f.delivered).toHaveLength(1); expect(f.launches).toHaveLength(2);
+  expect(f.admissions.map(edge => edge.budget.calls)).toEqual([6, 5]);
+  await port.close();
+});
+
+async function capacityHeldRevival(raw = '{"answer":"hello"}') {
+  const f = fixture();
+  Object.assign(f.config, { contextRecoveryAllowed: () => true, deadlineMs: 900000, allowanceDeadline: 1000000 });
+  f.answer(raw);
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  const observe = f.adapter.observe, admit = f.config.resources.admit;
+  let exited = false, capacity = true;
+  Object.assign(f.config.resources, { admit: async () => capacity ? admit() : null });
+  f.adapter.observe = async input => {
+    if (input.delivery && !exited) {
+      exited = true; capacity = false;
+      return { observations: [{ kind: 'exit', evidence: 'exact worker absent' }], cursor: input.cursor, complete: true };
+    }
+    return observe(input);
+  };
+  const request = f.request('queued-revival');
+  expect(await f.port.run(request)).toMatchObject({ state: 'queued' });
+  return { ...f, request, capacity: (value: boolean) => { capacity = value; } };
+}
+
+it.each(capturedShapes.otherShapes)('drains a capacity-held revival with recorded $kind ($id)', async sample => {
+  const f = await capacityHeldRevival(sample.raw);
+  f.capacity(true); f.advance(60000);
+  const restarted = f.restart(); await restarted.maintain();
+  const result = await restarted.collect(f.request.operation);
+  expect(f.state().inputs[0]?.workerRecovery).toBe('continued');
+  expect(result?.outcome.state).toBe(sample.raw.trim() ? 'complete' : 'uncertain');
+  if (result?.outcome.state === 'complete') expect(result.outcome.text).toBe(sample.raw);
+  expect(f.delivered).toHaveLength(1); expect(f.launches).toHaveLength(2);
+  await restarted.close();
+});
+
+it.each(['stop', 'withdrawn', 'changed-grant', 'unknown-send', 'calls', 'unknown-calls', 'deadline',
+  'owner', 'parent', 'scope', 'placement', 'digest', 'extended-deadline', 'result-path', 'batch', 'count', 'missing-proof'] as const)
+('keeps queued revival custody without a launch across %s', async mode => {
+  const f = await capacityHeldRevival(); f.capacity(true); f.advance(60000);
+  if (mode === 'stop') f.stop();
+  if (mode === 'withdrawn') f.authorize(false);
+  if (mode === 'changed-grant') f.grant('different-role');
+  if (mode === 'unknown-send') Object.assign(f.config, { contextRecoveryAllowed: () => false });
+  if (mode === 'calls') f.calls(6);
+  if (mode === 'unknown-calls') f.calls(null);
+  if (mode === 'deadline') f.advance(900000);
+  const before = f.state(), input = before.inputs[0]!;
+  let revival = input.revival!, delivery = input.delivery!, batch = input.batch;
+  if (mode === 'owner' || mode === 'parent' || mode === 'scope' || mode === 'placement') revival = { ...revival, [mode]: 'other' };
+  if (mode === 'digest') delivery = { ...delivery, text: 'changed' };
+  if (mode === 'extended-deadline') revival = { ...revival, deadline: revival.deadline + 1 };
+  if (mode === 'result-path') delivery = { ...delivery, resultPath: '/other/result' };
+  if (mode === 'batch') batch = [f.request.operation, 'other'];
+  if (mode === 'count') revival = { ...revival, capacityRefusals: -1 };
+  f.restore({ ...before, inputs: [{ ...input, revival: mode === 'missing-proof' ? null : revival, delivery, ...(batch ? { batch } : {}) }] });
+  const next = f.restart(); await next.maintain();
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+  expect(f.state().inputs[0]?.request).toEqual(f.request);
+  expect((await next.collect(f.request.operation))?.outcome.state).not.toBe('complete');
+  await next.close();
+});
+
+it('does not spend failed-launch attempts on a capacity hold; keeps the 60-second cadence across restarts', async () => {
+  const f = await capacityHeldRevival();
+  for (let n = 0; n < 4; n++) {
+    const port = f.restart(); f.advance(59999); await port.maintain();
+    expect(f.state().inputs[0]?.revival?.capacityRefusals).toBe(n + 1);
+    f.advance(1); await port.maintain();
+    expect(f.state().inputs[0]?.revival?.capacityRefusals).toBe(n + 2);
+    expect((await port.collect(f.request.operation))?.outcome.state).toBe('queued');
+  }
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+  f.capacity(true); f.advance(60000);
+  const next = f.restart(); await next.maintain();
+  expect((await next.collect(f.request.operation))?.outcome.state).toBe('complete');
+  expect(f.launches).toHaveLength(2); await next.close();
+});
+
+it('does not replay an interrupted queued revival launch after host loss', async () => {
+  const f = await capacityHeldRevival(); f.capacity(true); f.advance(60000);
+  let interrupted: ConversationState | null = null;
+  f.adapter.launch = async () => { interrupted = f.state(); throw Error('host lost during replacement launch'); };
+  await f.port.maintain(); expect(interrupted).not.toBeNull();
+  f.restore(interrupted!);
+  const next = f.restart(); await next.maintain();
+  expect((await next.collect(f.request.operation))?.outcome.state).toBe('uncertain');
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1); await next.close();
+});
+
+
+it.each(['stop', 'grant', 'send'] as const)('revalidates %s after async replacement admission', async mode => {
+  const f = await capacityHeldRevival(); f.capacity(true); f.advance(60000);
+  const prepare = f.config.io.prepareAdmission;
+  f.config.io.prepareAdmission = async (claim, edge) => {
+    await prepare(claim, edge);
+    if (mode === 'stop') f.stop();
+    if (mode === 'grant') f.grant('revoked');
+    if (mode === 'send') Object.assign(f.config, { contextRecoveryAllowed: () => false });
+  };
+  await f.port.maintain();
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+  expect((await f.port.collect(f.request.operation))?.outcome.state).toBe('uncertain');
+  expect(f.state().inputs[0]?.request).toEqual(f.request);
+  await f.port.close();
+});
