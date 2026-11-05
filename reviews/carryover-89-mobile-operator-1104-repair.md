@@ -1,6 +1,6 @@
 # Change review — truthful reply outcomes and usable active conversation links
 
-Subject base: 2df7402a4d90ffbae2578edf40daa4408586fefd
+Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
 Review state: open
 Reviewed content: none
 Outcome: Process Health reports check events without inferring holds, revisions or resolution; actual withheld drafts use heldReview records. All selected active conversation links resolve bounded details outside the latest ten messages.
@@ -19,6 +19,10 @@ Bug evidence: reproducer=tests/preview/operator-dashboard-mobile.test.ts
 Hook bypass: none
 Convergence: none
 Prompt review: No prompt, parser or dispatch changes. The added model/reviewer stand-ins only exercise the existing worker's recorded outcomes, and the production send/advisory-release implementation remains unchanged.
+
+## Covered carryover and repair
+
+The inherited carryover commits 08c35fab6 and 2df7402a4 had no committed change-review record. This record covers their mobile operator surface and the repair together: a native PIN-file verifier, active-only session listing with machine attribution, Process Health from journal records, runner publication, documentation and floor fixtures. The PIN grants viewing only; existing independent approval custody remains intact. The two source defects identified by the independent review are repaired here. The generated register is replayed from source commit 24114ce066a8d052bba1e621ecc30978e341e32d; no pins are hand-edited.
 
 ## 1.x FIRST comparison
 
