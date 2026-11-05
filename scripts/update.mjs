@@ -30,6 +30,25 @@ function stampValid(stamp) {
   if (!stamp || typeof stamp.version !== 'string' || !Number.isSafeInteger(stamp.schema) || stamp.schema < 1
     || !Array.isArray(stamp.migrations) || !stamp.migrations.every(id => typeof id === 'string')) throw Error('Invalid version stamp; preserved for repair');
 }
+// Adapted from 1.x UpdateChecker.validateCandidate: inspect the installed bytes,
+// never npm's exit code or a prior success stamp alone (Rules 26/42/95).
+function validateCandidate(installed, release) {
+  const pkg = load(join(installed, 'package.json'));
+  const cli = join(installed, 'bin/instar2.mjs');
+  if (pkg.name !== packageInfo.name || typeof pkg.version !== 'string' || !existsSync(cli))
+    throw Error('Invalid installed release');
+  if (/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(release) && pkg.version !== release.slice(1))
+    throw Error('Installed version does not match the requested release; current release retained');
+  const probe = spawnSync(process.execPath, ['--check', cli],
+    { timeout: 10000, maxBuffer: 1024 * 1024, stdio: 'ignore' });
+  if (probe.status !== 0) throw Error('Installed CLI syntax check failed; current release retained');
+  return pkg;
+}
+async function verified(migration, root) {
+  const result = await migration.verify(root);
+  if (typeof result !== 'boolean') throw Error('Migration verification must return a boolean');
+  return result;
+}
 function install(root, release, source) {
   const destination = join(root, 'releases', release);
   if (!existsSync(destination)) {
@@ -40,6 +59,9 @@ function install(root, release, source) {
     const result = spawnSync('npm', ['install', '--prefix', stage, '--ignore-scripts', '--no-audit', '--no-fund', '--install-links', '--', source],
       { encoding: 'utf8', timeout: 300000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
     if (result.status !== 0) throw Error('Release installation failed; current release retained');
+    // 1.x validates in shadow-install.pending before promotion. Keep this same
+    // ordering: a bad candidate must not poison the reusable release directory.
+    validateCandidate(join(stage, 'node_modules', packageInfo.name), release);
     save(join(stage, 'release-source.json'), { release, source });
     flushTree(stage); renameSync(stage, destination); sync(dirname(destination));
   }
@@ -92,19 +114,26 @@ async function apply(root, release, source) {
   const current = join(root, 'current');
   const pointer = existsSync(current) ? readlinkSync(current) : null;
   let state = existsSync(statePath) ? load(statePath) : null;
-  if (previous.release === release && pointer === target && state?.phase === 'complete') return { status: 'unchanged', release };
   if (state && state.phase !== 'complete' && state.release !== release) throw Error('Resume the interrupted release before selecting another');
   const installed = install(root, release, source);
-  const pkg = load(join(installed, 'package.json'));
-  if (pkg.name !== packageInfo.name || typeof pkg.version !== 'string' || !existsSync(join(installed, 'bin/instar2.mjs'))) throw Error('Invalid installed release');
+  const pkg = validateCandidate(installed, release);
   const manifest = await import(pathToFileURL(join(installed, 'scripts/update-release.mjs')).href);
   if (!Number.isSafeInteger(manifest.schemaVersion) || manifest.schemaVersion < 1 || !Array.isArray(manifest.readableSchemas)
     || !manifest.readableSchemas.includes(previous.schema)) throw Error('Release cannot read the existing state schema; downgrade refused');
   // Adapt MigratorStepEngine.registerStep (Instar 1.x): unique names, registration
   // order, idempotent workers. An id identifies a step; it does not sort the list.
   if (!Array.isArray(manifest.migrations) || manifest.migrations.some(m => !m || typeof m.id !== 'string' || !m.id
-    || typeof m.run !== 'function') || new Set(manifest.migrations.map(m => m.id)).size !== manifest.migrations.length)
+    || typeof m.run !== 'function' || (m.verify !== undefined && typeof m.verify !== 'function'))
+    || new Set(manifest.migrations.map(m => m.id)).size !== manifest.migrations.length)
     throw Error('Migrations must have unique ids and callable workers');
+  // The 1.x migrator checks deployed content on every refresh. A completed id
+  // cannot stand for still-current bytes: verify repeatable migrations again.
+  const drifted = new Set();
+  for (const migration of manifest.migrations) {
+    if (migration.verify && !await verified(migration, root)) drifted.add(migration.id);
+  }
+  if (previous.release === release && pointer === target && state?.phase === 'complete' && drifted.size === 0)
+    return { status: 'unchanged', release };
   if (!state || state.phase === 'complete') {
     if (state) {
       const history = join(root, 'update-history'); mkdirSync(history, { recursive: true, mode: 0o700 });
@@ -119,14 +148,25 @@ async function apply(root, release, source) {
   // and skip persisted completions. Here intent must precede effects, interrupted
   // steps retry, and errors stop activation; never record a failure as completed.
   for (const migration of manifest.migrations) {
-    if (ids.has(migration.id)) continue;
+    if (ids.has(migration.id) && !drifted.has(migration.id)) continue;
     let step = state.steps.find(s => s.id === migration.id);
     if (!step) { step = { id: migration.id, status: 'started' }; state.steps.push(step); save(statePath, state); }
+    if (step.status === 'done' && drifted.has(migration.id)) {
+      step.status = 'started'; save(statePath, state);
+    }
     if (step.status !== 'done') {
       await migration.run(root);
+      if (migration.verify && !await verified(migration, root))
+        throw Error('Migration postcondition failed; update remains incomplete');
       step.status = 'done'; save(statePath, state);
     }
     ids.add(migration.id);
+  }
+  // A later step may invalidate an earlier template. Inspect the final consumer
+  // state too, before publishing either the pointer or the installed stamp.
+  for (const migration of manifest.migrations) {
+    if (migration.verify && !await verified(migration, root))
+      throw Error('Migration postcondition failed; update remains incomplete');
   }
   state.next = { version: pkg.version, release, schema: Math.max(state.previous.schema, manifest.schemaVersion), status: 'installed', migrations: [...ids] };
   state.phase = 'activating'; save(statePath, state);

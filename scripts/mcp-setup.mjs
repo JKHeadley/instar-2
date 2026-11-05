@@ -15,6 +15,17 @@ export const DEFAULT_MCP = { mcpServers: { playwright: { command: 'npx',
   reads: ['navigate', 'snapshot', 'take_screenshot', 'wait_for', 'tabs', 'console_messages', 'network_requests']
     .map(name => `mcp__playwright__browser_${name}`) };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/** Read the actual installed configuration. Like 1.x's template SHA classifier,
+ * known old defaults need repair; operator customizations remain untouched.
+ * The runtime reader validates secrets and shape before this can report success. */
+export function verifyMcpDefaults(root) {
+  const old = readSetupRecord(join(root, 'mcp.json'));
+  readRootMcp(root);
+  const server = old?.mcpServers?.playwright;
+  if (!server || same(server, LEGACY_BROWSER)) return false;
+  if (!same(server, DEFAULT_MCP.mcpServers.playwright)) return true;
+  return DEFAULT_MCP.reads.every(tool => old.reads?.includes(tool));
+}
 /** Installer-only. A per-root lock prevents concurrent merges losing operator entries.
  * A crash leaves a visible lock; the installer must establish writer death before removing it.
  * Existing default names win; explicitly adding a conflicting account refuses. */

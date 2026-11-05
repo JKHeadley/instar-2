@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createSecretCustody, dueCredentialReminders, REMINDER_OFFSETS_MS, secretRef } from './secret-custody.js';
 // @ts-expect-error Installer JavaScript.
-import { installMcp, DEFAULT_MCP } from '../../scripts/mcp-setup.mjs';
+import { installMcp, verifyMcpDefaults, DEFAULT_MCP } from '../../scripts/mcp-setup.mjs';
 // @ts-expect-error Real runtime consumer.
 import { readRootMcp, prepareMcpLaunch, prepareToolTurn } from './tool-turn.mjs';
 // @ts-expect-error Real effect admission consumer.
@@ -153,6 +153,41 @@ it('real setup installs defaults and the add CLI consumes secrets only from stdi
   expect(add.stdout + add.stderr + bytes(p)).not.toContain('opaque-cli-test-value');
   expect(readRootMcp(p).secrets.account.TOKEN).toBeTruthy();
 });
+it('the installed CLI repairs a stale existing default and the same runtime reader sees the refresh', async () => {
+  const p = root(), cache = process.env.npm_config_cache;
+  process.env.npm_config_cache = root();
+  try {
+    await updateRoot(p, { release: 'mcp-selfheal-proof', source: `file:${process.cwd()}` });
+    const prior = readRootMcp(p);
+    const stale = { mcpServers: { playwright: { command: 'npx', args: ['-y', '@playwright/mcp@latest'] },
+      account: { command: 'operator-connector' } }, reads: ['mcp__playwright__browser_snapshot', 'mcp__account__read'] };
+    writeFileSync(join(p, 'mcp.json'), JSON.stringify(stale));
+    expect(verifyMcpDefaults(p)).toBe(false);
+    expect(readRootMcp(p).digest).not.toBe(prior.digest);
+    const run = () => spawnSync(process.execPath, [join(p, 'current/bin/instar2.mjs'), 'update', p, '--release', 'mcp-selfheal-proof'],
+      { encoding: 'utf8', timeout: 60000 });
+    const repair = run(); expect(repair.status, repair.stderr).toBe(0);
+    expect(repair.stdout).toContain('Update installed');
+    const refreshed = readRootMcp(p);
+    expect(refreshed.servers.playwright).toEqual(DEFAULT_MCP.mcpServers.playwright);
+    expect(refreshed.servers.account).toEqual(stale.mcpServers.account);
+    expect(refreshed.reads).toContain('mcp__account__read');
+    expect(refreshed.reads).toEqual(expect.arrayContaining(DEFAULT_MCP.reads));
+    const transaction = JSON.parse(readFileSync(join(p, 'update-state.json'), 'utf8'));
+    expect(JSON.parse(readFileSync(join(transaction.backup, 'mcp.json'), 'utf8'))).toEqual(stale);
+    expect(transaction.steps).toContainEqual({ id: 'mcp-defaults-verified-1104', status: 'done' });
+    expect(run().stdout).toContain('Already on this release');
+    // A custom template is a choice, not evidence of corruption. Never replace it.
+    const customized = { mcpServers: { playwright: { command: 'custom-browser' } }, reads: [] };
+    writeFileSync(join(p, 'mcp.json'), JSON.stringify(customized));
+    expect(run().stdout).toContain('Already on this release');
+    expect(JSON.parse(bytes(p))).toEqual(customized);
+    writeFileSync(join(p, 'mcp.json'), '{broken');
+    expect(run().status).toBe(1); expect(bytes(p)).toBe('{broken');
+  } finally {
+    if (cache === undefined) delete process.env.npm_config_cache; else process.env.npm_config_cache = cache;
+  }
+}, 120000);
 
 it('starts a bare MCP command beside installation node under a minimal harness PATH', () => {
   const p = root(), bin = join(p, 'installation-bin'); mkdirSync(bin);

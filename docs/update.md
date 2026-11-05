@@ -53,7 +53,7 @@ no model calls and never changes model settings, grants, stop state or spend lim
 
 The installed release owns `scripts/update-release.mjs`. Declare the schema it writes,
 the schemas it can read, and an array of `{ id, run(root) }` in registration order.
-Ids must be unique; they do not determine execution order. The initial list is empty.
+Ids must be unique; they do not determine execution order. The list includes MCP defaults.
 Keep ids stable forever and make every effect durable
 and replay-safe inside `run`: intent is flushed before calling it, and completion after
 it resolves. A migration must preserve the five floors and name all affected consumers
@@ -78,3 +78,58 @@ process exit during a migration, and concurrent update refusal. CLI fixture test
 replace only the npm source argument with a local path; they use real npm and no network.
 They then invoke the installed command, which needs only Node built-ins for update.
 The TypeScript loader remains specific to setup.
+
+## Checking completed migrations
+
+A migration may also declare `verify(root): boolean`. It must be a read-only check
+of the actual installed state, safe to call before the migration has ever run.
+The updater checks it even when the migration id and release were recorded complete.
+If it returns false, the existing backup and transaction machinery records a repair
+before rerunning that migration once. The check must then return true. Exceptions,
+non-boolean answers and failed postconditions stop activation; they never become a
+successful update. All postconditions are checked again after the final migration.
+Migrations without a verifier retain their original once-per-id behavior.
+
+The MCP default migration uses this path for an existing installation, including a
+repeat of the current release. Missing defaults, the known old browser command and
+missing default read tools are repaired using the same installer as setup. Custom
+browser commands and unrelated accounts are retained. Malformed configuration is
+preserved and refused. The runtime's `readRootMcp` reads the file again rather than
+keeping a boot snapshot; repaired connector settings reach its next read. This does
+not reload protected installation bindings or authorize additional effects.
+
+Candidate package identity, the version for a numeric `vX.Y.Z` tag, and CLI syntax
+are checked before a staged package becomes a release directory. An unsuccessful
+candidate remains in its staging directory for inspection, and a later explicit
+retry can install a corrected candidate. Completed releases undergo the same checks
+before an unchanged result. Syntax verification is not a runtime health probe.
+
+## Carryover 87 scope and evidence
+
+The source reference is Instar 1.x commit
+`31c01422dce072390558145e991c4b68bc3791b1`:
+
+- `src/core/UpdateChecker.ts`: exact target-version verification and candidate
+  validation before promotion; tested in `tests/unit/UpdateChecker.test.ts`.
+- `src/core/PostUpdateMigrator.ts`, `migrateReplyScriptToPortConfig`: inspect actual
+  deployed content on refresh, upgrade known defaults, preserve unknown edits.
+- `src/monitoring/templates-drift-verifier.ts`: distinguish current, known-prior and
+  unknown content. Its host-wide SHA inventory and persistent finding deduplication
+  are not implemented by the MCP-specific verification above.
+- `src/config/LiveConfig.ts` and `AutoUpdater.reloadDynamicConfig`: changes on disk
+  must reach the running consumer. MCP already uses uncached reads; that does not
+  establish parity for other runtime settings.
+
+`tests/preview/update.test.ts` proves wrong-version rejection, missing/broken CLI
+rejection, postcondition failure, repeated-release repair, durable repair intent,
+preserved backup/history and the positive unchanged case. The installed-command test
+in `tests/preview/mcp-setup.test.ts` exercises the real release migration on an
+existing root, reads its result through the runtime reader, and proves custom and
+malformed input preservation. No live deployment claim follows from these tests.
+
+Row 87 remains incomplete: the next unit must carry the full bounded AutoUpdater
+restart/recovery state machine through independently admitted installation changes,
+the host-wide template SHA inventory and deduplicated findings, and live refresh for
+the remaining non-authority configuration consumers. These are concrete outstanding
+behaviors, not omissions justified as superior 2.0 implementations. This unit neither
+re-signs installation facts nor treats a successful installer as activation authority.

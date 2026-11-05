@@ -184,3 +184,72 @@ it('keeps history and skips applied migration ids across releases; malformed sta
   await expect(updateRoot(root, { release: 'v0.3.0' })).rejects.toThrow();
   expect(readFileSync(join(root, 'version.json'), 'utf8')).toBe('{broken');
 });
+
+// Carryover 87: adapted from 1.x UpdateChecker's exact-version/failed-candidate
+// tests, using real npm and the shipped installer instead of an exec mock.
+it('refuses a successful npm install with the wrong pinned version before running migrations', async () => {
+  const root = scratch(); await updateRoot(root, { release: 'v0.2.0', source: fixture() });
+  const before = readFileSync(join(root, 'version.json'), 'utf8'), pointer = readlinkSync(join(root, 'current'));
+  const source = fixture('0.2.0', "export const migrations = [{ id: 'bad', run() { throw Error('must not run'); } }];");
+  await expect(updateRoot(root, { release: 'v0.3.0', source })).rejects.toThrow('does not match');
+  expect(readFileSync(join(root, 'version.json'), 'utf8')).toBe(before);
+  expect(readlinkSync(join(root, 'current'))).toBe(pointer);
+  expect((await updateRoot(root, { release: 'v0.3.0', source: fixture('0.3.0') })).status).toBe('updated');
+});
+it.each(['missing', 'broken'])('rechecks a completed release and refuses a %s CLI without overwriting it', async failure => {
+  const root = scratch(); await updateRoot(root, { release: 'v0.2.0', source: fixture() });
+  const cli = join(root, 'current/bin/instar2.mjs'), before = readFileSync(join(root, 'update-state.json'), 'utf8');
+  if (failure === 'missing') rmSync(cli); else writeFileSync(cli, 'this is not JavaScript {');
+  await expect(updateRoot(root, { release: 'v0.2.0' })).rejects.toThrow(/Invalid installed release|syntax check failed/);
+  expect(readFileSync(join(root, 'update-state.json'), 'utf8')).toBe(before);
+  if (failure === 'missing') expect(existsSync(cli)).toBe(false);
+  else expect(readFileSync(cli, 'utf8')).toBe('this is not JavaScript {');
+});
+const verifiedFixture = (run = "writeFileSync(join(root, 'template'), 'current');") => fixture('0.2.0', `
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+export const migrations = [{ id: 'verified-template',
+  verify(root) { return existsSync(join(root, 'template')) && readFileSync(join(root, 'template'), 'utf8') === 'current'; },
+  run(root) { ${run} }
+} ];`);
+it('repairs stale installed content despite a completed id and records intent before the repair', async () => {
+  const root = scratch(), source = verifiedFixture(`
+const state = JSON.parse(readFileSync(join(root, 'update-state.json'), 'utf8'));
+if (state.phase !== 'migrating' || state.steps[0].status !== 'started') throw Error('repair intent missing');
+writeFileSync(join(root, 'template'), 'current');`);
+  await updateRoot(root, { release: 'v0.2.0', source });
+  const prior = json(join(root, 'update-state.json'));
+  writeFileSync(join(root, 'template'), 'stale');
+  expect((await updateRoot(root, { release: 'v0.2.0', source })).status).toBe('updated');
+  expect(readFileSync(join(root, 'template'), 'utf8')).toBe('current');
+  const repaired = json(join(root, 'update-state.json'));
+  expect(readFileSync(join(repaired.backup, 'template'), 'utf8')).toBe('stale');
+  expect(json(join(root, 'update-history', `${prior.id}.json`))).toEqual(prior);
+  expect((await updateRoot(root, { release: 'v0.2.0' })).status).toBe('unchanged');
+});
+it('does not mark a no-op migration complete and retries it after the repair becomes possible', async () => {
+  const root = scratch(), source = verifiedFixture("if (existsSync(join(root, 'allow'))) writeFileSync(join(root, 'template'), 'current');");
+  await expect(updateRoot(root, { release: 'v0.2.0', source })).rejects.toThrow('postcondition failed');
+  expect(existsSync(join(root, 'current'))).toBe(false);
+  expect(json(join(root, 'update-state.json')).steps[0].status).toBe('started');
+  writeFileSync(join(root, 'allow'), 'yes');
+  await updateRoot(root, { release: 'v0.2.0', source });
+  expect(json(join(root, 'update-state.json')).phase).toBe('complete');
+});
+it('refuses a later migration that makes an earlier verified template stale', async () => {
+  const root = scratch(), source = fixture('0.2.0', `
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+export const migrations = [
+ { id: 'template', verify(root) { return existsSync(join(root, 'template')) && readFileSync(join(root, 'template'), 'utf8') === 'current'; },
+   run(root) { writeFileSync(join(root, 'template'), 'current'); } },
+ { id: 'stale', run(root) { writeFileSync(join(root, 'template'), 'stale'); } }
+];`);
+  await expect(updateRoot(root, { release: 'v0.2.0', source })).rejects.toThrow('postcondition failed');
+  expect(existsSync(join(root, 'current'))).toBe(false);
+});
+it.each(['"yes"', 'null', 'undefined'])('refuses ambiguous verifier result %s before mutation', async result => {
+  const root = scratch(), source = fixture('0.2.0', `export const migrations = [{ id: 'v', verify() { return ${result}; }, run() { throw Error('must not run'); } }];`);
+  await expect(updateRoot(root, { release: 'v0.2.0', source })).rejects.toThrow('must return a boolean');
+  expect(existsSync(join(root, 'current'))).toBe(false);
+});
