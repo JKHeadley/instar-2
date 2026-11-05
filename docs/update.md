@@ -137,9 +137,65 @@ in `tests/preview/mcp-setup.test.ts` exercises the real release migration on an
 existing root, reads its result through the runtime reader, and proves custom and
 malformed input preservation. No live deployment claim follows from these tests.
 
-Row 87 remains incomplete: the next unit must carry the full bounded AutoUpdater
-restart/recovery state machine through independently admitted installation changes,
-the host-wide template SHA inventory and deduplicated findings, and live refresh for
-the remaining non-authority configuration consumers. These are concrete outstanding
-behaviors, not omissions justified as superior 2.0 implementations. This unit neither
-re-signs installation facts nor treats a successful installer as activation authority.
+## Row 87 continuation: runner, watchdog and live settings
+
+The continuation uses current 1.x source commit
+`1cb59f787b02c9a19486f1b500007305ee30608a`. The earlier installer fixes above remain.
+The executable policy was copied first, then adapted to these existing 2.x owners:
+
+| 1.x source lines | 2.x destination and adaptation |
+| --- | --- |
+| `src/core/AutoUpdater.ts` 161–1489 (class), especially 424–745 check/apply/config, 792–1272 restart/holds/batching, 1377–1489 persistence | `scripts/update-auto.mjs`: retain 30m checks, 5m coalescing, 60s checkpoint delay, 4h hold ceiling, healthy-session protection, 5m hold retry, 1s released-verifier retry, 30m same-version cooldown and 15m cascade batching. Ports use the existing transaction; no global install cleanup, signal file or direct Telegram send. The existing scheduled crash primitive adds durable backoff and a three-failure/24h pause. |
+| `src/core/UpdateGate.ts` 1–465 | `scripts/update-gate.mjs`: full executable session/hold classification, warnings and restart-safe resolver; TypeScript types/comments removed. `tests/unit/UpdateGate.test.ts` 1–end is copied to `tests/preview/update-gate.test.ts` with imports and callback types adapted. |
+| `src/core/RestartCascadeDampener.ts` 1–119 | `scripts/update-dampener.mjs`: unchanged decision logic and local-time formatting; TypeScript removed. |
+| `src/core/UpdateRestartHandshake.ts` 1–196 | `scripts/update-handshake.mjs`: same pending/verify/failure phases; persist in `update-state.json.runtime.handshake`, retain failures rather than delete evidence, deduplicate by launch, require both the expected running version and a successful admitted channel poll. |
+| `src/monitoring/templates-drift-verifier.ts` 220–401 and template inventory 64–102 | `scripts/update-drift.mjs`: host deployment enumeration, current/prior/unknown SHA history and durable path/SHA deduplication. Persist the finding itself before exposure, in the existing transaction. `update-templates.json` covers 2.x's installed MCP default and its three known historical shapes. 1.x reply shell scripts are not 2.x installed artifacts: `journal-agent.mjs` uses the confined transport instead. No foreign installation or unknown customized file is rewritten. |
+| `src/config/LiveConfig.ts` 53–112, 143–234, 250–266 | `scripts/update-live-config.mjs`: read/refresh/change events and deep equality. Read `runtime-settings.json` only; omit mutation of the authority-bearing config. Actual updater decisions re-read booleans, timing and windows, and drift scanning re-reads its kill switch. The product uses on-demand reads, not a second polling service. |
+
+`scripts/update-product.mjs` composes those ports. `journal-agent.mjs` creates the
+controller only after ordinary admission, starts it after a successful poll and
+stops it at shutdown. Its own idle boundary rechecks jobs and session work before
+marking a request drained. `host-watch.mjs` uses a single launch adapter to select
+validated installed bytes. Its existing crash window, backoff, incident holder,
+stop latch and notice driver remain the only restart supervisor. A failed candidate
+boot is retained and the next launch uses the prior code. Installation and custody
+are independently checked again by the ordinary runner. No agent signs authority.
+Manual `instar2 run` retains its original process, signal and exit semantics; an
+update drain without a host watchdog requires a subsequent launch.
+
+State is nested in the original `update-state.json`, protected by its original
+unique-owner lock. `observing` is the pre-install phase; a real install preserves
+runtime state when starting its migration transaction. No second ledger is added.
+A three-failure breaker stops automatic attempts durably across process restarts;
+corrupt update state disables update activity while preserving existing service.
+Explicit local maintenance may call `resumeAutomaticUpdate(root, observedPausedAt)`
+after `initializeUpdateRuntime()`. It compares the recorded pause under the same
+lock, retains its failure evidence and refuses a stale pause or stop latch. Restart
+the controller after that explicit resume; ordinary launches never clear the pause.
+All updater observations are local pull data, never a new notification/send path.
+
+The non-authority settings currently consumed are `updates.autoApply`,
+`autoRestart`, `restartImmediately`, `checkIntervalMinutes`, `applyDelayMinutes`,
+`preRestartDelaySecs`, `restartCascadeDampenerWindowMs`, `restartWindow`, and
+`monitoring.templatesDriftVerifier.enabled`. Unknown keys, authority, limits,
+installation facts and revocations are never read as grants. Invalid settings keep
+the last valid values. Default MCP repair still runs through the existing migration,
+including repeated tags; SHA inventory does not authorize replacing customization.
+
+Evidence lives in `tests/preview/update-runtime.test.ts`,
+`update-gate.test.ts`, `update-runner-process.test.ts` and the prior installer tests.
+The process test uses the real admitted runner and local HTTP fixture, with release
+discovery bounded to a deterministic git fixture. It requires the transport shim’s
+`/bin/sh` process-limit operation and is skipped when that operation is unavailable
+(as on this WSL host). Its success remains for the Studio gate; it is not live proof.
+No model prompts, output parsers or model acceptance decisions are changed.
+
+**Still open before full parity:** inventory every remaining 1.x LiveConfig consumer
+against its actual 2.x owner and demonstrate refresh or explain a superseding
+implementation with code/test evidence. Only updater/drift consumers are covered
+here. Complete unattended replacement/custody admission evidence is also required:
+the process test proves the running tick and handshake, while replacement selection
+and failure use injected launch outcomes. The feature's formal repeated-work bound
+is not asserted through a new critical-outcome probe; its declaration accurately
+retains periodic service repetition, with runtime failure brakes tested separately.
+This continuation must not be promoted as complete row-87 parity on those proofs.

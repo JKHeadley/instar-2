@@ -9,18 +9,22 @@
       "metrics": [
         "update-state.phase",
         "update-state.steps.status",
-        "update-result.status"
+        "update-result.status",
+        "update-state.runtime.updater",
+        "update-state.runtime.handshake",
+        "update-state.runtime.templateScan",
+        "update-state.runtime.templateFindings"
       ]
     },
     "profile": {
       "type": "Profile",
       "schemaVersion": 1,
-      "consequence": "data",
+      "consequence": "control",
       "reversibility": "reversible",
       "reach": "internal",
       "surface": "none",
       "repeats": {
-        "kind": "no"
+        "kind": "unbounded"
       }
     },
     "standards": [
@@ -30,9 +34,15 @@
       42,
       44,
       45,
+      52,
+      55,
+      60,
+      61,
       69,
       78,
       84,
+      87,
+      89,
       95,
       113,
       116
@@ -96,6 +106,47 @@
       42,
       66,
       95
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "update.writeUpdateRuntime",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "recorded-governed-state",
+      "criticality": "Preserve the existing update transaction and lock before recording updater failures, retry/stop decisions, installed-version requests, boot verification and template findings. Refuse malformed recorded state; update refusal must not deny existing admitted service. A healthy poll of the expected running version is necessary for handshake completion; installed bytes alone never qualify.",
+      "failDirection": "closed",
+      "preservesInput": "Preserve corrupt records, prior update steps, failed boot observations and unknown custom template bytes; never restore journal/authority from update backups.",
+      "inspectedBy": "PREVIEW-UPDATE-RUNTIME"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      7,
+      26,
+      32,
+      42,
+      55,
+      61,
+      66,
+      95,
+      113,
+      116
     ],
     "holds": []
   }

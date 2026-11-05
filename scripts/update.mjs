@@ -11,6 +11,7 @@ import { assertAgentPaths } from './agent-paths.mjs';
 
 const packageInfo = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 let candidateBinding;
+let runtimeBound = false;
 const load = path => JSON.parse(readFileSync(path, 'utf8'));
 const sync = path => { const fd = openSync(path, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } };
 function save(path, value) {
@@ -86,6 +87,13 @@ export async function updateRoot(directory, options = {}) {
   const source = options.source ?? `github:JKHeadley/instar-2#${release}`;
   const root = resolve(directory);
   assertAgentPaths({ root });
+  await initializeUpdateRuntime();
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  const releaseLock = acquireUpdateLock(root);
+  try { return await apply(root, release, source); }
+  finally { releaseLock(); }
+}
+export async function initializeUpdateRuntime() {
   if (!candidateBinding) candidateBinding = (async () => {
     const { register } = await import('node:module');
     register('./slice-ts-loader.mjs', import.meta.url);
@@ -93,7 +101,9 @@ export async function updateRoot(directory, options = {}) {
   })();
   const { bindUpdateCheckpoints } = await candidateBinding;
   bindUpdateCheckpoints(load(new URL('./update.declarations.json', import.meta.url)));
-  mkdirSync(root, { recursive: true, mode: 0o700 });
+  runtimeBound = true;
+}
+function acquireUpdateLock(root) {
   const lock = join(root, '.update-lock');
   // Same unique-owner reclamation as judgment-captures: only a proven dead local
   // PID's unique marker can be removed; an ambiguous owner fails closed.
@@ -111,9 +121,10 @@ export async function updateRoot(directory, options = {}) {
   }
   const owner = { id: randomUUID(), pid: process.pid, host: hostname() };
   const marker = join(lock, `owner-${owner.id}.json`);
-  try { save(marker, owner); return await apply(root, release, source); }
-  finally { if (existsSync(marker)) unlinkSync(marker); rmdirSync(lock); sync(root); }
+  save(marker, owner);
+  return () => { if (existsSync(marker)) unlinkSync(marker); rmdirSync(lock); sync(root); };
 }
+
 async function apply(root, release, source) {
   const versionPath = join(root, 'version.json'), statePath = join(root, 'update-state.json');
   if (!existsSync(versionPath)) save(versionPath, { version: packageInfo.version, schema: schemaVersion, status: 'adopted', migrations: [] });
@@ -122,7 +133,7 @@ async function apply(root, release, source) {
   const current = join(root, 'current');
   const pointer = existsSync(current) ? readlinkSync(current) : null;
   let state = existsSync(statePath) ? load(statePath) : null;
-  if (state && state.phase !== 'complete' && state.release !== release) throw Error('Resume the interrupted release before selecting another');
+  if (state && !['complete', 'observing'].includes(state.phase) && state.release !== release) throw Error('Resume the interrupted release before selecting another');
   const installed = install(root, release, source);
   const pkg = validateCandidate(installed, release);
   const manifest = await import(pathToFileURL(join(installed, 'scripts/update-release.mjs')).href);
@@ -142,13 +153,13 @@ async function apply(root, release, source) {
   }
   if (previous.release === release && pointer === target && state?.phase === 'complete' && drifted.size === 0)
     return { status: 'unchanged', release };
-  if (!state || state.phase === 'complete') {
-    if (state) {
+  if (!state || ['complete', 'observing'].includes(state.phase)) {
+    if (state?.id) {
       const history = join(root, 'update-history'); mkdirSync(history, { recursive: true, mode: 0o700 });
       save(join(history, `${state.id}.json`), state);
     }
     const id = randomUUID(), backup = backupRoot(root, id);
-    state = { id, release, backup, previous, priorCurrent: pointer, phase: 'migrating', steps: [], next: null };
+    state = { id, release, backup, previous, priorCurrent: pointer, phase: 'migrating', steps: [], next: null, ...(state?.runtime ? { runtime: state.runtime } : {}) };
     save(statePath, state);
   }
   const ids = new Set(state.previous.migrations);
@@ -183,4 +194,60 @@ async function apply(root, release, source) {
   save(versionPath, state.next);
   state.phase = 'complete'; save(statePath, state);
   return { status: 'updated', release, backup: state.backup };
+}
+
+// One transaction holder and one writer lock for installation, restart and findings.
+// Runtime data is observation/request state, never authority or installation facts.
+export function readUpdateRuntime(root) {
+  const file = join(root, 'update-state.json');
+  if (!existsSync(file)) return {};
+  const state = load(file);
+  if (!state || typeof state !== 'object' || Array.isArray(state) || !['complete', 'migrating', 'activating', 'observing'].includes(state.phase))
+    throw Error('Invalid update transaction; preserved for repair');
+  if (state.runtime !== undefined && (!state.runtime || typeof state.runtime !== 'object' || Array.isArray(state.runtime)))
+    throw Error('Invalid update runtime record; preserved for repair');
+  return state.runtime ?? {};
+}
+function mutateUpdateRuntime(root, change) {
+  if (!runtimeBound) throw Error('Update checkpoint must be bound before runtime writes');
+  assertAgentPaths({ root });
+  const releaseLock = acquireUpdateLock(root);
+  try {
+    const file = join(root, 'update-state.json');
+    const runtime = readUpdateRuntime(root);
+    const state = existsSync(file) ? load(file) : { phase: 'observing' };
+    const next = change(runtime);
+    if (next === null) return false;
+    save(file, { ...state, runtime: next });
+    return true;
+  } finally { releaseLock(); }
+}
+export function writeUpdateRuntime(root, key, value) {
+  return mutateUpdateRuntime(root, runtime => ({ ...runtime, [key]: value }));
+}
+// Explicit local maintenance, like resumeJournal: compare the observed pause while
+// holding the same writer lock. A stale request, stop latch or non-paused state refuses.
+export function resumeAutomaticUpdate(root, expectedPausedAt) {
+  if (!Number.isSafeInteger(expectedPausedAt) || existsSync(join(root, 'preview-stop.json'))) return false;
+  return mutateUpdateRuntime(root, runtime => {
+    const updater = runtime.updater;
+    if (!updater || updater.failureState?.pausedAt !== expectedPausedAt) return null;
+    return { ...runtime, updater: { ...updater, failureState: null, nextAttemptAt: 0,
+      resumed: { at: Date.now(), previous: updater.failureState } } };
+  });
+}
+export function installedUpdate(root) {
+  const statePath = join(root, 'update-state.json');
+  if (!existsSync(statePath)) return null;
+  const state = load(statePath);
+  if (state.phase !== 'complete') return null;
+  const version = load(join(root, 'version.json'));
+  stampValid(version);
+  const expected = `releases/${releaseTag(state.release)}/node_modules/${packageInfo.name}`;
+  if (readlinkSync(join(root, 'current')) !== expected || version.release !== state.release
+    || version.version !== state.next?.version) throw Error('Installed update transaction disagrees with current release');
+  const directory = join(root, expected);
+  const pkg = validateCandidate(directory, state.release);
+  if (pkg.version !== version.version) throw Error('Installed bytes disagree with version stamp');
+  return { directory, version: pkg.version, release: state.release, transaction: state.id };
 }

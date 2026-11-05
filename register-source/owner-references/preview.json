@@ -169,6 +169,14 @@
         "path": "tests/preview/update.test.ts",
         "hash": "sha256:67a71e2df33373283626a28e432da3925a9dcf65d08ef60b58959294864a44e9"
       }
+    },
+    {
+      "id": "PREVIEW-UPDATE-RUNTIME",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/update-runtime.test.ts",
+        "hash": "sha256:44d3c28f1c60f85a272d321db149581410e890841e6c4d52e2fd6f48ae33dfba"
+      }
     }
   ],
   "probes": [],
