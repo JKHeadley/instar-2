@@ -190,6 +190,26 @@ creates no work or send in the group, and later private changes are not refreshe
 Rejected results awaiting rework are not offered as finished results. Nothing is recorded in the
 private journal when there is nothing to move.
 
+Relationship awareness (carryover row 40, the 1.x One Memory relationship feature): the people the
+private conversation knows travel in the same snapshot as `person` entries. Each is one
+disclosure-minimized `relationship-record` projection (`tests/preview/relationship-store.ts`, ported
+from 1.x RelationshipsReplicatedStore): the person's confirmed names as the identity surface, first
+and last mention, mention count, current attributes, the last ten mentions, and a significance score;
+never a local id or the source root path. The record is read from the journal's own people,
+attribute and operator-confirmed merge rows (`relationship-journal.ts`); a corrected or forgotten
+mention is projected out before the carry, so the forget row is the positive signal and nothing of
+that person leaves the private root. On every replay each `person` entry is re-validated by the
+store schema (ISO-8601 dates, finite counts, clamped text, non-path origin, `op:'put'` from this exact
+predecessor); a tampered, foreign-origin or tombstone entry refuses the whole lineage before any
+write. The model sees a carried person only as the 1.x foreign-record block inside
+`<replicated-untrusted-data origin="private-conversation-…">`, after the destination's own
+correction and forget projection, never as local-authoritative context. The ported
+`RelationshipManager` (`relationship-manager.ts`, store and clock injected) answers who a name is
+over the journal's people read-only; records from two roots that know the same person collapse to
+one recordKey and are flagged for the operator when they differ, never merged silently
+(`relationship-cross-machine.test.ts`). Not carried: the 1.x HTTP routes, CLI, LLM identity prompts,
+anomaly scoring and plaintext JSON files; see `legacy-1x/relationships/README.md`.
+
 While the disclosure grant or the operator-only audience cannot be shown, every turn of the carried
 group, a due request included, is held unsent and continues once both hold again. The final model
 admission read precedes its reservation. The final send admission read precedes its durable intent;
