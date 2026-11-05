@@ -433,13 +433,22 @@ it('replays a recorded owed result into an authorized restarted session, with co
   const source = w.source.view.order[0]!.id;
   const promise = 'I will finish that check.';
   const writer = createJournalWorker(w.source, { now: () => clock, stopped: () => false,
-    model: async input => input.id.startsWith('obligation:') ? reading.value : JSON.stringify({ reply: promise,
-      memory: [{ mode: 'correct', source, quote: 'arboretum', replacement: 'library' }],
-      openLoops: [{ kind: 'promise', quote: promise, waitsOn: 'nothing' }] }),
+    model: async input => input.id.startsWith('obligation:') ? reading.value
+      : input.id.endsWith(':update:2') ? JSON.stringify({ reply: 'I recorded the corrected meeting place.',
+        memory: [{ mode: 'correct', source, quote: 'My preferred meeting place is the arboretum.',
+          replacement: 'My preferred meeting place is the library.' }] })
+        : JSON.stringify({ reply: promise, memory: [], dated: [],
+          openLoops: [{ kind: 'promise', quote: promise, waitsOn: 'nothing' }] }),
     send: async () => 2, checkOutbound: () => {} });
-  writer.intake([update(2, 'Correction: the meeting place is the library. Please finish the check.')]);
-  await writer.drain(); clock += LOOP_REVISIT_MS; await writer.workObligations();
-  expect(w.source.view.obligationWork['commitment:0']?.report?.text).toBe(decision.report);
+  writer.intake([update(2, 'Correction: My preferred meeting place is the library.')]);
+  await writer.drain();
+  expect(w.source.view.memory).toHaveLength(1);
+  // The correction receipt has no promise. Open the work in its own delivered reply.
+  writer.intake([update(3, 'Please finish the check.')]);
+  await writer.drain();
+  expect(w.source.view.commitments).toHaveLength(1);
+  clock += LOOP_REVISIT_MS; await writer.workObligations();
+  expect(w.source.view.obligationWork['commitment:0']?.report?.text, JSON.stringify({ commitments: w.source.view.commitments, work: w.source.view.obligationWork, turns: w.source.view.order.map(t => ({ id: t.id, state: t.modelState, answer: t.answer, failure: t.failureClass })) })).toBe(decision.report);
   appendGroupCarry(w.destination, w.source, scope, permission(), true, clock, () => false);
   const sourceBytes = readFileSync(w.path);
   w.destination.compact(); w.destination.close(); w.source.close();
@@ -448,7 +457,7 @@ it('replays a recorded owed result into an authorized restarted session, with co
   const worker = createJournalWorker(destination, { now: () => clock + 1000, stopped: () => false,
     groupDisclosure: async () => allowed, model: async input => { calls++; context = input.context; return 'I have the earlier context.'; },
     send: async () => ++sends, checkOutbound: () => {} });
-  worker.intake([update(3, 'Where is the meeting, and what result was owed?', true)]);
+  worker.intake([update(4, 'Where is the meeting, and what result was owed?', true)]);
   await worker.drain();
   expect(calls).toBe(0); expect(sends).toBe(0);
   allowed = true; await worker.drain();
