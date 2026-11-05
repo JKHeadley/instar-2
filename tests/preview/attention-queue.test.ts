@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openPreviewJournal, projectionDigest } from './journal.js';
-import { AttentionQueue, AttentionConditionStore } from './attention-queue.js';
+import { AttentionQueue, AttentionConditionStore, applyAttentionRecord, type AttentionState } from './attention-queue.js';
 import { createAttentionSurface } from './attention-surface.js';
 
 const dirs: string[] = [];
@@ -151,4 +151,20 @@ it('refuses expired authority and requires an explicit health lane when reopenin
     await expect(h.surface().create('expired', authority)).rejects.toThrow(/grant/);
     expect(h.journal.size).toBe(size);
   } finally { h.close(); }
+});
+
+it('at the finite identity bounds retains old rows and admits refreshes but refuses new identities', () => {
+  let state: AttentionState = { items: Array.from({ length: 2000 }, (_, i) => ({ ...item, id: `item-${i}`,
+    status: 'OPEN' as const, revision: 1, createdAt: 1000, updatedAt: 1000 })), conditions: [], acknowledgements: [] };
+  const queue = new AttentionQueue({ state: () => state, append: row => { state = applyAttentionRecord(state, row, genesis.operator); } }, () => 1000);
+  expect(() => queue.createAttentionItem(item)).toThrow(/capacity/);
+  expect(queue.getAttentionItems()).toHaveLength(2000);
+  expect(queue.upsertAttentionItem({ ...item, id: 'item-0', title: 'Refreshed' }).revision).toBe(2);
+  const intent = { itemId: 'item-0', targetMachineId: 'studio', status: 'DONE' as const, operatorUid: genesis.operator, authority, revision: 2 };
+  queue.remoteAcks.enqueue(intent);
+  state.acknowledgements = Array.from({ length: 2000 }, (_, i) => ({ ...state.acknowledgements[0]!, itemId: `item-${i}` }));
+  expect(() => queue.remoteAcks.enqueue({ ...intent, itemId: 'new-item' })).toThrow(/capacity/);
+  expect(queue.remoteAcks.size).toBe(2000);
+  expect(queue.remoteAcks.enqueue({ ...intent, status: 'ACKNOWLEDGED', authority: `dashboard:${'b'.repeat(64)}` }).status).toBe('ACKNOWLEDGED');
+  expect(queue.remoteAcks.size).toBe(2000);
 });
