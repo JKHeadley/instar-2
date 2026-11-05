@@ -1,13 +1,13 @@
 # Change review — pending input after Enter: 1.x StuckInputSentinel port (carryover row 14)
 
 Subject base: bcbe1def1642146c18f1e0d569ab84016fa6454e
-Review state: open
-Reviewed content: none
+Review state: frozen
+Reviewed content: sha256:0d380377790629650bd78f9fd57cdaaa0257eae9d80be88c22a714e8922b07fd
 Outcome: Carryover row 14 in lanes/carryover-1028.md: an accepted input that an eaten Enter left at an idle prompt is re-pressed by the session driver on the 1.x ladder (two agreeing captures; Enter, Enter, C-m, Enter+Enter at 500/1500/3500/6500 ms after the send) so the accepted input starts work, while a dim model-suggested ghost of the same text, an inconclusive styled frame, an active pane or any text other than the exact sent text is never pressed. A spent ladder is reported to the owner as pause-observed/input-undelivered with the input, deadline and delivery intact. The raw 1.x files are committed verbatim under legacy-1x/. Offline tests only; no live task has run, so row 14 remains OPEN.
 Affected rules: 1, 4, 14, 24, 26, 29, 30, 34, 36, 37, 39, 42, 46, 49, 52, 53, 55, 59, 60, 61, 63, 68, 70, 74, 86, 87, 88, 95, 101, 102, 111, 113, 116
 Affected floors: secrets — no new credential, input or output surface; the styled frame is classified in process and only the marker and located prompt text of the driver's own sent text are recorded; spend cap — no model call, allowance or reservation is touched; stop — observe() answers stop before anything and checkStop precedes every recovery key; no duplicate sends — only Enter or C-m is pressed into the same pane for the same already-accepted text, never text, and each rung is saved as consumed before the key so a cut never resends it; ghost and inconclusive frames are never pressed; durable intake — delivery records are unchanged and the additive pendingInput row lives on the existing session journal.
 Operator questions: none
-Suggested tier: significant
+Suggested tier: critical
 Declared tier: critical
 Tier rationale: The driver presses keys into a live harness pane on pane evidence; the gate is exact (the driver's own sent text, provably normal intensity) and bounded, but the action surface is the operator's session, and the compliance question (driver-owned completion versus the granted, unlanded typed worker-input seam) is Astra's to judge.
 Side effects: Every text the driver sends now records a durable pendingInput marker on its session row until the text leaves the prompt or the turn closes. observe() may send up to four recovery keys per sent input and returns new launched details while it observes; with the ladder spent it returns pause-observed/input-undelivered, which the conversation owner already treats as an uncertain turn and retires the worker. The rate-limit continuation save now reloads the session row so the marker survives it.
