@@ -2,8 +2,8 @@
 
 Subject base: 47b9c8234e85856ca3aeee322927621139af4342
 Review state: frozen
-Reviewed content: sha256:a4f0298fe7198be0047f82ff57c52f2e0da25194af0958d8ceabe42876d9278b
-Outcome: Merge the independently reviewed bounded owner GitHub read sequence onto the answering resource-recovery build, retaining its worker-slot repair. The only merge conflicts were generated register outputs; regenerate those against the merged source commit. Reopen the copied resource-recovery review because the regenerated outputs change its frozen subject; this combined record covers the new exact content.
+Reviewed content: sha256:57d441176112e196b82664765b4d343a876fe8da4d5769586c85f035fd0e3ca2
+Outcome: Merge the independently reviewed bounded owner GitHub read sequence onto the answering resource-recovery build, retaining its worker-slot repair. The only merge conflicts were generated register outputs; regenerate those against the merged source commit. The later connector file ACL and Claude-compatible MCP schema repairs are reviewed separately in browser-mcp-worker-read-1104-change-review.md; this combined record covers the updated exact content.
 Affected rules: 1, 4, 18, 28, 34, 36, 42, 44, 49, 55, 57, 60, 61, 62, 63, 66, 74, 78, 84, 95, 100, 101, 103, 111, 113, 116
 Affected floors: secrets — owner-side fixed DOM projection and scrub stay in place; spend cap — no model budget change; stop — the same claim and deadline bound every read; no duplicate sends — read-only operation admits no send or write; durable intake — existing effect preparation and exact grant remain prerequisites.
 Operator questions: none
@@ -13,7 +13,7 @@ Tier rationale: The combined browser and live worker paths touch protected task 
 Side effects: The configured agent-owned Chrome tab can navigate through two to four named GitHub pages. The worker receives bounded observations, not profile custody. The resource-owner recovery remains as in the live build.
 Undo and recovery: Restore live 47b9c823 if the combined build fails. Retain prepared and uncertain effect records; do not replay an uncertain identity.
 Multi-machine posture: Owner browser stays local to its signed-in profile; worker remains separate. No new remote credential or browser fallback.
-Layer below: Compared the two parent trees and the seven generated conflicts. No production source file conflicted; browser source is byte-identical to reviewed 24194ed8, and resource-owner source is byte-identical to live 47b9c823.
+Layer below: Compared the two parent trees and the seven generated conflicts. No production source file conflicted; the initial combination preserved reviewed 24194ed8 browser source and live 47b9c823 resource-owner source. Subsequent exact-head connector repairs are scoped in the separate review; resource-owner source remains byte-identical to live.
 1.x reference: Reuses the PID-addressed Chrome Apple Event and active-tab behavior in 1.x `src/core/PlainChromeReloginBrowser.ts` and `src/templates/scripts/browser/chrome-js.sh`, and dead-holder recovery from `src/core/hostTestRunnerSemaphore.ts`. The 2.0 owner bridge keeps profile custody on the owner side and adds only bounded named-page sequencing; its resource recovery also requires a descendant census before returning worker capacity. This does not claim general 1.x browser parity before the real multi-step group task.
 Bug class: none
 Bug evidence: none
