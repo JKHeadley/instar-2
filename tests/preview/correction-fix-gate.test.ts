@@ -152,3 +152,74 @@ it('a recorded memory failure owes its independent review without waiting for re
     expect(evaluateCorrectionInstanceFix(w.view, { originCorrection: true, correctionCase: caseId, reviewEnabled: true }).allow).toBe(false);
   } finally { w.close(); }
 });
+
+// Both public completion entrances must retain the same review boundary through journal restart.
+it.each(['absent', 'saved', 'decoy', 'same-pass', 'pending'] as const)(
+  'generic closure preserves saved correction review admission through restart: %s', review => {
+    const w = correctionWorld();
+    try {
+      const at = T('2026-05-01T10:00:00Z');
+      const rec = `turn:${w.preference('lead with the action', at)}`;
+      const decoy = `turn:${w.preference('keep the examples short', at + 1000)}`;
+      const saved = review === 'saved';
+      const response = { inspected: [], omitted: [], duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length), wells: GRAVITY_WELLS.map(() => 0),
+        eff: 'Assessed recorded outcome.', findings: [], grades: [], authorizations: [], comparisons: [], closures: [], feedback: [] };
+      const investigated = validateRetrospective({ ...response,
+        feedback: [{ case: rec, classification: 'preference', disposition: 'investigating', owner: 'agent', next: 'check the reply' }],
+        classReviews: saved ? [judgment(rec)] : review === 'decoy' ? [judgment(decoy)] : [] },
+        { cases: retrospectivePopulation(w.view, w.operator) }, w.view, 0, at + 2000);
+      expect(investigated.feedback).toHaveLength(1);
+      w.pass(at + 2000, { result: investigated });
+      const finding = investigated.findings[0]!.id;
+      if (review === 'pending') w.pass(at + 2500, { cases: [rec], result: null });
+      const evidence = `turn:${w.say('The changed reply now follows the requested style.', at + 3000)}`;
+      const plan = { cases: retrospectivePopulation(w.view, w.operator) };
+      const pass = w.view.retroPasses.length;
+      const completion = { ...response, classReviews: review === 'same-pass' ? [judgment(rec)] : [] };
+      const feedback = validateRetrospective({ ...completion, feedback: [{ case: rec, classification: 'preference', disposition: 'verified-improvement',
+        improvementOf: finding, evidence: [evidence] }] }, plan, w.view, pass, at + 4000);
+      const closure = validateRetrospective({ ...completion, closures: [{ finding, outcome: 'improved', evidence: [evidence] }] }, plan, w.view, pass, at + 4000);
+      expect(feedback.feedback).toHaveLength(saved ? 1 : 0);
+      expect(closure.closures).toEqual(saved ? [{ finding, outcome: 'improved', evidence: [evidence] }] : []);
+      const refusal = rowRefusedReason('closure', `correction fix refused: ${review === 'pending' ? 'review-pending' : 'review-absent'}`);
+      if (!saved) expect(closure.refusedRows).toContain(refusal);
+      if (review === 'pending') w.journal.append({ kind: 'retro', pass: pass - 1, state: 'complete', result: closure, at: at + 4000 });
+      else w.pass(at + 4000, { result: closure });
+      w.reopen();
+      expect(feedbackDispositions(w.view).find(row => row.case === rec)?.disposition).toBe(saved ? 'verified-improvement' : 'investigating');
+      expect(openFindings(w.view).map(row => row.id)).toEqual(saved ? [] : [finding]);
+      if (!saved) expect(w.view.retroPasses.at(-1)!.result!.refusedRows).toContain(refusal);
+      expect(evaluateCorrectionInstanceFix(w.view, { originCorrection: true, correctionCase: rec, reviewEnabled: true }).reason)
+        .toBe(saved || review === 'same-pass' ? 'review-filled' : 'review-absent');
+    } finally { w.close(); }
+  });
+
+it.each([
+  { correction: true, outcome: 'pending' },
+  { correction: true, outcome: 'not-improved' },
+  { correction: false, outcome: 'improved' },
+] as const)('generic closure keeps $outcome available for correction=$correction', ({ correction, outcome }) => {
+  const w = correctionWorld();
+  try {
+    const at = T('2026-05-01T10:00:00Z');
+    const rec = `turn:${correction ? w.preference('lead with the action', at) : w.say('Please check the result.', at)}`;
+    const response = { inspected: [], omitted: [], duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length), wells: GRAVITY_WELLS.map(() => 0),
+      eff: 'Assessed recorded outcome.', findings: [], grades: [], authorizations: [], comparisons: [], closures: [], feedback: [] };
+    const investigated = validateRetrospective({ ...response,
+      feedback: [{ case: rec, classification: 'feedback', disposition: 'investigating', owner: 'agent', next: 'check the result' }] },
+      { cases: retrospectivePopulation(w.view, w.operator) }, w.view, 0, at + 1000);
+    w.pass(at + 1000, { result: investigated });
+    const finding = investigated.findings[0]!.id;
+    // A separate finding without feedback linkage remains outside the correction gate too.
+    const unrelated = 'retro:1:0';
+    w.pass(at + 2000, { result: { findings: [{ id: unrelated, duty: 'waste', refs: [rec], summary: 'Avoid repeated work.',
+      disposition: { owner: 'agent', next: 'Reuse the result.' } }] } });
+    const evidence = `turn:${w.say('The result has been checked.', at + 3000)}`;
+    const closures = [{ finding, outcome, evidence: [evidence] }, { finding: unrelated, outcome: 'improved', evidence: [evidence] }];
+    const result = validateRetrospective({ ...response, closures }, { cases: retrospectivePopulation(w.view, w.operator) }, w.view, 2, at + 4000);
+    expect(result.closures).toEqual(closures);
+    w.pass(at + 4000, { result }); w.reopen();
+    expect(openFindings(w.view).map(row => row.id)).toEqual(outcome === 'improved' ? [] : [finding]);
+    expect(feedbackDispositions(w.view).find(row => row.case === rec)?.disposition).toBe(outcome === 'improved' ? 'verified-improvement' : 'investigating');
+  } finally { w.close(); }
+});

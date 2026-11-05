@@ -1346,6 +1346,13 @@ export function validateRetrospective(raw: unknown, plan: Pick<RetrospectivePlan
     const item = object(row, 'closure');
     if (typeof item.finding !== 'string' || !openIds.has(item.finding)) throw Error('retrospective: closure of an unknown open item');
     const outcome = oneOf(item.outcome, ['improved', 'not-improved', 'pending'] as const, 'closure outcome');
+    // Rules 4/26/42/85: generic closure cannot turn a correction's refused completion into verified feedback.
+    const correctionCase = openItems.get(item.finding)?.feedback;
+    if (outcome === 'improved' && correctionCase !== undefined) {
+      const admission = evaluateCorrectionInstanceFix(view, { originCorrection: correctionCases(view).has(correctionCase),
+        correctionCase, claimedClassReviewRef: correctionCase, reviewEnabled: true });
+      if (!admission.allow) throw Error(`retrospective: correction fix refused: ${admission.reason}`);
+    }
     const evidence = refs(item.evidence, 'closure evidence');
     const opened = priorFindings.get(item.finding) ?? Number.MAX_SAFE_INTEGER;
     if (outcome === 'improved' && !laterRecord(evidence, opened))
