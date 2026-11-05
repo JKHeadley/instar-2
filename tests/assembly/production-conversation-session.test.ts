@@ -7,7 +7,7 @@ import { expect, it } from 'vitest';
 import { createConversationSessionPort, conversationSessionPrompt, conversationSessionPolicy, CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import type { ConversationSessionConfig, ConversationState } from '../../src/assembly/production-conversation-session.js';
 import type { ConversationDelivery, ConversationWorker } from '../../src/assembly/conversation-harness-adapter.js';
-import type { HarnessAdapterPort } from '../../src/assembly/contracts.js';
+import type { HarnessAdapterPort, HarnessNormalizedObservation } from '../../src/assembly/contracts.js';
 import type { SessionWorkEdge, SessionWorkEdgeClose } from '../../src/assembly/production-session-work.js';
 import type { SessionWorkRequest } from '../../src/assembly/production-session-work.js';
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
@@ -104,6 +104,9 @@ it('host restart drains queued input, retains duplicate outcomes and gives the n
 
 it('an unresolved dispatched input is never replayed after host restart; later queued input survives', async () => {
   const f = fixture(); await f.port.run(f.request('one'));
+  const observe = f.adapter.observe;
+  f.adapter.observe = async input => input.delivery?.operation === 'one'
+    ? { observations: [], cursor: input.cursor, complete: true } : observe(input);
   f.restore({ ...f.state(), inputs: f.state().inputs.map(row => ({ ...row, state: 'accepted', outcome: null })) });
   const next = f.restart();
   expect(await next.run(f.request('two'))).toMatchObject({ state: 'complete' });
@@ -448,6 +451,7 @@ it('collection recovers uncertainty but never dispatches queued input or replays
   expect(await f.port.collect('absent')).toBeNull(); expect(f.delivered).toHaveLength(0);
   f.adapter.deliver = deliver; f.advance(200); await f.port.maintain();
   const saved = await f.port.collect('one'); expect(saved?.outcome.state).toBe('complete');
+  f.finish(false); // No correlated result survived this crash, unlike the completed-turn case.
   f.restore({ ...f.state(), inputs: f.state().inputs.map(row => ({ ...row, state: 'accepted', outcome: null })) });
   const next = f.restart();
   expect((await next.collect('one'))?.outcome).toMatchObject({ state: 'uncertain', detail: expect.stringContaining('no automatic replay') });
@@ -1218,3 +1222,73 @@ it('replays the failed email turn: missing result stays uncertain, and the actua
   expect(prompt).toContain('never invent account contents or completed actions');
   await f.port.close();
 });
+
+
+it.each(['accepted', 'dispatching'] as const)('carryover 08 recovers a completed single question across the %s crash boundary', async boundary => {
+  const f = fixture(); const request = f.request('restart-single');
+  const completed = await f.port.run(request);
+  if (completed.state !== 'complete') throw Error('fixture did not complete');
+  f.restore({ ...f.state(), inputs: f.state().inputs.map(row => ({ ...row, state: boundary, reply: null, outcome: null, cursor: 0 })) });
+  const next = f.restart();
+  expect((await next.collect(request.operation))?.outcome).toMatchObject({ state: 'complete', text: completed.text });
+  expect(await next.run(request)).toMatchObject({ state: 'complete', text: completed.text });
+  expect(f.delivered).toHaveLength(1); expect(f.launches).toHaveLength(1);
+  await next.close();
+});
+
+it.each(['no-end', 'no-reply', 'empty', 'wrong-delivery', 'wrong-digest', 'wrong-worker', 'open-child', 'unknown-admission'] as const)(
+  'carryover 08 preserves uncertain single input with %s evidence', async mode => {
+    const f = fixture(); await f.port.run(f.request('single'));
+    f.restore({ ...f.state(), inputs: f.state().inputs.map(row => ({ ...row, state: 'accepted', reply: null, outcome: null, cursor: 0,
+      delivery: mode === 'wrong-worker' ? { ...row.delivery!, launch: 'other-worker' } : row.delivery })) });
+    if (mode === 'open-child') f.config.io.admissionState = () => ({ refused: false, openDelegations: [f.edges.find((edge): edge is SessionWorkEdge => edge.type === 'SessionWorkEdge')!], uncertainEffects: 0 });
+    if (mode === 'unknown-admission') f.config.io.admissionState = () => null;
+    const observe = f.adapter.observe;
+    f.adapter.observe = async input => {
+      const result = await observe(input);
+      return { ...result, observations: result.observations.flatMap<HarnessNormalizedObservation>(event => {
+        if (mode === 'no-end' && event.kind === 'turn-end' || mode === 'no-reply' && event.kind === 'reply') return [];
+        if (event.kind === 'reply') return [{ ...event,
+          ...(mode === 'empty' ? { text: '', digest: hash('') } : {}),
+          ...(mode === 'wrong-delivery' ? { delivery: 'other' } : {}),
+          ...(mode === 'wrong-digest' ? { digest: hash('different') } : {}) }];
+        return [event];
+      }) };
+    };
+    const next = f.restart();
+    expect((await next.collect('single'))?.outcome.state).toBe('uncertain');
+    expect(f.delivered).toHaveLength(1); expect(f.state().inputs[0]!.request).toEqual(f.request('single'));
+    await next.close();
+  });
+
+it.each(['proved', 'unknown', 'throws', 'accepted', 'exhausted', 'stop', 'unconfirmed-close'] as const)(
+  'carryover 08 recovers never-dispatched intake only with %s retirement evidence', async mode => {
+    const f = fixture(); await f.port.run(f.request('pending'));
+    f.finish(false);
+    f.restore({ ...f.state(), inputs: f.state().inputs.map(row => ({ ...row,
+      state: mode === 'accepted' ? 'accepted' : 'dispatching', attempts: mode === 'exhausted' ? 3 : 1,
+      reply: null, cursor: 0, outcome: null })) });
+    let proofs = 0;
+    f.adapter.notDispatched = async input => {
+      expect(f.closed).toContain(input.claim); expect(f.counts().stops).toBeGreaterThan(0); proofs++;
+      if (mode === 'throws') throw Error('proof unreadable');
+      return mode !== 'unknown';
+    };
+    if (mode === 'stop') f.stop();
+    if (mode === 'unconfirmed-close') f.stopFailure();
+    const next = f.restart();
+    if (mode === 'unconfirmed-close') {
+      await expect(next.collect('pending')).rejects.toThrow(/stop unconfirmed/);
+      expect(proofs).toBe(0); expect(f.delivered).toHaveLength(1); return;
+    }
+    const collected = await next.collect('pending');
+    if (mode === 'proved') {
+      expect(collected?.outcome.state).toBe('queued');
+      f.finish(true); f.advance(200); await next.maintain();
+      expect(f.delivered).toHaveLength(2);
+      expect(f.delivered[1]!.text).toBe(f.delivered[0]!.text);
+      if (mode === 'proved') expect((await next.collect('pending'))?.outcome.state).toBe('complete');
+    } else expect(collected?.outcome.state).toBe('uncertain');
+    if (mode !== 'proved') expect(f.delivered).toHaveLength(1);
+    await next.close();
+  });

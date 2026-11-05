@@ -1613,3 +1613,70 @@ it('replays recorded summary, uncertain, Jev, review and empty reply shapes besi
     expect(f.sends).toBe(sends);
   }
 });
+
+it.each(['prepared', 'sending', 'accepted'] as const)('carryover 08 transfers only the %s never-sent input after exact retirement', stage => {
+  const f = fixture(), identity = f.launch();
+  if (stage === 'prepared') f.onPrepared(() => { throw Error('host lost before dispatch'); });
+  if (stage === 'sending') f.failNextSend();
+  f.deliver(identity);
+  const input = { operation: 'deliver', processIdentity: identity, intake: 'input', digest: hash('hello'), incarnation: 'inc' };
+  expect(f.driver.notDispatched!(input).kind).toBe('Refused'); // A live old worker never proves safe transfer.
+  value(f.driver.stop({ processIdentity: identity, claim: 'topic', incarnation: 'inc' }));
+  expect(value(f.driver.notDispatched!(input))).toBe(stage === 'prepared');
+  const next = value(f.driver.launch({ operation: 'next', claim: 'next-topic', artifact: 'sha256:test',
+    incarnation: 'next-inc', workingScope: '/work', handles: [] }));
+  const before = f.sends;
+  const result = f.driver.deliver({ ...input, processIdentity: next, incarnation: 'next-inc' });
+  if (stage === 'prepared') { expect(result.kind).toBe('Success'); expect(f.sends).toBeGreaterThan(before); }
+  else { expect(result.kind).toBe('Refused'); expect(f.sends).toBe(before); }
+});
+
+it('carryover 08 wires a prepared terminal input through retirement, fresh admission and one completed result', async () => {
+  const { createConversationSessionPort } = await import('../../src/assembly/production-conversation-session.js');
+  type State = import('../../src/assembly/production-conversation-session.js').ConversationState;
+  const f = fixture('claude-code', { requireTurnHook: true });
+  let state: State | null = null, cut: State | null = null, now = 1000, result: string | null = null;
+  const io = { clearResult: () => { result = null; }, readResult: () => result, modelCalls: () => 0,
+    wait: async (ms: number) => { now += ms; f.time(now); }, prepareAdmission: () => {}, closeAdmission: () => {},
+    admissionState: () => ({ refused: false, openDelegations: [], uncertainEffects: 0, toolPreparations: 0 }) };
+  const config = {
+    conversation: 'restart-wire', allowanceDeadline: 100000, authorized: () => true, currentAuthority: () => 'role',
+    store: { load: () => structuredClone(state), save: (next: State) => {
+      state = structuredClone(next); if (!cut && next.inputs.some(row => row.state === 'dispatching')) cut = structuredClone(next);
+    } },
+    createAdapter: (resolveDelivery: (id: string) => import('../../src/assembly/contracts.js').HarnessInputDelivery | undefined) =>
+      createSessionConversationAdapter({ resolveDelivery, io, createDriver: resolveIntake => createProductionSessionDriver({ ...f.config, resolveIntake }) }),
+    io, resources: { admit: async () => ({ attach: async () => {}, release: async () => true }) },
+    context: f.config.context, now: () => now, stopped: () => false, append: () => {}, parent: 'run', owner: 'machine',
+    placement: 'local', transport: 'terminal', workingScope: '/work', resultDirectory: '/work/results', artifact: 'artifact',
+    incarnation: 'host', deadlineMs: 2000, pollMs: 100, maxCalls: 6, maxSteps: 3, maxResultBytes: 65536,
+  };
+  f.onPrepared(() => { throw Error('injected host loss after durable preparation'); });
+  const first = value(createConversationSessionPort(config));
+  await first.run({ operation: 'input', question: 'Original accepted question', context: 'original context', authority: 'role' });
+  expect(f.sends).toBe(0); expect(cut).not.toBeNull();
+  const originalText = f.journal.deliveries[0]!.text;
+  state = cut;
+  const next = value(createConversationSessionPort(config));
+  expect((await next.collect('input'))?.outcome.state).toBe('queued');
+  now += 200; f.time(now);
+  f.onEnter(() => { result = '{"reply":"The answer","memory":[]}'; f.hook(now); });
+  await next.maintain();
+  expect((await next.collect('input'))?.outcome).toMatchObject({ state: 'complete', text: result });
+  expect(f.journal.deliveries[0]!.text).toBe(originalText);
+  const sends = f.sends;
+  await next.maintain(); expect(f.sends).toBe(sends);
+  await next.close();
+});
+
+it.each(['complete', 'no-result', 'no-hook', 'late-hook', 'stopped'] as const)(
+  'carryover 08 collects a retired terminal result only with %s evidence', mode => {
+    const f = fixture('claude-code', { requireTurnHook: true }), identity = f.launch();
+    value(f.deliver(identity));
+    if (mode !== 'no-hook') f.hook(mode === 'late-hook' ? 3001 : 1001);
+    f.time(3000);
+    value(f.driver.stop({ processIdentity: identity, claim: 'topic', incarnation: 'inc' }));
+    if (mode === 'stopped') f.stop();
+    const result = value(f.driver.observe({ operation: 'deliver', processIdentity: identity, resultAvailable: mode !== 'no-result' }));
+    expect(result.phase).toBe(mode === 'complete' ? 'output-observed' : 'exit-observed');
+  });

@@ -43,6 +43,9 @@ export interface SessionReservation {
 }
 export interface SessionJournal { readonly sessions: readonly SessionRecord[]; readonly deliveries: readonly DeliveryRecord[];
   readonly resumes: Readonly<Record<string, string>>; readonly reservations?: readonly SessionReservation[];
+  /** Exact protocol submission bindings; raw evidence remains in host-owned captures. */
+  readonly protocolDeliveries?: readonly Readonly<{ operation: string; identity: string; claim: string; incarnation: string;
+    digest: string; submissionDigest: string; thread: string }>[];
   readonly continuationRefusals?: readonly Readonly<{ operation: string; claim: string; reason: string; at: number }>[]; }
 export interface SessionIO {
   exclusive<T>(run: () => T): T;
@@ -594,6 +597,17 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         return identity;
       });
     },
+    notDispatched(input: { operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }): Result<boolean> {
+      return lockedBoundary('ProductionSessionNonDispatch', input, () => {
+        const session = loadSession(input.processIdentity);
+        ensure(session.incarnation === input.incarnation && !alive(session.name), 'non-dispatch requires the exact retired worker');
+        const prior = config.io.load().deliveries.find(row => row.operation === input.operation);
+        if (!prior) return true; // Every send persists its sending record before touching the terminal.
+        ensure(prior.identity === input.processIdentity && prior.intake === input.intake && prior.digest === input.digest,
+          'non-dispatch input differs');
+        return prior.state === 'prepared' && prior.redeliveries === 0;
+      });
+    },
     deliver(input: { operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }): Result<string> {
       return lockedBoundary('ProductionSessionDeliver', input, () => {
         if (config.stopped()) { stop(); throw Error('session stop authority is active'); }
@@ -602,7 +616,12 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           'continuation delivery uncertain or incomplete');
         ensure(input.incarnation === session.incarnation && input.operation && input.intake, 'stale or empty delivery');
         const prior = config.io.load().deliveries.find(row => row.operation === input.operation);
-        if (prior) {
+        // Carryover 08: the host may transfer a never-sent input after retiring
+        // its old worker. Sending/unknown records can never take this path.
+        const transfer = prior && prior.identity !== input.processIdentity && prior.state === 'prepared'
+          && prior.redeliveries === 0 && prior.intake === input.intake && prior.digest === input.digest
+          && !alive(loadSession(prior.identity).name);
+        if (prior && !transfer) {
           ensure(prior.identity === input.processIdentity && prior.intake === input.intake && prior.digest === input.digest,
             'delivery operation reused for different input');
           ensure(prior.state === 'accepted', 'delivery outcome uncertain; boot sweep required');
@@ -631,6 +650,21 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         if (config.stopped()) { stop(); return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'stop authority active' }; }
         if (session.deadlineHalt) return { phase: 'exit-observed' as const, evidence: `safety-ceiling:deadline:${session.identity}`, detail: 'per-turn deadline exceeded; closure must be reconciled', safetyDeadline: session.deadlineHalt.deadline };
         if (!alive(session.name)) {
+          // Carryover 08: process death cannot erase an already closed answer.
+          // Use the same bound lifecycle evidence, never a result file alone.
+          const delivery = config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1);
+          const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
+            && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
+          const closed = hook && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
+            && session.turnDeadline !== null && hook.at <= config.now() && hook.at <= session.turnDeadline;
+          if (config.requireTurnHook && input.resultAvailable && delivery?.operation === input.operation
+            && delivery.state === 'accepted' && session.rateRecovery?.state !== 'sending' && (session.turnCloseEvidence || closed)) {
+            const evidence = session.turnCloseEvidence ?? `turn-closed:${session.name}:${hook!.at}`;
+            if (!session.turnCloseEvidence) config.io.save(replaceSession(config.io.load(), {
+              ...closeTurn(session, hook!.at), turnCloseEvidence: evidence,
+            }));
+            return { phase: 'output-observed' as const, evidence, detail: 'retired worker retained correlated result and Stop hook' };
+          }
           const terminal = config.io.readTerminal?.(session.name);
           const worker = terminal?.workerExitClaim;
           const detail = terminal

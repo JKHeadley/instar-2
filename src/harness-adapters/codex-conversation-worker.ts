@@ -103,13 +103,71 @@ export function createCodexConversationWorker(input: Readonly<{
       ensure(input.io.readResult(delivery.resultPath, delivery.maxBytes) === null, 'stale conversation result remains');
       operation = delivery.operation; reader = null; idleDirty = false; accepted = false;
       // Host persists dispatch intent before calling this method. An RPC failure is uncertain.
-      const response = await send(requests.deliver(thread, grounding ? `${grounding}\n\n${delivery.text}` : delivery.text));
+      const submission = grounding ? `${grounding}\n\n${delivery.text}` : delivery.text;
+      const journal = config!.io.load();
+      ensure(!journal.protocolDeliveries?.some(row => row.operation === delivery.operation && row.identity === delivery.launch),
+        'protocol input already prepared; no automatic replay');
+      config!.io.save({ ...journal, protocolDeliveries: [...journal.protocolDeliveries ?? [], {
+        operation: delivery.operation, identity: delivery.launch, claim, incarnation, digest: delivery.digest,
+        submissionDigest: hash(submission), thread,
+      }] });
+      const response = await send(requests.deliver(thread, submission));
       const turn = object(object(response).turn);
       reader = createCodexTurnReader(thread, idOf(turn.id), delivery.maxBytes);
       feed(); guard(); grounding = ''; accepted = true;
       return { state: 'accepted', evidence: `${connection!.identity}:${thread}:${turn.id}` };
     },
+    async notDispatched(delivery) {
+      ensure(!connection, 'non-dispatch requires retired worker');
+      const current = input.configuration();
+      const saved = current.io.load().protocolDeliveries?.find(row => row.operation === delivery.operation && row.identity === delivery.launch);
+      if (!saved || !input.transport.capture) return false; // Legacy/absent binding supplies no proof.
+      ensure(saved.claim === delivery.claim && saved.incarnation === delivery.incarnation
+        && saved.digest === delivery.digest && hash(delivery.text) === delivery.digest, 'non-dispatch input differs');
+      const frames = input.transport.capture({ ...delivery, requireClosed: true }).map(object);
+      // A complete, existing initialization capture plus no request for this
+      // prepared submission proves no model dispatch. Any ambiguous request holds.
+      return frames.some(row => row.direction === 'request' && object(row.frame).method === 'initialize')
+        && !frames.some(row => row.direction === 'request' && object(row.frame).method === 'turn/start'
+          && object(object(row.frame).params).threadId === saved.thread);
+    },
     async observe(query) {
+      // Carryover 08: a former host's completed result can be collected without
+      // reconnecting its pipes, reopening admission or replaying a model request.
+      if (!connection && query.delivery) {
+        config = input.configuration(); guard();
+        ensure(Number.isSafeInteger(query.cursor) && query.cursor >= 0 && query.cursor <= 2
+          && Number.isSafeInteger(query.limit) && query.limit >= 1 && query.limit <= 64, 'bounded observation required');
+        const delivery = query.delivery;
+        const saved = config.io.load().protocolDeliveries?.find(row => row.operation === delivery.operation && row.identity === query.launch);
+        ensure(saved && saved.claim === query.claim && saved.incarnation === query.incarnation
+          && delivery.launch === query.launch && delivery.claim === query.claim && delivery.incarnation === query.incarnation
+          && saved.digest === delivery.digest && hash(delivery.text) === delivery.digest && input.transport.capture,
+        'protocol recovery input identity unavailable');
+        const captures = input.transport.capture(query).map(object);
+        const starts = captures.filter(row => row.direction === 'request').map(row => object(row.frame))
+          .filter(frame => frame.method === 'turn/start' && object(frame.params).threadId === saved.thread
+            && Array.isArray(object(frame.params).input) && (object(frame.params).input as unknown[]).length === 1
+            && object((object(frame.params).input as unknown[])[0]).type === 'text'
+            && typeof object((object(frame.params).input as unknown[])[0]).text === 'string'
+            && hash(object((object(frame.params).input as unknown[])[0]).text as string) === saved.submissionDigest);
+        ensure(starts.length === 1 && Number.isSafeInteger(starts[0]!.id), 'protocol recovery request ambiguous or missing');
+        const responses = captures.filter(row => row.direction === 'response').map(row => object(row.frame));
+        const replies = responses.filter(frame => frame.id === starts[0]!.id && frame.method === undefined);
+        ensure(replies.length === 1 && replies[0]!.error === undefined, 'protocol recovery response ambiguous or missing');
+        const recoveredReader = createCodexTurnReader(saved.thread, idOf(object(object(replies[0]!.result).turn).id), delivery.maxBytes);
+        for (const frame of responses) recoveredReader.consume(frame);
+        const result = recoveredReader.snapshot();
+        ensure(result.status === 'completed', 'protocol recovery has no completed turn; no automatic replay');
+        const text = result.reply ? input.io.readResult(delivery.resultPath, delivery.maxBytes) ?? result.reply : null;
+        ensure(text === null || Buffer.byteLength(text) <= delivery.maxBytes, 'conversation result exceeds byte bound');
+        const events: HarnessNormalizedObservation[] = [
+          ...(text?.trim() ? [{ kind: 'reply' as const, delivery: delivery.operation, text, digest: hash(text) }] : []),
+          { kind: 'turn-end', delivery: delivery.operation, state: text?.trim() ? 'completed' : 'no-reply' },
+        ];
+        const batch = events.slice(query.cursor, query.cursor + query.limit);
+        return { observations: batch, cursor: query.cursor + batch.length, complete: true };
+      }
       verify(query); guard(); feed();
       ensure(Number.isSafeInteger(query.cursor) && query.cursor >= 0 && query.cursor <= 2
         && Number.isSafeInteger(query.limit) && query.limit >= 1 && query.limit <= 64, 'bounded observation required');

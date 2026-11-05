@@ -263,10 +263,19 @@ a dispatched but unresolved input becomes uncertain on restart and is never repl
 A repeated exact input returns its recorded outcome; conflicting bytes refuse.
 Waiting messages use the largest arrival-order prefix whose serialized delivery fits
 1 MiB; the suffix stays queued and a lone message uses its ordinary prompt. On restart,
-a completed batch may be recovered from its correlated adapter receipt and the existing
-journal's process and completed child edges, even when the old admission gate is gone.
+a completed single input or batch may be recovered from its correlated adapter receipt
+and the existing journal's process and completed child edges, even when the old
+admission gate is gone. Recovery checks the exact worker, original delivery bytes,
+nonempty reply and completed turn before atomically recording results and cursors.
 Missing or invalid evidence retires the old worker and records uncertainty without
-replaying its tools or preventing later messages from draining.
+replaying its tools or preventing later messages from draining. After confirmed retirement,
+an adapter may positively prove a dispatching input never crossed its send boundary.
+Only that input returns to the queue, with its original envelope and batch membership,
+at most three existing dispatch attempts and bounded backoff. A new worker still passes
+normal admission using the original parent deadline and remaining allowance. Absent or
+ambiguous evidence, accepted input, failed retirement and exhausted attempts never
+authorize this retry. Terminal drivers prove a prepared, never-started send; protocol
+workers require a bound submission and a complete capture with no turn request.
 
 Each OS process gets a fresh claim and incarnation, its own 64-input/one-hour ceiling,
 and only the unused portion of the original 128-call reservation. Every process deadline
