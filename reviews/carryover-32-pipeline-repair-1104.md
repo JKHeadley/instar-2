@@ -1,8 +1,8 @@
 # Change review — Repair correction persistence budgets, evidence and class-review admission
 
 Subject base: 3b9ad197a2a02b6cfe2856049eeb361c27e0504a
-Review state: frozen
-Reviewed content: sha256:f4f7e1787c1060601e5661aacc5e41fc5ca960cfbbe5155b5b7648bb5bc61411
+Review state: open
+Reviewed content: none
 Outcome: Repair all five row-32 review findings: ordinary review work and correction candidates share existing budgets and drain; context diversity uses recorded grounding; effectiveness requires whole delivered behavior and independent lesson-linked outcome evidence; two-question class judgments persist independently of feedback and precede linked repair admission; real model outputs and proof-room shapes replay through the shipped worker.
 Affected rules: 2, 4, 7, 8, 9, 11, 13, 24, 25, 26, 32, 35, 36, 37, 42, 46, 49, 55, 58, 60, 70, 74, 85, 95, 101, 102, 108, 111, 113, 116
 Affected floors: secrets — existing redaction on candidate and lesson text; spend cap — unchanged stop/cap/interval admission and shared bounded packet/answer budgets; stop — no new worker or retry service; no duplicate sends — no outbound path added; durable intake — all review and delivery evidence remains in the existing journal.
@@ -35,6 +35,14 @@ Decision: R32-repair-3 | Save two-question judgments in the retrospective journa
 Subject (11 paths): docs/implementation/carryover-32-full-parity-r2-1104.md, tests/preview/correction-fix-gate.test.ts, tests/preview/correction-fix-gate.ts, tests/preview/correction-fixture.ts, tests/preview/correction-ledger.test.ts, tests/preview/correction-ledger.ts, tests/preview/correction-loop-driver.test.ts, tests/preview/correction-loop-driver.ts, tests/preview/correction-review.test.ts, tests/preview/fixtures/correction-retrospective-2026-11-04.json, tests/preview/retrospective.ts
 
 Deferral: generated/register.json:1 | not-a-deferral=generated register state text; all repair work is complete
+
+
+Train-170 integration: This review round is explicitly reopened because the combined register publication changes its generated subject. Product source remains byte-identical to reviewed 88aabf739; reviews/train-170-change-review.md covers the new composition.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing guidance or exact status wording tested as delivered; no new lexical meaning gate — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"
+Prompt finding: 849db3a6296a | protocol-literal | Existing guidance or exact status wording tested as delivered; no new lexical meaning gate — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
+Prompt finding: 85544c20941f | protocol-literal | Existing guidance or exact status wording tested as delivered; no new lexical meaning gate — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-conversation-session.test.ts: "your messages are kept and i'll answer them then; you don't need to resend them."
+Prompt finding: e8708c7fea24 | protocol-literal | Existing guidance or exact status wording tested as delivered; no new lexical meaning gate — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
+Deferral: generated/conversion.json:1 | not-a-deferral=retained generated rule wording or recorded provider fixture text; no train work is postponed
 
 ## Closing block
 
