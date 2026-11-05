@@ -2765,21 +2765,20 @@ async function main() {
             String(journal.view.turns.get(operation)?.thread ?? 'main'), timeZoneOf(options))),
           ...(handoff ? { prepareTurn: handoff.prepareTurn } : {}) } : {}),
         createDriver: resolveIntake => {
-          const create = () => createProductionSessionDriver(driverConfiguration(resolveIntake));
+          const create = () => observeSessionDriver(createProductionSessionDriver(driverConfiguration(resolveIntake)), (input, observed) => {
+            if (conversationSession) workingActivities.observeSession(
+              binding.physical().load().sessions.find(row => row.identity === input.processIdentity), observed);
+            // Both observation paths retain existing login accounting; no new retry.
+            return observeHarnessSessionLimit(loginPool, binding.entry(), observed);
+          });
           let driver = create();
           // Each step is fresh and the port permits only one in flight. Rebuild only between steps;
           // the port keeps one shared step/call ceiling across all selected logins.
           return { owner: driver.owner, launch: input => { handoff?.bindClaim(input.claim); driver = create(); const result = driver.launch(input);
               if (result.kind === 'Success') handoff?.launched(); return result; },
             continuationReady: identity => driver.continuationReady(identity),
-            deliver: input => driver.deliver(input), recoverContext: (identity, pending) => driver.recoverContext(identity, pending), observe: input => {
-              const observed = driver.observe(input);
-              if (conversationSession) workingActivities.observeSession(
-                binding.physical().load().sessions.find(row => row.identity === input.processIdentity), observed);
-              // Reuse the session adapter's existing typed rate-limit observation. The step remains
-              // uncertain and is never replayed; a subsequent step/call selects another reviewed login.
-              return observeHarnessSessionLimit(loginPool, binding.entry(), observed);
-            }, stop: target => driver.stop(target) };
+            deliver: input => driver.deliver(input), recoverContext: (identity, pending) => driver.recoverContext(identity, pending), observe: input => driver.observe(input),
+            observeAsync: input => driver.observeAsync(input), stop: target => driver.stop(target) };
         },
         io: { readResult: (path, maxBytes) => binding.physical().readResult(path, maxBytes), clearResult: path => binding.physical().clearResult(path),
           modelCalls: since => binding.physical().modelCalls(framework, project, binding.entry().profile.configDirectory, since), wait: delay,

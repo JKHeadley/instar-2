@@ -111,3 +111,12 @@ export function createWorkingActivities({ read, now }) {
     },
   };
 }
+
+/** Preserve the same owner projection on both observation methods. The async
+ * method is selected by the conversation adapter and must not bypass it. */
+export function observeSessionDriver(driver, project) {
+  return { ...driver,
+    observe: input => project(input, driver.observe(input)),
+    observeAsync: async input => project(input, driver.observeAsync
+      ? await driver.observeAsync(input) : driver.observe(input)) };
+}
