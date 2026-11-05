@@ -28,8 +28,8 @@ Decision: MCP-SCHEMA-1104-3 | Remove top-level oneOf from the client-advertised 
 
 ## Closing block
 
+Train-168 review reopening: The main governance merge and combined register replay change this inherited record's publication subject. Its prior frozen digest was sha256:41339ecebaa3eebf3d3a09bcb98108b0bdb289e724fb0bd3514a7e0c7431d0cc; that historical review does not certify the combined bytes. reviews/train-168-change-review.md records the integration and requires desk review of this candidate. No independent verdict is asserted by this reopening.
+
 simplestRobustRoute: Use the existing harness ACL helper on the one generated file before a continuing session launches.
 80/20: The worker can load the connector without changing owner profile custody. Real signed-in page reads still need copy proof before live release.
 VERDICT: author submission; this record asserts no independent verdict.
-
-Train-168 review reopening: The main governance merge and combined register replay change this inherited record's publication subject. Its prior frozen digest was sha256:41339ecebaa3eebf3d3a09bcb98108b0bdb289e724fb0bd3514a7e0c7431d0cc; that historical review does not certify the combined bytes. reviews/train-168-change-review.md records the integration and requires desk review of this candidate. No independent verdict is asserted by this reopening.

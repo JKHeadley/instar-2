@@ -28,8 +28,8 @@ Decision: BROWSER-MERGE-1104-2 | Reopen the copied resource-recovery review whos
 
 ## Closing block
 
+Train-168 review reopening: The main governance merge and combined register replay change this inherited record's publication subject. Its prior frozen digest was sha256:094316dfd656ab51b6d7663e4bd9207c62d4593c8a3e743493d748b4dfe47228; that historical review does not certify the combined bytes. reviews/train-168-change-review.md records the integration and requires desk review of this candidate. No independent verdict is asserted by this reopening.
+
 simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
 80/20: The two browser test files and register lifecycle test passed 31/31 on the combined branch. Full exact-head suite, independent combination review and a real signed-in multi-step group task remain required before release. No new browser service or credential custody path.
 VERDICT: author submission; this record asserts no independent verdict.
-
-Train-168 review reopening: The main governance merge and combined register replay change this inherited record's publication subject. Its prior frozen digest was sha256:094316dfd656ab51b6d7663e4bd9207c62d4593c8a3e743493d748b4dfe47228; that historical review does not certify the combined bytes. reviews/train-168-change-review.md records the integration and requires desk review of this candidate. No independent verdict is asserted by this reopening.
