@@ -2115,6 +2115,7 @@ async function main() {
       ...(loginPool ? [loginPool.status()] : []),
       ...(sessionLoginObservations.size ? [sessionLoginStatus([...sessionLoginObservations.values()], wallNow())] : []),
       ...(sessionWork?.port.idleCleanupStatus?.() ?? []),
+      ...(sessionWork?.port.inboxStatus?.() ?? []),
       ...(harness ? [harnessStatusLine(harness.state)] : identityRefusal !== null ? [harnessStatusLine({ ready: false, reason: identityRefusal })] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options), readOnly = readOnlyDashboardOf(options);
@@ -2236,7 +2237,8 @@ async function main() {
         sessionWork?.select?.();
         if (!sessionWork?.port.available()) throw new ModelNotStarted();
         const outcomes = await sessionWork.port.runBatch(inputs.map(input => ({ operation: input.id,
-          question: input.prepared, context: input.context, authority: sessionWork.authority })));
+          question: input.prepared, context: input.context, authority: sessionWork.authority,
+          inbox: { type: 'request', priority: 'normal', createdAt: journal.view.turns.get(input.id).at, ttlMs: 14_400_000 } })));
         return outcomes.map((outcome, index) => conversationSessionAnswer(outcome, inputs[index].id,
           shape => recordShape(shapesPath, 'answer', 'decision', 'malformed', shape)));
       } } : {}),
@@ -2264,7 +2266,7 @@ async function main() {
             sessionWork?.select?.();
             if (!sessionWork?.port.available()) throw new ModelNotStarted();
             outcome = await sessionWork.port.run({ operation, question: prepared, context: packet,
-              authority: sessionWork.authority });
+              authority: sessionWork.authority, inbox: { type: 'request', priority: 'normal', createdAt: turn.at, ttlMs: 14_400_000 } });
           } catch (error) {
             if (operation === id && error instanceof ModelNotStarted) throw error;
             // A refused/unknown repair is not permission to replay tools. Let the journal's
@@ -2402,6 +2404,10 @@ async function main() {
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
       sendAdmits: true,
+      recoveryConfiguration: () => {
+        try { return `sha256:${createHash('sha256').update(JSON.stringify([g.bot, process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT ?? 'telegram', token()])).digest('hex')}`; }
+        catch { return null; }
+      },
       reconcileSend: async (target, subject) => shared ? shared.reconcile(target, subject) : null,
       send: async ({ text, expectedText, formatting, chat, thread: signedThread, replyTo, replyMarkup, target, retryAttempt, provenance, admit, current, observeSendPhase }) => {
         if (!journal.verifyOutbound(provenance, { target, chat, ...(signedThread === undefined ? {} : { thread: signedThread }), body: text }))

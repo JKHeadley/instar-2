@@ -1,5 +1,6 @@
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
 import { createHash } from 'node:crypto';
@@ -273,13 +274,15 @@ it('replacement receives current time and bounded unresolved references; journal
 it('the continuing host consumes real driver Stop receipts through the public adapter for two inputs', async () => {
   const { createSessionConversationAdapter } = await import('../../src/assembly/conversation-harness-adapter.js');
   const { createProductionSessionDriver } = await import('../../src/assembly/production-session-driver.js');
-  const f = fixture(); let now = 1000, pane = '❯ ', live = false, path = '', entered = 0;
+  const root = mkdtempSync(join(tmpdir(), 'row07-physical-ack-'));
+  const hook = new URL('../../scripts/session-hooks/stop.mjs', import.meta.url).href;
+  const f = fixture(); let pendingReply = false; let now = 1000, pane = '❯ ', live = false, path = '', entered = 0;
   let journal: import('../../src/assembly/production-session-driver.js').SessionJournal = { sessions: [], deliveries: [], resumes: {} };
   const files = new Map<string, string>();
   const receipts: { kind: 'turn-closed'; sessionId: string; at: number; receiptId: string }[] = [];
   const physical: import('../../src/assembly/production-session-driver.js').SessionIO = {
     exclusive: run => run(), load: () => journal, save: next => { journal = structuredClone(next); },
-    sleep: ms => { now += ms; }, armDeadline: () => {}, transcriptExists: () => false, readInbox: () => receipts,
+    sleep: ms => { now += ms; }, armDeadline: () => {}, transcriptExists: () => false, readInbox: () => [...receipts, ...readdirSync(root).filter(file => file.endsWith('.json')).map(file => JSON.parse(readFileSync(join(root, file), 'utf8')))],
     tmux: args => {
       if (args[0] === 'new-session') { live = true; expect(args.join(' ')).toContain('Stop'); }
       if (args[0] === 'has-session') return { code: live ? 0 : 1, stdout: '' };
@@ -287,14 +290,28 @@ it('the continuing host consumes real driver Stop receipts through the public ad
       if (args[0] === 'capture-pane') return { code: 0, stdout: pane };
       if (args[0] === 'kill-session') live = false;
       if (args[0] === 'send-keys' && args.includes('Enter')) {
-        entered++; pane = `reply ${entered}\n❯ `; files.set(path, `{"reply":"answer ${entered}"}`);
-        receipts.push({ kind: 'turn-closed', sessionId: '12345678-1234-1234-1234-123456789abc', at: now, receiptId: `receipt-${entered}` });
+        entered++; pane = 'Thinking...'; pendingReply = true;
+        const session = journal.sessions[0]!;
+        const child = spawnSync(process.execPath, ['--input-type=module', '-e',
+          `Date.now = () => ${now}; process.argv[2] = 'ack'; await import(${JSON.stringify(hook)});`], {
+          env: { PATH: '/usr/bin:/bin', INSTAR_SESSION_NAME: session.name, INSTAR_SESSION_INBOX: root },
+          input: JSON.stringify({ session_id: session.resumeId }), encoding: 'utf8' });
+        expect(child.status).toBe(0);
+
       }
       return { code: 0, stdout: '' };
     },
   };
   const io = { ...f.config.io, clearResult: (next: string) => { path = next; files.delete(path); },
-    readResult: (file: string) => files.get(file) ?? null, modelCalls: () => entered, wait: async (ms: number) => { now += ms; } };
+    readResult: (file: string) => files.get(file) ?? null, modelCalls: () => entered, wait: async (ms: number) => {
+      if (pendingReply) {
+        expect(f.state().inputs.at(-1)?.inbox?.acknowledgedAt).toBe(now);
+        pane = `reply ${entered}\n❯ `; files.set(path, `{"reply":"answer ${entered}"}`);
+        receipts.push({ kind: 'turn-closed', sessionId: journal.sessions[0]!.resumeId!, at: now, receiptId: `receipt-${entered}` });
+        pendingReply = false;
+      }
+      now += ms;
+    } };
   const port = value(createConversationSessionPort({ ...f.config, io, now: () => now,
     createAdapter: resolveDelivery => createSessionConversationAdapter({ io, resolveDelivery,
       createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
@@ -303,11 +320,11 @@ it('the continuing host consumes real driver Stop receipts through the public ad
         readyTimeoutMs: 1000, protectedSessions: [], requireTurnHook: true, hookScript: '/installed/stop.mjs', inboxDirectory: '/inbox',
         toolAdmission: { command: () => '/installed/tool-hook', timeoutSeconds: 2 },
         modelGate: claim => `http://127.0.0.1:1234/${'a'.repeat(32)}/${claim}` }) }) }));
-  expect(await port.run(f.request('one'))).toMatchObject({ state: 'complete', text: '{"reply":"answer 1"}' });
-  expect(await port.run(f.request('two'))).toMatchObject({ state: 'complete', text: '{"reply":"answer 2"}' });
+  expect(await port.run({ ...f.request('one'), inbox: { type: 'request', priority: 'normal', createdAt: 1000, ttlMs: 10000 } })).toMatchObject({ state: 'complete', text: '{"reply":"answer 1"}' });
+  expect(await port.run({ ...f.request('two'), inbox: { type: 'query', priority: 'normal', createdAt: 1000, ttlMs: 10000 } })).toMatchObject({ state: 'complete', text: '{"reply":"answer 2"}' });
   expect(journal.sessions).toHaveLength(1); expect(journal.deliveries.map(row => row.state)).toEqual(['accepted', 'accepted']);
   expect(f.state().inputs.map(row => row.cursor)).toEqual([2, 2]);
-  await port.close(); expect(live).toBe(false);
+  await port.close(); expect(live).toBe(false); rmSync(root, { recursive: true, force: true });
 });
 
 it('process renewal never extends the already admitted parent lifetime', async () => {
@@ -1217,4 +1234,83 @@ it('replays the failed email turn: missing result stays uncertain, and the actua
   expect(prompt).toContain('Put that honest answer in the requested result file');
   expect(prompt).toContain('never invent account contents or completed actions');
   await f.port.close();
+});
+
+
+it.each(capturedShapes.otherShapes)('typed inbox consumes recorded $kind ($id) as correlated ACK and retains its bytes', async sample => {
+  const f = fixture(); f.answer(sample.raw);
+  const request = { ...preparedRequest(sample.id, JSON.stringify({ recorded: sample.raw })),
+    inbox: { type: 'request' as const, priority: 'normal' as const, createdAt: 1000, ttlMs: 14_400_000 } };
+  const result = await f.port.run(request);
+  expect(f.state().inputs[0]?.inbox?.acknowledgedAt).toBe(1000);
+  expect(result.state).toBe(sample.raw.trim() ? 'complete' : 'uncertain');
+  expect(f.state().inputs[0]?.reply).toBe(sample.raw);
+  const next = f.restart(); await next.collect(request.operation); expect(f.delivered).toHaveLength(1);
+  await next.close();
+});
+
+it.each([['request', 600000], ['query', 300000], ['wellness', 120000]] as const)(
+  'typed %s ACK fires only after its inherited %i ms deadline and never reinjects on restart', async (type, deadline) => {
+    for (const late of [false, true]) {
+      const f = fixture(); Object.assign(f.config, { deadlineMs: 1_000_000, allowanceDeadline: 2_000_000, pollMs: 5000 });
+      const observe = f.adapter.observe; let elapsed = 0;
+      f.adapter.observe = async input => input.delivery && elapsed < deadline + (late ? 5000 : 0)
+        ? { observations: [], cursor: input.cursor, complete: true } : observe(input);
+      f.config.io.wait = async ms => { elapsed += ms; f.advance(ms); };
+      const request = { ...f.request(`typed-${type}`), inbox: { type, priority: 'normal' as const, createdAt: 1000, ttlMs: 1_500_000 } };
+      const result = await f.port.run(request), input = f.state().inputs[0]!;
+      expect(input.inbox?.watchdogAt).toBe(11000);
+      expect(result.state).toBe(late ? 'uncertain' : 'complete');
+      expect(input.inbox?.terminal).toBe(late ? 'ack-timeout' : undefined);
+      expect(input.inbox?.acknowledgedAt).toBe(late ? undefined : 1000 + deadline);
+      const next = f.restart(); expect((await next.collect(request.operation))?.outcome).toEqual(result);
+      await next.run(request); expect(f.delivered).toHaveLength(1); await next.close();
+    }
+  });
+
+it('typed inbox retries ten times at 30 seconds across restart, then retains dead-letter custody', async () => {
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 1_000_000, allowanceDeadline: 2_000_000 });
+  let injections = 0;
+  f.adapter.deliver = async () => { injections++; return { state: 'busy-not-dispatched', evidence: 'physical injector refused before input' }; };
+  const request = { ...f.request('queued'), inbox: { type: 'request' as const, priority: 'normal' as const, createdAt: 1000, ttlMs: 1_000_000 } };
+  await f.port.run(request); let port = f.port;
+  for (let attempt = 2; attempt <= 10; attempt++) {
+    f.advance(29999); await port.maintain(); expect(injections).toBe(attempt - 1);
+    if (attempt === 5) port = f.restart();
+    f.advance(1); await port.maintain(); expect(injections).toBe(attempt);
+  }
+  expect(f.state().inputs[0]).toMatchObject({ state: 'settled', attempts: 10, inbox: { terminal: 'retry-exhausted' }, outcome: { state: 'failed' } });
+  const next = f.restart(); await next.run(request); expect(injections).toBe(10); await next.close();
+});
+
+it.each(['queued', 'accepted'] as const)('TTL moves %s inbox work to retained dead-letter without inferring non-execution', async phase => {
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 1_000_000, allowanceDeadline: 2_000_000 });
+  if (phase === 'queued') f.adapter.deliver = async () => ({ state: 'busy-not-dispatched', evidence: 'no input' });
+  else f.finish(false);
+  const request = { ...f.request('ttl'), inbox: { type: 'alert' as const, priority: 'critical' as const, createdAt: 1000, ttlMs: 1000 } };
+  await f.port.run(request);
+  if (phase === 'queued') { f.advance(1001); await f.port.maintain(); }
+  expect(f.state().inputs[0]).toMatchObject({ state: 'settled', inbox: { terminal: 'ttl', actionable: true },
+    outcome: { state: phase === 'queued' ? 'failed' : 'uncertain' } });
+  expect(f.state().inputs[0]?.request).toEqual(request);
+  const next = f.restart(); await next.run(request); expect(f.delivered).toHaveLength(phase === 'queued' ? 0 : 1); await next.close();
+});
+
+
+it.each(['timely', 'late', 'wrong-clock', 'gap'] as const)('typed input consumes only a valid %s consumer ACK, never injection success', async mode => {
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 1_000_000, allowanceDeadline: 2_000_000, pollMs: 5000 });
+  const observe = f.adapter.observe; let elapsed = 0;
+  f.adapter.observe = async input => {
+    if (!input.delivery) return observe(input);
+    const acknowledgedAt = mode === 'timely' || mode === 'gap' ? 11000 : mode === 'wrong-clock' ? 0 : 126000;
+    if (elapsed < 150000) return { observations: [], cursor: input.cursor, complete: mode !== 'gap',
+      ...(elapsed >= 10000 ? { acknowledgedAt } : {}) };
+    return observe(input);
+  };
+  f.config.io.wait = async ms => { elapsed += ms; f.advance(ms); };
+  const request = { ...f.request('early-ack'), inbox: { type: 'wellness' as const, priority: 'normal' as const, createdAt: 1000, ttlMs: 130000 } };
+  const result = await f.port.run(request);
+  expect(result.state).toBe(mode === 'timely' ? 'complete' : 'uncertain');
+  expect(f.state().inputs[0]?.inbox?.acknowledgedAt).toBe(mode === 'timely' ? 11000 : undefined);
+  expect(f.delivered).toHaveLength(1); await f.port.close();
 });

@@ -3,7 +3,7 @@
  * are injected controls, not a claim about the historical lost cause. */
 import { expect, it } from 'vitest';
 import { createServer } from 'node:http';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -259,7 +259,8 @@ it('the existing next-due wake resumes queued recovery without a new intake or t
   } finally { wake.close(); journal.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
-it.each(['matching', 'wrong-subject', 'absent'] as const)('restart reconciles only a persisted %s receipt without a second send', async evidence => {
+it.each(['reply', 'delivery-notice'].flatMap(kind => ['matching', 'wrong-subject', 'absent'].map(evidence => ({ kind, evidence }))))(
+  'restart reconciles only a persisted $evidence $kind receipt without a second send', async ({ kind, evidence }) => {
   const dir = mkdtempSync(join(tmpdir(), 'delivery-reconcile-'));
   let now = 1000, sends = 0;
   const authorityPath = join(dir, 'authority');
@@ -270,7 +271,7 @@ it.each(['matching', 'wrong-subject', 'absent'] as const)('restart reconciles on
   let journal = openPreviewJournal(join(dir, 'journal'), key, genesis);
   const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {}, model: async () => fixture.candidate,
     send: async input => {
-      if (input.target?.startsWith('delivery-notice:')) return 99;
+      if (!input.target?.startsWith(`${kind}:`)) return kind === 'reply' ? 99 : { kind: 'refused', reason: 'telegram 403' };
       sends++;
       expect(authority.handle({ op: 'claim', fence, key: input.target!, subject: input.provenance!.contentHash })).toMatchObject({ ok: true });
       if (evidence !== 'absent') {
@@ -281,7 +282,7 @@ it.each(['matching', 'wrong-subject', 'absent'] as const)('restart reconciles on
     } });
   try {
     worker.intake([update]); await worker.drain(); expect(sends).toBe(1);
-    const turn = journal.view.order[0]!, target = `reply:${turn.id}`, subject = turn.intentProvenance!.contentHash;
+    const turn = journal.view.order[0]!, target = `${kind}:${turn.id}`, subject = journal.view.sendEvidence![target]!.provenance.contentHash;
     expect(turn.sent).toBeUndefined();
     journal.close(); authority.close(); now++;
     authority = openConversationAuthority({ path: authorityPath, conversation: 'row07', termMs: 300000, monotonic: () => now });
@@ -297,7 +298,8 @@ it.each(['matching', 'wrong-subject', 'absent'] as const)('restart reconciles on
         return answer.ok ? answer.receipt?.message ?? null : null;
       }, send: async () => { sends++; throw Error('must not resend'); } });
     await second.drain(); await second.drain();
-    expect(journal.view.order[0]!.sent).toBe(evidence === 'matching' ? 77 : undefined); expect(sends).toBe(1);
+    const result = journal.view.order[0]!;
+    expect(kind === 'reply' ? result.sent : result.deliveryNotice?.sent).toBe(evidence === 'matching' ? 77 : undefined); expect(sends).toBe(1);
     if (evidence === 'matching') expect(() => journal.append({ kind: 'send-reconciled', target, subject, message: 77, at: now })).toThrow(/reconciliation/);
   } finally { journal.close(); authority.close(); rmSync(dir, { recursive: true, force: true }); }
 });
@@ -408,4 +410,97 @@ it.each(['not-sent', 'rate-limited'] as const)('a failed %s escalation cannot en
     expect(journal.view.sendOutcomes.every(item => item.recovery === undefined)).toBe(true);
     now += TTL_MS; await worker.drain(); expect(notices).toBe(failure === 'not-sent' ? 2 : 1);
   } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+
+it.each(['rotation', 'operator'] as const)('five failed escalations suspend the scope across handoff until %s resume', async resume => {
+  const dir = mkdtempSync(join(tmpdir(), 'delivery-pressure-'));
+  let now = 1000, notices = 0, replies = 0, configuration: string | null = `sha256:${'1'.repeat(64)}`;
+  let journal = openPreviewJournal(join(dir, 'journal'), key, genesis);
+  const worker = () => createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {},
+    recoveryConfiguration: () => configuration, model: async () => 'Retained response', send: async input => {
+      if (input.target?.startsWith('delivery-notice:')) { notices++; return { kind: 'refused', reason: 'telegram 403' }; }
+      replies++; return replies > 5 ? { kind: 'refused', reason: 'telegram 429', retryAfterMs: 30000 } : { kind: 'refused', reason: 'telegram 403' };
+    } });
+  try {
+    for (let i = 0; i < 5; i++) {
+      const w = worker(); w.intake([{ ...update, update_id: update.update_id + i }]); await w.drain();
+      expect(journal.view.recoveryPressure?.suspended).toBe(i === 4); now += 31000;
+    }
+    expect(notices).toBe(5);
+    const w = worker(); w.intake([{ ...update, update_id: update.update_id + 5 }]); await w.drain();
+    expect(replies).toBe(6); expect(notices).toBe(5);
+    journal.close(); copyFileSync(join(dir, 'journal'), join(dir, 'successor'));
+    journal = openPreviewJournal(join(dir, 'successor'), key, genesis); now += 31000;
+    await worker().drain(); expect(replies).toBe(6); expect(journal.view.recoveryPressure?.suspended).toBe(true);
+    configuration = null; await worker().drain(); expect(journal.view.recoveryPressure?.suspended).toBe(true);
+    configuration = `sha256:${'1'.repeat(64)}`;
+    const stranger = worker(); stranger.intake([{ ...update, update_id: update.update_id + 6,
+      message: { ...update.message, from: { id: 1 }, text: '/resume-delivery' } }]);
+    await stranger.drain(); expect(journal.view.recoveryPressure?.suspended).toBe(true);
+    if (resume === 'rotation') configuration = `sha256:${'2'.repeat(64)}`;
+    else { const owner = worker(); owner.intake([{ ...update, update_id: update.update_id + 7,
+      message: { ...update.message, text: '/resume-delivery' } }]); }
+    await worker().drain(); expect(journal.view.recoveryPressure?.suspended).toBe(false);
+    expect(replies).toBeGreaterThan(6); expect(journal.view.recoveryPressure?.failures).toEqual([]);
+  } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it.each(['success', 'window'] as const)('escalation pressure does not trip after %s breaks the five-failure sequence', async reset => {
+  const dir = mkdtempSync(join(tmpdir(), 'delivery-pressure-reset-')); let now = 1000, notices = 0;
+  const journal = openPreviewJournal(join(dir, 'journal'), key, genesis);
+  const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {}, model: async () => 'Answer',
+    send: async input => input.target?.startsWith('delivery-notice:') && ++notices === 3 && reset === 'success'
+      ? 91 : { kind: 'refused', reason: 'telegram 403' } });
+  try {
+    for (let i = 0; i < 5; i++) {
+      if (reset === 'window' && i === 4) now += 3_600_001;
+      worker.intake([{ ...update, update_id: update.update_id + i }]); await worker.drain(); now += 31000;
+    }
+    expect(journal.view.recoveryPressure?.suspended).toBe(false);
+    expect(journal.view.recoveryPressure?.failures.length).toBe(reset === 'success' ? 2 : 1);
+  } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it.each([['reply', 'lost'], ['reply', 'corrupt'], ['delivery-notice', 'lost'], ['delivery-notice', 'corrupt']] as const)(
+  'single-machine physical acceptance survives %s %s receipt projection and handoff', async (kind, fault) => {
+  const dir = mkdtempSync(join(tmpdir(), 'delivery-local-receipt-'));
+  let now = 1000, deliveries = 0;
+  const server = createServer((req, res) => {
+    let body = ''; req.on('data', chunk => { body += String(chunk); }); req.on('end', () => {
+      const input = JSON.parse(body) as { chat: string; expectedText: string };
+      deliveries++; res.end(JSON.stringify({ ok: true, result: { message_id: 91,
+        chat: { id: Number(input.chat) }, text: input.expectedText } }));
+    });
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const endpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  let journal = openPreviewJournal(join(dir, 'journal'), key, genesis);
+  let lose = true;
+  const proxy = () => ({ ...journal, get view() { return journal.view; }, append: (row: Parameters<typeof journal.append>[0]) => {
+    if (lose && (kind === 'reply' ? row.kind === 'sent' : row.kind === 'held-notice-sent' && row.deliveryUnknown)) {
+      if (fault === 'corrupt') { journal.append({ ...row, message: 0 }); return; }
+      throw Error('injected target receipt storage failure');
+    }
+    journal.append(row);
+  } });
+  const worker = () => createJournalWorker(proxy(), { now: () => now, stopped: () => false, checkOutbound: () => {}, model: async () => fixture.candidate,
+    send: async input => {
+      if (!input.target?.startsWith(`${kind}:`)) return { kind: 'refused', reason: 'telegram 403' };
+      const response = await fetch(endpoint, { method: 'POST', body: JSON.stringify(input) });
+      return classifyTelegramSend({ kind: 'response', status: response.status, bytes: await response.text() }, input);
+    } });
+  try {
+    const w = worker(); w.intake([update]); await w.drain().catch(() => {});
+    const turn = journal.view.order[0]!, target = `${kind}:${turn.id}`;
+    expect(journal.view.sendEvidence?.[target]?.message).toBe(91); expect(deliveries).toBe(1);
+    expect(kind === 'reply' ? turn.sent : turn.deliveryNotice?.sent).toBeUndefined();
+    expect(() => journal.append({ kind: 'send-acceptance', target, subject: `sha256:${'0'.repeat(64)}`, message: 91, at: now })).toThrow();
+    expect(() => journal.append({ kind: 'send-acceptance', target, subject: journal.view.sendEvidence![target]!.provenance.contentHash, message: 92, at: now })).toThrow();
+    journal.close(); copyFileSync(join(dir, 'journal'), join(dir, 'successor'));
+    journal = openPreviewJournal(join(dir, 'successor'), key, genesis); lose = false; now += 31000;
+    await worker().drain(); const recovered = journal.view.order[0]!;
+    expect(kind === 'reply' ? recovered.sent : recovered.deliveryNotice?.sent).toBe(91);
+    await worker().drain(); expect(deliveries).toBe(1);
+  } finally { journal.close(); await new Promise<void>(resolve => server.close(() => resolve())); rmSync(dir, { recursive: true, force: true }); }
 });

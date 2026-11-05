@@ -259,7 +259,13 @@ it.each(repairRecords.records)('replays the recorded packets for $operation with
     expect(n).toBeGreaterThan(0);
     expect(await f.model(retry)).toMatchObject({ state: 'complete' });
     expect(f.state().inputs.map(input => input.request.operation)).toEqual([row.operation, `${row.operation}:format-retry`]);
-    expect(f.state().inputs[0]!.digest).toBe(row.storedDigest);
+    const stored = f.state().inputs[0]!;
+    const { inbox, ...originalRequest } = stored.request;
+    // The recorded prompt/request bytes remain exact; additive custody metadata
+    // participates in the new durable identity without rewriting that evidence.
+    expect(hash(JSON.stringify(originalRequest))).toBe(row.storedDigest);
+    expect(inbox).toMatchObject({ type: 'request', priority: 'normal', ttlMs: 14_400_000 });
+    expect(stored.digest).toBe(hash(JSON.stringify(stored.request)));
     expect(f.state().inputs[1]!.request.question).toBe(row.retryPrepared);
     await f.restart();
     expect(await f.model(input)).toEqual(original);
@@ -409,7 +415,7 @@ it.each(['same-host', 'queued-restart', 'completed-restart'] as const)('collects
     expect(f.journal.view.order[0]!.modelState).toBeUndefined();
     await f.worker.drain(); expect(f.delivered).toHaveLength(0);
     if (mode === 'queued-restart') await f.restart();
-    f.busy(false); f.advance(200); await f.port.maintain();
+    f.busy(false); f.advance(30_000); await f.port.maintain();
     if (mode === 'completed-restart') await f.restart();
     const calls = f.journal.view.calls;
     await f.worker.drain(); await f.worker.drain(); await f.port.maintain();
@@ -426,7 +432,7 @@ it('an unresolved dispatched host turn is never replayed by the journal collecto
   try {
     f.busy(true); f.worker.intake([update(1, 'Question')]); await f.worker.drain();
     f.restore({ ...f.state(), inputs: f.state().inputs.map(row => ({ ...row, state: 'accepted', outcome: null })) });
-    await f.restart(true); f.busy(false); f.advance(200); await f.port.maintain(); await f.worker.drain();
+    await f.restart(true); f.busy(false); f.advance(30_000); await f.port.maintain(); await f.worker.drain();
     expect(f.journal.view.order[0]!.modelState).toBe('uncertain');
     await f.worker.drain(); expect(f.delivered).toHaveLength(0); expect(f.sent).not.toContain('A useful answer.');
   } finally { await f.close(); }
@@ -439,7 +445,7 @@ it.each(recorded.records)('collects recorded frame $frame into the same consumer
       f.advance(1791907200000 - 1000); f.answer(row.output);
       f.busy(f === deferred); f.worker.intake([update(1, JSON.parse(row.output).dated[0].quote)]); await f.worker.drain();
     }
-    await deferred.restart(); deferred.busy(false); deferred.advance(200);
+    await deferred.restart(); deferred.busy(false); deferred.advance(30_000);
     await deferred.port.maintain(); await deferred.worker.drain();
     expect(deferred.delivered).toHaveLength(immediate.delivered.length);
     expect(deferred.state().inputs[0]!.outcome).toMatchObject({ state: 'complete', text: row.output });
@@ -473,7 +479,7 @@ it.each(shapes.otherShapes)('keeps recorded $kind ($id) in the original packet a
     f.busy(true); f.worker.intake([update(1, 'Continue the conversation')]); await f.worker.drain();
     const packet = f.state().inputs[0]!.request.context;
     expect(packet).toContain(JSON.stringify(row.raw));
-    await f.restart(); f.busy(false); f.advance(200); await f.port.maintain(); await f.worker.drain();
+    await f.restart(); f.busy(false); f.advance(30_000); await f.port.maintain(); await f.worker.drain();
     expect(f.state().inputs[0]!.request.context).toBe(packet);
     expect(f.delivered).toHaveLength(1); expect(f.sent).toHaveLength(1); expect(f.sent[0]!.trim()).not.toBe('');
     expect(f.journal.view.order[0]!.failureClass).toBe(row.kind === 'empty-reply-in-recorded-context' ? 'empty' : undefined);
@@ -487,7 +493,7 @@ it('an older host result cannot settle a newer reserved packet, including after 
     f.busy(true); f.worker.intake([update(1, 'Question')]); await f.worker.drain();
     f.journal.append({ kind: 'format-retry', id: f.journal.view.order[0]!.id, role: 'answer', state: 'complete',
       failureClass: 'malformed', prompt: 'a different exact packet', at: 1000 });
-    await f.restart(); f.busy(false); f.advance(200); await f.port.maintain();
+    await f.restart(); f.busy(false); f.advance(30_000); await f.port.maintain();
     const calls = f.journal.view.calls;
     await f.worker.drain(); await f.worker.drain();
     expect(f.state().inputs[0]!.outcome?.state).toBe('complete');
@@ -510,7 +516,7 @@ it('collects a queued reserved format repair under its child identity and sends 
     f.worker.intake([update(1, 'Please answer')]); await f.worker.drain();
     expect(f.sent).toEqual([]);
     expect(f.state().inputs[1]!.state).toBe('queued');
-    await f.restart(); f.busy(false); f.advance(200); await f.port.maintain();
+    await f.restart(); f.busy(false); f.advance(30_000); await f.port.maintain();
     await f.worker.drain(); await f.worker.drain();
     expect(f.sent).toEqual(['Delayed repair answer.']);
     expect(f.delivered).toHaveLength(2);

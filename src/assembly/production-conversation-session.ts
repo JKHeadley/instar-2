@@ -22,6 +22,7 @@ export interface ConversationSessionPort {
   reserveCall(claim: string, ordinal: number): void;
   /** Pull-only availability consequences; never a claim that durable work ended. */
   idleCleanupStatus?(): readonly string[];
+  inboxStatus?(): readonly string[];
   /** Automatic reasons require confirmation and grace; omitted means explicit host lifecycle retirement. */
   retireIdle(reason?: 'pressure' | 'idle'): Promise<boolean>;
 }
@@ -38,6 +39,8 @@ export interface ConversationInput {
   readonly effectsAtDispatch?: number;
   readonly contextRecovery?: 'compacting' | 'restoring' | 'continued';
   readonly workerRecovery?: 'restoring' | 'continued';
+  readonly inbox?: Readonly<{ injectedAt?: number; acknowledgedAt?: number; watchdogAt?: number;
+    terminal?: 'ttl' | 'ack-timeout' | 'retry-exhausted'; actionable?: true }>;
 }
 export interface IdleCleanupState {
   readonly candidate: Readonly<{ fingerprint: string; firstAt: number; lastAt: number;
@@ -106,6 +109,12 @@ function batchResults(ids: readonly string[], result: SessionWorkOutcome): reado
     return { ...result, text: JSON.stringify((entry as { answer: unknown }).answer) };
   });
 }
+
+/** Instar 1.x a8af8bff DeliveryRetryManager: preserve typed deadlines and queued bounds.
+ * Injection is not acknowledgement. A correlated consumer hook or result/turn-end acknowledges it. */
+export const INBOX_ACK_MS = Object.freeze({ info: null, sync: null, alert: null, request: 600_000,
+  query: 300_000, response: null, handoff: null, wellness: 120_000, system: null });
+const INBOX_RETRY_MS = 30_000, INBOX_MAX_ATTEMPTS = 10, INBOX_WATCHDOG_MS = 10_000;
 
 const digest = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const slug = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 32);
@@ -424,12 +433,14 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         ensure(Buffer.byteLength(text) <= 1_048_576, 'current conversation grounding exceeds delivery bound');
         let delivery: ConversationDelivery = { ...state.worker!, operation: id, text, digest: digest(text),
           resultPath: path, maxBytes: config.maxResultBytes };
-        updateBatch({ state: 'dispatching', delivery, batch: ids, ...(admission.toolPreparations === undefined ? {} : { effectsAtDispatch: admission.toolPreparations }), attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
+        updateBatch({ state: 'dispatching', delivery, batch: ids, inbox: { injectedAt: config.now() }, ...(admission.toolPreparations === undefined ? {} : { effectsAtDispatch: admission.toolPreparations }), attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
         for (const operation of ids) config.workingActivity?.(operation, state.claim, 'start');
         const accepted = await adapter.deliver(delivery);
         if (accepted.state === 'busy-not-dispatched' || accepted.state === 'refused-not-dispatched') {
-          if (row(id).attempts >= 3) settleBatch({ ...outcome('non-dispatch retry ceiling reached; input retained'), state: 'failed' });
-          else updateBatch({ state: 'queued', delivery: null, retryAt: config.now() + config.pollMs * 2 ** row(id).attempts });
+          if (row(id).attempts >= (row(id).request.inbox ? INBOX_MAX_ATTEMPTS : 3)) {
+            updateBatch({ inbox: { terminal: 'retry-exhausted' } });
+            settleBatch({ ...outcome(`non-dispatch retry ceiling reached (${row(id).request.inbox ? INBOX_MAX_ATTEMPTS : 3}); dead-letter retained`), state: 'failed' });
+          } else updateBatch({ state: 'queued', delivery: null, retryAt: config.now() + (row(id).request.inbox ? INBOX_RETRY_MS : config.pollMs * 2 ** row(id).attempts) });
           return false;
         }
         ensure(accepted.state === 'accepted', 'input submission uncertain; no automatic replay');
@@ -442,6 +453,35 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           ensure(admission !== null, 'conversation allowance refused or unreadable');
           const batch = await adapter.observe({ ...state.worker!, delivery, cursor: row(id).cursor, limit: 16 });
           ensure(batch.complete && batch.cursor >= row(id).cursor, 'observation gap requires reconciliation');
+          if (batch.acknowledgedAt !== undefined) {
+            ensure(Number.isSafeInteger(batch.acknowledgedAt) && batch.acknowledgedAt >= row(id).inbox!.injectedAt!
+              && batch.acknowledgedAt <= config.now(), 'input ACK time differs from current delivery');
+            for (const operation of ids) {
+              const input = row(operation), policy = input.request.inbox, timeout = policy ? INBOX_ACK_MS[policy.type] : null;
+              if (!input.inbox?.terminal && input.inbox?.acknowledgedAt === undefined
+                && (timeout === null || batch.acknowledgedAt <= input.inbox!.injectedAt! + timeout)
+                && (!policy || batch.acknowledgedAt <= policy.createdAt + policy.ttlMs))
+                update(operation, { inbox: { ...input.inbox, acknowledgedAt: batch.acknowledgedAt } });
+            }
+          }
+          for (const operation of ids) {
+            const input = row(operation), policy = input.request.inbox, lifecycle = input.inbox;
+            const timeout = policy ? INBOX_ACK_MS[policy.type] : null;
+            const expired = policy && lifecycle?.acknowledgedAt === undefined && config.now() > policy.createdAt + policy.ttlMs;
+            const missing = timeout !== null && lifecycle?.injectedAt !== undefined && lifecycle.acknowledgedAt === undefined
+              && config.now() > lifecycle.injectedAt + timeout;
+            if (expired || missing) {
+              update(operation, { inbox: { ...lifecycle, terminal: expired ? 'ttl' : 'ack-timeout',
+                ...(missing || policy?.type === 'alert' || policy?.priority === 'critical' ? { actionable: true } : {}) } });
+              throw Error(expired ? 'inbox TTL expired; dead-letter retained; dispatched input never replayed'
+                : 'typed inbox ACK deadline expired; input retained; no automatic replay');
+            }
+          }
+          // Observe continuously (stronger than the old single 10-second process check).
+          // Existing incarnation, current admission and unknown-effect checks own revival.
+          if (row(id).inbox?.injectedAt !== undefined && row(id).inbox?.watchdogAt === undefined
+            && config.now() >= row(id).inbox!.injectedAt! + INBOX_WATCHDOG_MS)
+            updateBatch({ inbox: { ...row(id).inbox, watchdogAt: config.now() } });
           const exit = batch.observations.find(event => event.kind === 'exit');
           if (exit?.kind === 'exit') {
             if (exit.safetyDeadline !== undefined) halt('deadline', exit.safetyDeadline);
@@ -501,6 +541,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             }
             if (event.kind === 'turn-end') { ensure(event.delivery === id, 'turn end belongs to another input'); ended = true; completed = event.state === 'completed'; }
           }
+          if (reply !== null || ended) updateBatch({ inbox: { ...row(id).inbox, acknowledgedAt: row(id).inbox?.acknowledgedAt ?? config.now() } });
           // Outcome and cursor move together: a restart cannot consume turn-end while losing its reply.
           if (ended) {
             ensure(admission.openDelegations.length === 0, 'turn ended with pending child work');
@@ -534,6 +575,12 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           guard(); await config.prepareTurn({ claim: state.claim, retire });
         }
         while (!closing && !config.stopped() && !state.halt) {
+          for (const input of state.inputs) if (input.state === 'queued' && input.request.inbox
+            && config.now() > input.request.inbox.createdAt + input.request.inbox.ttlMs) {
+            update(input.request.operation, { inbox: { terminal: 'ttl',
+              ...(input.request.inbox.type === 'alert' || input.request.inbox.priority === 'critical' ? { actionable: true } : {}) } });
+            settle(input.request.operation, { ...outcome('inbox TTL expired; dead-letter retained before injection'), state: 'failed' });
+          }
           const next = state.inputs.find(input => input.state === 'queued');
           if (!next || config.now() < next.retryAt || !await work(config.batchWaiting ? state.inputs.filter(input => input.state === 'queued' && config.now() >= input.retryAt).map(input => input.request.operation) : [next.request.operation])) break;
         }
@@ -555,6 +602,11 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     const enqueue = (request: SessionWorkRequest) => {
       if (state.idleCleanup?.candidate) persist({ idleCleanup: { ...state.idleCleanup, candidate: null } });
       ensure(safeName.test(request.operation) && request.question.trim() && request.authority.trim(), 'conversation input identity required');
+      if (request.inbox) ensure(Object.prototype.hasOwnProperty.call(INBOX_ACK_MS, request.inbox.type)
+        && Number.isSafeInteger(request.inbox.createdAt) && request.inbox.createdAt >= 0
+        && Number.isSafeInteger(request.inbox.ttlMs) && request.inbox.ttlMs > 0
+        && Number.isSafeInteger(request.inbox.createdAt + request.inbox.ttlMs)
+        && ['normal', 'critical'].includes(request.inbox.priority), 'typed inbox policy invalid');
       const inputDigest = digest(JSON.stringify(request));
       const existing = row(request.operation);
       if (existing) {
@@ -689,6 +741,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       await retiring; return true;
     };
     return Object.freeze({ owner: 'part-eight' as const, available, run, runBatch, collect, close, maintain, reserveCall, retireIdle,
+      inboxStatus: () => {
+        const dead = state.inputs.filter(input => input.inbox?.terminal);
+        return dead.length ? [`${dead.length} input delivery record(s) need reconciliation (${dead.filter(input => input.inbox?.actionable).length} actionable). Original inputs are retained. Check the consumer ACK and effect records before retrying.`] : [];
+      },
       idleCleanupStatus: () => state.idleCleanup?.inhibited
         ? ['Idle cleanup is paused after an unconfirmed closure; capacity release is uncertain and needs repair.']
         : !state.worker && state.idleCleanup?.lastClosure ? [state.idleCleanup.lastClosure.detail] : [] });
