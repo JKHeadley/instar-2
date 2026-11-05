@@ -6,6 +6,10 @@ ghost input is not submitted. 1.x source at JKHeadley/instar `4f88880a45f0a119aa
 verbatim under `legacy-1x/` as the raw baseline (commit "Copy 1.x StuckInputSentinel and
 MessageDelivery baseline for carryover row 14").
 
+## Row 14 final cell (carryover-1028.md, 2026-11-03 refresh)
+
+State **built**, strict proof **OPEN**: "`src/assembly/production-session-driver.ts:693` boot-sweeps prepared deliveries and preserves uncertain sends; L uses its continuing adapter (`tests/preview/journal-agent.mjs:2775`). Exact 1.x ghost/styled-input discrimination is still specified in D18:24, not demonstrated by a normal answered message." The gap named there is exactly what this change ports: the boot sweep covers a send that never started; nothing covered an Enter that was eaten after the send, and no styled-input discrimination existed.
+
 ## The 2.0 call path before this change
 
 `src/assembly/production-session-driver.ts`: `deliver()` checks the prompt is ready, records the
