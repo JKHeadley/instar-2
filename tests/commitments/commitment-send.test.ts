@@ -416,6 +416,7 @@ it('settle covers a heartbeat from the moment the tick fires it, before it has r
   try {
     await openTopic(w);
     w.host.tick();
+    await w.host.settle();
     w.host.tracker().record({ type: 'one-time-action', userRequest: 'the migration', agentResponse: 'on it', topicId: TOPIC, beaconEnabled: true, cadenceMs: 60_000,
       hardDeadlineAt: new Date(w.clock.now + 161_000).toISOString() });
     w.clock.now += 61_000;
@@ -435,13 +436,17 @@ it('the launcher binds the status line at its model boundary (source check; comm
   expect(LIVE_JUDGMENTS['commitment-status-line']).toMatchObject({ route: 'preview-subscription', default: 'fixed-line', authority: 'signal' });
 });
 
+const callOutcome = { elapsedMs: 1, promptBytes: 1, exitCode: 0, outputTokens: 1, localLimit: null, type: 'result', subtype: 'success', stopReason: 'end_turn', isError: false, result: true };
 it('status line: a reserved call through the model port, then the signed send; a failed or capped call falls back to the fixed line', async () => {
   const seen: { id: string; question: string; context: string }[] = [];
   const answers: (() => unknown)[] = [() => ({ state: 'complete', value: 'The schema migration is on table 4 of 9.\nignored', usage: { inputTokens: 10, outputTokens: 5, charge: null } }),
     () => { throw Error('model unknown'); }];
   const frames = ['frame one: table 4 of 9', 'frame two: table 5 of 9', 'frame three: table 6 of 9'];
   const w = world({ policy: policyFor() }, { getSessionForTopic: () => 'work', isSessionAlive: () => true, captureSessionOutput: () => frames.shift() ?? null },
-    ((input: { id: string; question: string; context: string }) => { seen.push(input); return Promise.resolve().then(answers.shift()!); }) as never);
+    ((input: { id: string; question: string; context: string }) => { seen.push(input);
+      // The runner's diagnostics record each call's outcome under its id while it is open, before the answer returns.
+      w.journal.append({ kind: 'call-outcome', id: input.id, role: 'model', outcome: callOutcome, at: w.clock.now } as never);
+      return Promise.resolve().then(answers.shift()!); }) as never);
   try {
     await openTopic(w);
     w.host.tick();
@@ -455,15 +460,14 @@ it('status line: a reserved call through the model port, then the signed send; a
     expect(commitmentSends(w)[0]!.text).toContain('The schema migration is on table 4 of 9.');
     expect(commitmentSends(w)[0]!.text).not.toContain('ignored');
     expect(w.journal.view.commitmentStore?.statusOpen).toEqual([]);
-    // The runner's diagnostics record the call's outcome under its id; the journal accepts only an open one.
-    const outcome = { elapsedMs: 1, promptBytes: 1, exitCode: 0, outputTokens: 1, localLimit: null, type: 'result', subtype: 'success', stopReason: 'end_turn', isError: false, result: true };
     // A failed call: fixed line, the call settled unknown and nothing invented.
     w.clock.now += 61_000;
     await w.host.beacon().fire(c.id);
     expect(seen).toHaveLength(2);
     expect(commitmentSends(w)[1]!.text).toContain('status fetch failed');
     expect(w.journal.view.commitmentStore?.statusOpen).toEqual([]);
-    expect(() => w.journal.append({ kind: 'call-outcome', id: 'commitment-status:0', role: 'model', outcome, at: w.clock.now } as never)).toThrow();
+    // A settled call's outcome is refused: only an open call has one to record.
+    expect(() => w.journal.append({ kind: 'call-outcome', id: 'commitment-status:0', role: 'model', outcome: callOutcome, at: w.clock.now } as never)).toThrow();
     // At the call cap the reservation refuses before the model, and the fixed line still needs its grant.
     while (w.journal.view.calls < w.journal.view.limits.maxCalls) w.journal.append({ kind: 'commitment-status-reserve', forward, ordinal: w.journal.view.commitmentStore!.statusCalls, at: w.clock.now });
     w.clock.now += 61_000;
