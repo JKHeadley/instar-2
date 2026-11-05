@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:8f7a2d7f8ffb4d4f55c10a787a7e3fd0685317cedbf8abb3da9861f68455894b",
-  "commit": "f5a8c8dd0de51021fab94ec5756fbf0c0051bb96",
+  "generation": "sha256:b70eaf7174b55707de7258de41fce7328ff991ecfa016ddab78fdb62349c014a",
+  "commit": "5b8e9d468527cc1818d012d70030a01b3185c260",
   "launchers": {
     "bin/instar2.mjs": [
       {
@@ -25,7 +25,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Full row-87 parity remains unclaimed. Details and row-87 evidence: `docs/update.md`."
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Full row-87 parity remains unclaimed (standalone resource admission and periodic proof are open). Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
@@ -163,7 +163,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Full row-87 parity remains unclaimed. Details and row-87 evidence: `docs/update.md`."
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Full row-87 parity remains unclaimed (standalone resource admission and periodic proof are open). Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
@@ -301,7 +301,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Full row-87 parity remains unclaimed. Details and row-87 evidence: `docs/update.md`."
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Full row-87 parity remains unclaimed (standalone resource admission and periodic proof are open). Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
@@ -439,7 +439,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Full row-87 parity remains unclaimed. Details and row-87 evidence: `docs/update.md`."
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Full row-87 parity remains unclaimed (standalone resource admission and periodic proof are open). Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
@@ -577,7 +577,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Full row-87 parity remains unclaimed. Details and row-87 evidence: `docs/update.md`."
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Full row-87 parity remains unclaimed (standalone resource admission and periodic proof are open). Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
@@ -715,7 +715,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Full row-87 parity remains unclaimed. Details and row-87 evidence: `docs/update.md`."
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Full row-87 parity remains unclaimed (standalone resource admission and periodic proof are open). Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",

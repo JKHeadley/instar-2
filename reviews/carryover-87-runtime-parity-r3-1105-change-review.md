@@ -25,6 +25,7 @@ Decision: c87r3-resources | Route automatic host operations through the admitted
 Decision: c87r3-lifecycle | Retain healthy-release identity in the existing transaction and check actual fallback schema. Prove replacement and failure using real npm/watchdog/runner processes and unchanged offline admission records. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-87-runtime-parity-r3-1105-PROGRESS.md
 Prompt review: No prompt wording, parser or model acceptance decision changes. installation.ts changes the installed-code inventory boundary, retaining existing update-context behavior; journal-installation.test.ts exercises that existing context. The scoped prompt scan reported no phrase findings.
 Register evidence: Refresh the two existing updater fixture hashes after their positive/negative tests changed; regenerate shape-only register output from the committed source. These pins do not declare runtime authority or change the native self-host certificate.
+Register generation: Source 5b8e9d468527cc1818d012d70030a01b3185c260, generation sha256:b70eaf7174b55707de7258de41fce7328ff991ecfa016ddab78fdb62349c014a, 301 entries; replay only.
 Skip: tests/preview/update-lifecycle.test.ts:11 | scope=The real transport requires /bin/sh process-limit support; the test runs and passes on this Studio with that prerequisite. A missing prerequisite is never lifecycle proof.
 
 ## Closing block
