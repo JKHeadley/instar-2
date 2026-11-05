@@ -3,6 +3,14 @@
   "owner": "preview",
   "fixtures": [
     {
+      "id": "PREVIEW-ATTENTION-QUEUE-INSTALLED",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/attention-installed.test.ts",
+        "hash": "sha256:d485db591cbdf1b5f1f497dd02fd0cf49db72cf44c32f14f7efd0c6442e9aa93"
+      }
+    },
+    {
       "id": "PREVIEW-CONVERSATION",
       "stage": "build",
       "artifact": {
