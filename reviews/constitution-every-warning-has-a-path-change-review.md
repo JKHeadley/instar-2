@@ -1,8 +1,8 @@
 # Change review — Every Warning Has a Path
 
 Subject base: c20b68d1d9b5744a72c243c4dc8a4b69114179d6
-Review state: open
-Reviewed content: none
+Review state: frozen
+Reviewed content: sha256:5faad3d63a22bf40ca1ddbea8e77a189fdd0cf65092289c69d6191104bfa8b4c
 Outcome: Record the operator's approved wording as Rule 122, Every Warning Has a Path: anything shown to a person that says something is wrong or needs them carries an immediate path to act; a status word appears only when true for that person; an unknown state never reads as healthy.
 Affected rules: 23, 82, 120 (scope boundary: 23 and 82 cover when and how to ask, 120 covers the person's whole part; 122 covers what a warning owes them) and new 122. 119 applies to this change: it names its 1.x counterpart. Purpose unchanged. History preserved: all 121 earlier rule hashes are unchanged.
 Affected floors: secrets — no custody or revelation changes; spend cap — no provider calls or budget changes; stop — no cancellation changes; no duplicate sends — no dispatch changes; durable intake — no journal or admission changes.
