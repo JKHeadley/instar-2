@@ -170,6 +170,16 @@ describe('reap — exec-time re-validation closes the enumerate→reclaim race',
     expect(res.evaluations[0]).toMatchObject({ verdict: 'keep', reason });
     expect(res.raced).toEqual([{ path: '/wt/a', reason, evaluatedBranch: 'echo/feature' }]);
   });
+  it.each([[9000, 1, false], [9900, 100, true], [9900, 99, false], [10001, 100, false]])(
+    'recheck inventory at %i with lifetime %i permits removal: %s', async (sourceTime, freshForMs, allowed) => {
+      const remove = vi.fn(async () => ({ removed: true as const }));
+      const current = observation([wt({ activity: { ...activity, coveredThrough: sourceTime } })],
+        { worktrees: inventory([wt({ activity: { ...activity, coveredThrough: sourceTime } })], { sourceTime, freshForMs }) });
+      const result = await live({ remove, recheck: async () => current }).reap();
+      expect(remove).toHaveBeenCalledTimes(allowed ? 1 : 0);
+      expect(result.raced).toHaveLength(allowed ? 0 : 1);
+      if (!allowed) expect(result.evaluations[0]!.reason).toBe('reclaim-recheck-error');
+    });
   it('main moved and un-merged it at recheck → KEEP', async () => {
     let calls = 0;
     const res = await live({ merged: async () => ++calls === 1 }).reap();
@@ -409,8 +419,10 @@ describe('adapter helpers — merged detection is conservative, never false-posi
   it('parseMergedPullRequestHeads: newest entry per reused branch wins; malformed or missing ⇒ empty (KEEP)', () => {
     const m = parseMergedPullRequestHeads(JSON.stringify([{ headRefName: 'echo/reused', headRefOid: 'newest' },
       { headRefName: 'echo/reused', headRefOid: 'older' }, { headRefName: 'ok', headRefOid: 'oidOk' },
-      { headRefName: '', headRefOid: 'x' }, { headRefOid: 'noName' }, { headRefName: 'noOid' }, null]));
+      { headRefName: '', headRefOid: 'x' }, { headRefOid: 'noName' }, { headRefName: 'noOid' }, null].map(row => row && ({ ...row, baseRefName: 'main' }))), 'main');
     expect([...m]).toEqual([['echo/reused', 'newest'], ['ok', 'oidOk']]);
+    expect(parseMergedPullRequestHeads(JSON.stringify([{ headRefName: 'x', headRefOid: 'oid' }]), 'main').size).toBe(0);
+    expect(parseMergedPullRequestHeads(JSON.stringify([{ headRefName: 'x', headRefOid: 'oid', baseRefName: 'staging' }]), 'main').size).toBe(0);
     expect(parseMergedPullRequestHeads(null).size).toBe(0);
     expect(parseMergedPullRequestHeads('not json').size).toBe(0);
     expect(parseMergedPullRequestHeads('{"a":1}').size).toBe(0);
@@ -429,10 +441,10 @@ describe('adapter helpers — merged detection is conservative, never false-posi
       if (args.includes('cherry')) return '+ aaa\n+ bbb';
       throw new Error('unexpected git call: ' + args.join(' '));
     };
-    const adapter = (heads: Map<string, string>, githubMergeCheck = true, mergedHeads = vi.fn(async () => heads)) => ({
+    const adapter = (heads: Map<string, string>, githubMergeCheck = true, mergedHeads = vi.fn(async () => JSON.stringify([...heads].map(([headRefName, headRefOid]) => ({ headRefName, headRefOid, baseRefName: 'main' }))))) => ({
       mergedHeads, adapter: createWorktreeReaperAdapter({ repository: '/repo', worktreesDir: '/repo/.worktrees', machine: 'm', freshForMs: 100,
-        now: () => NOW, limit: 10, query: cherryUnmergedGit, mutate: async () => ({ ok: false, detail: 'unused' }), exists: async () => false,
-        observe: async () => null, census: async () => processes([]), ownership: () => new Map(), githubMergeCheck, mergedHeads }) });
+        now: () => NOW, limit: 10, query: async (file: string, args: string[]) => file === 'gh' ? mergedHeads() : args.includes('get-url') ? 'git@github.com:owner/repo.git' : cherryUnmergedGit(file, args), mutate: async () => ({ ok: false, detail: 'unused' }), exists: async () => false,
+        observe: async () => null, census: async () => processes([]), ownership: () => new Map(), githubMergeCheck }) });
     const info = (branch: string, head: string) => wt({ branch, head });
     it('MERGED when cherry says unmerged but a merged PR head-OID matches exactly', async () => {
       expect(await adapter(new Map([['echo/feat', 'SQUASHED_OID']])).adapter.merged(info('echo/feat', 'SQUASHED_OID'))).toBe(true);
@@ -449,6 +461,25 @@ describe('adapter helpers — merged detection is conservative, never false-posi
       const on = adapter(new Map([['echo/feat', 'SQUASHED_OID']]));
       await on.adapter.merged(info('echo/feat', 'SQUASHED_OID')); await on.adapter.merged(info('echo/other', 'y'));
       expect(on.mergedHeads).toHaveBeenCalledTimes(1);
+    });
+    it('binds the upstream repository and invalidates cached evidence when its destination changes', async () => {
+      let url = 'https://github.com/owner/upstream.git';
+      const forge = vi.fn(async () => JSON.stringify([{ headRefName: 'feature', headRefOid: 'oid', baseRefName: 'main' }]));
+      const q = async (file: string, args: string[]) => {
+        if (file === 'gh') { expect(args[args.indexOf('--repo') + 1]).toBe(url === 'https://github.com/owner/upstream.git' ? 'github.com/owner/upstream' : 'github.com/owner/other'); return forge(); }
+        if (args.includes('get-url')) { expect(args.at(-1)).toBe('JKHeadley'); return url; }
+        return cherryUnmergedGit(file, args);
+      };
+      const a = createWorktreeReaperAdapter({ repository: '/repo', query: q, now: () => NOW });
+      expect(await a.merged(info('feature', 'oid'))).toBe(true);
+      expect(await a.merged(info('feature', 'oid'))).toBe(true);
+      expect(forge).toHaveBeenCalledTimes(1);
+      url = 'git@github.com:owner/other.git';
+      expect(await a.merged(info('feature', 'oid'))).toBe(true);
+      expect(forge).toHaveBeenCalledTimes(2);
+      url = '/local/repository';
+      expect(await a.merged(info('feature', 'oid'))).toBe(false);
+      expect(forge).toHaveBeenCalledTimes(2);
     });
     it('null (KEEP) when no base ref resolves or the head is unknown', async () => {
       const a = createWorktreeReaperAdapter({ repository: '/repo', worktreesDir: '/repo/.worktrees', machine: 'm', freshForMs: 100, now: () => NOW,
@@ -563,6 +594,41 @@ describe('installed path — real git repository', () => {
       child.kill('SIGTERM');
       rmSync(r.root, { recursive: true, force: true });
     }
+  });
+
+  it('unregistered ignored user work is preserved beside a clean removal', async () => {
+    const r = repository();
+    try {
+      writeFileSync(join(r.repo, '.gitignore'), 'private-notes/\n');
+      git(r.repo, 'add', '.gitignore'); git(r.repo, 'commit', '-qm', 'ignore private notes');
+      git(r.merged, 'merge', '--ff-only', 'main');
+      mkdirSync(join(r.merged, 'private-notes'));
+      const note = join(r.merged, 'private-notes/draft.txt');
+      writeFileSync(note, 'unique user draft');
+      const adapter = adapterFor(r, () => processes([]));
+      const result = await bind(adapter, { enabled: true, dryRun: false, quietMs: 5000 }).reap();
+      expect(result.evaluations.find(e => e.path === r.merged)?.reason).toBe('uncommitted-changes');
+      expect(readFileSync(note, 'utf8')).toBe('unique user draft');
+      expect(result.reaped).toEqual([r.busy]);
+    } finally { rmSync(r.root, { recursive: true, force: true }); }
+  });
+
+  it.each(['staging', 'main'])('forge merge into %s is bound to the selected destination', async baseRefName => {
+    const r = repository();
+    try {
+      git(r.repo, 'remote', 'add', 'origin', 'git@github.com:owner/intended.git');
+      const head = git(r.unmerged, 'rev-parse', 'HEAD');
+      expect(git(r.repo, 'cherry', 'main', head)).toMatch(/^\+/);
+      const forge = vi.fn(async (_file: string, args: string[], cwd?: string) => {
+        if (_file !== 'gh') return query(_file, args, cwd);
+        expect(args).toContain('github.com/owner/intended');
+        expect(args[args.indexOf('--base') + 1]).toBe('main');
+        return JSON.stringify([{ headRefName: 'feat-unmerged', headRefOid: head, baseRefName }]);
+      });
+      const adapter = adapterFor(r, () => processes([]), { query: forge, githubMergeCheck: true });
+      expect(await adapter.merged(wt({ path: r.unmerged, branch: 'feat-unmerged', head }))).toBe(baseRefName === 'main');
+      expect(readFileSync(join(r.unmerged, 'new.txt'), 'utf8')).toBe('x');
+    } finally { rmSync(r.root, { recursive: true, force: true }); }
   });
 
   it('a builder that switches the branch between the census and the removal keeps its checkout', async () => {

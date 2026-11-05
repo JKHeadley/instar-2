@@ -377,7 +377,7 @@ export function createWorktreeReaper(ports: WorktreeReaperPorts, config?: Partia
     try {
       const current = await ports.recheck(info.path);
       const row = current?.worktrees.status === 'complete' ? current.worktrees.worktrees.find(w => w.path === info.path) : undefined;
-      if (!current || !row) return 'reclaim-recheck-error';
+      if (!current || !row || !fresh(current.worktrees.sourceTime, current.worktrees.freshForMs, ports.now())) return 'reclaim-recheck-error';
       if (row.buildMarker !== false) return row.buildMarker === null ? 'reclaim-recheck-error' : 'raced-build-active-marker';
       // The load-bearing check: has the checked-out branch or head changed since enumeration?
       // If so, the merge evidence is stale and must NOT authorize a delete.

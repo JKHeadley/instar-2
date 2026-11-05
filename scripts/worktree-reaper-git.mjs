@@ -50,33 +50,34 @@ export async function isBranchMerged(query, repo, baseRef, headSha) {
 
 /**
  * `headRefName → headRefOid` for MERGED pull requests, from the forge CLI's JSON. Detects
- * MULTI-COMMIT squash-merges that `git cherry` cannot: a merged PR is the authoritative
- * "the content is in main" signal; the caller pairs it with an EXACT head-OID match so a
+ * MULTI-COMMIT squash-merges that `git cherry` cannot: a merged PR into the selected
+ * repository and default branch is the "content is in main" signal; the caller pairs it with an EXACT head-OID match so a
  * branch with commits ADDED AFTER the merge is still kept. Any malformed input ⇒ EMPTY map
  * (no signal ⇒ KEEP). The latest merged PR for a reused branch name wins (newest first).
  */
-export function parseMergedPullRequestHeads(text) {
+export function parseMergedPullRequestHeads(text, baseBranch) {
   const map = new Map();
   if (typeof text !== 'string' || !text) return map;
   let arr;
   try { arr = JSON.parse(text); } catch { return map; }
   if (!Array.isArray(arr)) return map;
   for (const row of arr) {
-    if (!row || typeof row !== 'object') continue;
+    if (!row || typeof row !== 'object' || !baseBranch || row.baseRefName !== baseBranch) continue;
     const { headRefName: name, headRefOid: oid } = row;
     if (typeof name === 'string' && typeof oid === 'string' && name && oid && !map.has(name)) map.set(name, oid);
   }
   return map;
 }
 /** ONE bounded forge query per sweep; fail-safe to an EMPTY map so the reaper degrades to cherry-only (KEEP). */
-export async function mergedPullRequestHeads(query, repo, limit = 500) {
-  const out = await reader(query)('gh', ['pr', 'list', '--state', 'merged', '--json', 'headRefName,headRefOid', '--limit', String(limit)], repo);
-  return parseMergedPullRequestHeads(out);
+export async function mergedPullRequestHeads(query, repo, destination, limit = 500) {
+  const out = await reader(query)('gh', ['pr', 'list', '--repo', destination.repository, '--base', destination.branch, '--state', 'merged', '--json', 'headRefName,headRefOid,baseRefName', '--limit', String(limit)], repo);
+  return parseMergedPullRequestHeads(out, destination.branch);
 }
 
 /**
  * Only the non-forced form of `git worktree remove` may run: without `--force` git refuses to
- * delete a worktree with uncommitted changes or a lock, so it can never destroy in-flight work.
+ * delete ordinary untracked/modified work or a lock. Ignored user files are NOT protected by
+ * git itself; the complete cleanliness observation must protect them before removal.
  * Deny ANY force-ish token shape (`--force`, `--force=1`, `-f`, `-fxyz`) rather than relying on
  * git's own parser to reject lookalikes. `worktree remove` has no other `-f`-prefixed flag.
  */
@@ -99,7 +100,7 @@ export function createWorktreeReaperAdapter(ports) {
   const failed = error => ({ ...base(), status: 'failed', error, worktrees: [] });
 
   async function readCheckout(row) {
-    const status = await git(read, row.path, 'status', '--porcelain');
+    const status = await git(read, row.path, 'status', '--porcelain', '--ignored', '--untracked-files=all');
     // A session lock or an index lock means in-flight work. A linked worktree's index lock lives in
     // its own git directory, which git names; the main checkout's is `.git/index.lock`.
     const session = await exists(`${row.path}/${SESSION_LOCK}`);
@@ -145,10 +146,24 @@ export function createWorktreeReaperAdapter(ports) {
   // Merged-PR map cached for a short TTL so a single reap pass makes ONE forge query, not one per
   // worktree. It is consulted lazily (only when cherry says unmerged) so a fully cherry-detectable
   // repository never calls the forge.
-  let prMapCache = null; let prMapCacheAt = 0;
-  const mergedHeads = async () => {
+  let prMapCache = null; let prMapCacheAt = 0; let prMapDestination = null;
+  const mergedHeads = async baseRef => {
+    // Bind the forge repository to the remote that supplied the selected base, not gh's
+    // ambient repository choice (which may be a fork). A local base uses origin.
+    const remoteRef = await git(read, repository, 'rev-parse', '--verify', '--quiet', `refs/remotes/${baseRef}`);
+    const slash = baseRef.indexOf('/');
+    const remote = remoteRef && slash > 0 ? baseRef.slice(0, slash) : 'origin';
+    const branch = remoteRef && slash > 0 ? baseRef.slice(slash + 1) : baseRef;
+    const url = await git(read, repository, 'remote', 'get-url', remote);
+    const match = url?.trim().match(/^(?:https?:\/\/|ssh:\/\/git@|git@)([^/:]+)[:/]([^/]+)\/([^/]+?)(?:\.git)?$/);
+    if (!match) return new Map();
+    const destination = { repository: `${match[1]}/${match[2]}/${match[3]}`, branch };
+    const key = `${destination.repository}:${branch}`;
     const t = ports.now();
-    if (!prMapCache || t - prMapCacheAt > 60_000) { prMapCache = await (ports.mergedHeads ?? (() => mergedPullRequestHeads(ports.query, repository, ports.pullRequestLimit)))(); prMapCacheAt = t; }
+    if (!prMapCache || key !== prMapDestination || t - prMapCacheAt > 60_000) {
+      prMapCache = await mergedPullRequestHeads(ports.query, repository, destination, ports.pullRequestLimit);
+      prMapCacheAt = t; prMapDestination = key;
+    }
     return prMapCache;
   };
   return Object.freeze({
@@ -165,7 +180,7 @@ export function createWorktreeReaperAdapter(ports) {
       //    state — but require an EXACT head-OID match so a branch with commits ADDED AFTER the
       //    merge is still KEPT. Fail-safe: an empty/missing map ⇒ the cherry answer stands.
       if (githubMergeCheck && info.branch) {
-        const oid = (await mergedHeads()).get(info.branch);
+        const oid = (await mergedHeads(baseRef)).get(info.branch);
         if (oid && oid === info.head) return true;
       }
       return cherry;
