@@ -18,6 +18,7 @@ Bug class: live-path
 Bug evidence: reproducer=tests/assembly/subscription-policy-signatures.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-deploy.log
 Integration provenance: Imported unchanged source/tests from owning commit 0c1d832a4816aeb21891e5a89242497d12c76fc1. Original review base 428b6287201846c206e76be32f066a6b538333e3 belongs to train-175; this copy binds train-173 starting head for review coverage. Its original verification statements below describe the owning repair; train-173 verification is in reviews/train-173-startup-cache-repair.md.
 Recorded failure: preview-deploy.log 2026-11-05 09:07:16 and preserved forum-answer-copy-20261105-090637, update 840344298: model-not-started notice, zero model calls. Read-only profile inspection reproduces unexpected policy-limits.json.signature.json; after repair login identity and managed policy both match the existing profile and hooks remain enabled. Targeted tests replay captured public cache bytes, exercise real synthetic CLI dispatch, and refuse neighboring policy changes.
+Deferral: generated/register.json:1 | not-a-deferral=Existing generated governing text; publication adds no deferred work.
 Hook bypass: none
 Convergence: none
 Prompt review: No model prompt, model output parser or model decision changes. The failed turn has no model output; this repair replays its real host-cache shape. Summary/Jev/reply-review parsing and delivered-answer logic are unchanged.

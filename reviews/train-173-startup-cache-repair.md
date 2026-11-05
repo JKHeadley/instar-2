@@ -16,6 +16,7 @@ Multi-machine posture: Each machine inspects its own installed profile and cache
 Layer below: Read-only status of forum-answer-copy-20261105-152910; actual profile inspection; provider construction and model launch boundary; the owning repair's full diff, public cache fixture and refusal tests; owner-source and register generators.
 Bug class: live-path
 Bug evidence: reproducer=tests/assembly/subscription-policy-signatures.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-deploy.log
+Deferral: generated/register.json:1 | not-a-deferral=Existing generated governing text; publication adds no deferred work.
 Hook bypass: none; core.hooksPath unset and the common hooks directory contains samples only.
 Convergence: none
 Prompt review: No model prompt, model-output parser or semantic accept/refuse judgment changes. The failed update has zero model calls and no output to replay. Tests replay the actual host-cache bytes that prevented dispatch; inherited summary/Jev/reply-review and delivered-answer behavior is unchanged.
