@@ -4,7 +4,7 @@ Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
 Review state: open
 Reviewed content: none
 Outcome: Reduce authenticated journal snapshot parsing latency by skipping quoted payload with native byte search while preserving every scalar value, validation and bound, and the complete status report. Publish the shape-only register from exact source commit 6f90d0c20fc880954a76f4bc8f95bdba1c79190c through the normal replay generator.
-Affected rules: 7, 26, 34, 42, 60, 74, 95, 101, 111, 113, 116
+Affected rules: 7, 13, 26, 34, 42, 51, 60, 74, 95, 101, 109, 111, 113, 116
 Affected floors: secrets — no diagnostic payload or credentials enter source; spend cap — no model call; stop and ownership — same complete replay/report; no duplicate sends and durable intake — no writer or dispatch change.
 Operator questions: none
 Suggested tier: significant
@@ -24,6 +24,10 @@ Decision: STATUS-SCAN-1105-1 | Optimize the existing scalar scanner instead of w
 Decision: STATUS-SCAN-1105-2 | Publish source pins with the normal exact-commit replay generator, preserving existing runtime authority prerequisites. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-read-profile-1105.md
 
 Decision: STATUS-SCAN-1105-3 | Reopen the two actual mismatched frozen browser review subjects using the normal open tool, preserve historical digests and require independent re-review. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-read-profile-1105.md
+
+1.x reuse assessment (Rule 116): Inspected JKHeadley/instar main at a8af8bff7ffd78dcdb2e032b216d22274141c44e: `src/core/StateManager.ts` (`get`, `getSession`) parses whole persisted files with native JSON.parse, already retained here for bounded scalars; `src/core/CoherenceJournalReader.ts` (`query`) reads bounded JSONL tails with explicit truncation/corrupt-line skipping; `src/core/StoreSnapshot.ts` (`materializeSnapshot`, `validateWireSnapshot`, `StoreSnapshotEngine`) materializes and validates decoded single-origin records with worker/cache/cutover machinery, not chunked JSON tokenization. None supplies a drop-in scanner preserving this reader's complete authenticated snapshot replay, streamed containers and two-MiB scalar ceiling, so no 1.x module is copied: retain and optimize `tests/preview/journal-json.ts`, with chunk-boundary/malformed/oversized controls in `journal-json.test.ts` and authenticated reopen/retained-state controls in `journal-compaction.test.ts` as the fit evidence.
+
+Rule connections: Rule 13 — parser timings bind the same captured 181,823,916-byte, 694-chunk input (encrypted SHA256 ea1654d0b60231d83d874b61a6c680f951f9d4224c6700068f4c6c93a0e2a1c4); 2496.30 ms versus 1816.51 ms establishes improvement on that input only. Rule 51 — native candidate-quote discovery removes its measured per-byte scanning cost. Rule 109 — `reviews/browser-bridge-on-resource-1104-change-review.md` and `reviews/browser-mcp-worker-read-1104-change-review.md` explicitly reopen the changed frozen subjects and withdraw frozen approval; neither reopening claims independent acceptance.
 
 ## Closing block
 
