@@ -1,7 +1,7 @@
 # Rule coverage
 
-Register generation: sha256:ef4fa6b76e7bfbc47c0d2ea94c4f7296146e0bc1d947e3023088b270a0c781b5
-Source commit: b97d0f7dcc054d02a94a20b2d8c919ac5613a684
+Register generation: sha256:31880aac952f5597eb7aca00068de3ed7648ea34c117efeed087d4403b07b937
+Source commit: d29cc9b667f515e8a31e9feb9fbc3ba6d935d3b1
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -9,10 +9,10 @@ Authority: shape-only; entering-force verification required at consumption.
 |---|---:|
 | held-reviewed | 0 |
 | held-unreviewed | 0 |
-| declared | 3 |
-| partial | 22 |
+| declared | 2 |
+| partial | 27 |
 | deferred | 1 |
-| gap | 115 |
+| gap | 113 |
 
 {
   "rules": [
@@ -7249,6 +7249,8 @@ Authority: shape-only; entering-force verification required at consumption.
       ],
       "enforcedBy": [
         "intake.stop",
+        "preview.journal.capacityRefused",
+        "recall.redact",
         "rungraph.stop"
       ]
     },
@@ -10232,7 +10234,9 @@ Authority: shape-only; entering-force verification required at consumption.
         98,
         99
       ],
-      "enforcedBy": []
+      "enforcedBy": [
+        "resource-owner.admit"
+      ]
     },
     {
       "number": 61,
@@ -10361,7 +10365,9 @@ Authority: shape-only; entering-force verification required at consumption.
         98,
         99
       ],
-      "enforcedBy": []
+      "enforcedBy": [
+        "resource-owner.admit"
+      ]
     },
     {
       "number": 62,
@@ -15663,7 +15669,7 @@ Authority: shape-only; entering-force verification required at consumption.
       "id": "deferred:slack-intake-v1:36",
       "rule": 36,
       "holder": "slack-intake-v1",
-      "dueBy": 1793404800000,
+      "dueBy": 1794096000000,
       "part": 4,
       "owner": "echo (agent)",
       "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
@@ -15672,7 +15678,7 @@ Authority: shape-only; entering-force verification required at consumption.
       "id": "deferred:telegram-intake-v1:36",
       "rule": 36,
       "holder": "telegram-intake-v1",
-      "dueBy": 1793404800000,
+      "dueBy": 1794096000000,
       "part": 4,
       "owner": "echo (agent)",
       "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
@@ -16046,16 +16052,6 @@ Authority: shape-only; entering-force verification required at consumption.
     },
     {
       "rule": 6,
-      "owner": "part-three-bootstrap:operator-policy-prerequisite",
-      "required": "operator-approved gap deadline and standing route before entering force"
-    },
-    {
-      "rule": 60,
-      "owner": "part-three-bootstrap:operator-policy-prerequisite",
-      "required": "operator-approved gap deadline and standing route before entering force"
-    },
-    {
-      "rule": 61,
       "owner": "part-three-bootstrap:operator-policy-prerequisite",
       "required": "operator-approved gap deadline and standing route before entering force"
     },
