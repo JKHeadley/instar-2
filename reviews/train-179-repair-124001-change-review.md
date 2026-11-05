@@ -28,6 +28,8 @@ Decision: T179-R-MERGE | Merge c20b68d1d and preserve both histories and all run
 Decision: T179-R-GENERATE | Resolve generated snapshots through register replay after committing source; run delegated owner rehash and chain repin, never hand-edit pins. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-179-repair-124001-PROGRESS.md
 Decision: T179-R-CHECKS | Run typecheck, focused constitutional briefing tests and portable cheap checks; hand macOS/e2e and the full suite to Studio per the repair brief. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-179-repair-124001-PROGRESS.md
 
+Verification: Register replay of source commit 8071a8a8a8bda0b70f7a392f9c5868e98cc81e29 generated 298 entries, 121 rules and 34 terms; generation sha256:b7b4412f7e1701f7db1a758438ec90db5a46606f1f31f99d170c9f5ef44c4684. Owner rehash and chain repin changed zero pins.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: an ordinary merge, canonical recomputation and the existing register replay. No new runtime mechanism, permission boundary or unattended-completion claim. Existing custody, spend, stop, intake and uniqueness floors stay enforced.
