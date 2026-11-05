@@ -259,7 +259,10 @@ interface ContinuingHarnessAdapterPort {
   launch(input: Readonly<{ operation: string; claim: string; artifact: string; incarnation: string; workingScope: string; restore?: { operation: string; digest: string; deadline: number } }>): Promise<HarnessWorkerHandle>;
   deliver(input: HarnessInputDelivery): Promise<Readonly<{ state: 'accepted' | 'busy-not-dispatched' | 'refused-not-dispatched' | 'uncertain'; evidence: string }>>;
   observe(input: HarnessWorkerHandle & Readonly<{ delivery: HarnessInputDelivery | null; cursor: number; limit: number }>): Promise<Readonly<{
-    observations: readonly HarnessNormalizedObservation[]; cursor: number; complete: boolean }>>;
+    observations: readonly HarnessNormalizedObservation[]; acknowledgedAt?: number; cursor: number; complete: boolean }>>;
+  /** Called only after exact old-worker retirement. True proves this exact input never
+   * crossed dispatch; absence/false is unknown, never permission to replay. */
+  notDispatched?(input: HarnessInputDelivery): Promise<boolean>;
   /** Fresh affirmative idle fingerprint; null or an absent observer keeps the worker. */
   observeIdle?(input: HarnessWorkerHandle): Promise<string | null>;
   control(input: HarnessWorkerHandle & Readonly<{ idleEvidence?: string; action: 'interrupt' | 'close' | 'compact'; authority: string; reason: string; delivery?: HarnessInputDelivery; deadline?: number }>): Promise<Readonly<{

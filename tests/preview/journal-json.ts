@@ -68,9 +68,22 @@ function* tokens(chunks: Iterable<Buffer>): Generator<Token> {
         active = true; quoted = byte === 34; escaped = false; start = i;
         if (quoted) continue;
       } else if (quoted) {
-        if (escaped) escaped = false;
-        else if (byte === 92) escaped = true;
-        else if (byte === 34) { add(chunk.subarray(start, i + 1)); yield finish(); start = -1; }
+        // Native byte search skips string payload without changing JSON scalar validation.
+        let close = chunk.indexOf(34, i);
+        for (; close >= 0; close = chunk.indexOf(34, close + 1)) {
+          let slashes = 0;
+          for (let at = close - 1; at >= 0 && chunk[at] === 92; at--) slashes++;
+          if (slashes === close && escaped) slashes++;
+          if (slashes % 2 === 0) break;
+        }
+        if (close >= 0) {
+          add(chunk.subarray(start, close + 1)); yield finish(); start = -1; i = close;
+        } else {
+          let slashes = 0;
+          for (let at = chunk.length - 1; at >= 0 && chunk[at] === 92; at--) slashes++;
+          escaped = (slashes + (slashes === chunk.length && escaped ? 1 : 0)) % 2 === 1;
+          i = chunk.length;
+        }
         continue;
       }
       if (!quoted && (punctuation(byte) || whitespace(byte))) {

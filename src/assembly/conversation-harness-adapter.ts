@@ -36,6 +36,8 @@ export function createSessionConversationAdapter(config: Readonly<{
         digest: input.digest, incarnation: input.incarnation });
       return { state: 'accepted', evidence: take(receipt) };
     },
+    notDispatched: async input => driver.notDispatched ? take(driver.notDispatched({ operation: input.operation,
+      processIdentity: input.launch, intake: input.operation, digest: input.digest, incarnation: input.incarnation })) : false,
     observe: async input => {
       ensure(Number.isSafeInteger(input.cursor) && input.cursor >= 0 && input.cursor <= 2 && input.limit >= 1 && input.limit <= 64,
         'bounded observation cursor and batch required');
@@ -54,8 +56,11 @@ export function createSessionConversationAdapter(config: Readonly<{
       }
       // Lifecycle observations are independent of the last turn's cursor.
       if (events[0]?.kind === 'exit' || events[0]?.kind === 'paused') return { observations: events, cursor: input.cursor, complete: true };
+      const acknowledgedAt = input.delivery && driver.acknowledgement
+        ? take(driver.acknowledgement({ operation: input.delivery.operation, processIdentity: input.launch })) : null;
       const batch = events.slice(input.cursor, input.cursor + input.limit);
-      return { observations: batch, cursor: input.cursor + batch.length, complete: true };
+      return { observations: batch, cursor: input.cursor + batch.length, complete: true,
+        ...(acknowledgedAt === null ? {} : { acknowledgedAt }) };
     },
     observeIdle: async input => driver.observeIdle ? take(driver.observeIdle(input.launch)) : null,
     control: async input => {

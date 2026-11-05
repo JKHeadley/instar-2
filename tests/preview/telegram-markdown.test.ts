@@ -151,12 +151,12 @@ it('records the parse refusal before fallback and sends nothing more if persiste
   expect(calls).toBe(1);
 });
 
-it('a proved-not-sent plain alternative is exhausted, not permission to restart HTML', async () => {
+it('a proved-not-sent plain alternative preserves non-delivery evidence for bounded recovery', async () => {
   let calls = 0;
   const result = await sendFormattedText({ text: '<b>Done</b>', expectedText: 'Done', fallback: { text: 'Done' }, body: {},
     classify: (reply, text) => calls === 2 ? { kind: 'not-sent', reason: 'connect refused' } : classify(reply, text),
     mayResend: () => true, recordRefusal: () => {}, invoke: () => { calls++; return parseRefusal; } });
-  expect(result).toEqual({ kind: 'refused', reason: 'connect refused' });
+  expect(result).toEqual({ kind: 'not-sent', reason: 'connect refused' });
   expect(calls).toBe(2);
 });
 
@@ -179,4 +179,16 @@ it.each([true, false])('awaits retained refusal custody before the alternative (
     invoke: request => { events.push(request.parse_mode === 'HTML' ? 'html' : 'plain'); return events.length === 1 ? parseRefusal : receipt('Done'); } });
   expect(events).toEqual(admitted ? ['html', 'stored', 'peer', 'plain'] : ['html', 'stored', 'peer']);
   expect(result.kind).toBe(admitted ? 'accepted' : 'refused');
+});
+
+it('a retained parse refusal resumes only authorized plain bytes, and malformed evidence refuses', async () => {
+  const sent: Record<string, unknown>[] = [];
+  const input = { text: '<b>Done</b>', expectedText: 'Done', fallback: { text: 'Done' }, body: {},
+    classify, mayResend: () => true, recordRefusal: () => { throw Error('already recorded'); },
+    invoke: (body: Record<string, unknown>) => { sent.push(body); return receipt('Done'); } };
+  expect((await sendFormattedText({ ...input, priorRefusal: parseRefusal })).kind).toBe('accepted');
+  expect(sent).toEqual([{ text: 'Done' }]);
+  expect((await sendFormattedText({ ...input, priorRefusal: { kind: 'uncertain' } })).kind).toBe('refused');
+  expect((await sendFormattedText({ ...input, priorRefusal: parseRefusal, mayResend: () => false })).kind).toBe('refused');
+  expect(sent).toHaveLength(1);
 });

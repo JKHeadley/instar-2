@@ -64,6 +64,7 @@ import { arch, cpus, hostname, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createProcessInventory, loadTenOwner } from './process-inventory.mjs';
+import { readProcessCensus, PROCESS_CENSUS_COLUMNS } from './process-census-query.mjs';
 
 const GiB = 1024 ** 3;
 /** Ceilings use the NativeLaunchLimits field names of the effect doorway. */
@@ -135,7 +136,9 @@ const measured = (kind, instance, unit, value, at) => ({ subject: { kind, instan
 
 /** Every observation resolves: a denied or failed query is `null` (unknown), never a rejection.
  * execFile throws synchronously when the host refuses to spawn (EPERM), so that is caught too. */
-export function hostQuery(file, args) {
+export function hostQuery(file, args, onFailure = () => {}) {
+  if (file === '/bin/ps' && args.includes(PROCESS_CENSUS_COLUMNS))
+    return readProcessCensus(file, args, { timeoutMs: QUERY_TIMEOUT_MS, maxBytes: 1024 * 1024, onFailure });
   return new Promise(resolve => {
     try {
       const settlementCwd = file === '/usr/bin/sudo' && args[0] === '-n' && args[1] === '/usr/sbin/lsof';
@@ -221,9 +224,12 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
    * ledger write carries it first, so storage that becomes writable again persists it. */
   const pendingEvidence = new Map();
   let sampling = false, sampler = null, pump = null, lastPersist = 0;
+  let completedRecovery = false, completedRetryAt = 0, completedBlocked = null;
   const query = (file, args) => {
     observer.queries++; observer.processesCreated++;
-    return ports.query(file, args).catch(() => null).then(text => {
+    const result = ports.query === hostQuery
+      ? hostQuery(file, args, failure => { observer.lastQueryFailure = failure; }) : ports.query(file, args);
+    return result.catch(() => null).then(text => {
       if (text === null) observer.failures++; else observer.bytesRead += Buffer.byteLength(text);
       return text;
     });
@@ -312,6 +318,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     }
   }
   function wake() {
+    if (waiters.length) void retryCompletedRows();
     waiters.sort((a, b) => Number(priorityOf(b.work) === 'critical') - Number(priorityOf(a.work) === 'critical') || a.order - b.order);
     for (const waiter of [...waiters]) {
       if (waiter.stopped?.() || ports.now() >= waiter.deadline) { settleWaiter(waiter, null); continue; }
@@ -338,6 +345,66 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     peak.launches = Math.max(peak.launches, launches.size);
     if (!sampler) sampler = setInterval(() => { void sample(); }, ceilings.sampleMs);
     return lease;
+  }
+  /** Admission pressure may re-observe this exact owner's completed rows. It never
+   * signals, touches an active launch, or treats elapsed time as quiescence. The
+   * existing waiter pump supplies opportunities; no new timer or status work. */
+  async function retryCompletedRows() {
+    // A sample captured before release can still discover a member afterward.
+    // Its pending durable carry must land before raw ledger absence can settle Six.
+    if (completedRecovery || sampling || !attached?.ledgerPath || !ports.allocation || !waiters.length
+      || ports.monotonic() < completedRetryAt) return;
+    completedRecovery = true;
+    completedRetryAt = ports.monotonic() + ceilings.sampleMs;
+    try {
+      const rows = readLedger(), owner = attached.owner;
+      const selected = Object.entries(rows).filter(([id, row]) => row?.cleanup === 'unresolved' && !launches.has(id) && !pendingEvidence.has(id)
+        && owner?.start && row.owner?.pid === owner.pid && startIdentity(row.owner.start) === owner.start);
+      if (!selected.length) return;
+      counters.cleanupRechecks = (counters.cleanupRechecks ?? 0) + 1;
+      const roots = selected.map(([id, row]) => ({ id, pid: row.pid, start: startIdentity(row.start),
+        known: new Map(Object.entries(row.members ?? {}).map(([pid, start]) => [Number(pid), startIdentity(start)])),
+        workingArea: row.workingArea ?? null, sandboxArea: row.sandboxArea ?? null }));
+      const seen = await joinRoots(roots, true);
+      const blocked = reason => {
+        if (completedBlocked !== reason) record({ kind: 'cleanup-blocked', reason, launches: selected.length });
+        completedBlocked = reason;
+      };
+      if (seen.state !== 'complete') { blocked('incomplete-census'); return; }
+      // A complete UID census alone cannot prove a recorded PID of another UID
+      // absent. Read all recorded incarnations in one bounded global metadata query.
+      const known = [...new Set(roots.flatMap(root => [root.pid, ...root.known.keys()]))];
+      if (known.some(pid => !Number.isSafeInteger(pid) || pid <= 1)) { blocked('invalid-member-evidence'); return; }
+      const text = await query('/bin/ps', ['-p', known.join(','), '-o', 'pid=,lstart=']);
+      if (text === null) { blocked('member-evidence-unavailable'); return; }
+      const current = new Map();
+      for (const line of text.split('\n').filter(line => line.trim())) {
+        const match = /^\s*(\d+)\s+(.+)$/.exec(line);
+        if (!match || !startIdentity(match[2])) { blocked('member-evidence-unreadable'); return; }
+        current.set(Number(match[1]), startIdentity(match[2]));
+      }
+      if (ports.monotonic() - seen.snapshot.monotonicAt > seen.snapshot.freshForMs) { blocked('stale-census'); return; }
+      const latest = readLedger(); let returned = 0;
+      for (const [id, row] of selected) {
+        if (sampling || pendingEvidence.has(id) || launches.has(id) || JSON.stringify(latest[id]) !== JSON.stringify(row)) continue;
+        const root = roots.find(root => root.id === id);
+        const members = new Map(root.known); members.set(root.pid, root.start);
+        if ([...members].some(([pid, start]) => typeof start !== 'string' || current.get(pid) === start)) continue;
+        if ([...seen.members].some(([pid, member]) => member.launch === id && !seen.rows.get(pid)?.zombie)) continue;
+        let closed = false;
+        try { closed = ports.allocation.close(row.allocation, `cleanup-reobserved-gone:${id}`)?.ok === true;
+          if (!closed) closed = ports.allocation.resume?.(row.allocation)?.ok === true; } catch { /* retain the row */ }
+        if (!closed) continue;
+        // Six's durable settlement precedes removal; a failed ledger write retries idempotently.
+        ledger(all => { if (JSON.stringify(all[id]) === JSON.stringify(row)) delete all[id]; });
+        returned++;
+      }
+      if (returned) {
+        counters.cleanupRecovered = (counters.cleanupRecovered ?? 0) + returned;
+        record({ kind: 'cleanup-reconciled', launches: returned, sourceSample: seen.snapshot.id, census: 'complete' }); completedBlocked = null;
+      } else blocked('live-or-unsettled-members');
+    } catch { record({ kind: 'cleanup-blocked', reason: 'reobservation-unavailable' }); }
+    finally { completedRecovery = false; persist(true); wake(); }
   }
   /** Local admission (count, answer reserve, priority brake), then the Six allocation: the launch's
    * resource set is committed across its domains and attached to its ordinary reservation. A Six

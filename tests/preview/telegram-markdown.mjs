@@ -109,13 +109,19 @@ export const parseRefused = reply => {
 
 /** Dispatch only bytes prepared and signed by the journal owner. A parse refusal must be durably
  * retained before the one pre-authorized plain alternative; unknown outcomes never enable it. */
-export async function sendFormattedText({ text, expectedText, fallback, body, invoke, classify, mayResend, recordRefusal }) {
+export async function sendFormattedText({ text, expectedText, fallback, body, invoke, classify, mayResend, recordRefusal, priorRefusal }) {
+  // Resume the already-authorized plain materialization, never rejected HTML.
+  if (priorRefusal !== undefined) {
+    if (!parseRefused(priorRefusal) || !fallback) return { kind: 'refused', reason: 'plain alternative evidence refused' };
+    if (!mayResend()) return { kind: 'refused', reason: 'plain alternative no longer admitted' };
+    return classify(invoke({ ...body, text: fallback.text }), fallback.text);
+  }
   const reply = invoke({ ...body, text, parse_mode: 'HTML' });
   const outcome = classify(reply, expectedText);
   if (outcome.kind !== 'refused' || !parseRefused(reply) || !fallback) return outcome;
   if (await recordRefusal(reply) === false) return outcome;
   if (!mayResend()) return outcome;
   const fallbackOutcome = classify(invoke({ ...body, text: fallback.text }), fallback.text);
-  // The bounded alternative is exhausted; do not let the outer not-sent retry restart HTML.
-  return fallbackOutcome.kind === 'not-sent' ? { kind: 'refused', reason: fallbackOutcome.reason } : fallbackOutcome;
+  // The journal owns bounded recovery; retained refusal keeps retries on these plain bytes.
+  return fallbackOutcome;
 }

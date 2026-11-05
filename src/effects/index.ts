@@ -17,3 +17,5 @@ export type { InfrastructureNotice, SelfHealFailure } from './infrastructure-not
 export { dispatchInfrastructureNotice } from './infrastructure-notice-driver.js';
 export type { InfrastructureNoticePorts, NoticeDispatch, NoticeLedgerEntry, NoticeRoute, NoticeSendObservation, NoticeState }
   from './infrastructure-notice-driver.js';
+export { submitAuthenticPendingInput } from './worker-input.js';
+export type { AuthenticPendingInput, PendingInputBinding, PendingInputSubmission, PendingInputSubmissionPorts } from './worker-input.js';

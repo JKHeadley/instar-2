@@ -370,12 +370,13 @@ export async function awaitReplicated(input: Readonly<{ token: ReplicationToken;
 export type DispatchOutcome = Readonly<{ kind: 'refused' | 'unknown'; reason: string }>;
 export interface ReplicatedDispatch {
   /** The dispatch gate, immediately before a physical send: null admits it; anything else is its closed outcome. */
-  admit(target: string, refusal: () => string | null, maxWaitMs?: number): Promise<DispatchOutcome | null>;
+  admit(target: string, refusal: () => string | null, maxWaitMs?: number, retryAttempt?: number, subject?: string): Promise<DispatchOutcome | null>;
   /** The same demand for a provider call (its reservation row is in the journal): null once the peer holds the
    * journal as of now; otherwise the refusal `refusal()` names. No claim: a call is not a conversation send. */
   replicated(refusal: () => string | null): Promise<string | null>;
   /** Records what happened to an admitted send; an unreachable authority is retried by `flush`. */
-  outcome(target: string, kind: 'accepted' | 'refused' | 'unknown'): Promise<void>;
+  outcome(target: string, kind: 'accepted' | 'refused' | 'unknown' | 'not-sent', retryable?: boolean, receipt?: { message: number; subject: string }): Promise<void>;
+  reconcile(target: string, subject: string): Promise<number | null>;
   /** Retries outcomes the authority has not recorded yet. */
   flush(): Promise<void>;
   /** Moves the shared cursor to `cursor` once the peer holds the journal through `token`; returns the settled cursor. */
@@ -393,12 +394,12 @@ export interface ReplicatedDispatch {
 export function createReplicatedDispatch(input: Readonly<{ authority: AuthorityClient; lease: Pick<LeaseHolder, 'fence' | 'drop'>;
   shipper: Pick<JournalShipper, 'pump' | 'covers' | 'token'>; cursor: number; sleep: (ms: number) => Promise<void>; elapsed: () => number;
   waiting?: () => void }>): ReplicatedDispatch {
-  const claims = new Map<string, Fence>(), unrecorded: { fence: Fence; key: string; state: ClaimOutcome }[] = [];
+  const claims = new Map<string, { fence: Fence; attempt: number }>(), unrecorded: { fence: Fence; key: string; state: ClaimOutcome; attempt?: number; receipt?: { message: number; subject: string } }[] = [];
   let cursor = input.cursor, waiting = 0;
   const LOST = 'conversation ownership lost before dispatch';
   return Object.freeze({
     get cursor() { return cursor; }, get waiting() { return waiting; },
-    async admit(target: string, refusal: () => string | null, maxWaitMs?: number): Promise<DispatchOutcome | null> {
+    async admit(target: string, refusal: () => string | null, maxWaitMs?: number, retryAttempt?: number, subject?: string): Promise<DispatchOutcome | null> {
       waiting += 1;
       try {
         const unmet = await awaitReplicated({ token: input.shipper.token(), shipper: input.shipper, refusal, sleep: input.sleep,
@@ -407,8 +408,8 @@ export function createReplicatedDispatch(input: Readonly<{ authority: AuthorityC
         for (let attempt = 0; ; attempt++) {
           const refused = refusal(), held = input.lease.fence();
           if (refused !== null || !held) return { kind: 'refused', reason: refused ?? LOST };
-          const claim = await input.authority.request({ op: 'claim', fence: held, key: target });
-          if (claim.ok) { claims.set(target, held); return null; }
+          const claim = await input.authority.request({ op: 'claim', fence: held, key: target, ...(retryAttempt ? { attempt: retryAttempt } : {}), ...(subject ? { subject } : {}) });
+          if (claim.ok) { claims.set(target, { fence: held, attempt: retryAttempt ?? 0 }); return null; }
           if (claim.reason === 'already-claimed')
             return { kind: 'unknown', reason: `another runner already claimed this send (${claim.state ?? 'claimed'}); it is not sent again` };
           if (claim.reason === 'stale') { input.lease.drop(); return { kind: 'refused', reason: LOST }; }
@@ -423,13 +424,22 @@ export function createReplicatedDispatch(input: Readonly<{ authority: AuthorityC
         elapsed: input.elapsed, ...(input.waiting ? { waiting: input.waiting } : {}) }); }
       finally { waiting -= 1; }
     },
-    async outcome(target: string, kind: 'accepted' | 'refused' | 'unknown'): Promise<void> {
+    async outcome(target: string, kind: 'accepted' | 'refused' | 'unknown' | 'not-sent', retryable?: boolean, receipt?: { message: number; subject: string }): Promise<void> {
       const held = claims.get(target);
       if (!held) return;
       claims.delete(target);
-      const record = { fence: held, key: target, state: kind === 'accepted' ? 'sent' as const : kind };
+      const record = { fence: held.fence, key: target, ...(held.attempt ? { attempt: held.attempt } : {}),
+        ...(receipt && kind === 'accepted' ? { receipt } : {}),
+        state: kind === 'accepted' ? 'sent' as const : kind === 'not-sent' || kind === 'refused' && retryable ? 'retryable' as const : kind };
       const answer = await input.authority.request({ op: 'outcome', ...record });
       if (!answer.ok && answer.reason === 'unreachable') unrecorded.push(record);
+    },
+    async reconcile(target: string, subject: string): Promise<number | null> {
+      const fence = input.lease.fence();
+      if (!fence) return null;
+      const answer = await input.authority.request({ op: 'receipt', fence, key: target, subject });
+      return answer.ok && answer.state === 'sent' && answer.receipt?.subject === subject
+        && Number.isSafeInteger(answer.receipt.message) && answer.receipt.message > 0 ? answer.receipt.message : null;
     },
     async flush(): Promise<void> {
       for (const pending of [...unrecorded]) {

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
-import { configDefaults, defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig, type Plugin } from 'vitest/config';
 import { resolveTestWorkerLimit } from './tests/setup/worker-limit.js';
 
 // Bound ordinary file parallelism as before the train-159 serial-all workaround.
@@ -40,6 +40,7 @@ export const serialFixtureFiles = [
   'tests/conversation/telegram.round24.integration.test.ts',
   'tests/assembly/provider-response-evidence.test.ts',
   'tests/assembly/fixed-installation-peer.test.ts',
+  'tests/register/intake-owner.test.ts',
 ];
 const include = split === 'only-macos' ? macosOnly : ['tests/**/*.test.ts'];
 const exclude = split === 'exclude-macos' ? [...configDefaults.exclude, ...macosOnly] : [...configDefaults.exclude];
@@ -72,6 +73,16 @@ const shared = {
   testTimeout: 90_000,
 };
 
+const projectCliExcludes: Plugin = {
+  name: 'instar-project-cli-excludes',
+  configureVitest({ vitest, project }) {
+    // Vitest 3.2 applies --exclude to the root but omits cliExclude from
+    // inline-project overrides. Carry the already parsed patterns into each
+    // project so the remote gate actually leaves Studio's files to Studio.
+    project.config.exclude = [...new Set([...project.config.exclude, ...(vitest.config.cliExclude ?? [])])];
+  },
+};
+
 export default defineConfig({
   test: {
     ...shared,
@@ -84,9 +95,9 @@ export default defineConfig({
     minWorkers: 1,
     maxWorkers: serialGate ? 1 : workerLimit,
     projects: [
-      { test: { ...shared, name: 'parallel', include, exclude: [...exclude, ...serialFixtureFiles],
+      { plugins: [projectCliExcludes], test: { ...shared, name: 'parallel', include, exclude: [...exclude, ...serialFixtureFiles],
         sequence: { groupOrder: 0 } } },
-      ...serialFixtureFiles.map((file, index) => ({ test: { ...shared, name: file,
+      ...serialFixtureFiles.map((file, index) => ({ plugins: [projectCliExcludes], test: { ...shared, name: file,
         include: split === 'only-macos' && !macosOnly.includes(file) ? [] : [file], exclude,
         sequence: { groupOrder: index + 1 } } })),
     ],

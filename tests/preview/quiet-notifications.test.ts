@@ -89,9 +89,9 @@ it('never pushes a held backlog: unchanged status stays on the pull surface, acr
 }));
 
 it('classifies every push at the one send boundary; status is never a pushed kind', () => withHarness(async ({ state, worker }) => {
-  // Only the held status is pull-only; the boundary refuses to push any status kind.
+  // Held status and commitment observations are pull-only; the boundary refuses to push any status kind.
   expect(Object.entries(OUTBOUND_DISPOSITIONS).filter(([, disposition]) => disposition === 'status').map(([kind]) => kind))
-    .toEqual(['held-notice']);
+    .toEqual(['commitment', 'held-notice']);
   worker.intake([update(1, 'hello')]); await tick(worker);
   expect(state.sent.map(item => item.disposition)).toEqual(['result']);
 }));

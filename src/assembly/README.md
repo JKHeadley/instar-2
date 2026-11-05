@@ -261,12 +261,27 @@ backpressure at 64 pending inputs, 4096 retained inputs and 1 MiB per input, pre
 all already accepted records. A queued input remains queued after a proved non-dispatch;
 a dispatched but unresolved input becomes uncertain on restart and is never replayed.
 A repeated exact input returns its recorded outcome; conflicting bytes refuse.
+Terminal startup preserves the 1.x 90-second fresh and 120-second resume waits.
+A resumed process that dies before input gets one fresh start with complete agent-owned
+context through the existing continuation path. Live menus, uncertain retirement, stop,
+missing context and failure of that fresh start refuse; restoration still uses the
+original admission and model allowance. Explicit readiness overrides remain bounded
+by the host admission lifetime; structured protocol RPC keeps its own request timeout.
 Waiting messages use the largest arrival-order prefix whose serialized delivery fits
 1 MiB; the suffix stays queued and a lone message uses its ordinary prompt. On restart,
-a completed batch may be recovered from its correlated adapter receipt and the existing
-journal's process and completed child edges, even when the old admission gate is gone.
+a completed single input or batch may be recovered from its correlated adapter receipt
+and the existing journal's process and completed child edges, even when the old
+admission gate is gone. Recovery checks the exact worker, original delivery bytes,
+nonempty reply and completed turn before atomically recording results and cursors.
 Missing or invalid evidence retires the old worker and records uncertainty without
-replaying its tools or preventing later messages from draining.
+replaying its tools or preventing later messages from draining. After confirmed retirement,
+an adapter may positively prove a dispatching input never crossed its send boundary.
+Only that input returns to the queue, with its original envelope and batch membership,
+at most three existing dispatch attempts and bounded backoff. A new worker still passes
+normal admission using the original parent deadline and remaining allowance. Absent or
+ambiguous evidence, accepted input, failed retirement and exhausted attempts never
+authorize this retry. Terminal drivers prove a prepared, never-started send; protocol
+workers require a bound submission and a complete capture with no turn request.
 
 Each OS process gets a fresh claim and incarnation, its own 64-input/one-hour ceiling,
 and only the unused portion of the original 128-call reservation. Every process deadline
@@ -425,6 +440,28 @@ start a fresh observation. The original deadline and one-continuation limit rema
 StallTriageNurse's outcome check is held by the existing result-and-Stop receipt boundary: a changed
 screen or an empty reply is not a recovered answer. This ports the useful observation/recovery
 behavior without importing legacy timers, direct messages or pane-wide interruptions.
+
+## Pending input after Enter (carryover row 14)
+
+`pending-input.ts` and the session driver's `observe()` carry the 1.x `verifyInjection` and
+`StuckInputSentinel` behavior (legacy-1x/, JKHeadley/instar 4f88880a): Claude Code occasionally
+eats the Enter after a bracketed paste, so an accepted input sits unsubmitted at an idle prompt.
+Each accepted delivery records its original operation, intake digest and complete terminal payload
+before Enter. Two agreeing captures and the 1.x rung instants (500, 1500, 3500 and 6500 ms)
+retain valid recovery. Every recovery key passes Eight's typed `submit-authentic-pending-input`
+admission, then Ten's fresh full-payload, activity, menu and styling checks, including the second
+Enter after the final rung's sleep. Joined tmux captures preserve soft wrapping without treating
+a shared prologue as identity. Dim, mixed, truncated, raced or menu evidence never authorizes input.
+
+The original delivery journal retains each typed request, its styled observation digest and its
+key outcome. A lost outcome remains uncertain across restart and cannot advance to another rung.
+The existing authenticated input acknowledgement stops pending recovery, even if a stale frame
+still shows the text; it is rechecked before each key. It does not close the turn. Key acceptance
+is not consumption: the existing result and authenticated turn receipt still close the work. The four-rung budget, original deadline and undelivered observation remain. No text is
+resent, and no new store, timer or operator prompt is introduced. Internal continuation and compact
+commands keep their existing owner paths; they cannot borrow an accepted intake's recovery authority.
+Design: D18 §4/§8/§13 and P14-NF-56; inventory:
+`docs/implementation/carryover-14-safe-input-delivery-1104.md`.
 
 ## Native connection retry exhaustion
 

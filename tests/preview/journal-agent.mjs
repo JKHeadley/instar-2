@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
-import { nextObligationAt } from './journal.js';
+import { nextObligationAt, nextDeliveryRecoveryAt, replyFormatting } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
 import { createClaudePoolQuota } from '../../scripts/claude-pool-quota.mjs';
 import { createWorkingActivities, readWorkingAdmission } from './working-activity.mjs';
@@ -34,7 +34,7 @@ import { admitToolCallEffect } from './tool-admission.mjs';
 import { grantVolume, HARNESS_OFF_REASON, HARNESS_SESSION_BRIDGE, harnessCredentialValues, harnessGate, harnessHookPath, harnessRefusedNotice, harnessSessionAdmission,
   harnessSessionLayout, harnessStatusLine, readHarnessLogin } from './harness-user.mjs';
 import { encoded } from '../../src/assembly/boundary.js';
-import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
+import { admitCommitmentSend, anyCommitmentSendGrant, decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope, toolPreparation, withWorkspaceNotice } from './journal-envelope.js';
@@ -98,6 +98,7 @@ import { createMediaAdmission } from './media-admission.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
 import { reapNotices } from './reap-notices.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
+import { createBoundCommitmentHost } from './commitment-host.js';
 import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking } from './live-sentinels.js';
 import { SENTINEL_FAMILIES } from './sentinel-record.js';
 
@@ -647,7 +648,8 @@ const objectAnswerOf = id => /^summary:/u.test(id);
  * (`retrospective:N:duties`); its benchmark reruns (`retrospective:N:rerun:I`) replay an answer. */
 const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review'
   : id.endsWith(':reply-revision') ? 'reply-revision' : /^summary:.*:review$/u.test(id) ? 'summary-review'
-  : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
+  : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective'
+  : /^commitment-status:\d+$/u.test(id) ? 'commitment-status-line' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 /** Rules 3, 17 and 47: which standing instructions the prepared prompt carried, by digest and rule number. */
@@ -1683,9 +1685,9 @@ async function main() {
         return `Two machines: this runner holds the conversation (lease epoch ${fence.epoch}); every reply waits until the other machine has acknowledged its record. ${status.current
           ? 'The other machine holds the whole journal.' : `Waiting for it now (${status.reason}).`}`; },
       // The minimal path is awaited by the poll loop: its wait is bounded so reading and stop stay reachable (Rule 15).
-      admit: (target, refusal) => dispatch.admit(target, refusal, target.startsWith('limited:') ? 10_000 : undefined),
+      admit: (target, refusal, retryAttempt) => dispatch.admit(target, refusal, target.startsWith('limited:') ? 10_000 : undefined, retryAttempt),
       replicated: refusal => dispatch.replicated(refusal),
-      outcome: (target, kind) => dispatch.outcome(target, kind),
+      outcome: (target, kind, retryable) => dispatch.outcome(target, kind, retryable),
       /** A clean end: the last journal bytes go to the other machine, then the lease is handed back so it can take over at once. */
       async stop() {
         clearInterval(renewTimer);
@@ -2115,6 +2117,7 @@ async function main() {
       ...(loginPool ? [loginPool.status()] : []),
       ...(sessionLoginObservations.size ? [sessionLoginStatus([...sessionLoginObservations.values()], wallNow())] : []),
       ...(sessionWork?.port.idleCleanupStatus?.() ?? []),
+      ...(sessionWork?.port.inboxStatus?.() ?? []),
       ...(harness ? [harnessStatusLine(harness.state)] : identityRefusal !== null ? [harnessStatusLine({ ready: false, reason: identityRefusal })] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options), readOnly = readOnlyDashboardOf(options);
@@ -2236,7 +2239,8 @@ async function main() {
         sessionWork?.select?.();
         if (!sessionWork?.port.available()) throw new ModelNotStarted();
         const outcomes = await sessionWork.port.runBatch(inputs.map(input => ({ operation: input.id,
-          question: input.prepared, context: input.context, authority: sessionWork.authority })));
+          question: input.prepared, context: input.context, authority: sessionWork.authority,
+          inbox: { type: 'request', priority: 'normal', createdAt: journal.view.turns.get(input.id).at, ttlMs: 14_400_000 } })));
         return outcomes.map((outcome, index) => conversationSessionAnswer(outcome, inputs[index].id,
           shape => recordShape(shapesPath, 'answer', 'decision', 'malformed', shape)));
       } } : {}),
@@ -2264,7 +2268,7 @@ async function main() {
             sessionWork?.select?.();
             if (!sessionWork?.port.available()) throw new ModelNotStarted();
             outcome = await sessionWork.port.run({ operation, question: prepared, context: packet,
-              authority: sessionWork.authority });
+              authority: sessionWork.authority, inbox: { type: 'request', priority: 'normal', createdAt: turn.at, ttlMs: 14_400_000 } });
           } catch (error) {
             if (operation === id && error instanceof ModelNotStarted) throw error;
             // A refused/unknown repair is not permission to replay tools. Let the journal's
@@ -2373,6 +2377,11 @@ async function main() {
         const result = await invokeSubscription(modelEnvelope({ question, context: state, id }), id);
         return { ...result, ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
       } } : {}),
+      // Row 01: the beacon's status line, a reserved call recorded at this launcher's model boundary (Rule 41).
+      commitmentStatus: async ({ id, question, context: packet }) => {
+        const result = await invokeSubscription(modelEnvelope({ question, context: packet, id }), id);
+        return { state: result.state, ...(typeof result.value === 'string' ? { value: result.value } : {}), ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
+      },
       // Status pull lines: proof posture (Rule 43), then conversation ownership and store checks (Rules 63, 33).
       statusExtra: statusExtraLines,
       // Part Eleven's minimal-path owner decides (src/operator/live.ts); the host reports only what it
@@ -2402,7 +2411,12 @@ async function main() {
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
       sendAdmits: true,
-      send: async ({ text, expectedText, formatting, chat, thread: signedThread, replyTo, replyMarkup, target, provenance, admit, current, observeSendPhase }) => {
+      recoveryConfiguration: () => {
+        try { return `sha256:${createHash('sha256').update(JSON.stringify([g.bot, process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT ?? 'telegram', token()])).digest('hex')}`; }
+        catch { return null; }
+      },
+      reconcileSend: async (target, subject) => shared ? shared.reconcile(target, subject) : null,
+      send: async ({ text, expectedText, formatting, chat, thread: signedThread, replyTo, replyMarkup, target, retryAttempt, provenance, admit, current, observeSendPhase }) => {
         if (!journal.verifyOutbound(provenance, { target, chat, ...(signedThread === undefined ? {} : { thread: signedThread }), body: text }))
           return { kind: 'refused', reason: 'outbound provenance unsigned' };
         if (formatting && !journal.verifyOutbound(formatting.fallback.provenance, { target, chat, ...(signedThread === undefined ? {} : { thread: signedThread }), body: formatting.fallback.text }))
@@ -2433,7 +2447,7 @@ async function main() {
           // dispatch-claim for this target is taken, immediately before the physical send. Until then it waits.
           const refused = await shared.admit(target, () => workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop
             ? 'stopped before dispatch' : !ownerHeld() ? 'conversation ownership lost before dispatch'
-              : current && !current() ? 'acknowledgement cancelled' : null);
+              : current && !current() ? 'acknowledgement cancelled' : null, undefined, retryAttempt, provenance.contentHash);
           if (refused !== null) return refused;
         }
         if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
@@ -2465,7 +2479,7 @@ async function main() {
           // unparsable created no message, so it alone is sent once more as plain text, after the same stop and
           // ownership checks as any dispatch; every other outcome is final.
           try {
-            outcome = await sendFormattedText({ text, expectedText, fallback: formatting?.fallback,
+            outcome = await sendFormattedText({ text, expectedText, fallback: formatting?.fallback, priorRefusal: replyFormatting(journal.view, target)?.refusal,
               recordRefusal: async response => {
                 journal.append({ kind: 'send-format-refused', target, response, at: wallNow() });
                 return shared === null || await shared.replicated(() => !noticeAllowed() || current && !current()
@@ -2486,7 +2500,7 @@ async function main() {
                 () => workingActivities.current(noticeTurn.id)?.running === true);
           }
           return outcome;
-        } finally { if (shared) await shared.outcome(target, outcome.kind); }
+        } finally { if (shared) await shared.outcome(target, outcome.kind, outcome.kind === 'refused' && Number.isSafeInteger(outcome.retryAfterMs) && outcome.retryAfterMs > 0, outcome.kind === 'accepted' ? { message: outcome.message, subject: provenance.contentHash } : undefined); }
       } });
     if (existsSync(stopPath)) throw Error('preview: stop latched');
     const activationPath = required(options, 'activation-record');
@@ -2709,7 +2723,8 @@ async function main() {
             }
           },
           maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
-          readyTimeoutMs: 30000, protectedSessions: [],
+          // Each adapter owns its startup defaults and protocol request bound.
+          protectedSessions: [],
           ...(conversationSession ? { requireTurnHook: true, inboxDirectory: binding.physical().inboxDirectory,
             compactGroundingFile: contextGrounding(), hookScript: layout ? lifecycleHookPath(harnessHookPath()) : fileURLToPath(new URL('../../scripts/session-hooks/stop.mjs', import.meta.url)) } : {}),
           ...(conversationSession ? { continuationRequired: () => handoff?.continuing ?? false, continuation: ({ operation, reason, pendingDigest }) => {
@@ -3090,7 +3105,18 @@ async function main() {
       // A due reminder is never sent from this pre-poll job: the post-poll job below already sends every requested
       // reminder, and only after a successful empty poll, so a waiting withdrawal is read and settled first (Rule 93).
       actOnPromise: id => { if (!id.startsWith('request:')) sentinelSteps.push(() => worker.workObligations()); } });
-    const sentinelTick = () => { if (sentinelFamilies.size && !journal.readOnly) sentinels.tick(); };
+    // Row 01: typed commitments, the beacon and check-ins advance on this same admitted tick, so a stop, lost ownership or
+    // expiry stops them by not ticking. A send needs the operator's exact grant in the effect policy, read at each decision;
+    // with none, output stays off and no check-in spends an attempt (Rule 87). What a tick starts settles inside this job.
+    const commitmentHost = createBoundCommitmentHost(journal, { now: wallNow, log() {},
+      minutesOfDay: ms => { const at = new Date(ms); return at.getHours() * 60 + at.getMinutes(); },
+      formatWhen: ms => new Date(ms).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
+      fileExists: path => existsSync(path), config: { get: (_key, fallback) => fallback, set() { throw Error('no setting store is bound'); } } },
+      worker, { admit: topic => admitCommitmentSend(admissionConfig(), topic, wallNow()), any: () => anyCommitmentSendGrant(admissionConfig(), wallNow()) });
+    const sentinelTick = () => {
+      if (!journal.readOnly) { try { commitmentHost.tick(); } catch { /* retained; the next admitted cycle retries */ } sentinelSteps.push(() => commitmentHost.settle()); }
+      if (sentinelFamilies.size && !journal.readOnly) sentinels.tick();
+    };
     // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
     // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
     // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
@@ -3118,7 +3144,8 @@ async function main() {
     // It only requests work; result delivery still waits for the withdrawal-aware post-poll pass.
     dueWake = createNextDueWake({ now: wallNow,
       next: () => signalled || workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires
-        || !ownerHeld() || !activationMatchesJournal(journal.view, activation) ? null : nextObligationAt(journal.view),
+        || !ownerHeld() || !activationMatchesJournal(journal.view, activation) ? null : (() => { const due = [nextObligationAt(journal.view), nextDeliveryRecoveryAt(journal.view)].filter(at => at !== null);
+          return due.length ? Math.min(...due) : null; })(),
       after: (ms, fire) => { const timer = setTimeout(fire, ms); timer.unref(); return () => clearTimeout(timer); },
       wake: () => workCycle(false, true) });
     dueWake.refresh();

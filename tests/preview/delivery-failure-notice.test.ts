@@ -11,7 +11,7 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
 const notice = 'I could not send my complete answer. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
 const update = (id: number) => ({ update_id: id, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'hi' } });
 
-it.each(['refused', 'not-sent'] as const)('retains the recorded answer and reports %s once, without replay after restart', async kind => {
+it.each(['refused', 'not-sent'] as const)('retains the recorded %s answer, notices only terminal failure, and does not retry before due', async kind => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/deferral-send-failure-2026-10-08.json', import.meta.url), 'utf8'));
   const answer = capture.candidate.replace(/^PREVIEW — /u, '');
   const root = mkdtempSync(join(tmpdir(), 'delivery-fail-')), path = join(root, 'journal');
@@ -24,12 +24,17 @@ it.each(['refused', 'not-sent'] as const)('retains the recorded answer and repor
   try {
     const worker = createJournalWorker(journal, ports);
     worker.intake([update(capture.update)]); await worker.drain(); await worker.drain();
-    expect(sent).toEqual([...Array(kind === 'not-sent' ? 2 : 1).fill(answer), notice]);
-    expect(journal.view.order[0]).toMatchObject({ intent: answer, deliveryNotice: { text: notice, sent: 42 } });
+    expect(sent).toEqual(kind === 'not-sent' ? [answer, answer] : [answer, notice]);
+    expect(journal.view.order[0]).toMatchObject({ intent: answer });
+    if (kind === 'refused') expect(journal.view.order[0]?.deliveryNotice).toMatchObject({ text: notice, sent: 42 });
+    else {
+      expect(journal.view.order[0]?.deliveryNotice).toBeUndefined();
+      expect(journal.view.sendOutcomes[0]?.recovery).toMatchObject({ attempts: 2, nextAt: 61000 });
+    }
     expect(replyOutcomeOf(journal.view, journal.view.order[0]!).outcome.kind).toBe('refused');
     journal.close(); journal = openPreviewJournal(path, key);
     await createJournalWorker(journal, ports).drain();
-    expect(sent).toHaveLength(kind === 'not-sent' ? 3 : 2); expect(models).toBe(1);
+    expect(sent).toHaveLength(2); expect(models).toBe(1);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 

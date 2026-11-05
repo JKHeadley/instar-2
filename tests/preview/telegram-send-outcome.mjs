@@ -32,7 +32,9 @@ export function classifyTelegramSend(reply, { chat, expectedText, thread, forum 
   try { payload = JSON.parse(reply.bytes); } catch { /* an unparseable body settles below */ }
   if (Number.isSafeInteger(reply.status) && reply.status >= 400 && reply.status < 500 && payload?.ok === false)
     return { kind: 'refused', reason: `telegram ${String(reply.status)}${typeof payload.description === 'string'
-      ? `: ${payload.description.slice(0, 120)}` : ''}` };
+      ? `: ${payload.description.slice(0, 120)}` : ''}`,
+      ...(reply.status === 429 && Number.isSafeInteger(payload.parameters?.retry_after) && payload.parameters.retry_after > 0
+        && Number.isSafeInteger(payload.parameters.retry_after * 1000) ? { retryAfterMs: payload.parameters.retry_after * 1000 } : {}) };
   if (reply.status !== 200 || payload?.ok !== true) return { kind: 'unknown', reason: `telegram status ${String(reply.status)}` };
   return String(payload.result?.chat?.id) === chat && payload.result?.text === expectedText
     && (thread === undefined ? !forum || payload.result?.message_thread_id === undefined || payload.result?.message_thread_id === 1

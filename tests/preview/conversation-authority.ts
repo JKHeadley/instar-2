@@ -34,28 +34,30 @@ import { dirname } from 'node:path';
 
 export type Fence = Readonly<{ epoch: number; incarnation: string }>;
 /** `refused` is a definite refusal by the platform: nothing was delivered (Rule 42). */
-export type ClaimState = 'claimed' | 'sent' | 'unknown' | 'refused';
+export type ClaimState = 'claimed' | 'sent' | 'unknown' | 'refused' | 'retryable';
+export interface ClaimReceipt { message: number; subject: string }
 export type ClaimOutcome = Exclude<ClaimState, 'claimed'>;
 export type AuthorityRecord =
   | { t: 'genesis'; conversation: string; termMs: number }
   | { t: 'acquire'; epoch: number; machine: string; incarnation: string }
   | { t: 'expire'; epoch: number }
   | { t: 'release'; epoch: number }
-  | { t: 'claim'; epoch: number; incarnation: string; key: string }
-  | { t: 'outcome'; key: string; state: ClaimOutcome }
+  | { t: 'claim'; epoch: number; incarnation: string; key: string; attempt?: number; subject?: string }
+  | { t: 'outcome'; key: string; state: ClaimOutcome; attempt?: number; receipt?: ClaimReceipt }
   | { t: 'settle'; epoch: number; cursor: number };
 export type AuthorityRequest =
   | { op: 'acquire'; machine: string; incarnation: string }
   | { op: 'renew' | 'release'; fence: Fence }
-  | { op: 'claim'; fence: Fence; key: string }
-  | { op: 'outcome'; fence: Fence; key: string; state: ClaimOutcome }
+  | { op: 'claim'; fence: Fence; key: string; attempt?: number; subject?: string }
+  | { op: 'outcome'; fence: Fence; key: string; state: ClaimOutcome; attempt?: number; receipt?: ClaimReceipt }
   | { op: 'settle'; fence: Fence; cursor: number }
+  | { op: 'receipt'; fence: Fence; key: string; subject: string }
   | { op: 'read' };
 export type Holder = Readonly<{ epoch: number; machine: string; incarnation: string }>;
 export type AuthorityView = Readonly<{ conversation: string; termMs: number; epoch: number; holder: Holder | null;
   remainingMs: number; cursor: number; unresolved: readonly string[]; claims: number }>;
 export type AuthorityAnswer =
-  | Readonly<{ ok: true; fence?: Fence; termMs?: number; state?: ClaimState; view?: AuthorityView }>
+  | Readonly<{ ok: true; fence?: Fence; termMs?: number; state?: ClaimState; view?: AuthorityView; receipt?: ClaimReceipt }>
   | Readonly<{ ok: false; reason: 'held' | 'stale' | 'already-claimed' | 'not-claimant' | 'invalid' | 'corrupt' | 'unauthorized' | 'unreachable';
     holder?: Holder | null; remainingMs?: number; state?: ClaimState }>;
 
@@ -76,17 +78,21 @@ export function openConversationAuthority(input: Readonly<{ path: string; conver
   mkdirSync(dirname(input.path), { recursive: true, mode: 0o700 });
   let corrupt: string | null = null, head = 'genesis', seq = 0;
   let epoch = 0, holder: Holder | null = null, live = false, expiresAt = 0, cursor = 0, termMs = input.termMs;
-  const claims = new Map<string, { epoch: number; incarnation: string; state: ClaimState }>();
+  const claims = new Map<string, { epoch: number; incarnation: string; state: ClaimState; attempt: number; subject?: string; receipt?: ClaimReceipt }>();
   const apply = (record: AuthorityRecord) => {
     switch (record.t) {
       case 'genesis': if (record.conversation !== input.conversation) throw Error('conversation differs'); termMs = record.termMs; return;
       case 'acquire': if (record.epoch !== epoch + 1 || live) throw Error('epoch out of order');
         epoch = record.epoch; holder = { epoch: record.epoch, machine: record.machine, incarnation: record.incarnation }; live = true; return;
       case 'expire': case 'release': if (record.epoch !== epoch || !live) throw Error('loss out of order'); live = false; return;
-      case 'claim': if (claims.has(record.key) || record.epoch !== epoch || !live) throw Error('claim out of order');
-        claims.set(record.key, { epoch: record.epoch, incarnation: record.incarnation, state: 'claimed' }); return;
+      case 'claim': {
+        const prior = claims.get(record.key), attempt = record.attempt ?? 0;
+        if (!count(attempt) || record.epoch !== epoch || !live
+          || (prior ? prior.state !== 'retryable' || attempt !== prior.attempt + 1 || record.subject !== prior.subject : attempt !== 0)) throw Error('claim out of order');
+        claims.set(record.key, { epoch: record.epoch, incarnation: record.incarnation, state: 'claimed', attempt, ...(record.subject ? { subject: record.subject } : {}) }); return;
+      }
       case 'outcome': { const claim = claims.get(record.key);
-        if (!claim || claim.state !== 'claimed') throw Error('outcome out of order'); claim.state = record.state; return; }
+        if (!claim || claim.state !== 'claimed' || (record.attempt ?? 0) !== claim.attempt) throw Error('outcome out of order'); claim.state = record.state; if (record.receipt) claim.receipt = record.receipt; return; }
       case 'settle': if (record.epoch !== epoch || !live || record.cursor <= cursor) throw Error('settle out of order'); cursor = record.cursor; return;
     }
   };
@@ -169,20 +175,33 @@ export function openConversationAuthority(input: Readonly<{ path: string; conver
         // A claim is consumed once, including by its own claimant: a repeated claim after a lost
         // acknowledgement or a lost outcome is never fresh send authority (no duplicate sends). The
         // claimant's lost acknowledgement stays visible as an unresolved claim, honestly unknown.
-        if (prior) return { ok: false, reason: 'already-claimed', state: prior.state };
-        append({ t: 'claim', epoch, incarnation: request.fence.incarnation, key: request.key });
+        const attempt = request.attempt ?? 0;
+        if (!count(attempt) || request.subject !== undefined && !/^sha256:[a-f0-9]{64}$/u.test(request.subject)) return { ok: false, reason: 'invalid' };
+        if (prior && (prior.state !== 'retryable' || attempt !== prior.attempt + 1 || request.subject !== prior.subject))
+          return { ok: false, reason: 'already-claimed', state: prior.state };
+        if (!prior && attempt !== 0) return { ok: false, reason: 'invalid' };
+        append({ t: 'claim', epoch, incarnation: request.fence.incarnation, key: request.key, ...(attempt ? { attempt } : {}), ...(request.subject ? { subject: request.subject } : {}) });
         return { ok: true, state: 'claimed' };
       }
       case 'outcome': {
         // An admitted in-flight dispatch reports its outcome even after its lease is gone (design 10 §4).
-        if (!fenceOk(request.fence) || !text(request.key, 200) || !['sent', 'unknown', 'refused'].includes(request.state))
+        if (!fenceOk(request.fence) || !text(request.key, 200) || !['sent', 'unknown', 'refused', 'retryable'].includes(request.state))
           return { ok: false, reason: 'invalid' };
         const claim = claims.get(request.key);
-        if (!claim || claim.epoch !== request.fence.epoch || claim.incarnation !== request.fence.incarnation)
+        if (!claim || claim.epoch !== request.fence.epoch || claim.incarnation !== request.fence.incarnation || (request.attempt ?? 0) !== claim.attempt)
           return { ok: false, reason: 'not-claimant' };
-        if (claim.state !== 'claimed') return claim.state === request.state ? { ok: true, state: claim.state } : { ok: false, reason: 'invalid', state: claim.state };
-        append({ t: 'outcome', key: request.key, state: request.state });
+        if (request.receipt && (typeof request.receipt.subject !== 'string' || !/^sha256:[a-f0-9]{64}$/u.test(request.receipt.subject) || request.state !== 'sent' || !Number.isSafeInteger(request.receipt.message) || request.receipt.message <= 0
+          || request.receipt.subject !== claim.subject)) return { ok: false, reason: 'invalid' };
+        if (claim.state !== 'claimed') return claim.state === request.state && JSON.stringify(claim.receipt) === JSON.stringify(request.receipt) ? { ok: true, state: claim.state } : { ok: false, reason: 'invalid', state: claim.state };
+        append({ t: 'outcome', key: request.key, state: request.state, ...(claim.attempt ? { attempt: claim.attempt } : {}), ...(request.receipt ? { receipt: { ...request.receipt } } : {}) });
         return { ok: true, state: request.state };
+      }
+      case 'receipt': {
+        if (!fenceOk(request.fence) || !text(request.key, 200)) return { ok: false, reason: 'invalid' };
+        if (!current(request.fence, now)) return { ok: false, reason: 'stale' };
+        const claim = claims.get(request.key);
+        return claim?.state === 'sent' && claim.receipt && request.subject === claim.subject
+          ? { ok: true, state: 'sent', receipt: { ...claim.receipt } } : { ok: true };
       }
       case 'settle': {
         if (!fenceOk(request.fence) || !count(request.cursor)) return { ok: false, reason: 'invalid' };
