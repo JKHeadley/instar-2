@@ -55,17 +55,6 @@
     ],
     "holds": [
       {
-        "rule": 60,
-        "class": "partial",
-        "evidence": {
-          "kind": "fixture",
-          "id": "PREVIEW-RESOURCE-ADMISSION",
-          "stage": "build"
-        },
-        "portion": "the shipped admit path caps local launch slots, preserves the answer reserve, refuses at the queue deadline and drains after capacity returns; tested through hold without launching a process",
-        "remainder": "kernel CPU/handle limits, sampled memory/process ceilings, escaped descendants, every launch composition and live pressure recovery are not certified by this slot test; verified Part Two extract and independent semantic review remain absent"
-      },
-      {
         "rule": 61,
         "class": "partial",
         "evidence": {
