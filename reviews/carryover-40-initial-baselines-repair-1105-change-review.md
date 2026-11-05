@@ -28,9 +28,6 @@ Prompt review: No prompt wording, model parser or model routing change. Existing
 
 ## Closing block
 
-simplestRobustRoute: Record both baselines in the existing carry/emitter path and reuse the applier's existing lineage check. This is that route; no service, protocol, gate or capability restriction is added. The existing writer, disclosure, audience, stop and journal-byte boundaries remain the guards. No unattended live completion is claimed.
-80/20: Both reproduced source defects are addressed with focused boundary and retry evidence. Broader live acceptance remains on row 40 and is not claimed by this submission.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Train-183 integration: this review is reopened because the combined constitution and generated register change its frozen subject. The original relationship source repair is retained unchanged; reviews/train-183-change-review.md submits the combined tree.
 
@@ -40,3 +37,7 @@ Prompt finding: 85544c20941f | protocol-literal | Existing held-session notice l
 Prompt finding: e8708c7fea24 | protocol-literal | Existing sourceLabel attribution instruction in journal.ts, retained unchanged; the regression checks delivered guidance, not a desired semantic answer.
 Deferral: generated/conversion.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
 Deferral: generated/register.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
+
+simplestRobustRoute: Record both baselines in the existing carry/emitter path and reuse the applier's existing lineage check. This is that route; no service, protocol, gate or capability restriction is added. The existing writer, disclosure, audience, stop and journal-byte boundaries remain the guards. No unattended live completion is claimed.
+80/20: Both reproduced source defects are addressed with focused boundary and retry evidence. Broader live acceptance remains on row 40 and is not claimed by this submission.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

@@ -57,10 +57,11 @@ Decision: train-183-desk | Use the existing cint-L37 desk chain: repin, build, r
 
 ## Closing block
 
-simplestRobustRoute: Two ordinary exact-head merges and the established desk regeneration chain are the simplest robust route. No new product mechanism is introduced. Existing grant, audience, writer, stop, bounded-context and durable-journal guards remain. No unattended live acceptance is claimed.
-80/20: Verify the combined changed consumers and constitutional checks, then submit the exact pushed tree for independent Studio gate and live proof.
-VERDICT: author submission; independent review belongs to the desk.
 
 Decision: train-183-floor | Shorten five capability summaries by 131 bytes so summary and tool prompts retain required context under the unchanged guard; keep all feature rows and full Details, and replay recorded shapes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-183-PROGRESS.md
 
 Prompt-floor comparison: JKHeadley/instar main b80413b4a708599896ea31cc597578a3786bf0a1 src/memory/WorkingMemoryAssembler.ts uses tokenBudgets and tiered rendering; docs/specs/ASSEMBLER-CONTEXT-ENDPOINT-SPEC.md records the bounded assembly and history 2aaac4288. Reuse the 2.0 generated one-line briefing and exact envelope guard instead of adding another budgeter; full source descriptions remain. The ONEX memory/coherence lesson requires delivered context verification.
+
+simplestRobustRoute: Two ordinary exact-head merges and the established desk regeneration chain are the simplest robust route. No new product mechanism is introduced. Existing grant, audience, writer, stop, bounded-context and durable-journal guards remain. No unattended live acceptance is claimed.
+80/20: Verify the combined changed consumers and constitutional checks, then submit the exact pushed tree for independent Studio gate and live proof.
+VERDICT: author submission; independent review belongs to the desk.
