@@ -20,7 +20,7 @@ import type { SessionActivityObservation } from '../../src/assembly/production-s
 import { decideContext, type GroundedReceipt, type SentinelConfig, type SessionObservation, type StuckSignature } from '../../src/awareness/sentinel.js';
 import { decidePresence, type PresenceCause, type PresenceConfig, type PresenceTurn } from '../../src/sentinels/presence.js';
 import { decidePromises, type PromiseConfig, type PromiseObservation } from '../../src/sentinels/promise.js';
-import { commitmentOpen, commitmentWaitsOn, liveSummaries, openRequests, PRESENCE_NOTE_HOLDS, probeTurn, verifiedOperatorTurn,
+import { commitmentOpen, commitmentWaitsOn, liveSummaries, obligationSchedule, openRequests, PRESENCE_NOTE_HOLDS, probeTurn, verifiedOperatorTurn,
   wallEpoch, type JournalRecord, type JournalView, type Turn } from './journal.js';
 import { openLoops } from './obligations.js';
 import { isStopCommand } from './status-command.js';
@@ -95,15 +95,23 @@ export function presenceTurns(view: JournalView): PresenceTurn[] {
 
 const requestId = (item: { source: string; quote: string; when: string }) =>
   `request:${createHash('sha256').update(JSON.stringify([item.source, item.quote, item.when])).digest('hex').slice(0, 16)}`;
-/** Open promises that carry an absolute due instant: agent promises with a date, and dated operator requests. */
+/** Observe the owner's complete scheduled promise population, including undated
+ * follow-through. The schedule is the same one the bounded worker consumes;
+ * pending reports and dependency waits retain their original step identity. */
 export function promiseObservations(view: JournalView): PromiseObservation[] {
   const found: PromiseObservation[] = [];
+  const scheduled = new Map(obligationSchedule(view).filter(item => item.kind === 'commitment').map(item => [item.id, item]));
   view.commitments.forEach((note, id) => {
     const due = note.agentPromise?.due;
-    if (!due?.day || !commitmentOpen(view, id)) return;
+    if (!commitmentOpen(view, id)) return;
+    const item = scheduled.get(id);
+    if (!item && !due?.day) return;
     const work = view.obligationWork[`commitment:${id}`];
     const definite = work && work.inFlight === undefined && work.outcome !== undefined && work.outcome !== 'uncertain' && work.outcome !== 'failed';
-    found.push({ id: `commitment:${id}`, owner: note.owner ?? 'agent', dueAt: wallEpoch(due.day, due.time ?? '09:00', due.zone),
+    const dueAt = work && (work.waitsOn !== undefined || work.report !== undefined || work.recoveryHeld)
+      ? work.lastSlot : item?.slot ?? (due?.day ? due.resolution ? Date.parse(due.resolution.instant)
+        : wallEpoch(due.day, due.time ?? '09:00', due.zone) : Number.NaN);
+    found.push({ id: `commitment:${id}`, owner: note.owner ?? 'agent', dueAt,
       actedAt: definite ? work.last : null, waitsOn: commitmentWaitsOn(view, id) ?? 'undeclared' });
   });
   for (const item of openRequests(view)) if (item.day)

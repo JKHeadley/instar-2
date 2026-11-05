@@ -1952,7 +1952,11 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
   }
   const legacyFloor = snapshot.retained.reduce((max, row) => 'at' in row ? Math.max(max, row.at) : max, 0);
   const clockFloor = saved.clockFloor ?? saved.turns.reduce((max, [, turn]) => Math.max(max, turn.at), legacyFloor);
-  const view: JournalView = { ...saved, ...(saved.activeSessionWork !== undefined || Object.keys(activeSessionWork).length
+  // A compacted promise receives the same projection defaults as its source
+  // facts on replay; compaction must not strand an older undated admission.
+  const promises = { commitments: [] as CommitmentNote[] };
+  recordCommitments(promises, saved.commitments);
+  const view: JournalView = { ...saved, commitments: promises.commitments, ...(saved.activeSessionWork !== undefined || Object.keys(activeSessionWork).length
     ? { activeSessionWork } : {}), forwardFrames: [], personAttributes: saved.personAttributes ?? [], clockFloor, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null, operatorRequests: saved.operatorRequests ?? [],
     tokenTotals: saved.tokenTotals ?? emptyTokenTotals(), tokenCalls: saved.tokenCalls ?? [],
     replyCheckPaths: { ...saved.replyCheckPaths, 'operator-echo': saved.replyCheckPaths?.['operator-echo'] ?? 0 },

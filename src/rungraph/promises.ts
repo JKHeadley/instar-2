@@ -31,7 +31,12 @@ export function createPromiseStore<Due>(): PromiseStore<Due> {
 }
 /** Admission belongs to the caller's durable fact boundary, not this projection. */
 export function recordCommitments<Due>(store: Pick<PromiseStore<Due>, 'commitments'>, notes: readonly CommitmentNote<Due>[]): void {
-  store.commitments.push(...notes);
+  // The model already admitted the promise. A second, optional loop declaration
+  // is not required to give undated work an owner and a revisit (Rules 8/83).
+  // This admits internal preparation only; delivery still needs its own grant.
+  store.commitments.push(...notes.map(note => note.in === 'reply' && note.agentPromise?.action === 'promised'
+    && !note.agentPromise.due && note.waitsOn === undefined
+    ? { ...note, owner: 'agent' as const, waitsOn: 'nothing' as const } : note));
 }
 export function closeCommitment<Due>(store: PromiseStore<Due>, closure: CommitmentClosure): void {
   store.closed.set(closure.id, closure);
@@ -42,7 +47,8 @@ export function recordReplyLoop<Due>(store: PromiseStore<Due>, source: string, l
   if (!note) recordCommitments(store, [{ in: 'reply', source, quote: loop.quote, owner: 'agent', waitsOn: loop.waitsOn, loop: loop.kind,
     ...(loop.deliveryRequest === undefined ? {} : { deliveryRequest: loop.deliveryRequest }) }]);
   else {
-    if (note.agentPromise && !note.agentPromise.due && note.waitsOn === undefined)
+    if (note.agentPromise && !note.agentPromise.due && (note.waitsOn === undefined
+      || note.agentPromise.action === 'promised' && note.loop === undefined && note.waitsOn === 'nothing'))
       Object.assign(note, { owner: 'agent', waitsOn: loop.waitsOn, loop: loop.kind });
     if (loop.deliveryRequest !== undefined) note.deliveryRequest = loop.deliveryRequest;
   }

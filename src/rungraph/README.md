@@ -186,6 +186,9 @@ anchors, from JKHeadley/instar main `2d12a2a9a4fa2d0eb1280abdbd573234913ceb6b`.
 The existing encrypted journal is the storage/admission adapter: it validates on a
 copy, fsyncs the enclosing fact, then applies the projection. No second store or
 wire migration exists; old frames and snapshots retain their identities and meaning.
+An admitted modern undated reply promise gets an agent owner and internal-work
+cadence even without a second loop declaration. A same-reply explicit dependency
+refines that default; legacy free-standing notes gain no inferred authority.
 Calendar resolution stays in the adapter; a recorded absolute instant retains its
 seconds. A completed report is separate from a confirmed delivery. Unknown work
 and sends remain owned, and closures retain their source evidence.
