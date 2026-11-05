@@ -79,4 +79,3 @@ export function normalizeAttentionPriority(value: unknown): AttentionItem['prior
   const key = token.toLowerCase();
   return Object.hasOwn(PRIORITY_ALIASES, key) ? PRIORITY_ALIASES[key]! : null;
 }
-
