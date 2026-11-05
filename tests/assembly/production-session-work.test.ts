@@ -978,3 +978,90 @@ it('a suggest judgment on one-shot work is a pull-only notice, never an action',
   expect(port.status()).toMatchObject({ reviews: 1, reinjections: 0, nudges: 0, notice: 'obligation-commitment-1-2: stuck-on-tool: suggest-restart; a build produced nothing' });
   expect(f.counts()).toMatchObject({ launches: 1, stops: 1 }); expect(f.delivered).toHaveLength(1);
 });
+
+// Carryover 02 r4, admission continuity: a restored claim reopens with the ORIGINAL remaining liability
+// (the replacement-claim rule), never a fresh allowance; an unreadable meter or an exhausted allowance refuses.
+it.each([{ measured: 5, remaining: 19 }, { measured: 23, remaining: 1 }])('adoption reopens the claim with the original remaining allowance (measured $measured)', async ({ measured, remaining }) => {
+  const f = fixture({ phases: ['launched'] }); const rt = assemblyRuntimeFixture();
+  const host = dyingHost(f, 2);
+  void f.port.run(f.request());
+  for (let i = 0; i < 50 && host.polled() < 2; i++) await settle();
+  host.restore();
+  const [edge] = f.rows as [SessionWorkEdge]; const identity = f.counts().attached[0]!;
+  f.io.modelCalls = () => measured;
+  Object.assign(f.driver, {
+    recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }),
+    observe: () => { f.writeNow(recordedWork.workOutput); return rt.success({ phase: 'output-observed', evidence: 'evidence:restored', detail: 'idle prompt fallback' }); } });
+  const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart' }));
+  expect(await restarted.run(f.request())).toMatchObject({ state: 'complete', edge: edge.id });
+  expect(f.edges).toHaveLength(2);
+  expect(f.edges[0]!.budget.calls).toBe(24); expect(f.edges[1]!.budget.calls).toBe(remaining);
+  expect(f.edges[1]).toMatchObject({ id: edge.id, openedAt: edge.openedAt, budget: { deadline: edge.budget.deadline } });
+  expect(f.rows.filter(row => row.type === 'SessionWorkEdge')).toHaveLength(1);
+  expect((f.rows[1] as SessionWorkEdgeClose).calls).toBe(measured);
+});
+
+it.each(['unknown-meter', 'exhausted'])('adoption refuses when the original liability is %s; the step stays uncertain without a launch', async mode => {
+  const f = fixture({ phases: ['launched'] }); const rt = assemblyRuntimeFixture();
+  const host = dyingHost(f, 2);
+  void f.port.run(f.request());
+  for (let i = 0; i < 50 && host.polled() < 2; i++) await settle();
+  host.restore();
+  const identity = f.counts().attached[0]!;
+  f.io.modelCalls = () => mode === 'unknown-meter' ? null : 24;
+  Object.assign(f.driver, { recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }) });
+  const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart' }));
+  expect(await restarted.run(f.request())).toMatchObject({ state: 'uncertain', detail: 'child closure is not established; no automatic replay' });
+  expect(f.edges).toHaveLength(1); expect(f.counts()).toMatchObject({ launches: 1, stops: 0 }); expect(restarted.status().restored).toBe(0);
+});
+
+// The desk's two-host consumer, through the shipped admission gate with a fake upstream: after the restart the
+// restored claim's NEXT model calls pass only up to the original remainder; the call past it is refused by the
+// gate itself and the step settles uncertain. The spent allowance never resets. What this does not prove: the
+// live worker's baked per-launch gate address reaching host B (the open contract named in the README).
+it.each([{ next: 19, outcome: 'complete' }, { next: 20, outcome: 'uncertain' }])('a restored claim admits $next next model calls through the real gate against a 24-call edge with 5 spent → $outcome', async ({ next, outcome }) => {
+  // @ts-expect-error physical checkpoint stays outside the pure core
+  const { createAdmissionGate } = await import('../preview/admission-gate.mjs');
+  const { createServer } = await import('node:http');
+  let forwarded = 0;
+  const upstream = createServer((req, res) => { req.resume(); req.on('end', () => { forwarded++; res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"id":"msg","type":"message"}'); }); });
+  await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', resolve));
+  const upstreamPort = (upstream.address() as { port: number }).port;
+  const f = fixture({ phases: ['launched'] }); const rt = assemblyRuntimeFixture();
+  const host = dyingHost(f, 2);
+  void f.port.run(f.request());
+  for (let i = 0; i < 50 && host.polled() < 2; i++) await settle();
+  host.restore();
+  const [edge] = f.rows as [SessionWorkEdge]; const identity = f.counts().attached[0]!;
+  const gate = await createAdmissionGate({ append: (row: unknown) => f.rows.push(row as SessionWorkEdge), stopped: () => false, now: f.now,
+    upstreams: { 'claude-code': { host: '127.0.0.1', port: upstreamPort, secure: false } } });
+  let base = '';
+  f.io.modelCalls = () => 5;
+  f.io.prepareAdmission = (claim, admitted) => { base = gate.base(claim); gate.open(claim, { framework: 'claude-code', allowance: admitted.budget.calls, edge: admitted }); };
+  f.io.admissionState = claim => gate.state(claim);
+  f.io.closeAdmission = claim => { gate.close(claim); };
+  const refusals: string[] = [];
+  Object.assign(f.driver, {
+    recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }),
+    observeAsync: async () => {
+      // The restored worker's next calls, each taken from the claim's remaining allowance before it is forwarded.
+      for (let call = 0; call < next; call++) {
+        const response = await fetch(`${base}/v1/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"model":"fake"}' });
+        if (response.status !== 200) refusals.push((await response.json() as { error: { message: string } }).error.message);
+      }
+      f.writeNow(recordedWork.workOutput);
+      return rt.success({ phase: 'output-observed', evidence: 'evidence:restored', detail: 'idle prompt fallback' });
+    } });
+  try {
+    const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart' }));
+    const result = await restarted.run(f.request());
+    expect(result.state).toBe(outcome);
+    expect(forwarded).toBe(Math.min(next, 19));
+    if (outcome === 'uncertain') {
+      expect(refusals).toEqual(["instar: this step's reserved model-call allowance (19) is used; the call was not dispatched"]);
+      expect(result.detail).toContain('past the reserved allowance');
+    } else expect(refusals).toEqual([]);
+    expect(gate.state(edge.child)).toMatchObject({ closed: true, calls: 19, refused: outcome === 'uncertain' });
+    expect(f.counts()).toMatchObject({ launches: 1, stops: 1 });
+  } finally { await gate.stop(); await new Promise<void>(resolve => upstream.close(() => resolve())); }
+});

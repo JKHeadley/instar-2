@@ -542,12 +542,31 @@ after a host restart (StaleSessionBackstop/ResumeQueue): the open edge's exact
 intake digest and registered claim are matched through the driver's
 `recoverWorker`; the step resumes under the original edge id, deadline, allowance
 and result destination, with no launch, delivery or replay, and closes once with
-the original identity. Honest limit: the installed admission checkpoint listens on
-a per-launch port and secret, so a restored worker's further model calls cannot
-reach the new host's gate; restoration recovers a result the worker already wrote
-or finishes without further calls. The step's 600 000 ms lifetime still ends
-before the inherited 1 800 000 ms stale window by design; the conversation
-watcher is the longer-lived registered watcher.
+the original identity. The restored claim reopens with the ORIGINAL remaining
+liability: the worker's own transcript count since the edge opened (the existing
+accounting read) is subtracted from the edge's reserved calls, an unreadable meter
+or an exhausted allowance refuses adoption, and delegations opened before the
+restart settle as uncertain. Honest limit, and the open contract for the desk: the
+installed admission checkpoint listens on a per-launch loopback port under a
+per-launch secret, baked into the worker's environment at spawn, so a live
+restored worker's further model calls cannot reach the new host's gate today;
+restoration therefore recovers a result the worker already wrote or a step that
+needs no further call. Full continuity needs three bounded additions to existing
+owners, none a new store, protocol or service: (1) `createAdmissionGate` accepts a
+`listen: { port, secret }` restored from the adopted claim's own admission
+`config.json` `gate` field (0600, same trust domain), binding only when the old
+host has released the port and serving the restored secret only for adopted
+claims; (2) the gate appends a durable `SessionWorkCall { edge, ordinal, at }` row
+before forwarding every one-shot model call, as the conversation owner's per-call
+charge already does, and `sessionWorkRecords()` returns those rows so the restored
+count is `max(rows, transcript)` and a call in flight at the crash is never lost;
+(3) `open(claim, …)` accepts restored `calls` and the `uncertainEffects` derived
+from the edge's durable `SessionWorkEffect` rows prepared without an `observed`
+row, so the replay fences hold after the restart. The desk decision is whether a
+per-launch gate secret may be restored from that state file. The step's 600 000 ms
+lifetime still ends before the inherited 1 800 000 ms stale window by design; the
+one-shot owner reads the existing registered-work watcher (60 s indeterminate
+silence, 90 min active) as its stale signal instead.
 
 The host session IO's control-plane observer (DegradedTmuxGuard) now also yields
 one deduplicated notice per degraded episode, re-raised at the thirty-minute

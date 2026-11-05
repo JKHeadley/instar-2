@@ -340,7 +340,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
       // worker that is still live under its registered claim, holding the exact accepted intake, is
       // adopted under the ORIGINAL edge, deadline, allowance and result destination. Nothing is
       // launched, delivered or replayed; its result keeps the original identity.
-      let adopt: Readonly<{ edge: SessionWorkEdge; identity: string }> | null = null;
+      let adopt: Readonly<{ edge: SessionWorkEdge; identity: string; remaining: number }> | null = null;
       {
         // Custody is mandatory even when diagnosis is disconnected. A missing
         // triage supplier cannot turn an UNKNOWN original effect into a new run.
@@ -354,8 +354,13 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
           if (previous.state === 'uncertain' && previous.detail === 'child closure is not established; no automatic replay'
             && driver.recoverWorker && !config.stopped() && !inFlight && config.now() < open.budget.deadline) {
             const worker = take(driver.recoverWorker({ operation: request.operation, claim: open.child }));
-            if (worker && worker.deliveryDigest === digestOf(sessionWorkPrompt(request, open.resultDestination)))
-              adopt = { edge: open, identity: worker.identity };
+            // The original remaining liability, never a fresh allowance: the calls the worker already made are read
+            // from its own transcript since the original edge opened (the existing accounting read); an unreadable
+            // meter or an exhausted allowance refuses adoption and the step stays uncertain.
+            const measured = worker ? config.io.modelCalls(open.openedAt) : null;
+            if (worker && worker.deliveryDigest === digestOf(sessionWorkPrompt(request, open.resultDestination))
+              && measured !== null && Number.isSafeInteger(measured) && measured >= 0 && measured < open.budget.calls)
+              adopt = { edge: open, identity: worker.identity, remaining: open.budget.calls - measured };
           }
           if (!adopt) return previous;
         }
@@ -390,7 +395,9 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
             lease = await config.resources.admit();
             if (lease === null) return adopt ? settledAs('uncertain', 'the host resource owner refused to re-admit the restored step', child!)
               : settledAs('failed', 'the host resource owner refused a session step: no capacity', 'no-child');
-            try { await config.io.prepareAdmission(claim, edge); }
+            // A restored claim reopens with only what the original edge has left (the replacement-claim rule the
+            // conversation owner already applies); the durable edge row itself is never re-appended.
+            try { await config.io.prepareAdmission(claim, adopt ? { ...edge, budget: { ...edge.budget, calls: adopt.remaining } } : edge); }
             catch { return adopt ? settledAs('uncertain', 'the admission state could not be prepared for the restored step', child!)
               : settledAs('failed', 'the admission state could not be prepared before the launch', 'no-child'); }
             const text = sessionWorkPrompt(request, resultPath);
