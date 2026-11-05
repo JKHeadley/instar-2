@@ -167,7 +167,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/resource-census-recovery.test.ts",
-        "hash": "sha256:33956081dd29d1e57c1e9f885e5369c3193b72b00e39eac61707acf52a0f7a79"
+        "hash": "sha256:f5bd2a95892bc3db08f4eb8e0775287744f6de82c053ccc3e55a824483cdcbb7"
       }
     }
   ],

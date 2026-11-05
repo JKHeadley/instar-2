@@ -1,10 +1,25 @@
 # Change review — Bound process census and reconcile completed resource debits
 
+
+## M1 — 1.X FIRST researched reuse decision
+
+Before this repair, the existing1.x implementation was inspected at `/Users/dabombstudio/.instar/agents/echo/.instar/shadow-install/node_modules/instar/dist/` (instar1.3.1672). Exact deployed implementation sources and SHA256:
+
+- `monitoring/ResourceSampler.js`: `50f7f2e340326ad8f3625ad9fd99dd176d246662d3f9b60206c063b1d24059fe`. Existing batched PID metadata sampling and single-flight cadence are reusable patterns. It is explicitly off-hot-path telemetry, samples tracked PIDs with5second/1MiB queries and never gates; direct substitution would omit complete UID membership and change the2second contract.
+- `monitoring/ProcessFootprintMonitor.js`: `b377fe0a815b1d1fcf41e9c895c024e7434fcc3096b785631b2838b57fc548b7`. Its actual defaultListProcesses enumerates whole-host process metadata but uses15seconds/32MiB and returns[] on failure as no observational sample. Reusing that query for cleanup would enlarge caps and collapse unknown into empty.
+- `monitoring/OrphanProcessReaper.js`: `b59bd7d29c0b1acf47e34c1417bc110f23c239a317702872212b69822eea53b6`. Existing tracked/project-orphan versus external/report-only ownership boundaries are appropriate. Its reaping/signalling role does not establish Six settlement and must not add control authority to this nonsignalling repair.
+- `core/hostSpawnSemaphore.js`: `2b212dfc3d3021c6aadac315c240e369b1f3b7347f16bba61aad774204655e73`. Locked read/prune/decide/write and same-host dead-PID+stale-heartbeat reclaim protect1.x spawn slots. release(id) removes that holder; it does not prove a still-live2.x owner’s launch descendants quiescent or return a Six multi-domain ResourceAllocationSet.
+- `monitoring/FrameworkProcessProvenance.js`: `daeb60189add39041c5b73173fa2d827037d68ef6f0d5a95453b3ad52dd1ed5b`. Existing incarnation/executable/inode/path evidence and protected-unknown bounded retry support the evidence discipline. Its targeted executable proof is not a complete UID/member absence census.
+
+Reuse selected: preserve the already-wired2.x Ten inventory decoder/membership and the existing public Six allocation/settlement authority; reuse the current admission waiter wake rather than introduce a daemon or another capacity ledger. Stream the existing command projection before bounded materialization. This follows the1.x batched-read, single-flight and protected-unknown patterns while retaining the actual2.x proof and authority subjects. The comparison is scoped to the inspected1.x modules, not a claim that all1.x code lacks alternatives. The initial publication omitted this required brief comparison; it is now included before the repaired submission, with the external report retaining the honest timing.
+
+Review constraint alignment: Rules60/61/116 directly govern resource ownership and fixture lifetime;26/36 govern physical observations/parsing;66/95 govern refusal;74 governs review;44 covers the existing installation closure. Rules38/75/105 remain reviewed context/native conformance constraints, not new supervisor/model-call/channel behavior. No constitutional document changes.
+
 Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
 Review state: open
 Reviewed content: none
 Outcome: Stream the complete current-user process census with the existing normalized command projection before bounded materialization, and re-observe completed unresolved rows under their same live owner at existing admission pressure before returning actual Six debits. Selection and settlement are fenced against an in-flight sampler and pending membership evidence.
-Affected rules: 26, 36, 37, 60, 61, 66, 74, 95
+Affected rules: 26, 36, 37, 38, 44, 60, 61, 66, 74, 75, 95, 105, 116
 Affected floors: secrets — retain typed metadata only, no argv or private payload in failure records; spend cap — original Six allocations and ceilings remain, unknown and surviving work retain reservations; stop — queued stop/deadline checks remain in the existing waiter; no duplicate sends — no messaging path or send identity changes; durable intake — no journal/root rewrite or abandonment.
 Operator questions: none
 Suggested tier: critical
@@ -38,3 +53,5 @@ Publication: Fixture reference uses the existing owner canonical content hash; r
 Native conformance: Existing merge-live-conformance --renew tool ran the actual ten local native cases before and after. Before9/10 only the stale certificate failed; after10/10 PASS. The tool alone updated the computed conformance hash to sha256:2bfdee011906e84e71d6a3e4e5d2860f5f1d2343342f40c74c734c9ce88bcb61. Evidence: .instar/lanes/resource-census-stream-1105-native-renewal/{before,after}.json; no provider or live model calls.
 
 Register publication: Shape-only replay generation sha256:2069fcec89299141b913cfdab0902a643ff3ae125af3da938c89c6f26397db15 from source a17ada1587777dae8291369396836fbb22b86151; register --check and lint (architecture plus register wiring, issues0) pass. Independent peer source rereview YES on fca3a8667; canonical Astra/full/combined pre/post gates remain required. Historical author-review check remains pending and is not represented as passing.
+
+Astra round1 repair: The real survivor fixture now has the same intrinsic25second finite self-exit principle as the ordering fixture. A real child test with unavailable cleanup observations waits for normal code0 self-exit without a signal. Exact-incarnation proof still gates early cleanup. Production source and limits are unchanged.

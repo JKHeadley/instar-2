@@ -14,6 +14,8 @@ const oldRead = (file: string,args: string[], failures: string[]): Promise<strin
     else resolve(String(stdout));
   });
 });
+// The fallback is intrinsic: it still ends the fixture when metadata reads or early cleanup fail.
+const SURVIVOR_BODY = 'setTimeout(()=>process.exit(0),25000);setInterval(()=>{},1000)';
 const drop = async (children: ChildProcess[]) => Promise.all(children.map(child=>new Promise<void>(resolve=>{
   if(child.exitCode!==null||child.signalCode!==null){resolve();return;}child.once('exit',()=>resolve());child.kill('SIGTERM');
 })));
@@ -74,7 +76,7 @@ it('keeps the same owners debit while its real recorded descendant survives a de
     const owner=createResourceOwner();
     await owner.attach({ledgerPath,allocation,signal:()=>{throw Object.assign(Error('fixture denied'),{code:'EPERM'})}});
     const file=join(root,'parent.mjs');
-    writeFileSync(file,`import {spawn} from 'node:child_process';import{writeFileSync}from'node:fs';const c=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});writeFileSync(${JSON.stringify(pidPath)},String(c.pid));c.unref();process.stdout.write('parent finished');`);
+    writeFileSync(file,`import {spawn} from 'node:child_process';import{writeFileSync}from'node:fs';const c=spawn(process.execPath,['-e',${JSON.stringify(SURVIVOR_BODY)}],{detached:true,stdio:'ignore'});writeFileSync(${JSON.stringify(pidPath)},String(c.pid));c.unref();process.stdout.write('parent finished');`);
     const input={executable:process.execPath,args:[file],cwd:root,env:{PATH:'/usr/bin:/bin'},stdin:'',timeout:15000,maxBytes:65536};
     expect(await owner.execute(input,'answer')).toMatchObject({code:0,resources:{cleanup:'unresolved',allocation:{state:'reserved'}}});
     descendant=Number(readFileSync(pidPath,'utf8'));expect(Number.isSafeInteger(descendant)).toBe(true);
@@ -156,5 +158,32 @@ it('retains the debit across an in-flight sample and a failed late membership wr
       if(descendantStart&&now?.trim().split(/\s+/u).join(' ')===descendantStart)process.kill(descendant,'SIGKILL');
     }
     await new Promise(r=>setTimeout(r,200));rmSync(root,{recursive:true,force:true});
+  }
+});
+
+it('ends the finite survivor when incarnation observations and early cleanup are unavailable', {timeout:30000}, async()=>{
+  // Same exact child body as the survivor case. Deliberately withhold both
+  // observations required for early cleanup; the intrinsic deadline must act.
+  const child=spawn(process.execPath,['-e',SURVIVOR_BODY],{detached:true,stdio:'ignore',env:{PATH:'/usr/bin:/bin'}});
+  const recordedStart: string|undefined=undefined, observedStart: string|null=null;
+  const started=performance.now();let timer: ReturnType<typeof setTimeout>|undefined;
+  try {
+    expect(recordedStart).toBeUndefined();expect(observedStart).toBeNull();
+    const outcome=await new Promise<{code:number|null,signal:NodeJS.Signals|null}>((resolve,reject)=>{
+      child.once('error',reject);
+      child.once('exit',(code,signal)=>resolve({code,signal}));
+      timer=setTimeout(()=>reject(Error('finite survivor did not exit by its fallback bound')),28000);
+    });
+    expect(outcome).toEqual({code:0,signal:null});
+    expect(performance.now()-started).toBeGreaterThanOrEqual(24000);
+    expect(child.exitCode).toBe(0);expect(child.signalCode).toBeNull();
+  } finally {
+    if(timer)clearTimeout(timer);
+    // The direct ChildProcess handle remains owned even when OS observations
+    // are unavailable. Failure cleanup never selects a process by a pattern.
+    if(child.pid!==undefined&&child.exitCode===null&&child.signalCode===null){
+      const exited=new Promise<void>(resolve=>child.once('exit',()=>resolve()));
+      child.kill('SIGKILL');await exited;
+    }
   }
 });
