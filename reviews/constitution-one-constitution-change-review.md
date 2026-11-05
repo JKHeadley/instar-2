@@ -1,6 +1,6 @@
 # Change review — One Constitution, Two Books Aligned
 
-Subject base: 2f46478df4fd512e74d612ac494dc88441aa3bd6
+Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
 Review state: open
 Reviewed content: none
 Outcome: Record the operator's 2026-11-03 direction as Rule 119, One Constitution, Two Books Aligned: every change to either book names its counterpart in the other or says why it has none, a map names the differences, and the master governs. Bring the main obligations of the Maturation Path wording the operator approved for 1.x into Rule 72, whose wording the operator also approved; 1.x keeps more operating detail, and the alignment map names that difference. Wording approved in topic 137053.
@@ -29,7 +29,11 @@ Landing prerequisites, none of which this repository can supply: Rule 119's chec
 
 Known red, outside this change: on the real clock `npm run register:check` and one case of tests/e2e/register.test.ts stop at "P3-NF-24: deadline passed for deferred:slack-intake-v1:36", the same refusal main gives. Nothing in this change touches that declaration, and it is not edited here. PR 188 moves the overdue ceilings; its own head passes register:check on the real clock. Separately, the checks job stops at scripts/check-change-review.mjs with "Cannot find module 'typescript'" because the workflow installs no dependencies; this change does not alter that step.
 
-Subject (18 paths): .github/workflows/document-checks.yml, docs/01-the-rules.changelog.json, docs/01-the-rules.changelog.md, docs/01-the-rules.md, generated/capabilities.json, generated/capabilities.md, generated/conversion.json, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/bootstrap-anchor.json, scripts/build-register.mjs, scripts/check-constitution-pairing.d.mts, scripts/check-constitution-pairing.mjs, tests/e2e/register.test.ts, tests/register/constitution-pairing.test.ts
+Subject (23 paths): .github/workflows/document-checks.yml, docs/01-the-rules.changelog.json, docs/01-the-rules.changelog.md, docs/01-the-rules.md, docs/defects/2026-11-05-harness-probe-stdout-drain.md, generated/capabilities.json, generated/capabilities.md, generated/conversion.json, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/bootstrap-anchor.json, scripts/build-register.mjs, scripts/check-constitution-pairing.d.mts, scripts/check-constitution-pairing.mjs, tests/e2e/register.test.ts, tests/preview/README.md, tests/preview/harness-launch.mjs, tests/preview/harness-user.mjs, tests/preview/harness-user.test.ts, tests/register/constitution-pairing.test.ts
+
+Reopened integration round: The original approved record remains in git at ef4a964232b7baf17d8fc4cf1b8a248a95b6d513:reviews/constitution-one-constitution-change-review.md, with original subject base 2f46478df4fd512e74d612ac494dc88441aa3bd6. This open round covers the exact train-172 live-base delta, not unrelated changes between main and the live line. Main wording is unchanged; the combined publication retains the live register shape. Full integration, probe evidence and undo are in reviews/train-172-change-review.md. No earlier frozen verdict is asserted for this publication.
+Prompt review: No delivered prompt or model parser changed; constitutional edits are outside the briefing excerpts. The merged probe parser consumes OS rows, not model judgments.
+Decision: train-172-review-scope | Bind this explicitly reopened round to the exact live base; preserve the approved prior-round record through its exact git reference and use the integration record for combined behavior. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-172-PROGRESS.md
 
 ## Closing block
 

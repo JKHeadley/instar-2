@@ -1,6 +1,6 @@
 # Change review — The Person Decides; the Agent Does the Rest
 
-Subject base: 567d0c49e9ad30bc2d620025d1a6311cadb9cd66
+Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
 Review state: open
 Reviewed content: none
 Outcome: Record the operator's 2026-11-03 direction as Rule 120: an Instar agent does all research, account management and operation; the person only approves or declines, asks for changes, or supplies a credential; whose accounts are used is the person's choice, and the agent never recommends against full account management. A new rule in Needs building, because neither of its checks exists yet. Same wording as the earlier draft numbered 119 (PR 190), renumbered to 120 after Rule 119, One Constitution, Two Books Aligned, merged first.
@@ -28,7 +28,11 @@ Counterpart (Rule 119): 1.x states parts of this obligation (the operator approv
 
 Known red, outside this change: on the real clock `npm run register:check` and one case of tests/e2e/register.test.ts stop at "P3-NF-24: deadline passed for deferred:slack-intake-v1:36", the same refusal main gives. Separately, the checks job stops at scripts/check-change-review.mjs with "Cannot find module 'typescript'" because the workflow installs no dependencies; this change does not alter that step.
 
-Subject (14 paths): docs/01-the-rules.changelog.json, docs/01-the-rules.changelog.md, docs/01-the-rules.md, generated/capabilities.json, generated/capabilities.md, generated/conversion.json, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/bootstrap-anchor.json, scripts/build-register.mjs, tests/e2e/register.test.ts
+Subject (23 paths): .github/workflows/document-checks.yml, docs/01-the-rules.changelog.json, docs/01-the-rules.changelog.md, docs/01-the-rules.md, docs/defects/2026-11-05-harness-probe-stdout-drain.md, generated/capabilities.json, generated/capabilities.md, generated/conversion.json, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/bootstrap-anchor.json, scripts/build-register.mjs, scripts/check-constitution-pairing.d.mts, scripts/check-constitution-pairing.mjs, tests/e2e/register.test.ts, tests/preview/README.md, tests/preview/harness-launch.mjs, tests/preview/harness-user.mjs, tests/preview/harness-user.test.ts, tests/register/constitution-pairing.test.ts
+
+Reopened integration round: The original approved record remains in git at ef4a964232b7baf17d8fc4cf1b8a248a95b6d513:reviews/constitution-person-decides-change-review.md, with original subject base 567d0c49e9ad30bc2d620025d1a6311cadb9cd66. This open round covers the exact train-172 live-base delta, not unrelated changes between main and the live line. Main wording is unchanged; the combined publication retains the live register shape. Full integration, probe evidence and undo are in reviews/train-172-change-review.md. No earlier frozen verdict is asserted for this publication.
+Prompt review: No delivered prompt or model parser changed; constitutional edits are outside the briefing excerpts. The merged probe parser consumes OS rows, not model judgments.
+Decision: train-172-review-scope | Bind this explicitly reopened round to the exact live base; preserve the approved prior-round record through its exact git reference and use the integration record for combined behavior. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-172-PROGRESS.md
 
 ## Closing block
 

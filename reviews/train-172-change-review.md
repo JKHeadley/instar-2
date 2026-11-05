@@ -36,6 +36,8 @@ Decision: train-172-desk | Use existing repin/build/rehash/replay chain from /Us
 
 Decision: train-172-publication | Reopen the two inherited constitutional review records whose generated publication scope changed; retain their historical findings and claim no frozen verdict for this combined candidate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-172-PROGRESS.md
 
+Decision: train-172-review-scope | Correct the reopened constitutional records to the exact live-base scope; their original main bases incorrectly pulled unrelated live history into this round. Original approved records remain referenced by exact main SHA. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-172-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: two ordinary exact-head merges and existing publication tools. No new runtime mechanism. Start guards are exact base and member hashes; end guards are targeted tests and desk acceptance; existing five safety floors remain. No unattended live-product completion claim.
