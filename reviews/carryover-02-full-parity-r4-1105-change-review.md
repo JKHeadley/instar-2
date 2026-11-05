@@ -53,6 +53,8 @@ Second publication: shape-only replay regenerated from source e5eeaa1509c2c95508
 
 Third publication: shape-only replay regenerated from source df12f7d9cf8e67e3faf80674712fde3ec246d574, generation sha256:ed58a21362332031f87e7adb4497e3debd555b5f67d5bd9031b6c93be6eee30e, after the admission-continuity change.
 
+Fourth publication: shape-only replay regenerated from source 1721cf3c3023a0c0d8108c876b9697c35b02c67d, generation sha256:9e695216858b6482299dd99cd4b4e73eea934df743da1337ed119b3b500eb3e0, after the admission-continuity implementation under the desk's source decision.
+
 simplestRobustRoute: Every behavior lives in an owner that already held its neighbor: the stall episode gains a nudge and follow-up record, the driver gains two bounded primitives and one lookup beside its existing delivery and stop, the one-shot run reuses its own supervision loop for adoption, the observer gains a notice projection, the runner gains status lines. No new store, queue, daemon, timer, sender, signer or authority. Added machinery prevents named failures the simpler route could not: a lost Enter (nudge), a lost message (one exact redelivery), a host death between a written result and its close (adoption), a respawn loop (restart pressure), noisy status pushes (pull-only notices).
 80/20: Portable lifecycle parity is implemented and tested with real recorded shapes and physical driver fixtures; the installed Eight/Six/Ten/Nine process actuation, non-Linux owned-child handles, native certificate renewal and live/user acceptance remain the named open dependencies in the report. Red evidence is retained there, never relabelled.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
