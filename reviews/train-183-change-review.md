@@ -1,0 +1,68 @@
+# Change review — train-183 exact-head integration
+
+Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
+Review state: frozen
+Reviewed content: sha256:fc4fc0a4eab6413d3e54bfbe5173ce7d68f10683d918c4375ec32d0e24fcd7ab
+Outcome: Combine exact main c20b68d1d9b5744a72c243c4dc8a4b69114179d6 and reviewed row-40 head 3a89ebe1ba56c3290e6af25f46b739d9bf3cf648 on live b5806d1e015dc650cdc1dee2e0accab05a849d4b. Preserve browser behavior, relationship baselines and lineage, and main constitution text. Row 40 remains OPEN for installed/live/two-runner acceptance.
+Affected rules: 31, 32, 34, 37, 49, 70, 74, 90, 95, 101, 102, 111, 113, 116, 117, 119, 121.
+Affected floors: secrets — sealed grants and encrypted journals unchanged; spend cap — no added model call or budget; stop — existing admission and append checks unchanged; no duplicate sends — existing effect ownership and emit witnesses preserved; durable intake — both accepted journal baselines retained.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Integration includes the live journal, replication, constitution and register; use the inherited critical tier.
+Side effects: Generated artifacts bind the combined graph, including the live bootstrap shape and main rule hashes. The approvedConversion literal is recomputed from that combined anchor; no authority is granted by replay. Product edits merge without conflicting hunks. Frozen inherited reviews whose subjects changed are reopened, retaining historical evidence and dispositions. No live root or runner is touched.
+Undo and recovery: Keep the prior live build active until the independent gate and rollout. If rejected, retain this branch for repair; do not erase journal bytes or move either reviewed branch. Revert the integration as a new change if needed.
+Multi-machine posture: Retain the member implementation: source emits and receiver refreshes through replicated encrypted journals under writer leases, source disclosure grants and verified audience. No new transport or machine-local product state. WSL evidence is local; Studio owns installed/live/two-runner acceptance.
+Layer below: Inspected the pinned member report, initial-carry regression review, bootstrap anchor, build-register conversion check, owner-reference manifests and direct journal consumers. Both reviewed heads and live base remain ancestors. See the 1.x comparison below.
+Bug class: none
+Bug evidence: none
+Hook bypass: none
+Convergence: none
+<!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
+Prompt review: Reuse the reviewed group-carry guidance for relationship notes as quoted untrusted data. No additional model-facing wording is authored by integration. Existing recorded-shape fixtures in group-carry and journal tests are replayed; no fresh live-model or installed proof is asserted.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing source-bound action claim protocol in journal.ts, retained unchanged; this change adds two frame kinds and view fields to journal.ts and touches no prompt literal; the test checks the protocol rather than a desired verdict.
+Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory display literal in journal.ts, retained unchanged, not an added semantic classification rule.
+Prompt finding: 85544c20941f | protocol-literal | Existing held-session notice literal in journal.ts, retained unchanged by this change (frame kinds and view fields only); the test checks the delivered notice, not a desired semantic answer.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing sourceLabel attribution instruction in journal.ts, retained unchanged; the regression checks delivered guidance, not a desired semantic answer.
+Deferral: generated/conversion.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
+Deferral: generated/register.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
+Deferral: legacy-1x/relationships/src/core/types.ts:333 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:369 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:1628 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:2047 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:2278 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:4780 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:4830 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:6072 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:6077 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:6081 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:6153 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:7165 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:7557 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:7564 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/tests/unit/relationship-delete.test.ts:69 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: tests/preview/group-carry.test.ts:425 | not-a-deferral=Historical fixture provenance for recorded update 6232091; this comment names an existing deferred-answer capture, not a commitment to future implementation.
+Skip: tests/preview/group-carry-cli.test.ts:111 | scope=Inherited macOS-only confined-launch contract for refresh-group, like carry-group at line 12. The original row-40 port records its macOS execution; this WSL repair does not claim a new macOS run. No quarantine.
+
+Subject (60 paths): .github/workflows/document-checks.yml, docs/01-the-rules.changelog.json, docs/01-the-rules.changelog.md, docs/01-the-rules.md, docs/implementation/carryover-40-one-memory-1104.md, generated/capabilities.json, generated/capabilities.md, generated/conversion.json, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, legacy-1x/relationships/src/commands/relationship.ts, legacy-1x/relationships/src/core/HybridLogicalClock.ts, legacy-1x/relationships/src/core/ReplicatedRecordEnvelope.ts, legacy-1x/relationships/src/core/UnionReader.ts, legacy-1x/relationships/src/core/types.ts, legacy-1x/relationships/src/permissions/RelationshipAnomalyScorer.ts, legacy-1x/relationships/src/permissions/RelationshipBehaviorStore.ts, legacy-1x/relationships/tests/e2e/ws23-relationships-alive.test.ts, legacy-1x/relationships/tests/integration/ws23-relationships-routes.test.ts, legacy-1x/relationships/tests/unit/PostUpdateMigrator-ws26OneMemory.test.ts, legacy-1x/relationships/tests/unit/relationship-delete.test.ts, legacy-1x/relationships/tests/unit/relationship-manager.test.ts, legacy-1x/relationships/tests/unit/relationship-routes.test.ts, legacy-1x/relationships/tests/unit/slack-relationship-anomaly.test.ts, legacy-1x/relationships/tests/unit/ws23-relationships-wiring.test.ts, register-source/bootstrap-anchor.json, scripts/build-register.mjs, scripts/check-constitution-pairing.d.mts, scripts/check-constitution-pairing.mjs, tests/e2e/register.test.ts, tests/preview/README.md, tests/preview/capabilities.declarations.json, tests/preview/capabilities.ts, tests/preview/group-carry-cli.test.ts, tests/preview/group-carry.test.ts, tests/preview/group-carry.ts, tests/preview/journal-agent.mjs, tests/preview/journal.ts, tests/preview/relationship-applier.test.ts, tests/preview/relationship-applier.ts, tests/preview/relationship-carry-fixture.ts, tests/preview/relationship-carry.test.ts, tests/preview/relationship-cross-machine.test.ts, tests/preview/relationship-emitter.test.ts, tests/preview/relationship-emitter.ts, tests/preview/relationship-journal.test.ts, tests/preview/relationship-journal.ts, tests/preview/relationship-manager.test.ts, tests/preview/relationship-manager.ts, tests/preview/relationship-replication-emit.test.ts, tests/preview/relationship-roundtrip.test.ts, tests/preview/relationship-served-cycle.test.ts, tests/preview/relationship-stale-context.test.ts, tests/preview/relationship-store.test.ts, tests/preview/relationship-store.ts, tests/preview/relationship-union-read.test.ts, tests/register/constitution-pairing.test.ts
+
+## Closing block
+
+simplestRobustRoute: 
+80/20: 
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+
+Decision: train-183-main | Merge exact c20b68d1 main; preserve its constitution bytes and every changelog version. Evidence: reviews/constitution-attributed-statements-change-review.md and reviews/constitution-person-decides-change-review.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-183-PROGRESS.md
+Decision: train-183-member | Merge exact reviewed 3a89ebe1 row-40 head. Evidence: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-40-full-parity-r2-1104-PROGRESS.md (authenticated snapshot verified c218fa3c); retain its repaired initial baselines and lineage. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-183-PROGRESS.md
+Decision: train-183-A | Keep both live and member behaviors; regenerate generated conflicts instead of hand-merging. Recompute the conversion pin for main rule hashes plus live bootstrap shape. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-183-PROGRESS.md
+Decision: train-183-B | Create train-183 directly at b5806d1; ordinary exact-head merges preserve live ancestry and reviewed history, without moving existing branches. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-183-PROGRESS.md
+Decision: train-183-D | Run targeted checks on WSL and name untouched macOS/Studio-dependent exceptions; leave installed and two-runner acceptance to the desk. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-183-PROGRESS.md
+Decision: train-183-desk | Use the existing cint-L37 desk chain: repin, build, rehash and exact-commit replay; keep the prompt floor guard unchanged. Reopen inherited reviews only where frozen subjects changed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-183-PROGRESS.md
+
+1.x comparison: inspected JKHeadley/instar origin/main b80413b4a708599896ea31cc597578a3786bf0a1, src/core/RelationshipManager.ts, RelationshipsReplicatedStore.ts, ReplicatedRecordEmitter.ts and JournalSyncApplier.ts; searched docs/specs and read ws23-relationships-userregistry-security.md; history ff8344b4b, d4242edc4, d5b30b1d7; read ONEX-LESSONS.md section 5. Inherit the reviewed carryover source 4f88880a45f0a119aae3cfd2ccaf9ace26d405b9: raw manager/store copy 8e7df7f5 and emitter/applier copy bccfc149. Reuse durable emission, ordered replication, origin validation and relationship union, adapted to encrypted 2.0 journals and sealed disclosure grants. No new feature design. Multi-machine acceptance remains with the desk; shared turn-taking does not itself prove shared knowledge.
+
+## Closing block
+
+simplestRobustRoute: Two ordinary exact-head merges and the established desk regeneration chain are the simplest robust route. No new product mechanism is introduced. Existing grant, audience, writer, stop, bounded-context and durable-journal guards remain. No unattended live acceptance is claimed.
+80/20: Verify the combined changed consumers and constitutional checks, then submit the exact pushed tree for independent Studio gate and live proof.
+VERDICT: author submission; independent review belongs to the desk.
