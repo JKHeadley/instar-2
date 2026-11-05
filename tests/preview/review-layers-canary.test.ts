@@ -11,10 +11,10 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, 
 const operatorText = 'Please always answer briefly.';
 const reply = 'Understood.';
 const fenced = value => `\`\`\`json\n${value}\n\`\`\``;
-// The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
+// The launcher runs on the real clock against a fixed fixture expiry, so a due activation reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride the answer as its own line, as in journal-agent.test.ts.
 // The answer itself stays exact, and nothing else may be appended.
-const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
+const NOTICE_LINE = /^(?:Reminder: your activation expires in [^.]+\. Smallest step for you: approve a renewed activation record\.|Model route check: .+\.)$/u;
 const answerOf = text => {
   const [answer, ...notices] = text.split('\n\n');
   for (const notice of notices) {
@@ -23,6 +23,17 @@ const answerOf = text => {
   }
   return answer;
 };
+
+it('accepts the captured activation notice while refusing unrelated appended text', () => {
+  // Exact notice from the train-173 Studio gate at 9cf2e24c, not model-authored text.
+  const notice = 'Reminder: your activation expires in 6 days 22 h. Smallest step for you: approve a renewed activation record.';
+  expect(answerOf(reply)).toBe(reply);
+  expect(answerOf(`${reply}\n\n${notice}`)).toBe(reply);
+  expect(answerOf(`${reply}\n\nModel route check: typesafe-jev/jev-1.13.0 is unverified.`)).toBe(reply);
+  expect(() => answerOf(`${reply}\n\nAn unrelated addition.`)).toThrow();
+  expect(() => answerOf(`${reply}\n\n${notice} An unrelated addition.`)).toThrow();
+  expect(() => answerOf(`${reply}\n\n${notice.replace('approve a renewed activation record', 'disable the stop')}`)).toThrow();
+});
 
 it.each(['wrapped', 'reply-contradiction', 'summary-contradiction'])(
   'covers answer, full-context reply review, summary and summary review offline (%s)', async mode => {
