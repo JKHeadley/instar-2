@@ -4,13 +4,13 @@ Subject base: 74036b86f7d6c97bc23c16eb398e5b838796ad50
 Review state: open
 Reviewed content: none
 Outcome: Bounded shim children use the same production transport environment as the repaired Linux transport; the three decision evidence links resolve to the supplied p2 report; supported native conformance binds the actual executed Studio composition.
-Affected rules: 1, 13, 26, 30, 34, 42, 60, 61, 66, 70, 74, 95, 101, 102, 105, 111, 113, 115, 116
+Affected rules: 1, 13, 26, 30, 34, 42, 60, 61, 66, 70, 74, 95, 101, 102, 105, 109, 111, 113, 115, 116
 Affected floors: secrets — no credential or custody changes; spend cap — native contract verifies charged attempts without retries; stop — native contract verifies stopped dispatch refusal; no duplicate sends — existing overflow/no-repeat and pre-network classification retained; durable intake — no change.
 Operator questions: none
 Suggested tier: critical
 Declared tier: significant
 Tier rationale: Test-runtime correction and conformance renewal from the existing real native contract, with all configured limits and supported abilities retained.
-Side effects: Every bounded child in portable-limit-exec.test.ts receives transportEnvironment(), including the positive dash control and inline/file children. Only the existing native tuple conformance value changes after execution; runtime, entries and supported state are retained. Corrected three reported locators and added Rules 105/115 to the inherited review. The delegated owner and support-source repin generators made no changes; the existing replay generator refreshed seven generated register files from committed source a01382c076e222050d75c7e1ce631ed281fe3f7f. This is shape-only register evidence, not conformance evidence.
+Side effects: Every bounded child in portable-limit-exec.test.ts receives transportEnvironment(), including the positive dash control and inline/file children. Only the existing native tuple conformance value changes after execution; runtime, entries and supported state are retained. Corrected three reported locators and added Rules 105/115 to the inherited review. The delegated owner and support-source repin generators made no changes; the existing replay generator refreshed seven generated register files from committed source a01382c076e222050d75c7e1ce631ed281fe3f7f. This is shape-only register evidence, not conformance evidence. Reopened the two inherited browser records whose frozen subjects included the changed resource-owner composition and generated outputs; their old exact-byte rounds are void, and no browser acceptance is claimed.
 Undo and recovery: Revert the repair if its evidence is invalid; rerun the named native contract before replacing its certificate. Reverting the test environment restores the Linux test defect; UNKNOWN attempts remain unrepeated.
 Multi-machine posture: Machine-local kernel limits remain measured in each kernel's unit; Darwin conformance binds its exact runtime and composition. No UID, shared owner, grant, capability or numerical limit change.
 Layer below: Read the shim, transport environment, physical test, composition closure/digest and native contract. Inherited 1.x comparison at JKHeadley/instar a8af8bff7ffd78dcdb2e032b216d22274141c44e independently rechecked against main cc11e45f92e2590dd1bbd3c3facb5b849532f0fc: searched src/, docs/specs/ and scoped history; read src/core/ProcessCeilingCheck.ts (4a40e3da5, origin 0c9a2af9a), src/core/hostSpawnSemaphore.ts (c667d0cb5, 09a3a2f7d), docs/specs/launchd-process-ceiling-floor.md and docs/specs/forkbomb-prevention-simple.md. Reuse effective runtime reporting, explicit unknown observations and per-UID scope. Mismatch: Darwin reporting and holder-set concurrency do not provide a portable kernel-limit setter; keep the existing 2.0 resource owner. No ONEX-LESSONS.md in either inspected main tree.
@@ -20,6 +20,8 @@ Hook bypass: none; core.hooksPath unset and the shared hooks directory contains 
 Convergence: none
 Prompt review: No prompt, model-output parser or model accept/escalate/refuse decision changes. No model-shape replay applies.
 Decision: PLE2-REPAIR-CONFORMANCE | Run the existing named native contract on Studio Node 24.14.1, verify the 275-file closure and runtime remain identical, then renew only its supported tuple certificate from the successful execution. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/portable-limit-exec-1105-p2-repair-PROGRESS.md
+
+Decision: PLE2-REPAIR-REOPEN | Use the existing review open command for the two inherited frozen browser subjects changed by this repair, retain their historical records in git and require fresh independent judgment rather than claiming the old digest covers new bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/portable-limit-exec-1105-p2-repair-PROGRESS.md
 
 ## Evidence
 
