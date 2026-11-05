@@ -27,6 +27,8 @@ Decision: AQ88-hub-fence | Separate prepared intents from replicated dispatch fe
 
 Decision: AQ88-model-contract | Preserve the original prompt/parser/bounds and per-field fallback; require operator proof for bind/open, retain the chosen brief, and pass uncertain judgments through. The host must enforce call reservation/deadlines; six genuine isolated capture replays are supplied separately from deterministic neighbors; production composition remains outstanding. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-hub-binding-r2-1105-PROGRESS.md
 
+Decision: AQ88-hub-publication | Merge the single owning Attention publication repair 06ec5baa/83356433, add only the new dark hub component fixture and regenerate the actual final source roster. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-hub-binding-r2-1105-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: Adapt the existing surfacer's routing to the existing journal and transport endpoint. One serialized consumer prevents concurrent duplicate hub creation. A replicated dispatch fence prevents duplicate effects after owner loss; retained prepared state distinguishes work that can still drain. No new provider, timer, store or execution owner. Physical deployment and unattended shipped-path completion are not claimed by the portable component tests.

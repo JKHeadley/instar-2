@@ -15,6 +15,8 @@ authority, store or outbound path.
 
 ## Capabilities
 
+- `preview-collaboration-hub`: Dark portable collaboration consumer retains one silent hub, parent binding and uncertain effects in the owner journal. Production transport/model/send composition and independent standby receipt intake remain open.
+
 - `preview-attention-queue`: The operator can track items and acknowledge them from the authenticated dashboard. State and pending acknowledgements survive journal replay and replica handoff; whole row 88 parity and live acceptance remain open.
 
 The journal runner's capability briefing is generated from these lines and the feature declarations beside the shipped sources; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
