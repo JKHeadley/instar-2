@@ -1,5 +1,7 @@
 import { expect, it } from 'vitest';
+// @ts-expect-error Shipped private-service transport is JavaScript.
 import { createApprovalFileTransport } from '../../scripts/approval-surface-transport.mjs';
+// @ts-expect-error The existing operator surface core is JavaScript.
 import { SURFACE_LIMITS } from '../../scripts/approval-surface-core.mjs';
 
 const config = { endpoint: 'https://private-service.invalid', agentId: 'fixture-role',
