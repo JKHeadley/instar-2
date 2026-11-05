@@ -1,4 +1,5 @@
-// The operator dashboard, READ-ONLY, served by the agent's own runner (Rules 79, 81; plan #502; tests/preview/README.md
+import { attentionPage, attentionCsrf, attentionReceipt } from './operator-attention.mjs';
+// The authority dashboard, READ-ONLY for approval, served by the agent's own runner (Rules 79, 81; plan #502; tests/preview/README.md
 // "The operator dashboard"). It renders the same views from the same module and the same snapshot as the approval page
 // (scripts/operator-dashboard.mjs), but it has no approval port behind it: it lists open requests with their existing
 // links (the GitHub review, or the chat) and says how to stop, and it approves, declines and stops nothing. So it changes
@@ -58,7 +59,7 @@ const digest = value => createHash('sha256').update(value).digest('hex');
  * `checkPin(pin)` resolves true only for the operator's PIN. A session is a random value held hashed in memory for 30
  * minutes (at most 64); a runner restart signs everyone out. Five failed sign-ins in five minutes pause sign-in, and PIN
  * checks still in flight count against the same five, so overlapping requests never reach the verifier more than five at once. */
-export function createReadOnlyDashboard({ state, checkPin, now = () => Date.now() }) {
+export function createReadOnlyDashboard({ state, checkPin, attention, now = () => Date.now() }) {
   check(typeof state === 'function' && typeof checkPin === 'function', 'read-only dashboard needs a state and a PIN check');
   const sessions = new Map(), failures = [];
   let pending = 0; // PIN checks in flight: each holds an admission slot until it settles (Rule 60: bounded concurrent work)
@@ -81,7 +82,7 @@ export function createReadOnlyDashboard({ state, checkPin, now = () => Date.now(
     sessions.set(digest(session), now() + DASHBOARD_BOUNDS.sessionMs);
     return { kind: 'ok', session };
   };
-  return Object.freeze({ state, signedIn, signIn });
+  return Object.freeze({ state, signedIn, signIn, attention });
 }
 
 const html = (status, body) => ({ status, headers: { ...HEADERS, 'content-type': 'text/html; charset=utf-8' }, body });
@@ -93,15 +94,32 @@ export function readOnlyView(dash, { path, cookie }) {
   const parts = String(path).split('?')[0].split('/').filter(Boolean);
   if (parts[0] !== 'dashboard' || parts.length > 3) return notFound();
   if (!dash.signedIn(cookie)) return html(401, renderPinSignIn(null));
+  if (parts.length === 2 && parts[1] === 'attention' && dash.attention)
+    return html(200, attentionPage(dash.attention.list(), attentionCsrf(sessionOf(cookie)), '', Number(new URL(String(path), 'http://dashboard.invalid').searchParams.get('offset') ?? 0)));
   const view = parts.length === 1 ? 'overview' : parts.slice(1).join('/');
   const known = view === 'overview' || DASHBOARD_VIEWS.some(item => item.path === view) || DETAIL_PATH.test(view);
-  return html(known ? 200 : 404, renderDashboard({ token: null, view, state: dash.state(), pending: [], readOnly: true }));
+  const rendered = renderDashboard({ token: null, view, state: dash.state(), pending: [], readOnly: true });
+  return html(known ? 200 : 404, dash.attention ? rendered.replace('<main', '<a href="/dashboard/attention">Attention</a><main') : rendered);
 }
 
-/** Every request: GET views, and the one POST, the PIN sign-in (a form body `pin=...`), which answers with a session
- * cookie scoped to the dashboard and a redirect to its front page. */
+/** GET views, PIN sign-in, and authenticated Attention tracking forms. Sign-in
+ * answers with a session cookie scoped to the dashboard and a front-page redirect. */
 export async function handleReadOnly(dash, { method, path, body, cookie }) {
   if (method === 'GET') return readOnlyView(dash, { path, cookie });
+  if (method === 'POST' && path === '/dashboard/attention' && dash.attention) {
+    if (!dash.signedIn(cookie)) return html(401, renderPinSignIn(null));
+    const form = new URLSearchParams(typeof body === 'string' && body.length <= READ_ONLY_LIMITS.bodyBytes ? body : '');
+    const csrf = attentionCsrf(sessionOf(cookie));
+    if (form.get('csrf') !== csrf) return html(403, 'The form expired. Reload Attention.');
+    const id = form.get('id'), title = form.get('title'), status = form.get('status'), revision = Number(form.get('revision'));
+    try {
+      const receipt = attentionReceipt(sessionOf(cookie), [id, title, status, revision]);
+      const result = id ? await dash.attention.acknowledge(id, status, revision, receipt) : await dash.attention.create(title, receipt);
+      return html(200, attentionPage(dash.attention.list(), csrf, result.outcome === 'pending'
+        ? 'Saved locally; confirmation is pending.' : result.outcome === 'saved' || result.outcome === 'delivered'
+          ? 'Saved.' : `Acknowledgement ${result.outcome}. Reload to check the item.`));
+    } catch { return html(409, attentionPage(dash.attention.list(), csrf, 'Could not save. The item, ownership or allowance may have changed. Reload and try again.')); }
+  }
   if (method !== 'POST' || String(path).split('?')[0] !== dashboardPath(null, 'sign-in')) return notFound();
   const form = new URLSearchParams(typeof body === 'string' && body.length <= READ_ONLY_LIMITS.bodyBytes ? body : '');
   const result = await dash.signIn(form.get('pin') ?? undefined);

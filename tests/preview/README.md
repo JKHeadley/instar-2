@@ -15,6 +15,8 @@ authority, store or outbound path.
 
 ## Capabilities
 
+- `preview-attention-queue`: The operator can track items and acknowledge them from the authenticated dashboard. State and pending acknowledgements survive journal replay and replica handoff; whole row 88 parity and live acceptance remain open.
+
 The journal runner's capability briefing is generated from these lines and the feature declarations beside the shipped sources; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
 - `fetch-inbound-media`: saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.
@@ -4537,3 +4539,31 @@ model id. Failed exchanges, local ceilings and stale evidence retain their exist
 meaning. Replaced doorway entries remain retired history and do not appear as active
 unavailable models in status, capability context or reply notices. Restarting an
 existing root applies this reconciliation without another store or probe.
+
+## Attention queue carryover (row 88; partial)
+
+The installed journal runner's PIN-authenticated dashboard has an Attention link.
+The operator can add a tracking item and save its status from a phone. This does
+not approve an action, widen a grant, or send a Telegram message. The queue keeps
+the 1.x status/priority aliases, exact item identities, refresh/reopen revisions,
+condition episodes, and durable acknowledgement intent. A stale acknowledgement
+cannot close a newer escalation. The page paginates retained items; terminal and
+exhausted acknowledgement evidence remains in the journal.
+
+`attention-queue.ts` adapts `TelegramAdapter`, `AttentionConditionStore`, and
+`RemoteAckStore`; `attention-surface.ts` binds them to the installed encrypted
+journal. Append failure refuses before success. The current writer, stop, expiry
+and activation authority are checked before mutation. The dashboard's verified
+PIN session is the operator's identity; only a hashed session/request receipt is
+recorded. On two machines, acknowledgement confirmation waits for the existing
+journal replica; a successor replays the intent and status. The existing journal
+compaction and archived evidence preserve every accepted event. Old readers
+refuse the non-additive Attention frame rather than silently lose its lifecycle.
+The page is a pull surface, so a burst cannot create topics or send notifications.
+
+Row 88 remains OPEN: the peer-receiving standby acknowledgement entry point,
+Threadline hub transport/binding and model inference, proactive producer routing,
+and full channel parity still require implementation and review. These are not
+claimed as replaced by the dashboard. The complete 1.x source/test baseline was
+retained for that adaptation. No hub-specific recorded model outputs were present
+in the supplied summary/review fixtures; those fixtures cannot prove hub parsers.

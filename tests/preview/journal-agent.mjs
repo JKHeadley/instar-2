@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createAttentionSurface } from './attention-surface.js';
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
 import { nextObligationAt } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
@@ -2135,7 +2136,14 @@ async function main() {
         approvalSurface?.publish(snapshot);
       } catch { /* the page reads its copy's age */ }
     };
-    const readOnlyServer = readOnly && serveReadOnly(createReadOnlyDashboard({ checkPin: readOnly.checkPin,
+    let attentionReady = false;
+    const attentionSurface = createAttentionSurface(journal, { now: wallNow, machine: ownerMachine,
+      admitted: () => {
+        if (!attentionReady || workerStop.value || existsSync(stopPath) || !ownerHeld()) return false;
+        try { requireAuthority(options, activation, activationPath, journal.view, wallNow()); return true; } catch { return false; }
+      },
+      replicated: async () => { if (shared === null) return true; await shared.sync(); return shared.peerCurrent() && ownerHeld(); } });
+    const readOnlyServer = readOnly && serveReadOnly(createReadOnlyDashboard({ checkPin: readOnly.checkPin, attention: attentionSurface,
       state: () => dashboardText === null ? { kind: 'missing' } : snapshotState(dashboardText, wallNow()) }),
     `${readOnly.listen.host}:${String(readOnly.listen.port)}`);
     if (readOnlyServer) {
@@ -3129,6 +3137,7 @@ async function main() {
       if (cutFile === null) return false;
       try { return Number(readFileSync(cutFile, 'utf8').trim()) > wallNow(); } catch { return false; }
     };
+    attentionReady = true;
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
@@ -3164,6 +3173,7 @@ async function main() {
       reportCap();
       runDueProof();
       checkDoorways();
+      await attentionSurface.drain();
       publishDashboard();
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       let pollLimit;
