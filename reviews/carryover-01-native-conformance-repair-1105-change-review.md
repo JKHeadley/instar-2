@@ -4,7 +4,7 @@ Subject base: 736cf8d043345420359e03ff4161078d659d5d2d
 Review state: open
 Reviewed content: none
 Outcome: Certify the existing native self-host composition from a completed macOS contract run and regenerate its register evidence. Repair the sole R105 finding without changing send behavior. Row 01 remains OPEN; this is not live delivery, a live producer, a new grant, or whole-feature parity acceptance.
-Affected rules: 26, 30, 32, 33, 34, 37, 49, 60, 61, 65, 69, 70, 74, 90, 101, 102, 103, 105, 111, 112, 113, 115, 116
+Affected rules: 26, 30, 32, 33, 34, 37, 49, 60, 61, 65, 69, 70, 74, 90, 101, 102, 103, 105, 109, 111, 112, 113, 115, 116
 Affected floors: secrets — no outbound or custody change; spend cap — existing caps unchanged; stop — native contract proves stop before provider dispatch; no duplicate sends — existing journal replay contract passes; durable intake — no intake or retention change.
 Operator questions: none
 Suggested tier: ordinary
@@ -15,11 +15,15 @@ Undo and recovery: Revert the declaration and regenerate the register with the e
 Multi-machine posture: Certification names the existing darwin composition and exact Node runtime; it does not certify another runtime or another host platform. The shared declaration and generated register are versioned together. No store, transport or ownership behavior changes.
 Layer below: Inspected compositionClosure/compositionDigest, the adapter's selfHostCompositionEvidence and admission, lintParityRegister, and native-harness-contract. The closure includes 275 executed files, built core and compiler, excluding the certifying declaration itself. The native contract builds, tests, installs and probes a real confined capability through the owner ports, and exercises stop, refused and timed-out provider outcomes. Its provider frames are captured fixtures, not a live provider run.
 Bug class: integration
-Bug evidence: reproducer=tests/preview/native-harness-contract.test.ts
+Bug evidence: reproducer=src/assembly/harness.declarations.json
 Hook bypass: none
 Convergence: none
 Prompt review: No prompt, model output parser, semantic decision or model-facing text changes. The predecessor report retains its seven recorded summary/review/reply shape replays and update IDs; this repair changes certification evidence only.
 Decision: C01-NATIVE-CERTIFY | Run the existing native macOS contract before updating its exact digest; preserve supported status and every resource floor, then replay register sources with the authorized desk scripts. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-01-send-contract-repair-1104-repair-PROGRESS.md
+
+## Record repairs
+
+The failing artifact is the stale declaration itself: `node scripts/check-architecture.mjs` against it reproduces R105, while the unchanged existing native contract supplies the behavior evidence. No test edit is needed to recertify existing behavior. The final change-review run also exposed an inherited frozen browser-combination record whose subject includes the regenerated register; explicitly reopen it without claiming a new independent verdict. Correct the inherited carryover decision report references to the already existing Studio PROGRESS copies, which contain every named decision. Historical decisions and red results remain unchanged.
 
 ## Evidence
 
