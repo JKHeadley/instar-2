@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Integrate exact main ef4a964232b7baf17d8fc4cf1b8a248a95b6d513 and reviewed send-contract repair eb6953507b58f52eb79cf0b27bfa8b1824649f74 onto the live browser-worker build. Preserve the live browser fixes and the repaired pull-only observation contract. Row 01 remains OPEN; no live producer, grant, delivery or whole-feature parity is claimed.
 Affected rules: 1, 4, 8, 26, 32, 33, 34, 36, 37, 42, 49, 52, 53, 55, 60, 61, 63, 65, 69, 70, 74, 83, 87, 88, 89, 90, 91, 101, 102, 105, 109, 111, 112, 113, 116, 119, 120
-Affected floors: Existing secret checks, shared spend caps, stop and ownership checks, durable intake, and intent/outcome/receipt uniqueness remain in place. No grant or production configuration is changed.
+Affected floors: Existing secret checks, shared spend caps, stop and ownership checks, durable intake, and no duplicate sends through intent/outcome/receipt uniqueness remain in place. No grant or production configuration is changed.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
@@ -27,6 +27,32 @@ Decision: train-171-C | No genuine product conflict required omission; both requ
 Decision: train-171-D | Run targeted merged tests, direct importers and required consumers in foreground bounded chunks with one worker. Record macOS/WSL-host limitations separately; never weaken confinement or process limits to obtain a pass. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-171-PROGRESS.md
 Decision: train-171-desk | Reuse the downloaded cint-L37 repin/build/rehash/replay chain; repin and rehash require zero changes. Refresh generated register evidence and preserve the 23459-byte context guard. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-171-PROGRESS.md
 Validation: Exact commands, outcomes, recorded-shape ids, host-dependent checks, pushed ancestry and clean-tree evidence are in the external train-171 report. No independent review, live delivery or whole-suite pass is asserted.
+
+Deferral: src/commitments/CheckInReminderReconciler.ts:126 | not-a-deferral=a log line naming rows the bounded pass leaves for the next pass, which the durable due list picks up
+Deferral: src/commitments/CommitmentTracker.ts:63 | not-a-deferral=the CMT-xxx id format in a comment
+Deferral: src/commitments/CommitmentTracker.ts:193 | not-a-deferral=a comment describing a counted follow-up field
+Deferral: src/commitments/CommitmentTracker.ts:542 | not-a-deferral=a comment describing the carried auto-expiry deferred window
+Deferral: src/commitments/CommitmentTracker.ts:2160 | not-a-deferral=the persistence state name 'deferred'
+Deferral: src/commitments/CommitmentTracker.ts:2161 | not-a-deferral=the persistence state name 'deferred'
+Deferral: src/commitments/CommitmentTracker.ts:2259 | not-a-deferral=a carried comment about a 1.x sweep; that sweep is not carried
+Deferral: src/commitments/CommitmentTracker.ts:2403 | not-a-deferral=the persistence state name 'deferred'
+Deferral: src/commitments/CommitmentTracker.ts:2410 | not-a-deferral=the persistence state name 'deferred'
+Deferral: src/commitments/LlmQueue.ts:198 | not-a-deferral=a comment on the dispatch gap of the queue
+Deferral: src/commitments/PromiseBeacon.ts:735 | not-a-deferral=a comment on the election verdict
+Deferral: src/commitments/PromiseBeacon.ts:926 | not-a-deferral=fixed status text when a line could not be fetched
+Deferral: src/commitments/PromiseBeacon.ts:1118 | not-a-deferral=fixed close-out text quoting the promise
+Deferral: tests/commitments/1x/CommitmentTracker-auto-expiry.test.ts:107 | not-a-deferral=fixture text
+Deferral: tests/commitments/1x/CommitmentTracker-auto-expiry.test.ts:244 | not-a-deferral=fixture text
+Deferral: tests/commitments/1x/CommitmentTracker.test.ts:73 | not-a-deferral=a test title naming the id format
+Deferral: tests/commitments/1x/check-in-reminder-reconciler.test.ts:271 | not-a-deferral=a test title for the bounded pass
+Deferral: tests/commitments/1x/check-in-reminder-reconciler.test.ts:282 | not-a-deferral=a test title for the bounded pass
+Prompt finding: 4106b49fff07 | protocol-literal | existing journal.ts text this change did not edit; the diff of that file from the subject base has no line containing it
+Prompt finding: 85544c20941f | protocol-literal | existing journal.ts text this change did not edit; the diff of that file from the subject base has no line containing it
+Prompt finding: e8708c7fea24 | protocol-literal | existing journal.ts text this change did not edit; the diff of that file from the subject base has no line containing it
+Prompt finding: 849db3a6296a | protocol-literal | existing journal.ts text this change did not edit; the diff of that file from the subject base has no line containing it
+
+Publication: Regenerated eight outputs at source 547acc3c37c45b71ffe9daede9060526b349b281, generation sha256:682713b7f85044f36bd8d663939b1742dea30a2e3c01008302f753c3f5cba3a0; 297 entries and 120 rules. This record covers the publication commit as well as both merges.
+Decision: train-171-review | Reopen the inherited frozen MCP review after the combined subject changed, preserve its original live evidence and Decisions, and retain the carried literal dispositions in both integration records. No new independent convergence is asserted. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-171-PROGRESS.md
 
 ## Closing block
 
