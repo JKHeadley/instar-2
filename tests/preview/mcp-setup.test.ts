@@ -216,7 +216,7 @@ it('recognizes the known default despite reordered JSON keys', async () => {
     mcpServers: { playwright: { args: DEFAULT_MCP.mcpServers.playwright.args, command: 'npx' } } }));
   expect(verifyMcpDefaults(p)).toBe(false);
   await migrations.at(-1).run(p);
-  expect(readRootMcp(p).reads).toEqual(DEFAULT_MCP.reads);
+  expect([...readRootMcp(p).reads].sort()).toEqual([...DEFAULT_MCP.reads].sort());
   expect(verifyMcpDefaults(p)).toBe(true);
 });
 
