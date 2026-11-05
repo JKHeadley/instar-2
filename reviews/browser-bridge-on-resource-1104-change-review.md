@@ -19,7 +19,7 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none
 Convergence: claimed
-Prompt review: no prompt or model dispatch change.
+Prompt review: The original browser repair changes no model wording. This record is reopened for the train-180 combined subject: the separately reviewed pre-send ordering runs existing judgment before dispatch; reviews/train-180-change-review.md carries its protocol findings and recorded-shape evidence.
 Skip: tests/preview/session-connectors.test.ts:60 | scope=the worker-account check requires a macOS harness host with passwordless sudo; cross-platform cases run elsewhere.
 Deferral: generated/register.json:1 | not-a-deferral=generated source hash was regenerated from the merged commit; the original branch's separate missing Part Two authority is unchanged and remains open.
 
@@ -31,3 +31,5 @@ Decision: BROWSER-MERGE-1104-2 | Reopen the copied resource-recovery review whos
 simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
 80/20: The two browser test files and register lifecycle test passed 31/31 on the combined branch. Full exact-head suite, independent combination review and a real signed-in multi-step group task remain required before release. No new browser service or credential custody path.
 VERDICT: author submission; this record asserts no independent verdict.
+
+Deferral: generated/conversion.json:1 | not-a-deferral=regenerated one-line output carries existing governing text; the combined train introduces no new deferral

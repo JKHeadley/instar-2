@@ -19,7 +19,7 @@ Bug class: live-path
 Bug evidence: reproducer=tests/preview/session-connectors.test.ts; live=/Users/Shared/instar-harness/profile/home/Library/Caches/claude-cli-nodejs/-private-tmp-its-7c0e567ee5f5/mcp-logs-owner-github/2026-11-05T00-00-27-432Z.jsonl
 Hook bypass: none
 Convergence: none
-Prompt review: no prompt or model dispatch change.
+Prompt review: The original browser repair changes no model wording. This record is reopened for the train-180 combined subject: the separately reviewed pre-send ordering runs existing judgment before dispatch; reviews/train-180-change-review.md carries its protocol findings and recorded-shape evidence.
 Skip: tests/preview/session-connectors.test.ts:60 | scope=the native worker-account check applies only to the macOS harness host with passwordless sudo; other hosts run the cross-platform connector cases.
 
 Decision: MCP-READ-1104-1 | Grant read-only ACL only on the generated MCP file at launch, rather than giving the worker access to the owner profile or shared temp directory. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
@@ -31,3 +31,6 @@ Decision: MCP-SCHEMA-1104-3 | Remove top-level oneOf from the client-advertised 
 simplestRobustRoute: Use the existing harness ACL helper on the one generated file before a continuing session launches.
 80/20: The worker can load the connector without changing owner profile custody. Real signed-in page reads still need copy proof before live release.
 VERDICT: author submission; this record asserts no independent verdict.
+
+Deferral: generated/conversion.json:1 | not-a-deferral=regenerated one-line output carries existing governing text; the combined train introduces no new deferral
+Deferral: generated/register.json:1 | not-a-deferral=regenerated one-line output carries existing governing text; the combined train introduces no new deferral
