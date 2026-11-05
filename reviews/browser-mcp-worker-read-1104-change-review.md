@@ -26,11 +26,11 @@ Decision: MCP-READ-1104-1 | Grant read-only ACL only on the generated MCP file a
 Decision: MCP-READ-1104-2 | Commit the source repair before regenerating source-pinned register outputs, then cover both commits in this record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 Decision: MCP-SCHEMA-1104-3 | Remove top-level oneOf from the client-advertised input schema because Claude skipped the only tool; retain the existing server-side input validation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 
+Deferral: generated/conversion.json:1 | not-a-deferral=regenerated one-line output carries existing governing text; the combined train introduces no new deferral
+Deferral: generated/register.json:1 | not-a-deferral=regenerated one-line output carries existing governing text; the combined train introduces no new deferral
+
 ## Closing block
 
 simplestRobustRoute: Use the existing harness ACL helper on the one generated file before a continuing session launches.
 80/20: The worker can load the connector without changing owner profile custody. Real signed-in page reads still need copy proof before live release.
 VERDICT: author submission; this record asserts no independent verdict.
-
-Deferral: generated/conversion.json:1 | not-a-deferral=regenerated one-line output carries existing governing text; the combined train introduces no new deferral
-Deferral: generated/register.json:1 | not-a-deferral=regenerated one-line output carries existing governing text; the combined train introduces no new deferral
