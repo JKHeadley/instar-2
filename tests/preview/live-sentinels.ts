@@ -116,6 +116,12 @@ export const WORK_SILENCE_MS = 60_000;
 export const WORK_OBSERVATION_FRESH_MS = 5_000;
 /** ActiveWorkSilenceSentinel A5 default, ported from 1.x: signal only, not a kill ceiling. */
 export const WORK_FROZEN_INDICATOR_MS = 90 * 60_000;
+/** 1.x server.ts MAX_SUBAGENT_WAIT_MS (the 60-minute stale-subagent cap) carried as an exact recorded fact instead of a
+ * constant: a registered child still open this long past its own recorded deadline cannot be running legitimately (its
+ * step's deadline would have closed it), so a wait on it is stale and the child needs reconciliation. The grace covers the
+ * owning step's ordinary close path (stop, release, close) after its deadline. */
+export const WORK_STALE_GRACE_MS = WORK_SILENCE_MS;
+const STALE_WORK_DETAIL = 'Open past its recorded deadline with no close; the owning step must reconcile it. No death or recovery inferred.';
 
 /** All registered work, independent of inbound turns. Unknown or known waits cannot establish a stall.
  * Per-subject activity resets only that subject's clock; a pane change is not a delivered result. */
@@ -123,7 +129,7 @@ export function workSilenceObservations(view: JournalView, now: number,
   activity: ReturnType<NonNullable<LiveSentinelPorts['workActivity']>> = []): WorkSilenceView {
   const previous = view.sentinels?.work ?? {}, next: WorkSilenceView = {};
   const observe = (id: string, openedAt: number, progress: string | null, wait: string | null,
-    unknown: boolean, actionNeeded = false, activity?: SessionActivityObservation['activity']) => {
+    unknown: boolean, actionNeeded: boolean | string = false, activity?: SessionActivityObservation['activity']) => {
     const prior = previous[id];
     // Unknown time is never accumulated as proof of silence on the next successful observation.
     const lastProgressAt = Math.min(now, !prior || prior.state === 'unknown' || prior.state === 'waiting'
@@ -132,7 +138,8 @@ export function workSilenceObservations(view: JournalView, now: number,
     const silenceMs = activity === 'active' ? WORK_FROZEN_INDICATOR_MS : WORK_SILENCE_MS;
     const state = actionNeeded ? 'action-needed' : unknown ? 'unknown' : wait !== null ? 'waiting'
       : now - lastProgressAt >= silenceMs ? 'stalled' : 'observing';
-    const detail = actionNeeded ? 'The last attempt has no confirmed result; existing bounded work must reconcile it.'
+    const detail = typeof actionNeeded === 'string' ? actionNeeded
+      : actionNeeded ? 'The last attempt has no confirmed result; existing bounded work must reconcile it.'
       : unknown ? 'Current worker activity is unavailable; no death or recovery inferred.'
         : wait ?? (state === 'stalled' ? activity === 'active'
           ? 'The same working frame persisted for 90 minutes; this could be a long task or a frozen indicator. No recovery is inferred.'
@@ -158,17 +165,19 @@ export function workSilenceObservations(view: JournalView, now: number,
     observe(requestIds.get(loop.id) ?? loop.id, loop.openedAt, work ? `${work.last}:${work.outcome ?? 'in-flight'}` : 'registered', wait, false, uncertain);
   }
   const edges = Object.values(view.activeSessionWork ?? {});
+  const stale = (edge: { budget: { deadline: number } }) => now >= edge.budget.deadline + WORK_STALE_GRACE_MS;
   for (const edge of edges) {
     const seen = activity.find(row => row.subject === edge.child);
     const fresh = seen !== undefined && seen.progress !== null && seen.at <= now && now - seen.at <= WORK_OBSERVATION_FRESH_MS;
-    const helpers = edges.some(child => child.parent === edge.id);
+    // The 1.x stale cap: a helper open past its recorded deadline no longer holds its parent in a wait.
+    const helpers = edges.some(child => child.parent === edge.id && !stale(child));
     // ActiveWorkSilenceSentinel A1/A2: corroborate through the adapter, keep helpers
     // and affirmative idle workers, and never interpret missing classification as a wedge.
     observe(edge.id, edge.openedAt, fresh ? seen.progress : null,
       helpers ? 'Waiting on a registered helper; parent silence does not establish failure.'
         : fresh && seen.activity === 'idle' && seen.wait === null ? 'The worker is at an idle prompt; the result still requires independent confirmation.'
           : fresh ? seen.wait : null,
-      !fresh || seen.activity === undefined || seen.activity === 'unknown', false, seen?.activity);
+      !fresh || seen.activity === undefined || seen.activity === 'unknown', stale(edge) ? STALE_WORK_DETAIL : false, seen?.activity);
   }
   return next;
 }
