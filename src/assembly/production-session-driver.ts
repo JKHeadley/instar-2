@@ -804,6 +804,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
                   && current.turnStartedAt === session.turnStartedAt && current.turnDeadline === session.turnDeadline
                   && current.closedAt === null && current.pendingInput?.operation === pending.operation,
                 'pending input worker context changed');
+                ensure(current.turnDeadline !== null && config.now() < current.turnDeadline, 'pending input deadline exhausted');
                 ensure(original?.state === 'accepted' && original.identity === current.identity
                   && original.incarnation === current.incarnation && original.intake === delivery.intake
                   && original.digest === delivery.digest && digestOf(original.text) === original.digest

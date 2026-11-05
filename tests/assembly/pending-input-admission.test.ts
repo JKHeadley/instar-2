@@ -52,3 +52,9 @@ it('keeps a lost post-key journal write uncertain under its original identity', 
   refused(f.submit()); expect(f.keys).toEqual(['Enter']); expect(f.history()[0]?.state).toBe('dispatching');
   expect(value(f.submit({ ...f.request, ordinal: 1 })).state).toBe('uncertain'); expect(f.keys).toEqual(['Enter']);
 });
+
+it('refuses a slow observation that crosses the original deadline', () => {
+  const f = admission();
+  f.ports.observe = () => { f.ports.now = () => 10_000; return 'fresh-frame'; };
+  refused(f.submit(), 'deadline exhausted during observation'); expect(f.keys).toEqual([]); expect(f.history()).toEqual([]);
+});

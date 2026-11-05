@@ -281,3 +281,11 @@ it.each(['identity', 'incarnation', 'intake', 'digest', 'payload', 'state'] as c
     // The original intake is bound on the pending record as well as the delivery.
     expect(value(f.observe()).phase).toBe('uncertain'); expect(f.recoveryKeys()).toEqual([]);
   });
+
+it('refuses an injected slow admission capture that crosses the original turn deadline', () => {
+  const f = fixture(); value(f.deliver()); f.pane(PENDING); f.at(1100); value(f.observe());
+  let reads = 0;
+  f.styled(() => { if (++reads === 2) f.at(61_000); return PENDING_REAL; });
+  f.at(1500); refused(f.observe(), 'deadline exhausted during observation');
+  expect(f.recoveryKeys()).toEqual([]); expect(f.journal.deliveries[0]?.submissions).toBeUndefined();
+});

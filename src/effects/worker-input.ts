@@ -56,6 +56,7 @@ export function submitAuthenticPendingInput(request: AuthenticPendingInput, port
     ensure(request.ordinal === history.length, 'pending input submission ordinal differs');
     const observation = ports.observe();
     ensure(observation !== null, 'authentic pending composer evidence unavailable; input preserved');
+    ensure(ports.now() < current.deadline, 'pending input deadline exhausted during observation');
     // Freeze the exact admission before passing it to persistence or the physical driver.
     const entry = freeze({ request: { ...request }, observation, at: ports.now(), state: 'dispatching' as const });
     ports.save(entry);
