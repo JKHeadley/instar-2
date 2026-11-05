@@ -2181,7 +2181,6 @@ async function main() {
       preparePacket: preparation.run,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
-      replyReviewTiming: conversationSession ? 'after-send' : 'before-send',
       toolRoute: id => conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id) ? true : preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
       // Scheduled obligations keep their existing route; continuing operator conversation is selected below.
       // The session route is taken only while its grant holds and the call allowance can hold the
@@ -3022,7 +3021,7 @@ async function main() {
       while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
         await delay(Math.min(100, until - clock.elapsed()));
     }
-        let summaryJob = null, stepJob = null, retroJob = null, replyReviewJob = null;
+        let summaryJob = null, stepJob = null, retroJob = null;
     const checkStepsLater = () => {
       if (!stepCheckEnabled || stepJob) return;
       stepJob = worker.checkSteps().catch(() => {}).finally(() => { stepJob = null; });
@@ -3035,9 +3034,10 @@ async function main() {
 
     const sourceState = options['agent-state-dir'] ? agentState(options['agent-state-dir']) : null;
     const summarizeLater = () => {
-      // Reviews advise after delivery and never occupy the ordinary send lane. The worker
-      // owns one serial pass and rebuilds pending work from durable intents after restart.
-      if (!replyReviewJob) replyReviewJob = worker.reviewReplies().catch(() => {}).finally(() => { replyReviewJob = null; });
+      // Every answer is reviewed before its intent inside the ordinary drain (register §11). A journal
+      // written by a build that reviewed after the send may still owe a projection for an interrupted
+      // review; that recovery makes no call, sends nothing and is idempotent.
+      try { worker.recoverAfterSendReviews(); } catch { /* retried after the next drain */ }
       // After the reply: the deterministic coherence check records its findings for the next
       // packet. It makes no call and cannot hold the reply already attempted;
       // its synchronous journal write can slightly delay the next poll.
@@ -3243,7 +3243,6 @@ async function main() {
     try {
       await lane.settle();
       if (lane.error() && !signalled) throw lane.error();
-      await replyReviewJob;
       await summaryJob;
       await stepJob;
       await retroJob;
