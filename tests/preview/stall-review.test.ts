@@ -70,7 +70,7 @@ it('runs the actual host consumer on recorded shapes with full quoted evidence a
   expect(prepared!.deadline).toBe(600100);
   expect(interpretStallReview(await ports.invoke(prepared!.prepared, prepared!.id, prepared!.deadline))).toBe('recover');
   expect(calls).toBe(1);
-  expect(JSON.parse(preparedContext)).toEqual({ originalPrompt: 'Full admitted prompt', evidence, terminal: 'Current pane bytes' });
+  expect(JSON.parse(preparedContext)).toEqual({ originalPrompt: 'Full admitted prompt', originalPrompts: ['Full admitted prompt'], evidence, terminal: 'Current pane bytes' });
   expect(prepareStallReview(evidence, { ...ports, writer: () => null })).toBeNull();
   expect(prepareStallReview(evidence, { ...ports, observation: () => undefined })).toBeNull();
   expect(calls).toBe(1);
@@ -80,4 +80,29 @@ it('runs the actual host consumer on recorded shapes with full quoted evidence a
     expect(interpretStallReview({ state: recorded.output === null ? 'uncertain' : 'complete',
       value: parsed?.ok ? parsed.value : recorded.output ?? undefined }), recorded.id).toBe('unknown');
   }
+});
+
+it('quotes every admitted batch member and refuses missing or substituted batch custody', () => {
+  const request = { operation: 'first', question: 'First task', context: 'First context', authority: 'existing' };
+  const second = { ...request, operation: 'second', question: 'Later correction' };
+  const evidence = { worker, operation: 'first', progress: sample.progress, silentSince: 1,
+    observedAt: 100, deadline: 1000000, request, requests: [request, second],
+    delivery: { ...worker, operation: 'first', text: 'Combined delivery', digest: 'sha256:original', resultPath: '/bounded-result', maxBytes: 4096 },
+    observation: { ...worker, at: 100, progress: sample.progress, waiting: false, activity: 'idle' as const } };
+  const ports = { turn: (operation: string) => ({ accepted: true, prompt: `complete:${operation}` }),
+    observation: () => ({ ...sample, terminal: 'Current pane bytes' }), now: () => 100,
+    protect: (text: string) => text, writer: () => ({ id: 'writer', kind: 'system', adapter: 'preview-runner' }),
+    prepare: (input: { context: string }) => input.context };
+  const result = prepareStallReview(evidence, ports);
+  expect(JSON.parse(result!.prepared).originalPrompts).toEqual(['complete:first', 'complete:second']);
+  expect(prepareStallReview(evidence, { ...ports, turn: operation => operation === 'first' ? ports.turn(operation) : undefined })).toBeNull();
+  expect(prepareStallReview({ ...evidence, requests: [second, request] }, ports)).toBeNull();
+  expect(prepareStallReview({ ...evidence, requests: [request, request] }, ports)).toBeNull();
+});
+
+it('passes recorded stale progress and protected status into the same owner supervision input', () => {
+  const stale = { state: 'stalled' as const, episode: 2, lastProgressAt: 10, indeterminateStreak: 4,
+    longIndeterminate: true, windowMs: 1800000 };
+  expect(stallSample({ ...sample, stale }, worker)).toMatchObject({ stale, progress: 'pane-hash:10' });
+  expect(stallSample({ ...sample, stale: { ...stale, state: 'protected' } }, worker)?.stale?.state).toBe('protected');
 });

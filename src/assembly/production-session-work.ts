@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
+import { canonical, consumeOutcome } from '../index.js';
+import type { ConversationSessionConfig, StallReviewEvidence } from './production-conversation-session.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import type { AssemblyDecodeContext } from './contracts.js';
 import type { NativeHarnessDriverPort } from './harness.js';
-import type { SessionStopPort } from './production-session-driver.js';
+import type { SessionStopPort, SessionObserveInput, SessionObserveResult } from './production-session-driver.js';
 import type { Result } from '../index.js';
 
 /**
@@ -24,6 +26,8 @@ export interface SessionWorkEdge {
   readonly charge?: 'per-call';
   readonly exitTest: string; readonly placement: string; readonly transport: string;
   readonly resultDestination: string; readonly openedAt: number;
+  /** Recovery-aware callers bind the immutable task bytes as well as its operation. */
+  readonly requestDigest?: string;
   /** Set on a child edge a delegated agent opens inside a step (a subagent): the edge whose reserved call liability it
    * draws on. Its model calls pass the same model-dispatch checkpoint against that reservation, so it reserves nothing new. */
   readonly drawsOn?: string;
@@ -132,8 +136,13 @@ export interface SessionWorkLease {
 export interface SessionWorkConfig {
   /** The session driver this port delegates through, built with `resolveIntake` below. */
   readonly createDriver: (resolveIntake: (intake: string, digest: string) => string) => NativeHarnessDriverPort
-    & SessionStopPort & Readonly<{ continuationReady?(identity: string): Result<boolean>; observeIdle?(identity: string): Result<string | null>; recoverContext?(identity: string, pending?: { operation: string; digest: string; deadline: number }): Result<string> }>;
+    & SessionStopPort & Readonly<{ continuationReady?(identity: string): Result<boolean>; observeAsync?(input: SessionObserveInput): Promise<SessionObserveResult>; observeIdle?(identity: string): Result<string | null>; recoverContext?(identity: string, pending?: { operation: string; digest: string; deadline: number }): Result<string> }>;
   readonly io: SessionWorkIO;
+  /** The same registered supervisor and Eight effect composition used by the
+   * continuing owner. Recovery records append to the existing session-work journal. */
+  readonly workRecovery?: NonNullable<ConversationSessionConfig['stallRecovery']> & Readonly<{
+    record(record: SessionWorkEffect): void; allowed(): boolean;
+  }>;
   /** The host's one resource owner. `null` from `admit` is a capacity refusal. */
   readonly resources: Readonly<{ admit(): Promise<SessionWorkLease | null> }>;
   readonly context: AssemblyDecodeContext;
@@ -316,6 +325,16 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
     const run = async (request: SessionWorkRequest): Promise<SessionWorkOutcome> => {
       ensure(safeName.test(request.operation), 'exact session work identity required');
       ensure(request.question.trim().length > 0 && request.authority.trim().length > 0, 'session work task and authority required');
+      if (config.workRecovery) {
+        const previous = collect(request.operation);
+        if (previous) {
+          const edges = (config.recoveryEdges?.() ?? []).filter((record): record is SessionWorkEdge => record.type === 'SessionWorkEdge'
+            && record.id === previous.edge && record.drawsOn === undefined);
+          ensure(edges.length === 1 && edges[0]!.requestDigest === digestOf(JSON.stringify(request))
+            && edges[0]!.authority === request.authority, 'recorded work request bytes or authority differ; no replay');
+          return previous;
+        }
+      }
       ensure(available(), 'session work unavailable: stopped, in flight, or at its step ceiling');
       inFlight = true;
       try {
@@ -335,10 +354,10 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
           authority: request.authority,
           budget: { steps: 1 as const, deadline, maxResultBytes: config.maxResultBytes, calls: config.maxCalls, tokens: null },
           exitTest: SESSION_WORK_EXIT_TEST, placement: config.placement, transport: config.transport,
-          resultDestination: resultPath, openedAt });
+          resultDestination: resultPath, openedAt, ...(config.workRecovery ? { requestDigest: digestOf(JSON.stringify(request)) } : {}) });
         config.append(edge);
         let child: string | null = null, launched = false, lease: SessionWorkLease | null = null;
-        let observedCalls: number | null = null;
+        let observedCalls: number | null = null, reviewCalls = 0, unresolvedIntervention = false;
         const settled = await (async (): Promise<Settled> => {
           try {
             if (config.stopped()) return settledAs('failed', 'stop authority active before the launch', 'no-child');
@@ -360,10 +379,13 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
               ensure(!config.stopped() && config.now() < deadline, 'session stopped or deadline during restoration');
               await config.io.wait(100);
             }
+            const initialAdmission = config.io.admissionState(claim);
+            const initialPreparations = initialAdmission?.toolPreparations;
             take(driver.deliver({ operation: request.operation, processIdentity: child, intake: request.operation,
               digest: digestOf(text), incarnation: config.incarnation }));
             // The previous poll's present result, or null; and whether the child's turn has closed.
             let seen: string | null = null, turnClosed: string | null = null, emptyAfterClose = 0;
+            let reviewedAt: number | null = null, reviewAttempts = 0, interventionAttempted = false;
             for (;;) {
               if (config.stopped()) return settledAs('uncertain', 'stop authority active while the step was open', child);
               if (config.now() >= deadline) return settledAs('uncertain', 'session work deadline exceeded', child);
@@ -378,7 +400,8 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                 admission.refusalReason === 'calls'
                   ? `a model call past the reserved allowance (${config.maxCalls}) was refused before dispatch`
                   : 'model call reservation unavailable; nothing dispatched', child);
-              const calls = config.io.modelCalls(openedAt);
+              const measured = config.io.modelCalls(openedAt);
+              const calls = measured === null ? null : measured + reviewCalls;
               observedCalls = calls;
               if (calls === null) return settledAs('uncertain', 'the child\'s model-call meter could not be read', child);
               if (calls > config.maxCalls)
@@ -391,11 +414,73 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                 return settledAs('failed', `the turn closed with no result at the destination (${turnClosed})`, child);
               seen = present;
               if (turnClosed === null) {
-                const observation = take(driver.observe({ operation: request.operation, processIdentity: child, resultAvailable: present !== null }));
+                const observationInput = { operation: request.operation, processIdentity: child, resultAvailable: present !== null };
+                let observation;
+                try { observation = take(driver.observeAsync ? await driver.observeAsync(observationInput) : driver.observe(observationInput)); }
+                catch { await config.io.wait(config.pollMs); continue; }
                 if (observation.phase === 'output-observed') turnClosed = observation.detail;
                 else if (observation.phase === 'exit-observed')
                   return settledAs('uncertain', `the child ended before a result (${observation.detail})`, observation.evidence);
-                else if (observation.phase === 'pause-observed')
+                const recovery = config.workRecovery;
+
+                if (recovery && present === null && !interventionAttempted && reviewAttempts < 3
+                  && (reviewedAt === null || config.now() - reviewedAt >= 180_000)) {
+                  const worker = { claim, incarnation: config.incarnation, launch: child };
+                  let sample = null;
+                  try { sample = recovery.observe(worker); } catch { /* UNKNOWN remains observation only. */ }
+                  const validSample = sample && sample.claim === claim && sample.incarnation === config.incarnation && sample.launch === child
+                    && Number.isSafeInteger(sample.at) && sample.at <= config.now() && config.now() - sample.at <= 5000
+                    && typeof sample.progress === 'string' && sample.progress.length > 0
+                    && ['active', 'idle', 'indeterminate'].includes(sample.activity) && !sample.waiting && sample.stale?.state !== 'protected' && sample.stale?.state !== 'unknown';
+                  const safe = () => { const current = config.io.admissionState(claim); return !config.stopped() && config.now() < deadline
+                    && recovery.allowed() && current !== null && !current.refused && current.openDelegations.length === 0
+                    && current.uncertainEffects === 0 && Number.isSafeInteger(initialPreparations) && current.toolPreparations === initialPreparations; };
+                  if (sample && validSample && safe() && calls < config.maxCalls && (observation.phase === 'pause-observed'
+                    || sample.stale?.state === 'stalled' && sample.stale.windowMs > 0 && sample.at - sample.stale.lastProgressAt >= sample.stale.windowMs)) {
+                    const evidence: StallReviewEvidence = { worker, operation: request.operation, request, requests: [request],
+                      delivery: { ...worker, operation: request.operation, text, digest: digestOf(text), resultPath, maxBytes: config.maxResultBytes },
+                      progress: sample.progress, silentSince: sample.stale?.lastProgressAt ?? sample.at,
+                      observedAt: sample.at, deadline, observation: sample };
+                    reviewedAt = config.now(); reviewAttempts++;
+                    try {
+                      recovery.reserve(claim); reviewCalls++;
+                      const decision = await recovery.review(evidence);
+                      // Refresh the physical observer after judgment; workActivity is a
+                      // cache and must not serve as action-time evidence by itself.
+                      const afterReview = take(driver.observeAsync ? await driver.observeAsync(observationInput) : driver.observe(observationInput));
+                      if (afterReview.phase === 'output-observed') turnClosed = afterReview.detail;
+                      if (afterReview.phase === 'exit-observed')
+                        return settledAs('uncertain', `the child ended during supervision (${afterReview.detail})`, afterReview.evidence);
+                      const fresh = recovery.observe(worker);
+                      if (typeof decision === 'object' && decision.kind === 'process-control' && recovery.intervention && safe()
+                        && (afterReview.phase === 'launched' || afterReview.phase === 'pause-observed')
+                        && fresh && fresh.launch === child && fresh.claim === claim && fresh.incarnation === config.incarnation
+                        && fresh.progress === sample.progress && fresh.activity === sample.activity && !fresh.waiting
+                        && fresh.stale?.state !== 'protected' && fresh.stale?.state !== 'unknown'
+                        && Number.isSafeInteger(fresh.at) && fresh.at >= sample.at && fresh.at <= config.now() && config.now() - fresh.at <= 5000
+                        && config.io.readResult(resultPath, config.maxResultBytes) === null) {
+                        const payload = decision.payload;
+                        ensure(payload.target.machine === recovery.intervention.machine && payload.run === recovery.intervention.run
+                          && payload.target.incarnation === config.incarnation && payload.signal === 'SIGINT'
+                          && payload.episode === `stall-triage:${request.operation}:${sample.at}`
+                          && payload.deadline <= deadline && payload.deadline > config.now(), 'work intervention differs from admitted review');
+                        const id = digestOf(JSON.stringify([edge.id, payload]));
+                        const cause = JSON.stringify({ payload, requestDigest: digestOf(text), edge: edge.id });
+                        recovery.record(sessionWorkEffect({ id, edge: edge.id, operation: payload.id,
+                          digest: take(canonical(payload)).hash, state: 'prepared', detail: 'supervised exact process intervention', cause, at: config.now() }));
+                        interventionAttempted = true; unresolvedIntervention = true;
+                        ensure(safe(), 'work authority or effects changed while preparing intervention');
+                        const settlement = take(await recovery.intervention.intervene(payload, evidence));
+                        ensure(settlement.digest === take(canonical(payload)).hash, 'work intervention settlement belongs to another payload');
+                        unresolvedIntervention = !settlement.delayedExecutionExcluded || consumeOutcome(settlement.outcome, {
+                          happened: () => false, 'did-not-happen': () => false, uncertain: () => true });
+                        if (!unresolvedIntervention) recovery.record(sessionWorkEffect({ id, edge: edge.id, operation: payload.id,
+                          digest: settlement.digest, state: 'observed', detail: settlement.id, at: config.now() }));
+                      }
+                    } catch { /* No heuristic action or replay after supervision/receipt failure. */ }
+                  }
+                }
+                if (observation.phase === 'pause-observed' && !recovery)
                   return settledAs('uncertain', `the child is stuck (${observation.detail})`, observation.evidence);
               }
               await config.io.wait(config.pollMs);
@@ -409,6 +494,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
         // Every path out: the child is stopped by its exact identity and its process tree released
         // before the close is written. A stop or release that cannot be confirmed is uncertain.
         const unconfirmed: string[] = [];
+        if (unresolvedIntervention) unconfirmed.push('process intervention requires independent observation; no automatic replay');
         if (launched) {
           try { take(driver.stop()); } catch { unconfirmed.push('the child session could not be confirmed stopped'); }
         }
@@ -433,7 +519,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
         }
         // The close records the calls the child made, read once more after it stopped (unknown stays unknown); the
         // step's disposition is judged on that read, so a result is complete only within the declared bound.
-        if (launched) { try { observedCalls = config.io.modelCalls(openedAt); } catch { observedCalls = null; } }
+        if (launched) { try { const measured = config.io.modelCalls(openedAt); observedCalls = measured === null ? null : measured + reviewCalls; } catch { observedCalls = null; } }
         if (launched && settled.state === 'complete') {
           if (observedCalls === null) unconfirmed.push('the child\'s model calls could not be read after it stopped');
           else if (observedCalls > config.maxCalls)

@@ -206,11 +206,12 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
   /** Highest owned usage seen: live evidence that the ceilings held. */
   let peak = { launches: 0, memoryBytes: 0, processes: 0 };
   let ports = { compare: plainCompare, priorityGate: null, reconcile: null, now: () => Date.now(), query: hostQuery,
-    monotonic: () => performance.now(), signal: (target, name) => process.kill(target, name), allocation: null };
+    monotonic: () => performance.now(), cpuTimes: () => cpus().map(cpu => cpu.times), signal: (target, name) => process.kill(target, name), allocation: null };
   let attached = null, inherited = { state: 'unobserved' }, usage = { level: 'normal', observation: 'idle',
     memoryBytes: 0, processes: 0, sampledAt: null };
   /** docs/20 §6: the observer's own cost under its own subject. Query children's CPU is not readable
    * from here (no child rusage in this runtime), so it is `unavailable`, never counted as zero. */
+  let previousHostCpu = null, hostCpu = null;
   let lastSample = null, observer = { subject: 'resource-owner-observer', ticks: 0, queries: 0, processesCreated: 0, bytesRead: 0,
     failures: 0, elapsedMs: 0, cpuMs: 0, lastTickMs: null, lastLagMs: null, maxLagMs: 0, childCpu: 'unavailable',
     // The census runs inside the launcher process: its memory is not separable from the launcher's.
@@ -260,8 +261,61 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     try { ports.signal(target, 'SIGKILL'); return 'sent'; }
     catch (error) { return error?.code === 'ESRCH' ? 'gone' : 'denied'; }
   };
+  // Signal-only host observation, sampled by the existing resource owner. At 90%
+  // measured CPU occupation, a slow socket is not distinguished from a busy host.
+  // This replaces loadavg/core > 1.5, whose runnable/I/O mixture cannot prove CPU load.
+  function hostObservation() {
+    const at = ports.now(), unknown = { state: 'unknown', at, freshForMs: 10_000,
+      subject: HOST_IDENTITY.machine, basis: 'host-cpu-time-delta', busyFraction: null, intervalMs: null };
+    let current;
+    try { current = ports.cpuTimes(); } catch { previousHostCpu = null; return hostCpu = unknown; }
+    if (!Array.isArray(current) || !current.length || current.some(times =>
+      !times || ['user', 'nice', 'sys', 'idle', 'irq'].some(key => !Number.isFinite(times[key]) || times[key] < 0))) {
+      previousHostCpu = null; return hostCpu = unknown;
+    }
+    const previous = previousHostCpu;
+    previousHostCpu = { at, times: current.map(times => ({ ...times })) };
+    if (!previous || previous.times.length !== current.length || at <= previous.at) return hostCpu = unknown;
+    let total = 0, idle = 0;
+    for (let index = 0; index < current.length; index++) for (const key of ['user', 'nice', 'sys', 'idle', 'irq']) {
+      const delta = current[index][key] - previous.times[index][key];
+      if (delta < 0) return hostCpu = unknown;
+      total += delta; if (key === 'idle') idle += delta;
+    }
+    if (total <= 0) return hostCpu = unknown;
+    const busyFraction = (total - idle) / total;
+    return hostCpu = { ...unknown, state: busyFraction >= .9 ? 'pressured' : 'available',
+      busyFraction, intervalMs: at - previous.at };
+  }
+  function retainedSessionExposure(identity) {
+    const match = typeof identity === 'string' && /^instar20-[a-f0-9]{24}:(\d+):\d+$/u.exec(identity);
+    if (!match) return false;
+    const owned = [...launches.values()].filter(lease => lease.running && lease.pid === Number(match[1]));
+    if (owned.length !== 1 || !attached?.ledgerPath || owned[0].allocation == null || owned[0].allocation.closed
+      || owned[0].recording === 'incomplete' || !owned[0].known.has(Number(match[1]))) return false;
+    try {
+      const row = readLedger()[owned[0].id];
+      return row?.pid === owned[0].pid && row.start === owned[0].known.get(row.pid)
+        && row.allocation === owned[0].allocation.set;
+    } catch { return false; }
+  }
+  function sessionProgress(identity) {
+    const unknown = { descendantCpuSeconds: null, mainProcessActive: null };
+    const match = typeof identity === 'string' && /^instar20-[a-f0-9]{24}:(\d+):\d+$/u.exec(identity);
+    if (!match || !lastSample || lastSample.census.state !== 'complete'
+      || ports.now() < lastSample.at || ports.now() - lastSample.at > Math.max(10_000, 3 * ceilings.sampleMs)) return unknown;
+    const pid = Number(match[1]), owned = [...launches.values()].filter(lease => lease.running && lease.pid === pid);
+    if (owned.length !== 1) return unknown;
+    const lease = owned[0], points = lastSample.points.filter(point => point.launch === lease.id);
+    const root = points.find(point => point.pid === pid);
+    if (!root || root.state !== 'observed' || root.startEvidence !== lease.known.get(pid)
+      || !points.length || points.some(point => point.state !== 'observed' || point.cumulativeCpuMs === null)) return unknown;
+    return { descendantCpuSeconds: points.reduce((sum, point) => sum + point.cumulativeCpuMs, 0) / 1000,
+      mainProcessActive: points.every(point => point.cpuTimeMs !== null)
+        ? points.some(point => point.cpuTimeMs > 0) : null };
+  }
   function snapshot() {
-    return { version: 1, at: ports.now(), identity: HOST_IDENTITY, ceilings, bounds: HOST_BOUNDS, inherited, usage: { ...usage, level: level() },
+    return { version: 1, at: ports.now(), identity: HOST_IDENTITY, hostCpu, ceilings, bounds: HOST_BOUNDS, inherited, usage: { ...usage, level: level() },
       active: [...launches.values()].map(l => ({ id: l.id, work: l.work, pid: l.pid ?? null, startedAt: l.startedAt,
         memoryBytes: l.memoryBytes, processes: l.processes, cpuMilliseconds: l.cpuMilliseconds, enforcement: l.enforcement })),
       waiting: waiters.map(w => w.work), pendingEvidence: pendingEvidence.size, allocation: ports.allocation ? { state: 'six', lastRefusal: lastAllocationRefusal } : { state: 'absent' }, counters, peak, observer, sample: lastSample, lastLaunch, orphans, outcomes };
@@ -870,7 +924,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       if (attached) throw Error('resource owner already attached');
       ports = { compare: options.compare ?? plainCompare, priorityGate: options.priorityGate ?? null,
         reconcile: options.reconcile ?? null, now: options.now ?? (() => Date.now()), query: options.query ?? hostQuery,
-        monotonic: options.monotonic ?? (() => performance.now()),
+        monotonic: options.monotonic ?? (() => performance.now()), cpuTimes: options.cpuTimes ?? (() => cpus().map(cpu => cpu.times)),
         signal: options.signal ?? ((target, name) => process.kill(target, name)), allocation: options.allocation ?? null };
       // A durable owner launches only through its Six allocation (SEAM-LEDGER row 36).
       if (options.ledgerPath && !options.allocation) throw Error('resource owner: a durable owner needs its Six resource allocation');
@@ -958,7 +1012,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       });
     },
     observeInherited,
-    snapshot,
+    snapshot, hostObservation, sessionProgress, retainedSessionExposure,
   });
 }
 

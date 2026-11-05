@@ -14,7 +14,9 @@ export function stallSample(sample: SessionActivityObservation | undefined,
   worker: { claim: string; incarnation: string; launch: string }): StallObservation | null {
   if (!sample || sample.subject !== worker.claim || sample.incarnation !== worker.incarnation
     || sample.launch !== worker.launch || !sample.progress) return null;
-  return { ...worker, at: sample.at, progress: sample.progress, waiting: sample.wait !== null,
+  return { ...worker, at: sample.at, progress: sample.stale ? `${sample.progress}:${sample.stale.lastProgressAt}` : sample.progress,
+    waiting: sample.wait !== null, ...(sample.stale ? { stale: sample.stale } : {}),
+    ...(sample.controlPlane ? { controlPlane: sample.controlPlane } : {}),
     activity: sample.activity === 'active' || sample.activity === 'idle' || sample.activity === 'indeterminate' ? sample.activity : 'unknown' };
 }
 
@@ -42,10 +44,14 @@ export function prepareStallReview(evidence: import('../../src/assembly/producti
     writer(occurrence: string): { id: string; kind: string; adapter: string } | null;
     prepare(input: { question: string; context: string; id: string; writer: { id: string; kind: string; adapter: string } }): string;
   }): { prepared: string; id: string; deadline: number } | null {
+  const requests = evidence.requests ?? [evidence.request];
+  const turns = requests.map(request => ports.turn(request.operation));
   const turn = ports.turn(evidence.operation), sample = ports.observation(evidence.worker.claim);
-  if (!turn?.accepted || !turn.prompt || !sample?.terminal || !stallSample(sample, evidence.worker)) return null;
+  if (requests[0]?.operation !== evidence.operation || new Set(requests.map(request => request.operation)).size !== requests.length
+    || turns.some(item => !item?.accepted || !item.prompt)
+    || !turn?.accepted || !turn.prompt || !sample?.terminal || !stallSample(sample, evidence.worker)) return null;
   const id = `stall-triage:${evidence.operation}:${evidence.observedAt}`;
-  const context = ports.protect(JSON.stringify({ originalPrompt: turn.prompt, evidence, terminal: sample.terminal }));
+  const context = ports.protect(JSON.stringify({ originalPrompt: turn.prompt, originalPrompts: turns.map(item => item!.prompt!), evidence, terminal: sample.terminal }));
   const writer = ports.writer(`${id}\n${context}`);
   if (!writer) return null;
   const prepared = ports.prepare({ question: stallReviewQuestion, context, id, writer });

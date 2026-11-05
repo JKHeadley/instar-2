@@ -141,7 +141,7 @@ import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
 import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
 import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
-import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
+import { createProductionSessionIO, createSessionControlPlaneObserver } from '../../scripts/production-session-io.mjs';
 import { stepQuestions } from './step-check.js';
 import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, retroAnswerBudget, standingGrantCandidates } from './retrospective.js';
 
@@ -2675,7 +2675,10 @@ async function main() {
         if (attachSessionVolume(root, layout ? { at: layout.mount } : {}) !== project) throw Error('preview: the session volume is not the working scope');
         if (identity) grantVolume(project, identity.user, identity.runner);
       };
-      const physicalFor = () => createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
+      const sessionControlPlane = createSessionControlPlaneObserver({ now: wallNow, resourceObservation: () => hostResources.hostObservation() });
+      const physicalFor = () => createProductionSessionIO({ controlPlaneObserver: sessionControlPlane, resourceObservation: () => hostResources.hostObservation(),
+        resourceProgress: identity => hostResources.sessionProgress(identity),
+          retainedExposure: identity => hostResources.retainedSessionExposure(identity), stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
         home: profile.home, configHome: profile.configDirectory, cwd: project,
         ...(conversationSession && layout ? { lifecycleDirectory: join(layout.admission, 'lifecycle') } : {}) });
       let physical = physicalFor();
@@ -2700,6 +2703,7 @@ async function main() {
           connectors: claim => sessionConnectors.get(claim)?.launch(),
           framework, executable: binding.entry().profile.executable, cwd: project, home: binding.entry().profile.home, configHome: binding.entry().profile.configDirectory,
           model: required(options, 'model'), context, io: { ...binding.physical(), transcriptExists: (...args) => (!handoff || handoff.resumeAllowed) && binding.physical().transcriptExists(...args) }, now: wallNow, stopped: binding.stopped, resolveIntake,
+          workKind: () => conversationSession ? 'conversation' : 'job',
           observeRecovery: observation => workActivity.set(observation.subject, observation),
           observeActivity: observation => {
             workActivity.set(observation.subject, observation);
@@ -2835,7 +2839,24 @@ async function main() {
         } },
         context, now: wallNow, stopped: conversationSession ? hostStopped : binding.stopped,
         ...(conversationSession ? { callAccounting: 'per-call' } : {}),
-        ...(!conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords() } : {}),
+        ...(!conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), workRecovery: {
+          observe: worker => stallSample(workActivity.get(worker.claim), worker),
+          allowed: () => !hostStopped() && binding.authorized() && journal.view.order.every(turn => !turn.intent || turn.sent !== undefined),
+          reserve: claim => gate.reserveSupervisor(claim),
+          record: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
+          review: async evidence => {
+            const request = prepareStallReview(evidence, {
+              turn: operation => operation === evidence.operation && journal.sessionWorkRecords().some(record =>
+                record.type === 'SessionWorkEdge' && record.child === evidence.worker.claim
+                  && record.owner === ownerMachine && record.budget.deadline === evidence.deadline)
+                ? { accepted: true, prompt: evidence.delivery.text } : undefined,
+              observation: claim => workActivity.get(claim), now: wallNow,
+              protect: text => redact(concealSecretMaterial(text, heldSecretValues())).text,
+              writer: occurrence => envelopeWriter(journal.systemWriter('stall-triage', occurrence, wallNow())), prepare: modelEnvelope,
+            });
+            return request ? interpretStallReview(await invokeSubscription(request.prepared, request.id, undefined, request.deadline)) : 'unknown';
+          },
+        } } : {}),
         append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
         parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
         transport: sessionAdapter.transport ?? 'tmux session on this machine', workingScope: project, resultDirectory: project,
@@ -2850,9 +2871,16 @@ async function main() {
       const topicConfigurations = new Map();
       const topicConfiguration = topic => {
         if (topicConfigurations.has(topic)) return topicConfigurations.get(topic);
-        const physicalEntry = entry => createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
+        const physicalEntries = new Map();
+        const physicalEntry = entry => {
+          if (physicalEntries.has(entry.index)) return physicalEntries.get(entry.index);
+          const physical = createProductionSessionIO({ controlPlaneObserver: sessionControlPlane, resourceObservation: () => hostResources.hostObservation(),
+          resourceProgress: identity => hostResources.sessionProgress(identity),
+          retainedExposure: identity => hostResources.retainedSessionExposure(identity), stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
           home: entry.profile.home, configHome: entry.profile.configDirectory, cwd: project,
           ...(layout ? { lifecycleDirectory: join(layout.admission, 'lifecycle') } : {}) });
+          physicalEntries.set(entry.index, physical); return physical;
+        };
         let handoff = null;
         const entry = () => handoff?.current() ?? loginConfiguration.entries[0];
         const runtime = () => loginRuntimes.get(entry().index);

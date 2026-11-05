@@ -484,3 +484,12 @@ pidfd before action-time start, parent, executable and ordered-argument checks a
 signals through the pinned handle. It has no numeric-PID kill fallback. Other
 platforms report unsupported pending the corresponding kernel/owned-child
 implementation; whole carryover row 02 therefore remains open.
+
+The existing conversation owner retains every admitted batch member during
+replacement and queued restoration. Unknown observer results keep the original
+input and worker custody. Bounded supervision can use an optional exact-process
+intervention port; durable intent precedes dispatch, and uncertain outcomes are
+observed without replay. The one-shot work owner exposes the same supervised
+port and shares its original call allowance. Its default deadline still precedes
+the inherited stale-job threshold; installed frozen-job recovery is not claimed.
+The production runner's current review parser does not install process intervention.

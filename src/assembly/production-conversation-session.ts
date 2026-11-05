@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import type { HarnessInputDelivery as ConversationDelivery, HarnessAdapterPort, HarnessWorkerHandle as ConversationWorker } from './contracts.js';
-import { canonical, type Result } from '../index.js';
+import type { ProcessControlPayload, EffectSettlement } from '../effects/index.js';
+import { canonical, consumeOutcome, consumeResult, type Result, type Refused } from '../index.js';
 import { sessionWorkPolicy, SESSION_WORK_LIMITS } from './production-session-work.js';
 import type { SessionWorkConfig, SessionWorkEdge, SessionWorkEdgeClose, SessionWorkCall, SessionWorkLease,
   SessionWorkOutcome, SessionWorkRequest } from './production-session-work.js';
@@ -42,6 +43,9 @@ export interface ConversationInput {
   readonly workerRecovery?: 'restoring' | 'continued';
   readonly stall?: StallEpisode | null;
   readonly stallReviews?: number;
+  /** Current step and prior immutable steps stay in the existing private custody. */
+  readonly processIntervention?: ProcessIntervention;
+  readonly processInterventionHistory?: readonly ProcessIntervention[];
   /** Written only after exact closure and the post-fence no-effects check. */
   readonly recoveryQueued?: Readonly<{ closedClaim: string; authority: string; deadline: number }> | null;
 }
@@ -52,6 +56,9 @@ export interface StallObservation {
   readonly claim: string; readonly incarnation: string; readonly launch: string;
   readonly at: number; readonly progress: string;
   readonly activity: 'active' | 'idle' | 'indeterminate' | 'unknown'; readonly waiting: boolean;
+  readonly controlPlane?: Readonly<{ state: 'healthy' | 'degraded' | 'unknown'; episode: number; ewmaMs: number | null;
+    consecutiveSlowCycles: number; ageMs: number; escalations: number }>;
+  readonly stale?: Readonly<{ state: 'progress' | 'stalled' | 'unknown' | 'protected'; lastProgressAt: number; windowMs: number }>;
 }
 export interface StallEpisode {
   readonly progress: string; readonly since: number; readonly lastAt: number;
@@ -63,17 +70,30 @@ export interface StallReviewEvidence {
   readonly worker: ConversationWorker; readonly operation: string;
   readonly progress: string; readonly silentSince: number;
   readonly observedAt: number; readonly deadline: number;
-  readonly request: SessionWorkRequest; readonly delivery: ConversationDelivery;
+  readonly request: SessionWorkRequest; readonly requests?: readonly SessionWorkRequest[]; readonly delivery: ConversationDelivery;
   readonly observation: StallObservation;
+  readonly previousInterventions?: readonly Pick<ProcessIntervention, 'payload' | 'phase' | 'settlement' | 'refusal'>[];
 }
+export interface ProcessIntervention {
+  readonly payload: ProcessControlPayload; readonly evidence: StallReviewEvidence;
+  readonly phase: 'prepared' | 'settled' | 'refused' | 'uncertain'; readonly at: number;
+  readonly observations: number; readonly nextObservationAt: number;
+  readonly refusal?: Refused; readonly settlement?: EffectSettlement;
+}
+const definitiveIntervention = (entry: ProcessIntervention | undefined): boolean => Boolean(entry?.settlement
+  && entry.settlement.digest === take(canonical(entry.payload)).hash
+  && entry.settlement.delayedExecutionExcluded && consumeOutcome(entry.settlement.outcome, {
+    happened: () => true, 'did-not-happen': () => true, uncertain: () => false,
+  }));
+export type StallReviewDecision = 'recover' | 'wait' | 'unknown' | Readonly<{ kind: 'process-control'; payload: ProcessControlPayload }>;
 export const STALL_RECOVERY_LIMITS = Object.freeze({ silenceMs: 30 * 60_000,
-  frozenActiveMs: 90 * 60_000, freshnessMs: 5_000, reviews: 3 });
+  frozenActiveMs: 90 * 60_000, freshnessMs: 5_000, reviews: 3, verificationMs: 10_000, termDelayMs: 15_000, killDelayMs: 10_000, observationAttempts: 3 });
 export function observeStall(previous: StallEpisode | null | undefined, sample: StallObservation | null,
   worker: ConversationWorker, now: number, waiting: boolean): StallEpisode | null {
   if (!sample || sample.claim !== worker.claim || sample.incarnation !== worker.incarnation
     || sample.launch !== worker.launch || !Number.isSafeInteger(sample.at) || sample.at > now
     || now - sample.at > STALL_RECOVERY_LIMITS.freshnessMs || !sample.progress
-    || sample.activity === 'unknown' || sample.waiting || waiting) return null;
+    || sample.activity === 'unknown' || sample.stale?.state === 'unknown' || sample.stale?.state === 'protected' || sample.waiting || waiting) return null;
   if (!previous || previous.progress !== sample.progress || previous.activity !== sample.activity || sample.at < previous.lastAt
     || sample.at - previous.lastAt > STALL_RECOVERY_LIMITS.freshnessMs)
     return { progress: sample.progress, since: sample.at, lastAt: sample.at, activity: sample.activity, phase: 'observing' };
@@ -124,7 +144,13 @@ export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'crea
   readonly stallRecovery?: Readonly<{
     observe(worker: ConversationWorker): StallObservation | null;
     reserve(claim: string): void;
-    review(evidence: StallReviewEvidence): Promise<'recover' | 'wait' | 'unknown'>;
+    review(evidence: StallReviewEvidence): Promise<StallReviewDecision>;
+    /** Installed Eight/Six/Ten composition, never raw signal authority. The decoded
+     * payload must bind the exact admitted review and current worker incarnation. */
+    intervention?: Readonly<{ run: string; machine: string;
+      intervene(payload: ProcessControlPayload, evidence: StallReviewEvidence): Promise<Result<EffectSettlement>>;
+      /** Observation/settlement only: never prepares, dispatches or recreates an effect. */
+      reconcile(payload: ProcessControlPayload, evidence: StallReviewEvidence): Promise<Result<EffectSettlement>> }>;
   }>;
   /** Host observation only: after a live adapter observation, or null when this input ends.
    * No extra model call and no authority is conferred by a status sample. */
@@ -315,9 +341,31 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       persist({ worker: null, claim: null, incarnation: null, authority: null });
     };
     const settle = (id: string, result: SessionWorkOutcome) => update(id, { state: 'settled', outcome: result });
+    const reconcileIntervention = async (id: string) => {
+      const entry = row(id).processIntervention, owner = config.stallRecovery?.intervention;
+      if (!entry || !owner || definitiveIntervention(entry) || entry.observations >= STALL_RECOVERY_LIMITS.observationAttempts
+        || config.now() < entry.nextObservationAt) return;
+      const current = { ...entry, observations: entry.observations + 1,
+        nextObservationAt: config.now() + STALL_RECOVERY_LIMITS.verificationMs };
+      const members = row(id).batch ?? [id];
+      const save = (processIntervention: ProcessIntervention) => persist({ inputs: state.inputs.map(input =>
+        members.includes(input.request.operation) ? { ...input, processIntervention } : input) });
+      save(current); // Persist the bounded observation attempt before the external query.
+      try {
+        consumeResult(await owner.reconcile(entry.payload, entry.evidence), {
+          Success: settlement => {
+            ensure(settlement.digest === take(canonical(entry.payload)).hash, 'intervention settlement belongs to another payload');
+            save({ ...current, phase: 'settled', settlement });
+          },
+          Refused: refusal => save({ ...current, phase: 'uncertain', refusal }),
+        });
+      } catch { save({ ...current, phase: 'uncertain' }); }
+    };
     const recover = async () => {
       if (recovered) return;
       await harvestHalt();
+      for (const input of state.inputs) if (input.processIntervention
+        && (!input.batch || input.batch[0] === input.request.operation)) await reconcileIntervention(input.request.operation);
       if (state.halt) {
         await retire();
         for (const input of state.inputs) if (input.state !== 'settled')
@@ -328,8 +376,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       // dispatch boundary are retained as uncertain; completed results and cursors survive.
       // Recover a closed batch from the adapter's durable result before retiring its worker.
       // This closes the result-to-custody crash window without another model turn.
-      for (const input of state.inputs) if (input.batch && input.batch.length > 1
-        && input.batch[0] === input.request.operation && input.state !== 'settled' && input.delivery && state.worker) {
+      for (const input of state.inputs) if ((input.batch && (input.batch.length > 1 || input.processIntervention) && input.batch[0] === input.request.operation
+        || !input.batch && input.processIntervention) && input.state !== 'settled' && input.delivery && state.worker) {
         // An absent gate is normal after restart. A correlated process edge and closed
         // child edges can establish completion; missing evidence retains uncertainty.
         let ready = false;
@@ -356,10 +404,11 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             ensure(reply.delivery === input.request.operation && ended.delivery === input.request.operation
               && digest(reply.text) === reply.digest && Buffer.byteLength(reply.text) <= config.maxResultBytes,
             'recovered batch identity or bytes differ');
-            const results = batchResults(input.batch, { state: 'complete', text: reply.text,
+            const members = input.batch ?? [input.request.operation];
+            const results = batchResults(members, { state: 'complete', text: reply.text,
               detail: 'recovered correlated batch reply', edge: state.edge!.id, child: state.worker.launch });
             persist({ inputs: state.inputs.map(item => {
-              const index = input.batch!.indexOf(item.request.operation);
+              const index = members.indexOf(item.request.operation);
               return index < 0 || item.state === 'settled' ? item : { ...item, state: 'settled', reply: reply.text,
                 cursor: observed.cursor, outcome: results[index]! };
             }) });
@@ -380,6 +429,14 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       ensure(request.authority === config.currentAuthority(), 'replacement grant changed during retirement');
       if (restore) {
         const input = row(restore.operation), queued = input.recoveryQueued;
+        const members = input.batch ?? [restore.operation];
+        ensure(members[0] === restore.operation && new Set(members).size === members.length
+          && members.every(id => { const member = row(id); return member && member.state !== 'settled'
+            && member.delivery?.digest === restore.digest && member.delivery.operation === restore.operation
+            && JSON.stringify(member.batch ?? [id]) === JSON.stringify(members)
+            && member.effectsAtDispatch === input.effectsAtDispatch; }), 'restoration batch custody differs');
+        const updateRestoration = (patch: Partial<ConversationInput>) => persist({ inputs: state.inputs.map(item =>
+          members.includes(item.request.operation) ? { ...item, ...patch } : item) });
         const fenced = formerClaim ? config.io.admissionState(formerClaim) : null;
         const alreadyClosed = !formerClaim && queued && queued.authority === request.authority
           && queued.deadline === restore.deadline && input.workerRecovery === 'restoring';
@@ -396,9 +453,11 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
               && digest(reply.text) === reply.digest && reply.text.trim().length > 0
               && Buffer.byteLength(reply.text) <= config.maxResultBytes, 'retired result identity or bytes differ');
             guard(); calls();
-            update(restore.operation, { state: 'settled', reply: reply.text, cursor: observed.cursor, recoveryQueued: null,
-              outcome: { state: 'complete', text: reply.text, detail: 'correlated reply recovered during worker retirement',
-                edge: state.edge!.id, child: formerWorker.launch } });
+            const results = batchResults(members, { state: 'complete', text: reply.text,
+              detail: 'correlated reply recovered during worker retirement', edge: state.edge!.id, child: formerWorker.launch });
+            persist({ inputs: state.inputs.map(item => { const index = members.indexOf(item.request.operation);
+              return index < 0 ? item : { ...item, state: 'settled', reply: reply.text, cursor: observed.cursor,
+                recoveryQueued: null, outcome: results[index]! }; }) });
             return true;
           }
         }
@@ -407,7 +466,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           && config.contextRecoveryAllowed?.() === true,
         'effects changed before worker closure; retained input requires reconciliation');
         ensure(config.now() < restore.deadline, 'queued recovery deadline exhausted');
-        if (!alreadyClosed) update(restore.operation, { recoveryQueued: {
+        if (!alreadyClosed) updateRestoration({ recoveryQueued: {
           closedClaim: formerClaim!, authority: request.authority, deadline: restore.deadline } });
       }
       const used = calls(); if (used >= config.maxCalls) halt('calls', config.maxCalls);
@@ -447,7 +506,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       // A crash after this boundary is unresolved dispatch, never queued replay.
       if (restore) {
         ensure(config.contextRecoveryAllowed?.() === true, 'outward effects changed during replacement admission');
-        update(restore.operation, { state: 'accepted' });
+        const members = row(restore.operation).batch ?? [restore.operation];
+        persist({ inputs: state.inputs.map(item => members.includes(item.request.operation) ? { ...item, state: 'accepted' } : item) });
       }
       const worker = await adapter.launch({ operation: claim, claim, artifact: config.artifact, incarnation, workingScope: config.workingScope, ...(restore ? { restore } : {}) });
       ensure(worker.claim === claim && worker.incarnation === incarnation && worker.launch, 'launch identity differs from admission');
@@ -459,6 +519,9 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       let ids = waiting;
       let inputFiles: Awaited<ReturnType<NonNullable<ConversationSessionConfig['prepareInputFiles']>>> | undefined;
       const id = waiting[0]!;
+      // A queued restoration keeps the exact previously admitted batch. New arrivals
+      // cannot join its immutable delivery or be settled by its correlated result.
+      if (row(id).recoveryQueued) ids = row(id).batch ?? [id];
       const updateBatch = (patch: Partial<ConversationInput>) => persist({ inputs: state.inputs.map(input =>
         ids.includes(input.request.operation) ? { ...input, ...patch } : input) });
       const settleBatch = (result: SessionWorkOutcome) => updateBatch({ state: 'settled', outcome: result });
@@ -469,8 +532,12 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         const request = { ...row(id).request, authority: config.currentAuthority() };
         let replaceNeeded = !state.worker || state.turns >= config.maxSteps || config.now() >= state.deadline || state.authority !== request.authority;
         if (state.worker && !replaceNeeded) {
-          const observed = await adapter.observe({ ...state.worker, delivery: null, cursor: 0, limit: 2 });
-          ensure(observed.complete, 'observation gap requires reconciliation');
+          let observed;
+          try { observed = await adapter.observe({ ...state.worker, delivery: null, cursor: 0, limit: 2 }); }
+          catch { return false; }
+          // A control-plane failure is not worker death. Keep this input queued
+          // and leave the current worker in place for the next ordinary tick.
+          if (!observed.complete) return false;
           for (const event of observed.observations)
             if (event.kind === 'exit' && event.safetyDeadline !== undefined) halt('deadline', event.safetyDeadline);
           replaceNeeded = observed.observations.some(event => event.kind === 'exit');
@@ -547,47 +614,98 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           if (admission?.refusalReason === 'calls') halt('calls', config.maxCalls);
           ensure(!admission?.refused, 'model call reservation unavailable; no ceiling established');
           ensure(admission !== null, 'conversation allowance refused or unreadable');
-          let batch = await adapter.observe({ ...state.worker!, delivery, cursor: row(id).cursor, limit: 16 });
-          ensure(batch.complete && batch.cursor >= row(id).cursor, 'observation gap requires reconciliation');
+          let batch;
+          try { batch = await adapter.observe({ ...state.worker!, delivery, cursor: row(id).cursor, limit: 16 }); }
+          catch { updateBatch({ stall: null }); await config.io.wait(config.pollMs); continue; }
+          if (!batch.complete || batch.cursor < row(id).cursor) { updateBatch({ stall: null }); await config.io.wait(config.pollMs); continue; }
+          await reconcileIntervention(id);
+          guard();
           let nextStall = row(id).stall;
           // Only the existing owner may turn a silence signal into a bounded
           // intervention. Completed output always reaches the normal consumer first.
-          if (config.stallRecovery && batch.observations.length === 0 && ids.length === 1
-            && !row(id).workerRecovery && !row(id).contextRecovery) {
+          if (config.stallRecovery && batch.observations.length === 0
+            && !row(id).workerRecovery && !row(id).contextRecovery
+            && (!row(id).processIntervention || definitiveIntervention(row(id).processIntervention))) {
             let sample: StallObservation | null = null;
             try { sample = config.stallRecovery.observe(state.worker!); } catch { /* Unknown resets evidence. */ }
             const episode = observeStall(row(id).stall, sample, state.worker!, config.now(), admission.openDelegations.length > 0);
             nextStall = episode;
             const threshold = sample?.activity === 'active' ? STALL_RECOVERY_LIMITS.frozenActiveMs : STALL_RECOVERY_LIMITS.silenceMs;
+            const staleSignal = sample?.stale?.state === 'stalled' && Number.isSafeInteger(sample.stale.lastProgressAt)
+              && sample.stale.windowMs > 0 && sample.at - sample.stale.lastProgressAt >= sample.stale.windowMs;
             const replaySafe = () => {
               const current = config.io.admissionState(state.claim!);
               return current !== null && !current.refused && current.uncertainEffects === 0
                 && Number.isSafeInteger(row(id).effectsAtDispatch) && current.toolPreparations === row(id).effectsAtDispatch
                 && current.openDelegations.length === 0 && config.contextRecoveryAllowed?.() === true;
             };
+            const priorIntervention = row(id).processIntervention;
+            const followupDue = definitiveIntervention(priorIntervention) && episode !== null
+              && episode.lastAt - priorIntervention!.at >= (priorIntervention!.payload.signal === 'SIGINT'
+                ? STALL_RECOVERY_LIMITS.termDelayMs : STALL_RECOVERY_LIMITS.killDelayMs);
             if (episode && (episode.phase === 'observing' || episode.phase === 'reviewed'
-              && episode.lastAt - (episode.reviewedAt ?? episode.lastAt) >= STALL_RECOVERY_LIMITS.silenceMs)
-              && episode.lastAt - episode.since >= threshold
+              && (followupDue || episode.lastAt - (episode.reviewedAt ?? episode.lastAt) >= STALL_RECOVERY_LIMITS.silenceMs))
+              && (episode.lastAt - episode.since >= threshold || staleSignal)
               && (row(id).stallReviews ?? 0) < STALL_RECOVERY_LIMITS.reviews && replaySafe() && calls() < config.maxCalls) {
               const worker = state.worker!;
               // Attempt and charge precede the model call. A crash cannot silently retry either.
               updateBatch({ stall: { ...episode, phase: 'reviewed', reviewedAt: config.now() }, stallReviews: (row(id).stallReviews ?? 0) + 1 });
-              let decision: 'recover' | 'wait' | 'unknown' = 'unknown';
+              let decision: StallReviewDecision = 'unknown';
+              const evidence: StallReviewEvidence = { worker, operation: id, progress: episode.progress,
+                silentSince: episode.since, observedAt: episode.lastAt, deadline: state.deadline,
+                request: row(id).request, requests: ids.map(operation => row(operation).request), delivery, observation: sample!,
+                previousInterventions: [...row(id).processInterventionHistory ?? [], ...(priorIntervention ? [priorIntervention] : [])]
+                  .map(({ payload, phase, settlement, refusal }) => ({ payload, phase, ...(settlement ? { settlement } : {}), ...(refusal ? { refusal } : {}) })) };
               try {
                 config.stallRecovery.reserve(worker.claim);
-                decision = await config.stallRecovery.review({ worker, operation: id, progress: episode.progress,
-                  silentSince: episode.since, observedAt: episode.lastAt, deadline: state.deadline,
-                  request: row(id).request, delivery, observation: sample! });
+                decision = await config.stallRecovery.review(evidence);
               } catch { /* Failed supervision never falls back to heuristic recovery. */ }
               nextStall = row(id).stall;
               guard();
               // Result/progress and safety may have changed while judgment was running.
-              batch = await adapter.observe({ ...worker, delivery, cursor: row(id).cursor, limit: 16 });
-              ensure(batch.complete && batch.cursor >= row(id).cursor, 'post-review observation gap requires reconciliation');
+              try { batch = await adapter.observe({ ...worker, delivery, cursor: row(id).cursor, limit: 16 }); }
+              catch { updateBatch({ stall: null }); await config.io.wait(config.pollMs); continue; }
+              if (!batch.complete || batch.cursor < row(id).cursor) { updateBatch({ stall: null }); await config.io.wait(config.pollMs); continue; }
               let fresh: StallObservation | null = null;
               try { fresh = config.stallRecovery.observe(worker); } catch { /* Held. */ }
               const confirmed = observeStall(null, fresh, worker, config.now(), false);
-              if (decision === 'recover' && batch.observations.length === 0 && confirmed
+              if (typeof decision === 'object' && decision.kind === 'process-control' && config.stallRecovery.intervention
+                && (!row(id).processIntervention || definitiveIntervention(row(id).processIntervention)) && batch.observations.length === 0 && confirmed
+                && confirmed.progress === episode.progress && confirmed.activity === episode.activity
+                && replaySafe() && calls() < config.maxCalls && config.now() < state.deadline) {
+                const payload = decision.payload, intervention = config.stallRecovery.intervention;
+                const previous = row(id).processIntervention;
+                const history = [...row(id).processInterventionHistory ?? [], ...(previous ? [previous] : [])];
+                const expectedSignal = (['SIGINT', 'SIGTERM', 'SIGKILL'] as const)[history.length];
+                ensure(payload.type === 'ProcessControlPayload' && payload.purpose === 'process-control'
+                  && payload.run === intervention.run && payload.target.machine === intervention.machine
+                  && payload.target.incarnation === worker.incarnation
+                  && payload.episode === `stall-triage:${id}:${episode.lastAt}`
+                  && payload.deadline <= state.deadline && payload.deadline > config.now()
+                  && payload.signal === expectedSignal
+                  && (!previous || JSON.stringify(previous.payload.target) === JSON.stringify(payload.target)
+                    && previous.payload.id !== payload.id && previous.payload.step !== payload.step),
+                'process intervention differs from the admitted review, worker or lifetime');
+                // Custody records the exact proposal before Eight prepares and consumes its
+                // one-use claim. Neither an exception nor a host restart may resend it.
+                const prepared: ProcessIntervention = { payload, evidence, phase: 'prepared', at: config.now(),
+                  observations: 0, nextObservationAt: config.now() + STALL_RECOVERY_LIMITS.verificationMs };
+                updateBatch({ processIntervention: prepared, processInterventionHistory: history });
+                try {
+                  consumeResult(await intervention.intervene(payload, evidence), {
+                    Success: settlement => {
+                      ensure(settlement.digest === take(canonical(payload)).hash, 'intervention settlement belongs to another payload');
+                      updateBatch({ processIntervention: { ...prepared, phase: 'settled', settlement } });
+                    },
+                    Refused: refusal => updateBatch({ processIntervention: { ...prepared, phase: 'refused', refusal } }),
+                  });
+                } catch { updateBatch({ processIntervention: { ...prepared, phase: 'uncertain' } }); }
+                guard();
+                // Occurrence/quiescence settlement is not the requested work's result.
+                // The existing correlated reply consumer remains the only completion path.
+                continue;
+              }
+              if (decision === 'recover' && !row(id).processIntervention && batch.observations.length === 0 && confirmed
                 && confirmed.progress === episode.progress && confirmed.activity === episode.activity && confirmed.lastAt >= episode.lastAt
                 && replaySafe() && calls() < config.maxCalls && config.now() < state.deadline) {
                 updateBatch({ stall: { ...confirmed, phase: 'restoring' }, workerRecovery: 'restoring' });
@@ -607,8 +725,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             if (exit.safetyDeadline !== undefined) halt('deadline', exit.safetyDeadline);
             guard();
             ensure(config.now() < state.deadline, 'lost worker deadline exhausted; input retained');
-            ensure(!row(id).workerRecovery && !row(id).contextRecovery && ids.length === 1,
-              'lost worker recovery already attempted or batched input requires reconciliation');
+            ensure(!row(id).workerRecovery && !row(id).contextRecovery && !row(id).processIntervention,
+              'lost worker recovery already attempted');
             const recoveryAdmission = config.io.admissionState(state.claim!);
             ensure(recoveryAdmission !== null && !recoveryAdmission.refused, 'lost worker admission unavailable; input retained');
             ensure(config.contextRecoveryAllowed?.() === true, 'lost worker has unknown outward sends; no automatic replay');
@@ -633,7 +751,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             guard();
             const recoveryAdmission = config.io.admissionState(state.claim!);
             ensure(recoveryAdmission !== null && !recoveryAdmission.refused, 'context recovery admission unavailable');
-            ensure(!row(id).contextRecovery && !row(id).workerRecovery && ids.length === 1, 'context recovery already attempted or batched input requires reconciliation');
+            ensure(!row(id).contextRecovery && !row(id).workerRecovery && !row(id).processIntervention, 'context recovery already attempted');
             ensure(config.contextRecoveryAllowed?.() === true && recoveryAdmission.uncertainEffects === 0
               && Number.isSafeInteger(row(id).effectsAtDispatch) && recoveryAdmission.toolPreparations === row(id).effectsAtDispatch
               && recoveryAdmission.openDelegations.length === 0 && calls() < config.maxCalls,
@@ -698,7 +816,9 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         }
         while (!closing && !config.stopped() && !state.halt) {
           const next = state.inputs.find(input => input.state === 'queued');
-          if (!next || config.now() < next.retryAt || !await work(config.batchWaiting ? state.inputs.filter(input => input.state === 'queued' && config.now() >= input.retryAt).map(input => input.request.operation) : [next.request.operation])) break;
+          if (!next || config.now() < next.retryAt || !await work(next.recoveryQueued ? next.batch ?? [next.request.operation]
+            : config.batchWaiting ? state.inputs.filter(input => input.state === 'queued' && !input.recoveryQueued
+              && config.now() >= input.retryAt).map(input => input.request.operation) : [next.request.operation])) break;
         }
       })().finally(() => { draining = null; });
       return draining;
@@ -748,6 +868,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       let used: number | null = null;
       try { used = calls(); } catch { problems.push('final call accounting unknown or outside reservation'); }
       if (state.inputs.some(input => input.state !== 'settled' || input.outcome?.state !== 'complete')) problems.push('pending or uncertain inputs retained');
+      if (state.inputs.some(input => input.processIntervention && !definitiveIntervention(input.processIntervention)))
+        problems.push('unsettled process intervention retained for observation');
       const result: SessionWorkEdgeClose = freeze({ type: 'SessionWorkEdgeClose', schemaVersion: 1, id: `${processEdge}:host-close:${state.epoch}`, edge: processEdge,
         child: null, state: problems.length ? 'uncertain' : 'complete', detail: problems.join('; ') || 'conversation closed',
         evidence: state.edge.id, resultBytes: null, closedAt: config.now(), calls: used, reserved: config.maxCalls });
@@ -764,6 +886,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         if (!config.authorized()) return;
       }
       await drain();
+      for (const input of state.inputs) if (input.processIntervention
+        && (!input.batch || input.batch[0] === input.request.operation)) await reconcileIntervention(input.request.operation);
       if (!draining && state.worker && (config.now() >= state.deadline || state.turns >= config.maxSteps)) await retire();
     };
     // The existing owner tick drives this state; no separate timer, store or reaper.
@@ -780,7 +904,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       // deliveries establish whether the current worker finished its work.
       const current = state.inputs.filter(input => input.delivery?.claim === state.claim
         && input.delivery.incarnation === state.incarnation);
-      if (!current.length || current.some(input => input.outcome?.state !== 'complete')) return null;
+      if (!current.length || current.some(input => input.outcome?.state !== 'complete'
+        || input.processIntervention && !definitiveIntervention(input.processIntervention))) return null;
       const admission = config.io.admissionState(state.claim);
       // A ready prompt cannot settle an effect with no known outcome.
       // Rules 26/68: keep that work even if its model turn already ended.

@@ -17,14 +17,14 @@ import { createSessionConversationAdapter } from '../../src/assembly/conversatio
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value, refused } from '../facts/fixtures.js';
 import { buildLiteralSendArgs, chunkLiteralForTmux, classifyPaneIdle, classifyBlockingMenu, classifyPaneReadiness, classifyStuckSignature,
-  createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
+  advanceSessionStaleObservation, createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
 import type { ProductionSessionConfig, SessionIO, SessionJournal } from '../../src/assembly/production-session-driver.js';
 
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const fixtureRoots: string[] = [];
 afterEach(() => { for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Partial<Pick<ProductionSessionConfig,
-  'confinement' | 'toolAdmission' | 'modelGate' | 'turnDeadlineMs' | 'launchVia' | 'requireTurnHook' | 'observeActivity' | 'observeRecovery' | 'scratchDir'>> = {}) {
+  'confinement' | 'toolAdmission' | 'modelGate' | 'turnDeadlineMs' | 'launchVia' | 'requireTurnHook' | 'observeActivity' | 'observeRecovery' | 'scratchDir' | 'workKind'>> = {}) {
   const f = assemblyRuntimeFixture(); let now = 1000, stopped = false, pane = '❯ ', sends = 0;
   const root = mkdtempSync(join(tmpdir(), 'instar-session-test-')); fixtureRoots.push(root);
   const homes = { a: join(root, 'login-a'), b: join(root, 'login-b') };
@@ -1570,3 +1570,101 @@ it.each(['complete', 'missing-result', 'missing-receipt', 'expired-receipt'] as 
     expect(observed.phase).toBe(mode === 'complete' ? 'output-observed' : 'exit-observed');
     if (mode === 'complete') expect(observed.evidence).toMatch(/^turn-closed:/u);
   });
+
+
+it('carries stale-session job and conversation windows through the actual activity consumer and retained journal', () => {
+  const observed: import('../../src/assembly/production-session-driver.js').SessionActivityObservation[] = [];
+  const f = fixture('claude-code', { turnDeadlineMs: 14_400_000, requireTurnHook: true,
+    workKind: () => 'job', observeActivity: row => observed.push(row) });
+  const launched = f.launch(); f.deliver(launched);
+  f.changePane('Working on the request');
+  value(f.driver.observe({ operation: 'op', processIdentity: launched }));
+  f.time(1_801_000);
+  value(f.driver.observe({ operation: 'op', processIdentity: launched }));
+  expect(observed.at(-1)?.stale).toMatchObject({ state: 'stalled', episode: 1, windowMs: 1_800_000 });
+  expect(f.journal.sessions[0]?.staleObservation?.episode).toBe(1);
+  // Reconstructing the driver retains the episode; a repeated read is not a new episode or intervention.
+  const restarted = createProductionSessionDriver(f.config);
+  value(restarted.observe({ operation: 'op', processIdentity: launched }));
+  expect(observed.at(-1)?.stale?.episode).toBe(1);
+  expect(f.calls.filter(args => args[0] === 'kill-session')).toHaveLength(0);
+});
+
+it('stale observation preserves tuned progress floors, protection, unknown and long-indeterminate cadence', () => {
+  const empty = { transcriptSize: 1000, transcriptTail: 'first', descendantCpuSeconds: 0, mainProcessActive: false };
+  const input = { at: 0, kind: 'job' as const, protected: false, liveness: 'alive' as const, snapshot: empty, prompt: 'active' };
+  const baseline = advanceSessionStaleObservation(undefined, input);
+  const heartbeat = advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000,
+    snapshot: { ...empty, transcriptSize: 1001, transcriptTail: 'heartbeat' } });
+  expect(heartbeat.state).toBe('stalled');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000,
+    snapshot: { ...empty, transcriptSize: 1512, transcriptTail: 'meaningful' } }).state).toBe('progress');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000,
+    snapshot: { ...empty, transcriptSize: 1512, transcriptTail: 'first' } }).state).toBe('stalled');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000,
+    snapshot: { ...empty, descendantCpuSeconds: 1 } }).state).toBe('stalled');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000,
+    snapshot: { ...empty, descendantCpuSeconds: 1.1 } }).state).toBe('progress');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000, prompt: 'idle' }).state).toBe('progress');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000, protected: true }).state).toBe('protected');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000, kind: 'conversation' }).state).toBe('progress');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 10_800_000, kind: 'conversation' }).state).toBe('stalled');
+  let unknown = advanceSessionStaleObservation(undefined, { ...input, liveness: 'indeterminate' });
+  for (let count = 1; count < 15; count++) unknown = advanceSessionStaleObservation(unknown,
+    { ...input, at: count * 120_000, liveness: 'indeterminate' });
+  expect(unknown).toMatchObject({ state: 'unknown', longIndeterminate: true, indeterminateStreak: 15 });
+  expect(advanceSessionStaleObservation(unknown, { ...input, at: unknown.sampledAt, liveness: 'indeterminate' }).indeterminateStreak).toBe(15);
+  expect(advanceSessionStaleObservation(unknown, { ...input, at: unknown.sampledAt + 1 }).longIndeterminate).toBe(false);
+});
+
+
+it('async observations preserve per-worker indeterminate accounting, pause it globally and require fresh identity before effects', async () => {
+  const f = fixture('claude-code', { turnDeadlineMs: 14_400_000, requireTurnHook: true });
+  const identity = f.launch(); value(f.deliver(identity));
+  let reachable = true;
+  f.config.io.observeSession = async () => ({ state: 'indeterminate', identity, pane: null, at: f.config.now(), reachable });
+  for (let sample = 0; sample < 15; sample++) {
+    f.time(1000 + sample * 120_000);
+    expect(value(await f.driver.observeAsync({ operation: 'op', processIdentity: identity }))).toMatchObject({ phase: 'uncertain', observationAvailable: false });
+  }
+  expect(f.journal.sessions[0]?.staleObservation).toMatchObject({ longIndeterminate: true, indeterminateStreak: 15 });
+  reachable = false; f.time(2_000_000);
+  expect(value(await f.driver.observeAsync({ operation: 'op', processIdentity: identity }))).toMatchObject({ phase: 'uncertain', observationAvailable: false });
+  expect(f.journal.sessions[0]?.staleObservation?.indeterminateStreak).toBe(15);
+  f.config.io.observeSession = async () => ({ state: 'alive', identity, pane: 'working', at: f.config.now(), reachable: true });
+  f.changeStamp('999:2000'); f.time(14_500_000);
+  expect((await f.driver.observeAsync({ operation: 'op', processIdentity: identity })).kind).toBe('Refused');
+  expect(f.calls.some(args => args[0] === 'kill-session')).toBe(false);
+});
+
+it.each([false, true])('long-indeterminate capacity classification requires retained independent exposure (%s)', retained => {
+  const f = fixture(); const identity = f.launch();
+  f.config.io.save({ ...f.journal, sessions: f.journal.sessions.map(session => ({ ...session,
+    staleObservation: { ...advanceSessionStaleObservation(undefined, { at: 1000, kind: 'job', protected: false,
+      liveness: 'indeterminate', prompt: null, snapshot: { transcriptSize: null, transcriptTail: null,
+        descendantCpuSeconds: null, mainProcessActive: null } }), longIndeterminate: true, indeterminateStreak: 15 } })) });
+  f.config.io.retainedExposure = observed => observed === identity && retained;
+  const second = f.driver.launch({ operation: 'different-work', claim: 'different-claim', artifact: 'sha256:test',
+    incarnation: 'new-incarnation', workingScope: '/work', handles: [] });
+  expect(second.kind).toBe(retained ? 'Success' : 'Refused');
+  expect(f.journal.sessions.find(session => session.identity === identity)).toBeDefined();
+  expect(f.calls.some(args => args[0] === 'kill-session')).toBe(false);
+});
+
+
+it('accumulates subfloor CPU and transcript progress across fast polls without rewarding a slow heartbeat', () => {
+  const input = { at: 0, kind: 'job' as const, protected: false, liveness: 'alive' as const, prompt: 'active',
+    snapshot: { transcriptSize: 1000, transcriptTail: 'initial', descendantCpuSeconds: 0, mainProcessActive: false } };
+  let cpu = advanceSessionStaleObservation(undefined, input), transcript = cpu, heartbeat = cpu;
+  for (let poll = 1; poll <= 1801; poll++) {
+    cpu = advanceSessionStaleObservation(cpu, { ...input, at: poll * 1000,
+      snapshot: { ...input.snapshot, descendantCpuSeconds: poll * .5 } });
+    transcript = advanceSessionStaleObservation(transcript, { ...input, at: poll * 1000,
+      snapshot: { ...input.snapshot, transcriptSize: 1000 + poll * 100, transcriptTail: `tail-${poll}` } });
+    heartbeat = advanceSessionStaleObservation(heartbeat, { ...input, at: poll * 1000,
+      snapshot: { ...input.snapshot, transcriptSize: 1000 + Math.floor(poll / 120), transcriptTail: `heartbeat-${Math.floor(poll / 120)}` } });
+  }
+  expect(cpu.state).toBe('progress'); expect(cpu.lastProgressAt).toBeGreaterThan(1_790_000);
+  expect(transcript.state).toBe('progress'); expect(transcript.lastProgressAt).toBeGreaterThan(1_790_000);
+  expect(heartbeat).toMatchObject({ state: 'stalled', lastProgressAt: 0, episode: 1 });
+});

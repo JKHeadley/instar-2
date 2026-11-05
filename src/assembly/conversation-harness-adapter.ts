@@ -42,8 +42,11 @@ export function createSessionConversationAdapter(config: Readonly<{
       const text = input.delivery ? config.io.readResult(input.delivery.resultPath, input.delivery.maxBytes) : null;
       ensure(text === null || input.delivery != null && Buffer.byteLength(text) <= input.delivery.maxBytes,
         'conversation result exceeds byte bound');
-      const observed = take(driver.observe({ operation: input.delivery?.operation ?? input.claim, processIdentity: input.launch,
-        resultAvailable: Boolean(text?.trim()) }));
+      const observationInput = { operation: input.delivery?.operation ?? input.claim, processIdentity: input.launch, resultAvailable: Boolean(text?.trim()) };
+      const observed = take(driver.observeAsync ? await driver.observeAsync(observationInput) : driver.observe(observationInput));
+      // A complete bounded read can honestly contain no worker events. Unknown
+      // liveness is retained by the driver; it is never a pause, exit or turn end.
+      if (observed.observationAvailable === false) return { observations: [], cursor: input.cursor, complete: true };
       let events: ConversationObservation[] = [];
       if (observed.phase === 'exit-observed') events = [{ kind: 'exit', evidence: observed.evidence,
         ...(observed.safetyDeadline === undefined ? {} : { safetyDeadline: observed.safetyDeadline }) }];

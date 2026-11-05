@@ -283,6 +283,15 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
         throw Error('admission gate: claim, framework, allowance and edge required');
       claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), ownerReads: new Set(), toolPreparations: 0 });
     },
+    /** A host supervisor spends from this same pre-reserved worker allowance. */
+    reserveSupervisor(claim) {
+      const state = claims.get(claim);
+      if (!state || state.closed || stopped() || state.refused || state.calls >= state.allowance)
+        throw Error('admission gate: supervisor allowance unavailable');
+      try { state.reserveCall?.(state.calls + 1); }
+      catch { state.refused = true; state.refusalReason = 'reservation-unavailable'; throw Error('admission gate: supervisor reservation unavailable'); }
+      state.calls += 1;
+    },
     /** Closes a claim: no further call or admission passes. Returns its final state. */
     close(claim) { const state = claims.get(claim); if (state) state.closed = true; return this.state(claim); },
     /** Calls admitted, whether one was refused at the ceiling, and the child edges still open; null for an unknown claim. */

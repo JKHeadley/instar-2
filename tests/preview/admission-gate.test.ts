@@ -160,3 +160,33 @@ it('routes a new wake to the installed checkpoint, which still refuses absent au
   expect(admitToolCall(call, config, 51, {})).toMatchObject({ decision: 'deny', reason: expect.stringContaining('call cap') });
   expect(w.received).toEqual([]);
 });
+
+it('supervision consumes the same worker allowance before the remaining provider call', async () => {
+  const w = await world(); const reserved: number[] = [];
+  w.gate.open('claim-supervised', { framework: 'claude-code', allowance: 2, edge: w.edge,
+    reserveCall: (ordinal: number) => reserved.push(ordinal) });
+  w.gate.reserveSupervisor('claim-supervised');
+  expect(w.gate.state('claim-supervised')).toMatchObject({ calls: 1 });
+  expect(w.received).toEqual([]);
+  const url = `${w.gate.base('claim-supervised')}/v1/messages`;
+  expect((await w.send(url)).status).toBe(200);
+  expect((await w.send(url)).status).toBe(400);
+  expect(w.received).toHaveLength(1); expect(reserved).toEqual([1, 2]);
+  expect(() => w.gate.reserveSupervisor('claim-supervised')).toThrow(/unavailable/);
+  expect(() => w.gate.reserveSupervisor('absent')).toThrow(/unavailable/);
+});
+
+it('stop, closed claims and failed durable reservation never admit a supervisor call', async () => {
+  let stopped = false;
+  const w = await world({ stopped: () => stopped });
+  w.gate.open('claim-supervised', { framework: 'claude-code', allowance: 2, edge: w.edge });
+  stopped = true; expect(() => w.gate.reserveSupervisor('claim-supervised')).toThrow(/unavailable/);
+  expect(w.gate.state('claim-supervised').calls).toBe(0);
+  stopped = false; w.gate.close('claim-supervised');
+  expect(() => w.gate.reserveSupervisor('claim-supervised')).toThrow(/unavailable/);
+  w.gate.open('claim-failed', { framework: 'claude-code', allowance: 2, edge: w.edge,
+    reserveCall: () => { throw Error('disk unavailable'); } });
+  expect(() => w.gate.reserveSupervisor('claim-failed')).toThrow(/reservation unavailable/);
+  expect(w.gate.state('claim-failed')).toMatchObject({ calls: 0, refused: true, refusalReason: 'reservation-unavailable' });
+  expect(w.received).toEqual([]);
+});
