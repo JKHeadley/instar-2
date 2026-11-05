@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:429f4d7c60c91cfdbecbbc0078e1c137112df87fddd7bf5c1c62f1b315364f3e",
-  "commit": "06ec5baa1a93afa726a15f2e82673fc9c37162d6",
+  "generation": "sha256:1c4610b3aa312a7f67e6a6c19f6ef597c694d462b1db43bc98e17555a0d645ad",
+  "commit": "59af314380000294ef2bfce02aaea758bc8bd5a5",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -34,6 +34,14 @@
         "availability": "not-loaded",
         "userFacing": true,
         "text": "The operator can track items and acknowledge them from the authenticated dashboard. State and pending acknowledgements survive journal replay and replica handoff; whole row 88 parity and live acceptance remain open."
+      },
+      {
+        "id": "preview-collaboration-hub",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "Dark portable collaboration consumer retains one silent hub, parent binding and uncertain effects in the owner journal. Production transport/model/send composition and independent standby receipt intake remain open."
       },
       {
         "id": "preview-conversation",
@@ -174,6 +182,14 @@
         "text": "The operator can track items and acknowledge them from the authenticated dashboard. State and pending acknowledgements survive journal replay and replica handoff; whole row 88 parity and live acceptance remain open."
       },
       {
+        "id": "preview-collaboration-hub",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "Dark portable collaboration consumer retains one silent hub, parent binding and uncertain effects in the owner journal. Production transport/model/send composition and independent standby receipt intake remain open."
+      },
+      {
         "id": "preview-conversation",
         "status": "dark",
         "module": "tests/preview",
@@ -310,6 +326,14 @@
         "availability": "not-loaded",
         "userFacing": true,
         "text": "The operator can track items and acknowledge them from the authenticated dashboard. State and pending acknowledgements survive journal replay and replica handoff; whole row 88 parity and live acceptance remain open."
+      },
+      {
+        "id": "preview-collaboration-hub",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "Dark portable collaboration consumer retains one silent hub, parent binding and uncertain effects in the owner journal. Production transport/model/send composition and independent standby receipt intake remain open."
       },
       {
         "id": "preview-conversation",
@@ -450,6 +474,14 @@
         "text": "The operator can track items and acknowledge them from the authenticated dashboard. State and pending acknowledgements survive journal replay and replica handoff; whole row 88 parity and live acceptance remain open."
       },
       {
+        "id": "preview-collaboration-hub",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "Dark portable collaboration consumer retains one silent hub, parent binding and uncertain effects in the owner journal. Production transport/model/send composition and independent standby receipt intake remain open."
+      },
+      {
         "id": "preview-conversation",
         "status": "dark",
         "module": "tests/preview",
@@ -586,6 +618,14 @@
         "availability": "switched-off",
         "userFacing": true,
         "text": "The operator can track items and acknowledge them from the authenticated dashboard. State and pending acknowledgements survive journal replay and replica handoff; whole row 88 parity and live acceptance remain open."
+      },
+      {
+        "id": "preview-collaboration-hub",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "Dark portable collaboration consumer retains one silent hub, parent binding and uncertain effects in the owner journal. Production transport/model/send composition and independent standby receipt intake remain open."
       },
       {
         "id": "preview-conversation",

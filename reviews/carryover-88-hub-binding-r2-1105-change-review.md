@@ -29,6 +29,12 @@ Decision: AQ88-model-contract | Preserve the original prompt/parser/bounds and p
 
 Decision: AQ88-hub-publication | Merge the single owning Attention publication repair 06ec5baa/83356433, add only the new dark hub component fixture and regenerate the actual final source roster. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-hub-binding-r2-1105-PROGRESS.md
 
+Prompt finding: 4106b49fff07 | protocol-literal | Existing session capability boundary describes observed tool availability, not an expected fixture answer. This change only adds a journal frame and does not alter that prompt.
+Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory wording is conditional on the actual memory projection; the fixture quotes that governed-state branch. No prompt edit here.
+Prompt finding: 85544c20941f | protocol-literal | Existing retained-input acknowledgement names actual custody, not a target answer supplied by this hub change.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label grounding instruction is general and names uncertainty; it does not inject a test answer.
+Skip: tests/preview/hub-recorded.test.ts:43 | scope=Private actual-provider recordings are supplied with INSTAR_HUB_CAPTURE_ROOT; absent evidence visibly skips, and never counts as recorded proof. This unit explicitly ran all six cases with hash-verified private bytes.
+
 ## Closing block
 
 simplestRobustRoute: Adapt the existing surfacer's routing to the existing journal and transport endpoint. One serialized consumer prevents concurrent duplicate hub creation. A replicated dispatch fence prevents duplicate effects after owner loss; retained prepared state distinguishes work that can still drain. No new provider, timer, store or execution owner. Physical deployment and unattended shipped-path completion are not claimed by the portable component tests.
