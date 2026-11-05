@@ -66,10 +66,12 @@ function records() {
   };
 }
 
+/** An explicit `undefined` override removes a dep or restores a config default (the drainer skips undefined). */
+type Overrides<T> = { [K in keyof T]?: T[K] | undefined };
 function harness(over?: {
   queueCfg?: Partial<import('../../src/assembly/revival-queue.js').ResumeQueueConfig>;
-  drainerCfg?: Partial<import('../../src/assembly/revival-drainer.js').ResumeQueueDrainerConfig>;
-  deps?: Partial<ResumeQueueDrainerDeps>;
+  drainerCfg?: Overrides<import('../../src/assembly/revival-drainer.js').ResumeQueueDrainerConfig>;
+  deps?: Overrides<ResumeQueueDrainerDeps>;
   stores?: ReturnType<typeof records>;
   clock?: { now: number };
 }): Harness {
@@ -116,12 +118,12 @@ function harness(over?: {
     brakes: stores.brakes,
     now: () => clock.now,
     ...over?.deps,
-  };
+  } as ResumeQueueDrainerDeps;
   const drainer = new ResumeQueueDrainer(deps, {
     requiredCalmTicks: 3,
     attemptBackoffMs: 1000,
     ...over?.drainerCfg,
-  });
+  } as Partial<import('../../src/assembly/revival-drainer.js').ResumeQueueDrainerConfig>);
   return {
     queue,
     drainer,
@@ -200,7 +202,7 @@ describe('ResumeQueueDrainer — calm gates (R2.4)', () => {
       [{ sessionCountOk: () => false }, 'session-cap'],
       [{ migrationInFlight: () => true }, 'migration-in-flight'],
     ] as const) {
-      const h = harness({ deps: dep as Partial<ResumeQueueDrainerDeps> });
+      const h = harness({ deps: dep as Overrides<ResumeQueueDrainerDeps> });
       h.queue.considerEnqueue(candidate());
       await warmCalm(h);
       expect((await h.drainer.tick()).blocked).toBe(expected);

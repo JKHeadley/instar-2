@@ -22,7 +22,10 @@ import { value } from '../facts/fixtures.js';
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 
 /** A lost worker: the first delivery observes an exact exit; capacity, pressure and the clock are levers. */
-function lostWorker(options: Partial<ConversationSessionConfig> = {}) {
+type Options = Omit<Partial<ConversationSessionConfig>, 'pressure'> & { pressure?: ConversationSessionConfig['pressure'] | undefined };
+function lostWorker(options: Options = {}) {
+  // `pressure: undefined` means a host without a gauge; absent means the fixture's own gauge.
+  const { pressure: gauge, ...rest } = options;
   const f = assemblyRuntimeFixture();
   let clock = 1000, stopped = false, state: ConversationState | null = null, answer = '{"answer":"hello"}';
   let active: ConversationDelivery | null = null, capacity = true, pressure: 'normal' | 'moderate' | 'critical' = 'normal';
@@ -59,8 +62,9 @@ function lostWorker(options: Partial<ConversationSessionConfig> = {}) {
     context: f.c, now: () => clock, stopped: () => stopped, append: row => { if (row.type !== 'SessionWorkCall') edges.push(row); },
     parent: 'run-1', owner: 'machine-1', placement: 'local', transport: 'fake', workingScope: '/scope', resultDirectory: '/scope/results',
     artifact: 'artifact', incarnation: 'incarnation', deadlineMs: 14_400_000, pollMs: 100, maxCalls: 100, maxSteps: 64, maxResultBytes: 65536,
-    pressure: () => pressure, notice: (kind, detail) => notices.push({ kind, detail }), audit: event => audits.push(event),
-    ...options,
+    ...('pressure' in options ? (gauge ? { pressure: gauge } : {}) : { pressure: () => pressure }),
+    notice: (kind, detail) => notices.push({ kind, detail }), audit: event => audits.push(event),
+    ...rest,
   };
   const port = value(createConversationSessionPort(config));
   const request = (operation: string) => ({ operation, question: 'What do you remember?', context: '{"memory":"tea"}', authority: 'existing-role' });
@@ -75,7 +79,7 @@ function lostWorker(options: Partial<ConversationSessionConfig> = {}) {
 }
 
 /** Lose the worker mid-turn; capacity returns immediately, so only the drainer's gates hold the revival. */
-async function queuedRevival(options: Partial<ConversationSessionConfig> = {}) {
+async function queuedRevival(options: Options = {}) {
   const f = lostWorker(options); f.lose();
   const request = f.request('lost');
   expect(await f.port.run(request)).toMatchObject({ state: 'queued' });

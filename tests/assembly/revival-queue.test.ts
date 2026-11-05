@@ -49,10 +49,11 @@ export function memoryStore(initial: RevivalQueueState | null = null): RevivalQu
   };
 }
 
+type MemoryStore = ReturnType<typeof memoryStore>;
 function makeQueue(over?: {
   cfg?: Partial<import('../../src/assembly/revival-queue.js').ResumeQueueConfig>;
   now?: () => number;
-  store?: RevivalQueueStore;
+  store?: MemoryStore;
 }) {
   const audits: Array<Record<string, unknown>> = [];
   const aggregated: Array<{ kind: string; detail: string }> = [];
@@ -91,7 +92,7 @@ describe('classifyEligibility (R2.2)', () => {
   });
 
   it('rejects no-topic-no-job (no resume path) and non-opted-in jobs; admits opted-in jobs', () => {
-    expect(classifyEligibility(candidate({ topicId: null, jobSlug: undefined }), cfg).why).toBe('no-resume-path');
+    expect(classifyEligibility(candidate({ topicId: null }), cfg).why).toBe('no-resume-path');
     expect(classifyEligibility(candidate({ topicId: null, jobSlug: 'nightly' }), cfg).why).toBe('job-not-opted-in');
     expect(
       classifyEligibility(candidate({ topicId: null, jobSlug: 'nightly', jobResumeOptIn: true }), cfg).eligible,
@@ -469,7 +470,7 @@ describe('ResumeQueue — durability + boot reconciliation (R2.3/R2.4)', () => {
     const { q } = makeQueue({ store: corrupt });
     expect(() => q.start()).toThrow(/unrecognized; preserved/);
     expect(q.considerEnqueue(candidate()).why).toBe('queue-off');
-    const unreadable: RevivalQueueStore = { load: () => { throw new Error('store unreadable'); }, save: () => {} };
+    const unreadable = memoryStore(); unreadable.load = () => { throw new Error('store unreadable'); };
     expect(() => makeQueue({ store: unreadable }).q.start()).toThrow(/store unreadable/);
   });
 
