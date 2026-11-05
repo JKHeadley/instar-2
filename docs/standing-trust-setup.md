@@ -100,6 +100,22 @@ This state is installation-local deliberately: each machine's custodian installs
 its own scoped policy and vault references. Setup does not add operations to the
 one-machine profile or change replicated durability demands.
 
+## Agent-owned GitHub connection
+
+When the operator grants the agent its own GitHub account, the request records that
+choice as `"agentGitHubConnection": {"service": "github", "account": "EchoOfDawn",
+"ownership": "agent", "recovery": "..."}` alongside its source and custodian. This
+writer then records the exact `mcp__owner_github__observe` registration and one
+scope-only grant with the reviewed `ownerBrowserPages`: `account-profile` and
+`account-repositories`. The request cannot name pages, another account, operator
+ownership or a credential, and a raw effect for that tool beside it refuses.
+
+Without the field there is no grant. An existing grant is never rewritten: `setup`
+refuses different choices and `tighten` cannot add a page, so a one-page grant stays
+one page until the operator's `revise` records the connection. `tighten` without the
+field, `revise` without it and `revoke` all withdraw it; the next read refuses. The
+owner still supplies its machine-local `owner-browser.json` binding.
+
 ## Authorization inventory (Rules 49, 103 and 104)
 
 This inventory covers setup's asks and the runtime authorization consumers beneath
@@ -111,6 +127,7 @@ within its recorded scope; a candidate standing grant requires operator acceptan
 | Action or ask | Governing constraint | Standing grant disposition and actual consumer |
 |---|---|---|
 | Install scoped tools, MCP servers and per-effect dollar levels | Purpose: a role is granted once, at onboarding; Rules 98/100 | The operator accepts one setup request. [configureTrust and setupTrustPolicy](../tests/preview/trust-setup.mjs) write existing policy records; repeating identical setup asks for nothing and changes nothing. A different or wider choice requires a new operator-owned record, never model inference. |
+| Agent-owned GitHub page reads | Rules 18/63/100/103 | The operator's recorded [agentGitHubConnection](../tests/preview/trust-setup.mjs) writes the exact grant once. [ownerBrowserPolicy](../tests/preview/owner-browser-contract.mjs) consumes it at each admission and read, so covered reads ask nothing further. No connection or a withdrawn one refuses and names the missing grant. |
 | Reversible MCP action, network write or sensitive read | Purpose: short, fixed sign-off list and recorded role; Rules 4/103/104 | [classifyEffect and admitEffect](../tests/preview/effect-doorway.mjs) consume exact effect/target/request scope, finite known cost and policy-sensitive grants. [admitToolCall and admitEgress](../tests/preview/tool-admission.mjs) use that policy at the checkpoint. Covered actions run without a new yes; absent scope, unknown cost and out-of-scope routes refuse with a reason. A new operator grant is needed only to widen the recorded scope. Role admission never by itself approves a matter marked sensitive. |
 | Ordinary workspace tools, public reads, subagents and sessions within accepted bounds | Purpose: ordinary bounded work and ability preservation; Rules 30/60/114 | [tool turn preparation and execution](../tests/preview/tool-turn.mjs) retain the tools and model-call reservation; [tool admission](../tests/preview/tool-admission.mjs) and [session driver](../src/assembly/production-session-driver.ts) enforce checkpoint and recorded child-edge obligations. These do not acquire a per-action setup approval requirement. |
 | Make setup MCP tools available in either harness | Rules 30/100 | [prepareToolTurn](../tests/preview/tool-turn.mjs) wraps vault references once; [Claude launch](../src/assembly/production-provider.ts) consumes its JSON file and [codexToolHookArgs](../src/assembly/production-codex-provider.ts) consumes the same prepared launches as per-invocation TOML overrides. This is the concrete consumer repair: setup no longer depends on manually installing Codex servers. Removal applies after the documented MCP restart. Independently installed login-home servers remain governed by their own configuration and the admission hook. |
@@ -192,7 +209,8 @@ onboarding record; it is not a replacement for an authorized cap-change operatio
 Revocation still removes active role and effect grants.
 
 This first slice records one role/grant-policy set with no connected-account effect
-grants: no account or channel has been bound. It does not infer tool scopes from a
+grants: no account or channel has been bound. A later operator-granted GitHub
+connection uses `revise`, described under the agent-owned GitHub connection. It does not infer tool scopes from a
 free-text role, manufacture an activation or enable paid calls. The monthly amount
 is a recorded installation choice, **not** the existing per-operation resource
 ceiling and **not** an enforced monthly meter. Per-operation grants remain zero.
