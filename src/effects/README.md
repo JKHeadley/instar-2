@@ -13,7 +13,7 @@ reservation, one-use claim, exposure and bounded observation wakes.
 
 ## Capabilities
 
-- `process-control`: dark partial support for admitted exact-process signals, durable claims and independent settlement; installed recovery remains unproven.
+- `process-control`: dark partial support: admitted exact-process signals, durable claims and independent settlement; installed recovery unproven.
 
 ## Composition
 
