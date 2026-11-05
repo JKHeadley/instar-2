@@ -76,14 +76,15 @@ export function buildCarriedMemory(source: JournalView, scope: GroupCarryScope,
     // the opening promise. Execution, reply bindings and send authority remain in the
     // predecessor; copying them into the destination's work store would replay an effect.
     const work = source.obligationWork[`commitment:${id}`];
+    // Redact raw fields before JSON escaping can hide multiline credential shapes.
     const account = work === undefined ? undefined : {
       at: work.last,
       ...(work.outcome === undefined ? {} : { outcome: work.outcome }),
       ...(work.inFlight === undefined ? {} : { inFlightAt: work.inFlight }),
       execution: 'retained by predecessor; context only',
-      ...(work.note === undefined ? {} : { note: work.note }),
+      ...(work.note === undefined ? {} : { note: redact(work.note).text }),
       ...(work.waitsOn === undefined ? {} : { waitsOn: work.waitsOn }),
-      ...(work.report === undefined ? {} : { result: { text: work.report.text, at: work.report.at,
+      ...(work.report === undefined ? {} : { result: { text: redact(work.report.text).text, at: work.report.at,
         delivery: work.report.delivered !== undefined ? 'delivered' : work.report.boundTo !== undefined ? 'unknown' : 'pending' } }),
     };
     add('promise', promise.source, JSON.stringify({ ...promise, ...(account === undefined ? {} : { work: account }) }));

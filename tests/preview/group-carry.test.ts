@@ -501,3 +501,18 @@ it('retains waiting context, excludes rejected report bytes, and refuses an over
   expect([w.source.size, w.destination.size]).toEqual(sizes);
   w.destination.close(); w.source.close();
 });
+
+it('redacts result and progress text before JSON quoting can hide a credential shape', async () => {
+  const w = await world(), source = w.source.view.order[0]!.id;
+  const fixture = 'TESTONLYCREDENTIAL'.repeat(2);
+  w.source.view.commitments.push({ source, in: 'reply', quote: 'I will check.', owner: 'agent', waitsOn: 'nothing' });
+  w.source.view.obligationWork['commitment:0'] = { attempts: 1, last: now - 1, lastSlot: now - 2,
+    outcome: 'report', note: `Bearer\n${fixture}`, report: { text: `Bearer\n${fixture}`, at: now - 1 } };
+  const p = permission(); if (p.kind !== 'resolved') throw Error(p.reason);
+  const memory = buildCarriedMemory(w.source.view, scope, p, now);
+  expect(JSON.stringify(memory)).not.toContain(fixture);
+  const work = JSON.parse(memory.entries.find(e => e.kind === 'promise')!.text).work;
+  expect(work.note).toBe('[redacted credential]');
+  expect(work.result.text).toBe('[redacted credential]');
+  w.destination.close(); w.source.close();
+});
