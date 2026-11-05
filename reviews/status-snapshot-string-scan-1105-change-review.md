@@ -23,6 +23,8 @@ Prompt review: No model prompt or decision change; recorded shapes and full auth
 Decision: STATUS-SCAN-1105-1 | Optimize the existing scalar scanner instead of weakening validation, adding a checkpoint reader or increasing status deadlines. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-read-profile-1105.md
 Decision: STATUS-SCAN-1105-2 | Publish source pins with the normal exact-commit replay generator, preserving existing runtime authority prerequisites. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-read-profile-1105.md
 
+Decision: STATUS-SCAN-1105-3 | Reopen the two actual mismatched frozen browser review subjects using the normal open tool, preserve historical digests and require independent re-review. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-read-profile-1105.md
+
 ## Closing block
 
 simplestRobustRoute: Keep the existing authenticated journal and status consumers, and replace their per-byte quoted-string loop with native byte search and exact cross-chunk escape parity.

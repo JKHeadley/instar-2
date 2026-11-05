@@ -1,8 +1,8 @@
 # Change review — worker reads connector launch configuration
 
 Subject base: bcbe1def1642146c18f1e0d569ab84016fa6454e
-Review state: frozen
-Reviewed content: sha256:41339ecebaa3eebf3d3a09bcb98108b0bdb289e724fb0bd3514a7e0c7431d0cc
+Review state: open
+Reviewed content: none
 Outcome: Grant the worker read access to the generated MCP launch configuration before its continuing session starts and expose the owner browser tool with an Anthropic-compatible input schema. Keep the configuration owned by the operator and read-only to the worker. Regenerate the source-pinned register against the committed repair.
 Affected rules: 31, 63, 74, 78, 95, 101, 103, 111, 113, 116
 Affected floors: secrets — only the already redacted launch file is readable, not credential custody; spend cap — unchanged; stop — unchanged; no duplicate sends — no new effect path; durable intake — unchanged.
@@ -25,6 +25,8 @@ Skip: tests/preview/session-connectors.test.ts:60 | scope=the native worker-acco
 Decision: MCP-READ-1104-1 | Grant read-only ACL only on the generated MCP file at launch, rather than giving the worker access to the owner profile or shared temp directory. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 Decision: MCP-READ-1104-2 | Commit the source repair before regenerating source-pinned register outputs, then cover both commits in this record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 Decision: MCP-SCHEMA-1104-3 | Remove top-level oneOf from the client-advertised input schema because Claude skipped the only tool; retain the existing server-side input validation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
+
+Publication re-review: Normal open voided the frozen round after snapshot-parser source and generated pins changed the subject. Historical reviewed digest sha256:41339ecebaa3eebf3d3a09bcb98108b0bdb289e724fb0bd3514a7e0c7431d0cc; current publication digest sha256:100fab9cebe17ce086c2f7a78ed6fa89b79c7b66168daa1c907c5d659b51cd4f. Independent re-review is required; this reopening records no approval.
 
 ## Closing block
 
