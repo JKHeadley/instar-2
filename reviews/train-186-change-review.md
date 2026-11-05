@@ -52,3 +52,5 @@ Decision: train186-publication | Use cint-L37 desk chain. Existing 8d49872e2 con
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges and existing desk repin/build/rehash/replay. No new runtime mechanism. Boundaries remain current authority, stopped owners, retained unknown effects and verified results.
 80/20: Run changed and directly importing tests, named register/briefing/journal checks and static checks within remote-builder limits; full gate and installed acceptance belong to Studio.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+
+Publication: ordinary replay from ae8125e347df87166f81c77dca1ab9a3b5089291 produced 300 entries and 121 rules, generation sha256:c2721b391014bd092482c45dba75624be93a6075b60c834518fbdc951b78a1db. Existing conversion repair 8d49872e2 matches this anchor and shape byte for byte. Desk repin and rehash changed zero pins. Main purpose/rules text remains exact. Private hub evidence: all 18 input/raw/consumer files downloaded read-only and matched the hashes pinned in hub-recorded.test.ts; run the six recorded cases with INSTAR_HUB_CAPTURE_ROOT.
