@@ -38,7 +38,11 @@ Changing observer bytes initially produced the sole R105 stale-composition certi
 
 Rules 22/102: resolve the observer and certificate problem within the authorized repair. Rules 26/36/41/49/60/61: preserve source-bound observations, fail-closed uncertainty and physical cleanup/accounting, proved through real host and injected negative neighbors. Rules 32/33/63/113: no new store; deliberate host-local readings, fixture-only roots, unchanged shared state. Rules 34/37/70/74/107/112: source repair with positive/negative evidence and honest pipeline qualification; earlier red and green results retained. Rules 101/105/111/115/116: no bypass, exact native recertification after the contract, layer-below inspection and reuse of the existing observer. CB6-MF-A, CB7-R90 and CB1-MF5 remain OPEN, with their existing owners and recheck conditions. This does not claim universal physical confinement, live whole-feature acceptance or equality with a deployed invocationPolicyDigest.
 
-Subject: scripts/process-inventory.mjs, tests/assembly/process-inventory.test.ts, tests/preview/mcp-setup.test.ts, src/assembly/harness.declarations.json, derived register publication and required source pins.
+## Publication
+
+The authorized desk rehash and repin tools found no owner manifest or grounding-inventory pin changes. Replay from source f9e6dbf9dbeb4e91a50267a0a2276c8666a740fd generated sha256:6e7c84d5e89f1cd8fcdfdd563b4b52877f36766a68cf84c7b958bebed1bd4e10 with 297 entries, 120 rules and 34 terms. Authority remains shape-only/replay. This record is extended in the publication commit to cover both the source repair and its generated evidence; no independent review is asserted.
+
+Subject: scripts/process-inventory.mjs, tests/assembly/process-inventory.test.ts, tests/preview/mcp-setup.test.ts, src/assembly/harness.declarations.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json.
 
 ## Closing block
 
