@@ -4,6 +4,7 @@
 name: document-checks
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 jobs:
@@ -28,3 +29,16 @@ jobs:
         run: git diff --check origin/main...HEAD || git diff --check HEAD~1
       - name: every change is bound to its review record (rules 74, 109, 90)
         run: node scripts/check-change-review.mjs check
+  # Its own job: a failure in another check must not skip this one, and it needs its own name on the pull request.
+  constitution-counterpart:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: a change to either book names its counterpart (rule 119)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-constitution-pairing.mjs pr --repo ${{ github.repository }} --number ${{ github.event.number }}
