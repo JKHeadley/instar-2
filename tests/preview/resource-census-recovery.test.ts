@@ -7,7 +7,7 @@ import { expect, it } from 'vitest';
 import { createResourceOwner, RESOURCE_CEILINGS, hostQuery } from '../../scripts/resource-owner.mjs';
 // @ts-expect-error Physical process adapter is JavaScript.
 import { PROCESS_CENSUS_COLUMNS } from '../../scripts/process-census-query.mjs';
-import { createHostResourceAllocation } from '../preview/six-host-resources.js';
+import { createHostResourceAllocation } from './six-host-resources.js';
 const oldRead = (file: string,args: string[], failures: string[]): Promise<string|null> => new Promise(resolve => {
   execFile(file,args,{timeout:2000,maxBuffer:1024*1024,env:{PATH:'/usr/bin:/bin'}},(error,stdout)=>{
     if (error && (typeof error.code!=='number'||error.code>1)) { failures.push(String(error.code));resolve(null); }
@@ -96,5 +96,65 @@ it('keeps the same owners debit while its real recorded descendant survives a de
       if(recorded&&now?.trim().split(/\s+/u).join(' ')===recorded)process.kill(descendant,'SIGKILL');
     }
     rmSync(root,{recursive:true,force:true});
+  }
+});
+it('retains the debit across an in-flight sample and a failed late membership write', {timeout:30000}, async()=>{
+  const root=mkdtempSync(join(tmpdir(),'resource-census-order-'));chmodSync(root,0o700);
+  const ledgerPath=join(root,'owned-launches.json'),pidPath=join(root,'child-pid');
+  const held: {release:()=>Promise<void>}[]=[];let descendant: number|undefined,descendantStart: string|undefined;
+  let resume: ((text:string|null)=>void)|undefined,captured: string|null=null;
+  const paused=new Promise<string|null>(resolve=>{resume=resolve});
+  let first=true,allowReads=false;
+  const until=async(check:()=>boolean)=>{const end=Date.now()+5000;while(!check()){if(Date.now()>end)throw Error('fault order did not settle');await new Promise(r=>setTimeout(r,20))}};
+  try {
+    const actual=createHostResourceAllocation({root,machine:'machine:census-order',ceilings:RESOURCE_CEILINGS,
+      incarnation:`census-order:${process.pid}`,now:()=>Date.now(),monotonic:()=>performance.now()});
+    const closes: string[]=[];
+    const allocation={...actual,close:(set:string,cause:string)=>{closes.push(set);return actual.close(set,cause)}};
+    const query=async(file:string,args:string[])=>{
+      if(file==='/bin/ps'&&args.includes(PROCESS_CENSUS_COLUMNS)) {
+        if(first){first=false;captured=await hostQuery(file,args);return paused}
+        if(!allowReads)return null;
+      }
+      return hostQuery(file,args);
+    };
+    const owner=createResourceOwner();await owner.attach({ledgerPath,allocation,query});
+    const file=join(root,'parent.mjs');
+    writeFileSync(file,`import{spawn}from'node:child_process';import{writeFileSync}from'node:fs';const c=spawn(process.execPath,['-e',"setTimeout(()=>process.chdir('/tmp'),1400);setTimeout(()=>process.exit(0),25000);setInterval(()=>{},1000)"],{detached:true,stdio:'ignore'});writeFileSync(${JSON.stringify(pidPath)},String(c.pid));c.unref();setTimeout(()=>process.stdout.write('finished'),1800);`);
+    const input={executable:process.execPath,args:[file],cwd:root,env:{PATH:'/usr/bin:/bin'},stdin:'',timeout:15000,maxBytes:65536};
+    expect(await owner.execute(input,'answer')).toMatchObject({code:0,resources:{cleanup:'unresolved',allocation:{state:'reserved'}}});
+    await until(()=>captured!==null);
+    descendant=Number(readFileSync(pidPath,'utf8'));
+    descendantStart=(await hostQuery('/bin/ps',['-p',String(descendant),'-o','lstart=']))?.trim().split(/\s+/u).join(' ');
+    const initial=JSON.parse(readFileSync(ledgerPath,'utf8')).launches;
+    const row=Object.values(initial)[0] as {allocation:string,members:Record<string,string>};
+    expect(row.members[String(descendant)]).toBeUndefined();
+    for(let i=0;i<8;i++){const lease=await owner.hold('answer',{timeout:1000});expect(lease).not.toBeNull();held.push(lease)}
+    allowReads=true;
+    const quick=join(root,'quick.mjs');writeFileSync(quick,'process.stdout.write("probe")');
+    const probe={...input,args:[quick],timeout:250};
+    // The old sample still owns a captured lease. Raw durable rows omit its late member.
+    expect(await owner.execute(probe,'answer')).toMatchObject({code:null,localLimit:'capacity'});
+    expect(closes).not.toContain(row.allocation);
+    expect(actual.open()).toHaveLength(9);
+    chmodSync(root,0o500);resume!(captured);
+    await until(()=>owner.snapshot().pendingEvidence>0);
+    // The late sample discovered the real survivor, but its durable write was denied.
+    expect(owner.snapshot().counters.recordingFailures).toBeGreaterThan(0);
+    expect(await owner.execute(probe,'answer')).toMatchObject({code:null,localLimit:'capacity'});
+    expect(closes).not.toContain(row.allocation);
+    expect(actual.open()).toHaveLength(9);
+    process.kill(descendant,0);
+  } finally {
+    chmodSync(root,0o700);resume?.(captured);
+    await Promise.all(held.map(lease=>lease.release()));
+    if(descendant) {
+      const rows=JSON.parse(readFileSync(ledgerPath,'utf8')).launches;
+      const recorded=Object.values(rows).map((row:unknown)=>(row as {members:Record<string,string>}).members[String(descendant)]).find(Boolean);
+      const now=await hostQuery('/bin/ps',['-p',String(descendant),'-o','lstart=']);
+      expect(recorded).toBe(descendantStart);
+      if(descendantStart&&now?.trim().split(/\s+/u).join(' ')===descendantStart)process.kill(descendant,'SIGKILL');
+    }
+    await new Promise(r=>setTimeout(r,200));rmSync(root,{recursive:true,force:true});
   }
 });

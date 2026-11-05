@@ -350,13 +350,15 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
    * signals, touches an active launch, or treats elapsed time as quiescence. The
    * existing waiter pump supplies opportunities; no new timer or status work. */
   async function retryCompletedRows() {
-    if (completedRecovery || !attached?.ledgerPath || !ports.allocation || !waiters.length
+    // A sample captured before release can still discover a member afterward.
+    // Its pending durable carry must land before raw ledger absence can settle Six.
+    if (completedRecovery || sampling || !attached?.ledgerPath || !ports.allocation || !waiters.length
       || ports.monotonic() < completedRetryAt) return;
     completedRecovery = true;
     completedRetryAt = ports.monotonic() + ceilings.sampleMs;
     try {
       const rows = readLedger(), owner = attached.owner;
-      const selected = Object.entries(rows).filter(([id, row]) => row?.cleanup === 'unresolved' && !launches.has(id)
+      const selected = Object.entries(rows).filter(([id, row]) => row?.cleanup === 'unresolved' && !launches.has(id) && !pendingEvidence.has(id)
         && owner?.start && row.owner?.pid === owner.pid && startIdentity(row.owner.start) === owner.start);
       if (!selected.length) return;
       counters.cleanupRechecks = (counters.cleanupRechecks ?? 0) + 1;
@@ -384,7 +386,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       if (ports.monotonic() - seen.snapshot.monotonicAt > seen.snapshot.freshForMs) { blocked('stale-census'); return; }
       const latest = readLedger(); let returned = 0;
       for (const [id, row] of selected) {
-        if (launches.has(id) || JSON.stringify(latest[id]) !== JSON.stringify(row)) continue;
+        if (sampling || pendingEvidence.has(id) || launches.has(id) || JSON.stringify(latest[id]) !== JSON.stringify(row)) continue;
         const root = roots.find(root => root.id === id);
         const members = new Map(root.known); members.set(root.pid, root.start);
         if ([...members].some(([pid, start]) => typeof start !== 'string' || current.get(pid) === start)) continue;

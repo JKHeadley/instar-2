@@ -161,6 +161,14 @@
         "path": "tests/preview/proofs.test.ts",
         "hash": "sha256:b84d1410fd6f663997907d804dd2a01c364a6d3320bc98d22dcad48ed34f72c8"
       }
+    },
+    {
+      "id": "PREVIEW-RESOURCE-CENSUS-RECOVERY",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/resource-census-recovery.test.ts",
+        "hash": "sha256:fe9cee410812ed301d83eb12ca03346b4a19c5cc0a2f840b13d6706429e39825"
+      }
     }
   ],
   "probes": [],
