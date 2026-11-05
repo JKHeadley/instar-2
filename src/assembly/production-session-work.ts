@@ -280,7 +280,11 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
     });
     ensure(driver.owner === 'part-eight', 'session work requires an eight-owned session driver');
     ensure(typeof driver.stop === 'function', 'session work driver exposes no stop authority');
-    let steps = 0, inFlight = false;
+    // Host replacement cannot replenish the same parent's step allowance.
+    // Nested edges draw on their parent; count each original top-level edge once.
+    let steps = new Set((config.recoveryEdges?.() ?? []).filter(record => record.type === 'SessionWorkEdge'
+      && record.parent === config.parent && record.drawsOn === undefined).map(record => record.id)).size;
+    let inFlight = false;
     const available = () => !config.stopped() && !inFlight && steps < config.maxSteps;
     const resultPathOf = (operation: string) => `${config.resultDirectory}/work-${slug(operation)}.json`;
     const collect = (operation: string): SessionWorkOutcome | null => {
@@ -325,7 +329,9 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
     const run = async (request: SessionWorkRequest): Promise<SessionWorkOutcome> => {
       ensure(safeName.test(request.operation), 'exact session work identity required');
       ensure(request.question.trim().length > 0 && request.authority.trim().length > 0, 'session work task and authority required');
-      if (config.workRecovery) {
+      {
+        // Custody is mandatory even when diagnosis is disconnected. A missing
+        // triage supplier cannot turn an UNKNOWN original effect into a new run.
         const previous = collect(request.operation);
         if (previous) {
           const edges = (config.recoveryEdges?.() ?? []).filter((record): record is SessionWorkEdge => record.type === 'SessionWorkEdge'
@@ -354,7 +360,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
           authority: request.authority,
           budget: { steps: 1 as const, deadline, maxResultBytes: config.maxResultBytes, calls: config.maxCalls, tokens: null },
           exitTest: SESSION_WORK_EXIT_TEST, placement: config.placement, transport: config.transport,
-          resultDestination: resultPath, openedAt, ...(config.workRecovery ? { requestDigest: digestOf(JSON.stringify(request)) } : {}) });
+          resultDestination: resultPath, openedAt, requestDigest: digestOf(JSON.stringify(request)) });
         config.append(edge);
         let child: string | null = null, launched = false, lease: SessionWorkLease | null = null;
         let observedCalls: number | null = null, reviewCalls = 0, unresolvedIntervention = false;

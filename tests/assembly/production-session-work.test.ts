@@ -218,17 +218,39 @@ it('closes every path durably: a turn with no result fails, an oversized result 
   expect(refused.counts()).toMatchObject({ stops: 1, released: 1 });
 });
 
-it('clears a leftover result first, so a stale file is never read as this step\'s answer', async () => {
-  const f = fixture();
-  f.answers('{"outcome":"report","report":"from an earlier step"}');
+it('restores the same operation without triage rather than clearing its original result', async () => {
+  const f = fixture(); f.answers(recordedWork.workOutput);
   expect((await f.port.run(f.request())).state).toBe('complete');
-  expect(f.io.readResult(f.resultPath(), 65536)).not.toBe(null);
-  // The next step on the same operation starts with the destination cleared; this child writes
-  // nothing, so the step fails rather than returning the earlier step's answer again.
   f.answers(null);
-  expect(await f.port.run(f.request())).toMatchObject({ state: 'failed' });
-  expect(f.io.readResult(f.resultPath(), 65536)).toBe(null);
+  const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart' }));
+  expect(await restarted.run(f.request())).toMatchObject({ state: 'complete', text: recordedWork.workOutput });
+  expect(f.counts().launches).toBe(1);
+  expect(f.io.readResult(f.resultPath(), 65536)).toBe(recordedWork.workOutput);
+  for (const patch of [{ question: 'changed' }, { context: 'changed' }, { authority: 'revoked-and-replaced' }])
+    await expect(restarted.run({ ...f.request(), ...patch })).rejects.toThrow('request bytes or authority differ');
 });
+
+it('retains an open original operation across restart even when the triage supplier is absent', async () => {
+  const f = fixture(); f.answers(recordedWork.workOutput);
+  await f.port.run(f.request());
+  f.rows.pop(); // Host lost before its durable close: the original effect is UNKNOWN.
+  const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'new-host' }));
+  expect(await restarted.run(f.request())).toMatchObject({ state: 'uncertain' });
+  expect(f.counts().launches).toBe(1);
+  expect(f.rows).toHaveLength(1);
+});
+
+it('a restarted owner retains the original launch step ceiling', async () => {
+  const f = fixture({ maxSteps: 1 }); f.answers(recordedWork.workOutput);
+  await f.port.run(f.request());
+  const restarted = value(createSessionWorkPort(f.config));
+  expect(restarted.stepsUsed()).toBe(1);
+  expect(restarted.available()).toBe(false);
+  expect(await restarted.run(f.request())).toMatchObject({ state: 'complete' });
+  await expect(restarted.run(f.request('another-operation'))).rejects.toThrow('step ceiling');
+  expect(f.counts().launches).toBe(1);
+});
+
 it('a result present before the step is cleared, not read', async () => {
   const f = fixture();
   f.writeNow('{"outcome":"report","report":"planted"}');
