@@ -592,16 +592,26 @@ it('the journal reserves an edge\'s whole call liability against the call cap, a
     expect(journal.view.calls).toBe(before + 24);
     expect(() => journal.append({ kind: 'session-work', record: edge('e2', 24), at: 12 })).toThrow(/session work call cap/u);
     expect(journal.view.calls).toBe(before + 24);
-    // A close whose child's transcript shows more calls than were reserved charges the excess; one within the
-    // reservation, or with unknown calls, charges nothing more.
-    const close = (id: string, calls: number | null) => ({ type: 'SessionWorkEdgeClose' as const, schemaVersion: 1 as const,
+    // Row 16, duplicate-result refusal (Rules 2, 42, 60): an edge opens once and closes once. A second close for e1 (a
+    // duplicate result, a late completion over its settled close, or a replayed excess charge) and a close for an edge
+    // the journal never opened (one it refused at the cap) are refused, and charge nothing.
+    const close = (id: string, calls: number | null, reserved = 2) => ({ type: 'SessionWorkEdgeClose' as const, schemaVersion: 1 as const,
       id: `${id}:close`, edge: id, child: 'c', state: 'uncertain' as const, detail: 'd', evidence: 'ev', resultBytes: null,
-      closedAt: 13, calls, reserved: 24 });
-    journal.append({ kind: 'session-work', record: close('e1', 24), at: 13 });
-    journal.append({ kind: 'session-work', record: close('e1', null), at: 13 });
+      closedAt: 13, calls, reserved });
+    for (const duplicate of [close('e1', 27, 24), { ...close('e1', 3, 24), state: 'complete' as const, resultBytes: 1 }, close('e2', 30, 24), close('e9', 0)])
+      expect(() => journal.append({ kind: 'session-work', record: duplicate, at: 13 })).toThrow(/unknown or already closed edge/u);
     expect(journal.view.calls).toBe(before + 24);
-    journal.append({ kind: 'session-work', record: close('e1', 27), at: 14 });
-    expect(journal.view.calls).toBe(before + 27);
+    // A close whose child's transcript shows more calls than were reserved charges the excess; one within the
+    // reservation, or with unknown calls, charges nothing more. Each close settles its own edge.
+    for (const [id, calls, after] of [['e3', 2, 26], ['e4', null, 28], ['e5', 5, 33]] as const) {
+      journal.append({ kind: 'session-work', record: edge(id, 2), at: 13 });
+      // Re-opening an open edge would reserve its liability twice: refused, and nothing is charged.
+      expect(() => journal.append({ kind: 'session-work', record: edge(id, 2), at: 13 })).toThrow(/already open/u);
+      journal.append({ kind: 'session-work', record: close(id, calls), at: 13 });
+      expect(journal.view.calls).toBe(before + after);
+      expect(() => journal.append({ kind: 'session-work', record: close(id, calls), at: 13 })).toThrow(/already closed edge/u);
+      expect(journal.view.calls).toBe(before + after);
+    }
     expect(() => validateSessionWorkRow(close('e1', -1))).toThrow(/close incomplete/u);
     // A delegation inside the step draws on its parent's reservation: its edge reserves nothing new.
     const parent = edge('e1', 24);

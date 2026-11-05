@@ -49,6 +49,19 @@ and receipt path. Tool-worker checkpoints use the recorded model output, verifie
 process-allocation return and settled tool/child trace from that same journal, including
 after compaction. This adds no watcher, store, send authority or cross-machine lease.
 
+A helper (a subagent the delegated session starts) is a nested child edge recorded by the
+admission checkpoint before it starts. Its failure returns to the parent (carryover row 16,
+the 1.x HelperWatchdog/SubagentTracker outcome): a harness failure completion naming the
+exact call closes the edge `failed` with the carried 1.x signal classification only (never
+the error text), so the parent's own completed result is not held uncertain over a helper
+it already saw fail; a helper whose harness never reports back stays open and is closed
+`uncertain` before its parent's close, which names it, and collection after a restart
+returns that diagnosis with no automatic replay. The journal refuses a second close for the
+same edge and a re-opened edge id, so a late or duplicate result cannot re-settle a helper
+or re-charge its excess. A registered child still open one silence window past its own
+recorded deadline is stale (the 1.x 60-minute cap as a recorded fact): it is reported
+`action-needed` and no longer holds its parent in a wait; nothing is killed or retried.
+
 ## Continuing conversation session
 
 The conversation prompt keeps each prepared grounding packet once, with host clock and unresolved references separate. Ordinary questions retain their separate context; a batch preserves each complete envelope and arrival order.
