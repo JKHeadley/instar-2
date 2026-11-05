@@ -6,7 +6,11 @@ import { boundary, ensure, take } from './boundary.js';
 import type { AssemblyDecodeContext, HarnessObservation } from './contracts.js';
 import type { NativeHarnessDriverPort } from './harness.js';
 import type { Result } from '../index.js';
+import { submitAuthenticPendingInput } from '../effects/index.js';
+import type { PendingInputBinding, PendingInputSubmission } from '../effects/index.js';
 import type { SubscriptionToolTurn } from './production-provider.js';
+import { PENDING_INPUT_LADDER, afterPresentation, classifyPromptTextPresentation, pendingInputAt, pendingInputVisibleFrame, pendingInputStep } from './pending-input.js';
+import type { PendingInputRecord } from './pending-input.js';
 
 /** Operator-own-use sessions with the harness's full tool set. `unconfined` makes no confinement claim;
  * `admitted` launches every session with the tool admission hook, so each tool call passes it before dispatch. */
@@ -26,6 +30,10 @@ export interface SessionRecord {
   /** Bounded 1.x persisting-menu observation. A signal only: never authorization or a turn close. */
   readonly promptWait?: Readonly<{ digest: string; firstAt: number; lastAt: number; samples: number }> | null;
   readonly deadlineHalt?: Readonly<{ deadline: number; at: number }>;
+  /** 1.x verifyInjection/StuckInputSentinel port (carryover row 14): the last text this driver sent
+   * into the pane, tracked until it leaves the prompt. A bounded same-input recovery ladder, never
+   * a new input; ghost or inconclusive presentation is never pressed. */
+  readonly pendingInput?: PendingInputRecord | null;
 }
 export interface SessionContinuation {
   readonly pending?: Readonly<{ operation: string; digest: string; deadline: number }>;
@@ -35,6 +43,8 @@ export interface DeliveryRecord {
   readonly operation: string; readonly identity: string; readonly intake: string;
   readonly digest: string; readonly text: string; readonly state: 'prepared' | 'sending' | 'accepted' | 'uncertain';
   readonly baseline: string; readonly redeliveries: 0 | 1; readonly evidence: string;
+  readonly incarnation?: string;
+  readonly submissions?: readonly PendingInputSubmission[];
 }
 export interface SessionReservation {
   readonly name: string; readonly operation: string; readonly claim: string; readonly incarnation: string;
@@ -319,7 +329,9 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   };
   const lockedBoundary = <T>(name: string, input: unknown, perform: () => T): Result<T> =>
     boundary(name, input, config.context, () => config.io.exclusive(perform));
-  const capture = (name: string) => run(['capture-pane', '-p', '-t', literalTarget(name), '-S', '-80']);
+  const capture = (name: string) => run(['capture-pane', '-p', '-J', '-t', literalTarget(name), '-S', '-80']);
+  /** The same pane with its terminal styling (`-e`), for the pending-input presentation gate. */
+  const captureStyled = (name: string) => run(['capture-pane', '-p', '-e', '-J', '-t', literalTarget(name), '-S', '-80']);
   const alive = (name: string) => config.io.tmux(['has-session', '-t', literalTarget(name)]).code === 0;
   const checkStop = () => {
     if (!config.stopped()) return;
@@ -381,7 +393,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     return armed;
   };
   const closeTurn = (session: SessionRecord, at: number): SessionRecord => ({ ...session,
-    closedAt: at, turnDeadline: null, promptWait: null,
+    closedAt: at, turnDeadline: null, promptWait: null, pendingInput: null,
     ...(session.continuation?.state === 'accepted'
       ? { continuation: { ...session.continuation, state: 'completed' as const } } : {}) });
   const sendText = (session: SessionRecord, text: string) => {
@@ -393,6 +405,12 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     if (safe.includes('\n')) run(['send-keys', '-t', target, '\x1b[201~']);
     config.io.sleep(config.framework === 'codex-cli' ? 1500 : safe.includes('\n') ? 500 : 100);
     checkStop(); verifyLive(session);
+    // Durable before the Enter: observe() verifies this exact text left the prompt and owns the
+    // bounded recovery ladder for it (1.x verifyInjection + StuckInputSentinel, carryover row 14).
+    const delivery = config.io.load().deliveries.find(row => row.identity === session.identity
+      && row.state === 'sending' && row.text === text);
+    config.io.save(replaceSession(config.io.load(), { ...loadSession(session.identity), pendingInput: !delivery ? null
+      : { operation: delivery.operation, intake: delivery.intake, digest: delivery.digest, payload: safe, promptText: null, sentAt: config.now(), observations: 0, attempts: 0, pressing: false, presentation: null, undelivered: false } }));
     run(['send-keys', '-t', target, 'Enter']);
     if (config.framework === 'codex-cli') { config.io.sleep(300); checkStop(); run(['send-keys', '-t', target, 'Enter']); }
   };
@@ -730,7 +748,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
               turnBaseline: digestOf(pane) };
             config.io.save(replaceSession(config.io.load(), sending));
             sendText(sending, 'Continue the same interrupted turn from its recorded state. Do not repeat completed actions or sends; leave uncertain actions unresolved.');
-            config.io.save(replaceSession(config.io.load(), { ...sending,
+            config.io.save(replaceSession(config.io.load(), { ...loadSession(session.identity),
               rateRecovery: { ...sending.rateRecovery, state: 'accepted' } }));
             return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit continuation submitted' };
           }
@@ -744,6 +762,89 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           config.io.save(replaceSession(config.io.load(), { ...session, deadlineHalt: { deadline: session.turnDeadline, at: config.now() } }));
           run(['kill-session', '-t', literalTarget(session.name)]);
           return { phase: 'exit-observed' as const, evidence: `safety-ceiling:deadline:${session.identity}`, detail: 'per-turn deadline exceeded', safetyDeadline: session.turnDeadline };
+        }
+        // Carryover 14: the original accepted delivery is the authority; a prefix is not.
+        // Every key, including the double-Enter tail, passes Eight's typed admission and Ten's
+        // fresh composer checkpoint. The original journal retains uncertain outcomes.
+        const pending = session.pendingInput;
+        if (pending && session.turnDeadline !== null && session.closedAt === null) {
+          const delivery = config.io.load().deliveries.find(row => row.operation === pending.operation);
+          if (!delivery || delivery.state !== 'accepted' || delivery.identity !== session.identity
+            || delivery.incarnation !== session.incarnation || delivery.intake !== pending.intake || delivery.digest !== pending.digest || digestOf(delivery.text) !== delivery.digest
+            || delivery.text.replace(/(?:\x1b\[|\x9b)20[01]~/g, '') !== pending.payload)
+            return { phase: 'uncertain' as const, evidence: session.identity, detail: 'pending input delivery identity unavailable; input preserved' };
+          if (pending.pressing || delivery.submissions?.some(entry => entry.state !== 'accepted'))
+            return { phase: 'uncertain' as const, evidence: delivery.operation, detail: 'pending input submission uncertain; observation only' };
+          const blocked = (frame: string) => classifyPaneActive(frame)
+            || classifyPaneReadiness(frame) === 'menu' || classifyBlockingMenu(frame);
+          const decided = pendingInputStep(pending, pane, blocked(pane), config.now(), true);
+          let judged = decided;
+          const freshPresentation = () => {
+            const styled = captureStyled(session.name), visible = pendingInputVisibleFrame(styled);
+            if (blocked(visible) || !pendingInputAt(visible, pending.payload)) return { presentation: 'inconclusive' as const, frame: null };
+            return { presentation: classifyPromptTextPresentation(styled, pending.payload), frame: digestOf(styled) };
+          };
+          if (decided.kind === 'classify') {
+            let presentation: 'real' | 'ghost' | 'inconclusive' = 'inconclusive';
+            try { presentation = freshPresentation().presentation; } catch { /* Retain the accepted input. */ }
+            judged = afterPresentation(decided.record, presentation);
+          }
+          if (judged.kind === 'clear') config.io.save(replaceSession(config.io.load(), { ...loadSession(session.identity), pendingInput: null }));
+          else {
+            if (judged.kind !== 'press') config.io.save(replaceSession(config.io.load(), { ...loadSession(session.identity), pendingInput: judged.record }));
+            if (judged.kind === 'undelivered')
+              return { phase: 'pause-observed' as const, evidence: session.identity, detail: 'input-undelivered' };
+            if (judged.kind === 'press') {
+              const recovery = judged;
+              const binding = (): PendingInputBinding => {
+                checkStop();
+                const current = loadSession(session.identity); verifyLive(current);
+                const original = config.io.load().deliveries.find(row => row.operation === pending.operation);
+                ensure(current.incarnation === session.incarnation && current.claim === session.claim
+                  && current.turnStartedAt === session.turnStartedAt && current.turnDeadline === session.turnDeadline
+                  && current.closedAt === null && current.pendingInput?.operation === pending.operation,
+                'pending input worker context changed');
+                ensure(current.turnDeadline !== null && config.now() < current.turnDeadline, 'pending input deadline exhausted');
+                ensure(original?.state === 'accepted' && original.identity === current.identity
+                  && original.incarnation === current.incarnation && original.intake === delivery.intake
+                  && original.digest === delivery.digest && digestOf(original.text) === original.digest
+                  && original.text.replace(/(?:\x1b\[|\x9b)20[01]~/g, '') === pending.payload,
+                'pending input delivery changed');
+                return { operation: original.operation, identity: current.identity, incarnation: current.incarnation,
+                  claim: current.claim, intake: original.intake, digest: original.digest, payloadDigest: digestOf(pending.payload),
+                  turnStartedAt: current.turnStartedAt!, deadline: current.turnDeadline! };
+              };
+              const submit = (ordinal: number) => take(submitAuthenticPendingInput({ ...binding(), kind: 'worker-input',
+                action: 'submit-authentic-pending-input', ordinal, consumption: 'owner-turn-observation' }, {
+                current: binding,
+                history: () => config.io.load().deliveries.find(row => row.operation === pending.operation)!.submissions ?? [],
+                observe: () => {
+                  try { const fresh = freshPresentation(); return fresh.presentation === 'real' ? fresh.frame : null; }
+                  catch { return null; }
+                },
+                save: entry => {
+                  const journal = config.io.load(), original = journal.deliveries.find(row => row.operation === pending.operation)!;
+                  config.io.save(replaceSession(replaceDelivery(journal, { ...original,
+                    submissions: [...(original.submissions ?? []).filter(row => row.request.ordinal !== ordinal), entry] }),
+                  { ...loadSession(session.identity), pendingInput: { ...recovery.record, pressing: entry.state !== 'accepted' } }));
+                },
+                submit: key => { binding(); run(['send-keys', '-t', literalTarget(session.name), key]); },
+                now: config.now,
+              }, config.context));
+              const first = submit(recovery.attempt);
+              if (first.state === 'uncertain')
+                return { phase: 'uncertain' as const, evidence: delivery.operation, detail: 'pending input submission uncertain; observation only' };
+              if (recovery.action === 'Enter-sleep-Enter') {
+                config.io.sleep(PENDING_INPUT_LADDER.doubleEnterPauseMs);
+                const second = submit(4);
+                if (second.state === 'uncertain')
+                  return { phase: 'uncertain' as const, evidence: delivery.operation, detail: 'pending input submission uncertain; observation only' };
+              }
+              return { phase: 'launched' as const, evidence: delivery.operation, detail: `pending input recovery rung ${recovery.attempt} sent` };
+            }
+            if (judged.kind === 'observe' && judged.detail !== 'input queued behind active work')
+              return { phase: 'launched' as const, evidence: session.identity, detail: judged.detail };
+          }
         }
         const baseline = session.turnBaseline ?? config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1)?.baseline;
         // Record native retry progress, not a second retry engine. The current-turn record
@@ -797,7 +898,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           try { armTurn(session, 0); } catch {
             outcomes.push(`${row.operation}:deadline-unavailable`); continue;
           }
-          const sending: DeliveryRecord = { ...row, state: 'sending', redeliveries: 1 };
+          const sending: DeliveryRecord = { ...row, incarnation: session.incarnation, state: 'sending', redeliveries: 1 };
           config.io.save(replaceDelivery(config.io.load(), sending));
           try {
             sendText(session, row.text);
