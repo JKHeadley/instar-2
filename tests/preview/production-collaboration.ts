@@ -3,7 +3,7 @@
  * key, model, effect adapter, or second custody ledger. */
 import { canonical, consumeResult } from '../../src/index.js';
 import { hashBytes } from '../../src/facts/index.js';
-import { telegramConversation } from '../../src/conversation/index.js';
+import { telegramAccount, telegramConversation } from '../../src/conversation/index.js';
 import type { ProductionOwnerComposition } from '../../src/assembly/production-composition.js';
 import { offerEnvelope } from '../../src/rungraph/index.js';
 import type { DelegationContract, Run } from '../../src/rungraph/index.js';
@@ -33,11 +33,19 @@ export function connectProductionCollaboration(input: {
       'clean actual Four parent required');
     const body = cause!.fact.body as { eventId?: string; rawHash?: string; channel?: string; intent?: { via?: string; ask?: string } };
     const view = input.view();
+    const old = view.collaboration?.origins?.find(item => item.edge === contract.id);
     let topic: number | null = null, source: string | undefined;
     if (body.intent?.via === 'threadline-intake-v1') {
       const received = view.collaboration?.inbox.find(item => take(canonical(item.envelope)).bytes === body.intent?.ask);
       if (received) {
         source = `threadline:${received.envelope.key}`;
+      }
+      // The authenticated source and contract bind the first origin. A later
+      // operator move of the parent changes display routing, not this cause.
+      if (old) {
+        need(old.source === source && old.digest === contract.digest, 'automatic origin cannot redirect a conversation'); return;
+      }
+      if (source) {
         topic = collaborationTopicForOperation(view.collaboration, source);
       }
       // An authenticated parentless task keeps its ordinary worker path. It
@@ -46,7 +54,10 @@ export function connectProductionCollaboration(input: {
     } else {
       const general = telegramConversation(view.genesis.bot, { chatId: view.genesis.chat,
         forum: view.genesis.forum === true, messageThreadId: null });
-      if (body.channel === general) return;
+      const forum = `${telegramAccount(view.genesis.bot)}:chat:${view.genesis.chat}:`;
+      // Topic bookkeeping is optional outside this forum; Four/Five/Six still
+      // enforce the admitted work's authority, scope, stop and budget.
+      if (view.genesis.forum !== true || !body.channel?.startsWith(forum) || body.channel === general) return;
       const turn = [...view.turns.values()].find(item => item.accepted && item.thread !== undefined
         && String(item.update) === body.eventId && hashBytes(item.raw) === body.rawHash);
       if (turn && view.genesis.forum === true && body.channel === telegramConversation(view.genesis.bot, {
@@ -55,7 +66,6 @@ export function connectProductionCollaboration(input: {
       }
     }
     need(topic !== null && source, 'parent has no exact admitted conversation topic');
-    const old = view.collaboration?.origins?.find(item => item.edge === contract.id);
     if (old) {
       need(old.topic === topic && old.source === source && old.digest === contract.digest, 'automatic origin cannot redirect a conversation'); return;
     }

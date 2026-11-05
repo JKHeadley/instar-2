@@ -152,11 +152,27 @@ export function composeProductionDelegation(input: Readonly<{
       const evidence = take(transport.port.send(offerEnvelope(contract), attempt, mode));
       return take(ledger.record(evidence));
     };
+    const cancel = (edgeId: string, reason: string) => {
+      return boundary('ProductionDelegationCancel', { edgeId }, config.context(), () => {
+        const edge = ledger.view().get(edgeId), current = input.current();
+        ensure(edge && edge.contract.owner === current.principal, 'delegation: unknown owned cancellation');
+        const prior = edge.cancellationRequest;
+        const envelope = cancelEnvelope(edge.contract, prior?.reason ?? reason, prior?.message?.at ?? current.clock.value);
+        if (!prior?.message) guardSubmission(envelope.key);
+        take(ledger.cancel(edgeId, current.principal, envelope.reason!, current.clock.value,
+          { key: envelope.key, digest: envelope.digest, at: envelope.at }));
+        return take(transport.port.send(envelope, `cancel:${edgeId}`, prior?.message ? 'lookup' : 'submit'));
+      });
+    };
     const nextCollection = new Map<string, number>();
     const collect = (edgeId: string) => boundary('ProductionDelegationCollect', { edgeId }, config.context(), () => {
       const edge = ledger.view().get(edgeId);
       ensure(edge && edge.contract.owner === input.current().principal, 'delegation: unknown owned edge');
       if (edge.result) return take(ledger.collect(edgeId, input.current().clock.value));
+      // Recursive ledger cancellation retains descendants before they have a
+      // transport identity. The same fenced port submits each once; replay
+      // looks up that identity and keeps uncertain work owned.
+      if (edge.cancellation === 'requested') take(cancel(edgeId, edge.cancellationRequest!.reason));
       return dispatch(edge.contract, `lookup:${edgeId}:${input.current().clock.value}`, false);
     });
     return Object.freeze({ ledger, authority, intake, port: transport.port, recover,
@@ -203,18 +219,7 @@ export function composeProductionDelegation(input: Readonly<{
             return collect(edge.contract.id);
           });
       },
-      cancel(edgeId: string, reason: string) {
-        return boundary('ProductionDelegationCancel', { edgeId }, config.context(), () => {
-          const edge = ledger.view().get(edgeId), current = input.current();
-          ensure(edge && edge.contract.owner === current.principal, 'delegation: unknown owned cancellation');
-          const prior = edge.cancellationRequest;
-          const envelope = cancelEnvelope(edge.contract, prior?.reason ?? reason, prior?.message?.at ?? current.clock.value);
-          if (!prior?.message) guardSubmission(envelope.key);
-          take(ledger.cancel(edgeId, current.principal, envelope.reason!, current.clock.value,
-            { key: envelope.key, digest: envelope.digest, at: envelope.at }));
-          return take(transport.port.send(envelope, `cancel:${edgeId}`, prior?.message ? 'lookup' : 'submit'));
-        });
-      },
+      cancel,
       pump() { const refused = transport.pump(endpoint); recover(); return refused; },
       async workAsync(worker: DelegatedAsyncWorker = installedWorker) {
         const results = await endpoint.workAsync(worker, input.current().clock.value);

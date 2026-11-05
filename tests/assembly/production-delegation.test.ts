@@ -474,3 +474,41 @@ it('cancellation collects already performed and checked work without replacing i
 // Native signed-store verification is physical I/O. This wall-clock test bound
 // is separate from the unchanged injected clock and execution/charge ceilings.
 }, 120000);
+
+it.each([false, true])('reviewer: cascading cancellation reaches every owned descendant transport (lost fence: %s)', async lostFence => {
+  const h = fixture(true);
+  try {
+    const parent = value(h.composition.delegate(h.parent, { ...h.request, budget: 2, childLimit: { maxChildren: 1, maxDepth: 3 } }));
+    h.composition.pump();
+    const localRun = h.composition.ledger.view().get(parent.id).acceptance.localRun;
+    value(h.composition.authority.start(parent, localRun, 100));
+    const child = value(h.composition.delegate(localRun, { ...h.request, conversation: 'nested-child', sequence: 2 }));
+    h.composition.pump();
+    value(h.composition.cancel(parent.id, 'cancel whole subtree'));
+    h.composition.pump();
+    if (lostFence) value(h.built.f.effects.transport.release('cancel-descendant-owner-loss', h.built.f.effects.fence));
+    const due = h.composition.collectDue();
+    h.composition.pump();
+    const { cancelEnvelope } = await import('../../src/rungraph/index.js');
+    const key = cancelEnvelope(child, 'cancel whole subtree', 100).key;
+    expect(h.composition.ledger.view().get(child.id).cancellation).toBe('requested');
+    const automatic = h.sent.filter(frame => frame.kind === 'envelope' && frame.key === key).length;
+    if (lostFence) {
+      expect(due.some(result => result.kind === 'Refused' && /lease|fence/.test(refused(result)))).toBe(true);
+      expect(automatic).toBe(0);
+      expect(h.composition.ledger.view().get(child.id).cancellationRequest.message).toBeUndefined();
+      return;
+    }
+    const retained = h.composition.ledger.view().get(child.id).cancellationRequest.message;
+    expect(retained).toMatchObject({ key });
+    h.composition.recover();
+    value(h.composition.collect(child.id));
+    h.composition.pump();
+    value(h.composition.collect(child.id));
+    expect(h.composition.ledger.view().get(child.id).cancellationRequest.message).toEqual(retained);
+    expect(h.composition.ledger.view().get(child.id).cancellation).toBe('requested');
+    value(h.composition.cancel(child.id, 'cancel whole subtree'));
+    expect(h.sent.filter(frame => frame.kind === 'envelope' && frame.key === key)).toHaveLength(1);
+    expect(automatic).toBe(1);
+  } finally { h.close(); }
+}, 60000);
