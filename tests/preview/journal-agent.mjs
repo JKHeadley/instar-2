@@ -2671,7 +2671,7 @@ async function main() {
       chmodSync(scope, 0o700);
       const project = realpathSync(scope), framework = doorway.session.framework;
       const mountVolume = identity => {
-        if (attachSessionVolume(root, layout ? { at: layout.mount } : {}) !== project) throw Error('preview: the session volume is not the working scope');
+        if (attachSessionVolume(root, { ...(layout ? { at: layout.mount } : {}), log: line => process.stderr.write(`preview: ${line}\n`) }) !== project) throw Error('preview: the session volume is not the working scope');
         if (identity) grantVolume(project, identity.user, identity.runner);
       };
       const physicalFor = () => createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
@@ -2709,7 +2709,8 @@ async function main() {
             }
           },
           maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
-          readyTimeoutMs: 30000, protectedSessions: [],
+          // Each adapter owns its startup defaults and protocol request bound.
+          protectedSessions: [],
           ...(conversationSession ? { requireTurnHook: true, inboxDirectory: binding.physical().inboxDirectory,
             compactGroundingFile: contextGrounding(), hookScript: layout ? lifecycleHookPath(harnessHookPath()) : fileURLToPath(new URL('../../scripts/session-hooks/stop.mjs', import.meta.url)) } : {}),
           ...(conversationSession ? { continuationRequired: () => handoff?.continuing ?? false, continuation: ({ operation, reason, pendingDigest }) => {
