@@ -11,6 +11,10 @@ Result, Outcome, principals, scope, approval and evidence; P2 owns signatures,
 fact admission, version chains, status/taint and durability receipts; P6 owns
 reservation, one-use claim, exposure and bounded observation wakes.
 
+## Capabilities
+
+- `process-control`: dark partial support for admitted exact-process signals, durable claims and independent settlement; installed recovery remains unproven.
+
 ## Composition
 
 1. Register `effectSchemas` and `registerEffectBodies` alongside P6's actual P2
