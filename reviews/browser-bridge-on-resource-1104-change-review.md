@@ -28,6 +28,30 @@ Decision: BROWSER-MERGE-1104-2 | Reopen the copied resource-recovery review whos
 
 ## Closing block
 
+Inherited row-40 dispositions for the reopened combined subject:
+
+Prompt finding: 4106b49fff07 | protocol-literal | Existing source-bound action claim protocol in journal.ts, retained unchanged; this change adds two frame kinds and view fields to journal.ts and touches no prompt literal; the test checks the protocol rather than a desired verdict.
+Prompt finding: 85544c20941f | protocol-literal | Existing held-session notice literal in journal.ts, retained unchanged by this change (frame kinds and view fields only); the test checks the delivered notice, not a desired semantic answer.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing sourceLabel attribution instruction in journal.ts, retained unchanged; the regression checks delivered guidance, not a desired semantic answer.
+Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory display literal in journal.ts, retained unchanged, not an added semantic classification rule.
+Deferral: legacy-1x/relationships/src/core/types.ts:333 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:369 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:1628 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:2047 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:2278 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:4780 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:4830 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:6072 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:6077 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:6081 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:6153 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:7165 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:7557 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:7564 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/tests/unit/relationship-delete.test.ts:69 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: tests/preview/group-carry.test.ts:425 | not-a-deferral=Historical fixture provenance for recorded update 6232091; this comment names an existing deferred-answer capture, not a commitment to future implementation.
+Skip: tests/preview/group-carry-cli.test.ts:111 | scope=Inherited macOS-only confined-launch contract for refresh-group, like carry-group at line 12. The original row-40 port records its macOS execution; this WSL repair does not claim a new macOS run. No quarantine.
+
 simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
 80/20: The two browser test files and register lifecycle test passed 31/31 on the combined branch. Full exact-head suite, independent combination review and a real signed-in multi-step group task remain required before release. No new browser service or credential custody path.
 VERDICT: author submission; this record asserts no independent verdict.
