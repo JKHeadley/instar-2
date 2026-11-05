@@ -48,9 +48,9 @@ step-2 diff added. Counts from `git diff --numstat 8e7df7f5 87a8efec`.
 | journal-agent.mjs (edit) | — | — | — | 100 |
 | capabilities.ts, capabilities.declarations.json, relationship-journal.ts (edits) | — | — | — | 49 |
 | group-carry-cli.test.ts (edit: refresh-group case) | — | — | — | 87 |
-| relationship-served-cycle.test.ts | 0 | 170 | 0 | 170 |
+| relationship-served-cycle.test.ts | 0 | 187 | 0 | 187 |
 
-Source: 2,178 carried / 1,760 adapted. Tests: 1,461 carried / 1,565 adapted (the per-record replication module of
+Source: 2,178 carried / 1,760 adapted. Tests: 1,461 carried / 1,582 adapted (the per-record replication module of
 2026-11-05: counts from `git diff --numstat bccfc149 31057753`). Fifteen further 1.x files
 (8,635-line `types.ts` included) are kept verbatim under `legacy-1x/relationships/` and are not compiled.
 
