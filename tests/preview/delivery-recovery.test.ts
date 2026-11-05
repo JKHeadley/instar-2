@@ -479,7 +479,9 @@ it.each([['reply', 'lost'], ['reply', 'corrupt'], ['delivery-notice', 'lost'], [
   let lose = true;
   const proxy = () => ({ ...journal, get view() { return journal.view; }, append: (row: Parameters<typeof journal.append>[0]) => {
     if (lose && (kind === 'reply' ? row.kind === 'sent' : row.kind === 'held-notice-sent' && row.deliveryUnknown)) {
-      if (fault === 'corrupt') { journal.append({ ...row, message: 0 }); return; }
+      if (fault === 'corrupt' && (row.kind === 'sent' || row.kind === 'held-notice-sent')) {
+        journal.append({ ...row, message: 0 }); return;
+      }
       throw Error('injected target receipt storage failure');
     }
     journal.append(row);
