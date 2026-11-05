@@ -28,9 +28,6 @@ Decision: BROWSER-MERGE-1104-2 | Reopen the copied resource-recovery review whos
 
 ## Closing block
 
-simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
-80/20: The two browser test files and register lifecycle test passed 31/31 on the combined branch. Full exact-head suite, independent combination review and a real signed-in multi-step group task remain required before release. No new browser service or credential custody path.
-VERDICT: author submission; this record asserts no independent verdict.
 
 ## Carryover02 r3 review reconciliation
 
@@ -40,3 +37,17 @@ Prior reviewed digest: sha256:094316dfd656ab51b6d7663e4bd9207c62d4593c8a3e743493
 Current digest of that same original subject at 96b432fcaa3ce6f7663419ccbd58a31737b62263: sha256:5d4ec4d49921a33b5471fbe8cf98a6748379847bc798bd3d97c4821cd558c303
 Original reviewed-record commit: b5806d1e015dc650cdc1dee2e0accab05a849d4b
 Reason: inherited shared-source changes invalidate the frozen byte-bound review; the r3 brief explicitly requires ordinary review reconciliation. Prior review evidence remains historical, not re-approved.
+
+Historical closing text (not approval of current content):
+> simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
+> 80/20: The two browser test files and register lifecycle test passed 31/31 on the combined branch. Full exact-head suite, independent combination review and a real signed-in multi-step group task remain required before release. No new browser service or credential custody path.
+> VERDICT: author submission; this record asserts no independent verdict.
+
+Deferral: tests/assembly/production-conversation-session.test.ts:1335 | not-a-deferral=Test of the implemented bounded supervision cadence and three-call ceiling; no engineering work is deferred by this test label.
+Skip: tests/assembly/process-control-kernel.test.ts:30 | scope=Linux pidfd contract tests require the Linux kernel API; unsupported platforms refuse and remain an explicit parity gap. All14 kernel cases ran on this Linux host.
+Prompt finding: 0725f0150c56 | protocol-literal | Existing owner role instruction asserted by its prompt test, not benchmark guidance.
+Prompt finding: 27d7720e7977 | protocol-literal | Existing memory envelope field asserted by its consumer test, not fixture-specific desired output.
+
+simplestRobustRoute: Preserve the original browser/connector behavior and use the normal review tool to reopen its changed byte-bound subject. Prior and current digests remain recorded; this administrative reconciliation grants no authority and requires independent re-review.
+80/20: Historical tests and verdicts remain historical. Current combined content is not approved by reopening this record; the carryover02 report retains the new targeted proofs and unresolved acceptance gaps.
+VERDICT: Open for independent re-review; no current-content approval asserted.

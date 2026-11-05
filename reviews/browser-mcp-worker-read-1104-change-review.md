@@ -28,9 +28,6 @@ Decision: MCP-SCHEMA-1104-3 | Remove top-level oneOf from the client-advertised 
 
 ## Closing block
 
-simplestRobustRoute: Use the existing harness ACL helper on the one generated file before a continuing session launches.
-80/20: The worker can load the connector without changing owner profile custody. Real signed-in page reads still need copy proof before live release.
-VERDICT: author submission; this record asserts no independent verdict.
 
 ## Carryover02 r3 review reconciliation
 
@@ -40,3 +37,15 @@ Prior reviewed digest: sha256:41339ecebaa3eebf3d3a09bcb98108b0bdb289e724fb0bd351
 Current digest of that same original subject at 96b432fcaa3ce6f7663419ccbd58a31737b62263: sha256:b5e0e9fba564b7ca5a335e1295e6516b720b66f6ead0dc31edbc24ccf901e5bd
 Original reviewed-record commit: b5806d1e015dc650cdc1dee2e0accab05a849d4b
 Reason: inherited shared-source changes invalidate the frozen byte-bound review; the r3 brief explicitly requires ordinary review reconciliation. Prior review evidence remains historical, not re-approved.
+
+Historical closing text (not approval of current content):
+> simplestRobustRoute: Use the existing harness ACL helper on the one generated file before a continuing session launches.
+> 80/20: The worker can load the connector without changing owner profile custody. Real signed-in page reads still need copy proof before live release.
+> VERDICT: author submission; this record asserts no independent verdict.
+
+Deferral: tests/assembly/production-conversation-session.test.ts:1335 | not-a-deferral=Test of the implemented bounded supervision cadence and three-call ceiling; no engineering work is deferred by this test label.
+Skip: tests/assembly/process-control-kernel.test.ts:30 | scope=Linux pidfd contract tests require the Linux kernel API; unsupported platforms refuse and remain an explicit parity gap. All14 kernel cases ran on this Linux host.
+
+simplestRobustRoute: Preserve the original browser/connector behavior and use the normal review tool to reopen its changed byte-bound subject. Prior and current digests remain recorded; this administrative reconciliation grants no authority and requires independent re-review.
+80/20: Historical tests and verdicts remain historical. Current combined content is not approved by reopening this record; the carryover02 report retains the new targeted proofs and unresolved acceptance gaps.
+VERDICT: Open for independent re-review; no current-content approval asserted.
