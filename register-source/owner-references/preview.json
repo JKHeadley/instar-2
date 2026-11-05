@@ -159,7 +159,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/proofs.test.ts",
-        "hash": "sha256:45a08e4a6db93c5b4a88278870c47e65486fa6505c18da5cf304f7375cbfab66"
+        "hash": "sha256:205bde11dc57c91dbf5d9c7b13e12d93f70f149ea2f6c10c0842016c44eab120"
       }
     },
     {
@@ -183,21 +183,11 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/update-bound.test.ts",
-        "hash": "sha256:2d76399cce28150d58cf78004e7e570fea0c6113b7db307e289e785e3a2246c8"
+        "hash": "sha256:9d604006cb1403593e86b6fe0b869febc30362ef793ecad87613a6195d5f1042"
       }
     }
   ],
-  "probes": [
-    {
-      "id": "P9-PREVIEW-update-bound",
-      "cadence": 60000,
-      "execution": "ci",
-      "artifact": {
-        "path": "tests/preview/update-bound.test.ts",
-        "hash": "sha256:2d76399cce28150d58cf78004e7e570fea0c6113b7db307e289e785e3a2246c8"
-      }
-    }
-  ],
+  "probes": [],
   "decoders": [],
   "documents": [],
   "captures": [

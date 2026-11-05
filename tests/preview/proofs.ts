@@ -181,7 +181,7 @@ function agreementOutcome(readings: readonly AgreementReading[]): ProofOutcome {
 }
 
 export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
-  cadence('update-bound', 'critical-outcome', 'installed-update-verification', 'host.update-observer', [26, 43, 55, 60, 61],
+  cadence('update-bound', 'critical-outcome', 'preview.proofs', 'host.update-observer', [26, 43, 55, 60, 61],
     'fresh update transaction, actual retry timers and the existing host resource owner', MINUTE, 2 * MINUTE,
     o => count(o.failures) && o.failures <= 3 && o.pressureMatches === true && count(o.nextAttemptAt)
       && (o.failures === 0 || (count(o.lastFailureAt)
@@ -191,8 +191,9 @@ export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
       && count(o.maintenanceLaunches) && count(o.answerReserve)
       && o.activeLaunches <= o.launchCeiling && o.maintenanceLaunches <= o.launchCeiling - o.answerReserve
       && (o.failures < 3 || count(o.pausedAt))
-      && (o.pausedAt === null || (o.stopped === true && o.timers === 0))
-      && (o.stopped !== true || o.timers === 0), ports => {
+      && (o.pausedAt === null || o.timers === 0)
+      && count(o.timers) && (o.stopped !== true || o.timers === 0)
+      && (o.pausedAt !== null || o.stopped === true || o.timers > 0), ports => {
       let observed: Observed | null;
       try { observed = ports.updateBound?.() ?? null; } catch { observed = null; }
       if (!observed) return outcome('unknown', {}, 'updater or durable bound evidence unavailable', null);

@@ -31,7 +31,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/proofs.test.ts",
-        "hash": "sha256:45a08e4a6db93c5b4a88278870c47e65486fa6505c18da5cf304f7375cbfab66"
+        "hash": "sha256:205bde11dc57c91dbf5d9c7b13e12d93f70f149ea2f6c10c0842016c44eab120"
       }
     },
     {
@@ -50,7 +50,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -59,7 +59,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -68,7 +68,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -77,7 +77,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -86,7 +86,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -95,7 +95,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -104,7 +104,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -113,7 +113,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -122,7 +122,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -131,7 +131,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -140,7 +140,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -149,7 +149,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -158,7 +158,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -167,7 +167,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     },
     {
@@ -176,7 +176,16 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/preview/proofs-launcher.test.ts",
-        "hash": "sha256:08793239771cf9e1aa6ed34c6125f2767a6f8601ed1ae48b28feff14faa7e0ff"
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-update-bound",
+      "cadence": 60000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:cf76cc2707a598afac39768399bcdd525765d7867cc5800604b2e85af0c1e96c"
       }
     }
   ],
