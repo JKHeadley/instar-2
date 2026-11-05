@@ -6,6 +6,28 @@ const input: PromiseScheduleInput = { id: 3, openedAt: 1000, dueAt: 21001, deliv
   waitsOn: 'date', work: undefined };
 const work: PromiseWork = { last: 22000, lastSlot: 21001, outcome: 'continue' };
 const schedule = (changes: Partial<PromiseScheduleInput> = {}) => schedulePromise({ ...input, ...changes }, 10000);
+it('gives an admitted undated promise a cadence without requiring a duplicate loop declaration', () => {
+  const store = createPromiseStore<number>();
+  const note = { in: 'reply' as const, source: 'turn:1', quote: 'I will check.', agentPromise: {
+    quote: 'I will check.', owner: 'agent' as const, action: 'promised' as const, waitsOn: 'next-relevant-reply' as const } };
+  recordCommitments(store, [note]);
+  expect(store.commitments[0]).toMatchObject({ owner: 'agent', waitsOn: 'nothing' });
+  expect(note).not.toHaveProperty('waitsOn');
+  expect(schedule({ dueAt: null, waitsOn: store.commitments[0]!.waitsOn! })?.slot).toBe(11000);
+  recordReplyLoop(store, 'turn:1', { kind: 'promise', quote: note.quote, waitsOn: 'external' });
+  expect(store.commitments[0]).toMatchObject({ waitsOn: 'external', loop: 'promise' });
+  const replay = createPromiseStore<number>();
+  recordCommitments(replay, store.commitments);
+  expect(replay).toEqual(store);
+});
+it('does not infer a dependency for legacy notes or overwrite an admitted dependency', () => {
+  const store = createPromiseStore<number>();
+  recordCommitments(store, [{ in: 'message', source: 'turn:1', quote: 'Legacy note.' },
+    { in: 'reply', source: 'turn:2', quote: 'I will check.', owner: 'agent', waitsOn: 'operator', agentPromise: {
+      quote: 'I will check.', owner: 'agent', action: 'promised', waitsOn: 'next-relevant-reply' } }]);
+  expect(store.commitments[0]?.waitsOn).toBeUndefined();
+  expect(store.commitments[1]?.waitsOn).toBe('operator');
+});
 it('keeps stable promise identities, declaration joins and terminal evidence in the owner projection', () => {
   const store = createPromiseStore<number>();
   recordCommitments(store, [{ in: 'reply', source: 'turn:1', quote: 'I will check.', agentPromise: {

@@ -34,7 +34,7 @@ import { admitToolCallEffect } from './tool-admission.mjs';
 import { grantVolume, HARNESS_OFF_REASON, HARNESS_SESSION_BRIDGE, harnessCredentialValues, harnessGate, harnessHookPath, harnessRefusedNotice, harnessSessionAdmission,
   harnessSessionLayout, harnessStatusLine, readHarnessLogin } from './harness-user.mjs';
 import { encoded } from '../../src/assembly/boundary.js';
-import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
+import { admitCommitmentSend, anyCommitmentSendGrant, decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope, toolPreparation, withWorkspaceNotice } from './journal-envelope.js';
@@ -98,6 +98,7 @@ import { createMediaAdmission } from './media-admission.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
 import { reapNotices } from './reap-notices.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
+import { createBoundCommitmentHost } from './commitment-host.js';
 import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking } from './live-sentinels.js';
 import { SENTINEL_FAMILIES } from './sentinel-record.js';
 
@@ -647,7 +648,8 @@ const objectAnswerOf = id => /^summary:/u.test(id);
  * (`retrospective:N:duties`); its benchmark reruns (`retrospective:N:rerun:I`) replay an answer. */
 const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review'
   : id.endsWith(':reply-revision') ? 'reply-revision' : /^summary:.*:review$/u.test(id) ? 'summary-review'
-  : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
+  : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective'
+  : /^commitment-status:\d+$/u.test(id) ? 'commitment-status-line' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 /** Rules 3, 17 and 47: which standing instructions the prepared prompt carried, by digest and rule number. */
@@ -2373,6 +2375,11 @@ async function main() {
         const result = await invokeSubscription(modelEnvelope({ question, context: state, id }), id);
         return { ...result, ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
       } } : {}),
+      // Row 01: the beacon's status line, a reserved call recorded at this launcher's model boundary (Rule 41).
+      commitmentStatus: async ({ id, question, context: packet }) => {
+        const result = await invokeSubscription(modelEnvelope({ question, context: packet, id }), id);
+        return { state: result.state, ...(typeof result.value === 'string' ? { value: result.value } : {}), ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
+      },
       // Status pull lines: proof posture (Rule 43), then conversation ownership and store checks (Rules 63, 33).
       statusExtra: statusExtraLines,
       // Part Eleven's minimal-path owner decides (src/operator/live.ts); the host reports only what it
@@ -3090,7 +3097,18 @@ async function main() {
       // A due reminder is never sent from this pre-poll job: the post-poll job below already sends every requested
       // reminder, and only after a successful empty poll, so a waiting withdrawal is read and settled first (Rule 93).
       actOnPromise: id => { if (!id.startsWith('request:')) sentinelSteps.push(() => worker.workObligations()); } });
-    const sentinelTick = () => { if (sentinelFamilies.size && !journal.readOnly) sentinels.tick(); };
+    // Row 01: typed commitments, the beacon and check-ins advance on this same admitted tick, so a stop, lost ownership or
+    // expiry stops them by not ticking. A send needs the operator's exact grant in the effect policy, read at each decision;
+    // with none, output stays off and no check-in spends an attempt (Rule 87). What a tick starts settles inside this job.
+    const commitmentHost = createBoundCommitmentHost(journal, { now: wallNow, log() {},
+      minutesOfDay: ms => { const at = new Date(ms); return at.getHours() * 60 + at.getMinutes(); },
+      formatWhen: ms => new Date(ms).toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
+      fileExists: path => existsSync(path), config: { get: (_key, fallback) => fallback, set() { throw Error('no setting store is bound'); } } },
+      worker, { admit: topic => admitCommitmentSend(admissionConfig(), topic, wallNow()), any: () => anyCommitmentSendGrant(admissionConfig(), wallNow()) });
+    const sentinelTick = () => {
+      if (!journal.readOnly) { try { commitmentHost.tick(); } catch { /* retained; the next admitted cycle retries */ } sentinelSteps.push(() => commitmentHost.settle()); }
+      if (sentinelFamilies.size && !journal.readOnly) sentinels.tick();
+    };
     // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
     // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
     // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
