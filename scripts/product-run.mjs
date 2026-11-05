@@ -83,9 +83,9 @@ export function buildRunArgv(directory) {
   // effect doorway only through --effect-policy (setup-standing-trust.mjs prints the same instruction). Without it the
   // runner decides with the empty default: listed connector reads still run, but every recorded grant (a connected
   // account's write, the owner GitHub read) is silently refused in a copy that works on the hand-maintained launcher.
-  // The runner decodes the file at launch and re-reads it at every turn; a file that stops decoding grants nothing.
+  // Rules 15/77/95: unavailable trust refuses affected effects at the checkpoint, never ordinary conversation.
+  // The runner reads a bounded record at startup and each decision; no empty-policy fallback.
   const policyPath = resolve(root, 'effect-policy.json');
-  pathRecord(policyPath, 'standing trust policy');
   const argv = ['run', '--root', root];
   const add = (name, value) => argv.push(`--${name}`, String(value));
   for (const name of required.slice(0, 8)) add(name, o[name]);

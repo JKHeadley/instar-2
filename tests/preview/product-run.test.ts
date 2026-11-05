@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { mkdtempSync, writeFileSync, rmSync, unlinkSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, unlinkSync, readFileSync, statSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -8,9 +8,9 @@ import { buildRunArgv } from '../../scripts/product-run.mjs';
 // @ts-expect-error Installer JavaScript: the standing trust record `instar2 setup` writes.
 import { configureTrust } from './trust-setup.mjs';
 // @ts-expect-error The runner's effect doorway and its empty default.
-import { DEFAULT_EFFECT_POLICY, currentEffectPolicy } from './effect-doorway.mjs';
+import { DEFAULT_EFFECT_POLICY, UNAVAILABLE_EFFECT_POLICY, decodeEffectPolicy, currentEffectPolicy } from './effect-doorway.mjs';
 // @ts-expect-error The shipped tool-call effect admission.
-import { admitToolCallEffect } from './tool-admission.mjs';
+import { admitToolCall, admitToolCallEffect } from './tool-admission.mjs';
 // @ts-expect-error The owner GitHub read tool's name.
 import { OWNER_BROWSER_TOOL } from './owner-browser-contract.mjs';
 // @ts-expect-error The root MCP reader.
@@ -54,7 +54,7 @@ it('reconstructs every launcher flag from root records and documented limits', (
     '--max-calls', '16', '--max-replies', '16', '--max-turns', '20', '--max-context-bytes', '32768']);
 });
 it.each(['run-config.json', 'model-setting.json', 'harness-logins.json', 'activation.json', 'authority.json', 'profile.json',
-  'tools.json', 'session.json', 'yes.json', 'journal.encrypted', 'effect-policy.json'])('refuses missing %s before launch', name => {
+  'tools.json', 'session.json', 'yes.json', 'journal.encrypted'])('refuses missing %s before launch', name => {
   const { root } = fixture(); unlinkSync(join(root, name)); expect(() => buildRunArgv(root)).toThrow(/Run refused:/);
 });
 it('carries the installed standing trust to the runner: recorded grants decide connected-account effects in a copy', () => {
@@ -92,9 +92,68 @@ it('carries the installed standing trust to the runner: recorded grants decide c
   const unreadable = currentEffectPolicy(() => readFileSync(policyPath, 'utf8'));
   expect(decide(unreadable, 'mcp__fakeacct__post_note', { text: 'x' })).toBe(false);
   expect(decide(unreadable, 'mcp__fakeacct__lookup', { key: 'x' })).toBe(false);
-  // The argv builder reads a bounded record, never its meaning: a malformed file refuses launch plainly.
-  expect(() => buildRunArgv(root)).toThrow('standing trust policy is missing or unreadable');
+  expect(buildRunArgv(root)).toEqual(argv);
 });
+// Execute the actual startup composition so an eager decode before the reader is a regression,
+// not hidden by a test that calls currentEffectPolicy directly. No provider or live account is used.
+const runnerSource = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
+const policyStartup = runnerSource.slice(runnerSource.indexOf("    const effectPolicyPath = options['effect-policy'];"),
+  runnerSource.indexOf('    // Rule 114: a tool turn a crash interrupted'));
+it.each(['missing', 'malformed', 'invalid', 'unreadable', 'directory', 'oversized'])(
+  'keeps startup and local work reachable with %s trust, refuses connected effects, and recovers on reread', failure => {
+    const { root } = fixture();
+    const policyPath = join(root, 'effect-policy.json'), valid = readFileSync(policyPath, 'utf8');
+    let unreadable = failure === 'unreadable';
+    if (failure === 'missing' || failure === 'directory') unlinkSync(policyPath);
+    if (failure === 'directory') mkdirSync(policyPath);
+    if (failure === 'malformed') writeFileSync(policyPath, '{"private-fixture-value":');
+    if (failure === 'invalid') writeFileSync(policyPath, '{}');
+    // Valid JSON over the old launcher's bound must still be unavailable at the effect checkpoint.
+    if (failure === 'oversized') writeFileSync(policyPath, valid + ' '.repeat(1024 * 1024));
+    const argv = buildRunArgv(root);
+    expect(argv[argv.indexOf('--effect-policy') + 1]).toBe(policyPath);
+    let diagnostics = '';
+    const read = (path: string, encoding: 'utf8') => {
+      if (unreadable) throw Object.assign(new Error('private-fixture-value'), { code: 'EACCES' });
+      return readFileSync(path, encoding);
+    };
+    const env = { options: { 'effect-policy': policyPath }, statSync, readFileSync: read,
+      currentEffectPolicy, decodeEffectPolicy, UNAVAILABLE_EFFECT_POLICY, DEFAULT_EFFECT_POLICY,
+      process: { stderr: { write: (text: string) => { diagnostics += text; } } } };
+    const policyOf = Function(...Object.keys(env), `let effectPolicyOf = () => DEFAULT_EFFECT_POLICY;
+      ${policyStartup}
+return effectPolicyOf;`)(...Object.values(env));
+    expect(policyOf()).toMatchObject({ type: UNAVAILABLE_EFFECT_POLICY });
+    expect(diagnostics).toContain('effect policy unavailable');
+    expect(diagnostics).toContain('affected effects refused until readable');
+    expect(diagnostics).not.toContain('private-fixture-value');
+    const config = () => ({ workspace: root, tmp: root, maxCalls: 10, maxWriteBytes: 4096,
+      gate: 'fixture-checkpoint', delegation: true, operations: [], effectPolicy: policyOf(), mcpReads: readRootMcp(root).reads });
+    const decide = (tool: string) => admitToolCallEffect(tool, { text: 'hello' }, config(), 1000);
+    for (const tool of ['mcp__fakeacct__post_note', 'mcp__fakeacct__lookup']) {
+      expect(decide(tool)).toMatchObject({ admitted: false, disposition: 'refused' });
+      expect(decide(tool).reason).toContain('unavailable');
+    }
+    const fs = { exists: () => true, realpath: (path: string) => path };
+    for (const [tool_name, tool_input] of [
+      ['Read', { file_path: join(root, 'notes.txt') }], ['Grep', { path: root, pattern: 'hello' }],
+      ['TodoWrite', { todos: [] }], ['Write', { file_path: join(root, 'notes.txt'), content: 'hello' }],
+    ]) {
+      const admission = admitToolCall({ tool_name, tool_input }, config(), 1, fs);
+      expect(admission, `${tool_name}: ${admission.reason}`).toMatchObject({ decision: 'allow' });
+    }
+    unreadable = false;
+    if (failure === 'directory') rmSync(policyPath, { recursive: true });
+    writeFileSync(policyPath, valid);
+    expect(policyOf()).toMatchObject({ type: 'PreviewEffectPolicy' });
+    expect(decide('mcp__fakeacct__post_note').admitted).toBe(true);
+    expect(decide('mcp__fakeacct__lookup').admitted).toBe(true);
+    expect(decide('mcp__fakeacct__delete_all').admitted).toBe(false);
+    unlinkSync(policyPath);
+    expect(decide('mcp__fakeacct__lookup').admitted).toBe(false);
+    writeFileSync(policyPath, valid);
+    expect(decide('mcp__fakeacct__post_note').admitted).toBe(true);
+  });
 it('uses only the root model, never an environment setting or activation hint', () => {
   const { root } = fixture(); save(root, 'activation.json', { model: 'claude-other' });
   save(root, 'model-setting.json', { model: 'claude-sonnet-4-6' });
