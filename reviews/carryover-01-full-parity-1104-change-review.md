@@ -27,9 +27,6 @@ Prompt finding: 849db3a6296a | protocol-literal | Unchanged deterministic empty-
 Decision: CARRYOVER-01-ADMIT-UNDATED | A model-admitted undated promise owns internal preparation on the existing cadence; an explicit dependency refines the default and a send still requires its own grant. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-01-full-parity-1104-PROGRESS.md
 Decision: CARRYOVER-01-OBSERVE-SLOTS | Reuse the owner's schedule for undated and recurring observation; keep dependency waits distinct from progress and never derive closure from a missing due instant. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-01-full-parity-1104-PROGRESS.md
 
-simplestRobustRoute: Extend the existing pure observer and its journal adapter, with one optional durable slot field. This is the simplest robust route: it prevents stale observation markers from swallowing subsequent checks without introducing a competing schedule, queue, store or send path. Existing owner admission and work/result receipts remain the start/end/floor guards. No unattended shipped-path completion is claimed.
-80/20: Four red pure regressions and one red journal integration reproduced, then all 32 tests in those files passed. Targeted importers, build, typecheck and machine checks cover the implementation; whole-feature review remains explicit.
-VERDICT: author submission; no independent convergence or live-proof verdict asserted.
 
 ---
 
@@ -110,3 +107,7 @@ in the builder report, not an implied claim that every named test ran.
 Whole parity cannot be asserted until the OPEN rows have implemented, wired,
 can-fail proofs or explicit code-and-test-supported superior 2.0 dispositions.
 Astra's review and the desk's live proof remain distinct acceptance steps.
+
+simplestRobustRoute: Extend the existing pure observer and its journal adapter, with one optional durable slot field. This is the simplest robust route: it prevents stale observation markers from swallowing subsequent checks without introducing a competing schedule, queue, store or send path. Existing owner admission and work/result receipts remain the start/end/floor guards. No unattended shipped-path completion is claimed.
+80/20: Four red pure regressions and one red journal integration reproduced, then all 32 tests in those files passed. Targeted importers, build, typecheck and machine checks cover the implementation; whole-feature review remains explicit.
+VERDICT: author submission; no independent convergence or live-proof verdict asserted.
