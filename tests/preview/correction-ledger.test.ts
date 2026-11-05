@@ -211,3 +211,22 @@ describe('CorrectionLedger', () => {
     });
   });
 });
+
+it('later summaries cannot change historical diversity; missing grounding is unknown', () => {
+  const w = correctionWorld();
+  try {
+    const start = T('2026-05-01T10:00:00Z');
+    for (let i = 0; i < 4; i++) w.preference('lead with the action', start + Math.floor(i / 2) * 86400_000 + i * 1000);
+    const before = correctionOccurrences(w.view, w.operator);
+    expect(new Set(before.map(row => row.sessionId)).size).toBe(1);
+    w.journal.append({ kind: 'summary-reserve', through: 2, at: start + 3 * 86400_000 });
+    w.journal.append({ kind: 'summary', through: 2, text: 'Later summary.', at: start + 3 * 86400_000 + 1 });
+    expect(correctionOccurrences(w.view, w.operator)).toEqual(before);
+    w.preference('lead with the action', start + 4 * 86400_000);
+    const rows = correctionOccurrences(w.view, w.operator);
+    expect(new Set(rows.map(row => row.sessionId)).size).toBe(2);
+    const unknown = rows.map(row => ({ ...row, sessionId: null }));
+    expect(distinctCounts(unknown, rows[0]!.dedupeKey).distinctSessions).toBe(0);
+    w.reopen(); expect(correctionOccurrences(w.view, w.operator)).toEqual(rows);
+  } finally { w.close(); }
+});

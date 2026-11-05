@@ -43,7 +43,7 @@ export function correctionWorld(limits: { maxCalls?: number; maxTurns?: number }
       cursor: update + 1, at, ...(options.thread === undefined ? {} : { thread: options.thread }) });
     return id;
   };
-  const groundingOf = (partial: Partial<ReplyGrounding> = {}): ReplyGrounding => ({ packetSha256: 'offline', summaryThrough: null,
+  const groundingOf = (partial: Partial<ReplyGrounding> = {}): ReplyGrounding => ({ packetSha256: 'offline', summaryThrough: journal.view.summaries.at(-1)?.through ?? null,
     history: [], recalled: [], people: [], commitments: [], channelItems: [], corrections: [], memoryChanges: [], memoryCandidates: [], ...partial });
   /** The reservation (with the packet grounding) and the complete answer of a message. */
   const answer = (id: string, text: string, at: number, extra: { memory?: MemoryChange[]; memoryFailure?: MemoryFailureProposal;
@@ -58,6 +58,12 @@ export function correctionWorld(limits: { maxCalls?: number; maxTurns?: number }
     get view(): JournalView { return journal.view; },
     operator,
     say, answer,
+    send: (id: string, at: number) => {
+      const turn = journal.view.turns.get(id)!;
+      journal.append({ kind: 'intent', id, update: turn.update, chat: OPERATOR, grant: genesis.grant,
+        text: turn.answer!, ...(turn.thread === undefined ? {} : { thread: turn.thread }), at });
+      journal.append({ kind: 'sent', id, message: 7, at: at + 1 });
+    },
     /** The operator states a standing preference and the answer path records it. Returns the message id. */
     preference: (learning: string, at: number, options: { thread?: number; from?: string } = {}) => {
       const id = say(learning, at, options);

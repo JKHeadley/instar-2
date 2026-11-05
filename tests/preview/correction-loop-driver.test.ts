@@ -16,6 +16,7 @@ import { correctionCandidates, correctionLifecycle, correctionReport, correction
   DEFAULT_MAX_REOPENS, DEFAULT_MAX_ROUTES_PER_TICK, DEFAULT_VERIFY_WINDOW_DAYS_INFRA_GAP, DEFAULT_VERIFY_WINDOW_DAYS_PREFERENCE,
   type PresentedCorrection } from './correction-loop-driver.js';
 import { dedupeKey, getByDedupeKey } from './correction-ledger.js';
+import { retrospectivePopulation, validateRetrospective, GRAVITY_WELLS, RETROSPECTIVE_DUTIES } from './retrospective.js';
 import { correctionWorld, T, type CorrectionWorld } from './correction-fixture.js';
 
 const DAY = 86400_000;
@@ -41,6 +42,21 @@ const present = (w: CorrectionWorld, at: number, options: { state?: 'complete' |
 };
 const statuses = (w: CorrectionWorld, now: number, options = {}) => correctionLifecycle(w.view, w.operator, now, options);
 const PARAPHRASES = ['alpha beta gamma delta theta', 'alpha beta gamma epsilon theta', 'alpha beta gamma zeta theta', 'alpha beta gamma eta theta'];
+
+function assessedReply(w: CorrectionWorld, source: string, at: number, kind: 'preferences' | 'recalled' = 'preferences', assessment: 'met' | 'unmet' = 'met') {
+  const id = w.reply('what should I do?', at, { [kind]: [source] });
+  w.send(id, at + 2);
+  const evidence = w.say('The reply met my preference.', at + 1000);
+  const cases = retrospectivePopulation(w.view, w.operator).filter(item => item.id === `answer:${id}`);
+  const result = validateRetrospective({ inspected: cases.map(item => item.id), omitted: [], duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length),
+    wells: GRAVITY_WELLS.map(() => 0), eff: 'Assessed the outcome.', findings: [], feedback: [], authorizations: [], comparisons: [], closures: [],
+    grades: [{ case: `answer:${id}`, promises: [],
+    conclusion: { assessment: 'supported', evidence: [`turn:${source}`] }, reason: { assessment: 'not-applicable', evidence: [] },
+    outcome: { assessment, reason: 'Independent assessment of this lesson and later outcome.', evidence: [`turn:${source}`, `turn:${evidence}`] }, observations: [] }] }, { cases }, w.view, w.view.retroPasses.length, at + 2000);
+  expect(result.grades[0]?.outcome.assessment).toBe(assessment);
+  w.pass(at + 2000, { cases: cases.map(item => item.id), result });
+  return id;
+}
 
 describe('CorrectionLoopDriver', () => {
   describe('routing (one route: the judgment owner)', () => {
@@ -144,7 +160,7 @@ describe('CorrectionLoopDriver', () => {
   });
 
   describe('closed-loop verify (§3.7)', () => {
-    it('a preference whose cluster did not recur AND was carried in a recorded packet → verified', () => {
+    it('a preference whose cluster did not recur AND was delivered and independently assessed → verified', () => {
       const w = correctionWorld();
       try {
         const source = w.preference('lead with the one action', T('2026-05-01T10:00:00Z'));
@@ -152,7 +168,7 @@ describe('CorrectionLoopDriver', () => {
         const key = dedupeKey('user-preference', 'lead with the one action');
         const routedAt = T('2026-05-10T00:00:00Z');
         present(w, routedAt);
-        w.reply('how is the garden?', T('2026-05-12T00:00:00Z'), { preferences: [source] });
+        assessedReply(w, source, T('2026-05-12T00:00:00Z'));
         expect(getByDedupeKey(statuses(w, T('2026-05-14T00:00:00Z')), key)).toMatchObject({ status: 'acted-on' });
         const verified = getByDedupeKey(statuses(w, T('2026-05-20T00:00:00Z')), key)!;
         expect(verified).toMatchObject({ status: 'verified', reopenCount: 0 });
@@ -162,7 +178,7 @@ describe('CorrectionLoopDriver', () => {
       } finally { w.close(); }
     });
 
-    it('SILENCE alone is NOT effective — answers that never carried the guidance are inconclusive, and no answer at all is unknown', () => {
+    it('SILENCE alone is NOT effective — answers that never carried the guidance are unknown, and no answer at all is unknown', () => {
       const w = correctionWorld();
       try {
         seedCrossingPreference(w, 'lead with the one action');
@@ -172,8 +188,8 @@ describe('CorrectionLoopDriver', () => {
         w.reply('how is the garden?', T('2026-05-12T00:00:00Z'), { preferences: [] });
         w.reply('and the shed?', T('2026-05-13T00:00:00Z'));
         const silent = getByDedupeKey(statuses(w, T('2026-05-20T00:00:00Z')), key)!;
-        expect(silent.status).toBe('inconclusive');
-        expect(silent.basis).toContain('silence');
+        expect(silent.status).toBe('unknown');
+        expect(silent.basis).toContain('opportunity');
         const v = correctionWorld();
         try {
           seedCrossingPreference(v, 'lead with the one action');
@@ -203,7 +219,7 @@ describe('CorrectionLoopDriver', () => {
           && record.verifyWindowStart === new Date(freshStart).toISOString())).toBe(true);
         // The old May 15 occurrence predates the fresh start, so it cannot burn another reopen. With no new
         // recurrence and the guidance carried, the fresh window verifies all four.
-        w.reply('how is the garden?', T('2026-05-19T00:00:00Z'), { preferences: [recurrence] });
+        assessedReply(w, recurrence, T('2026-05-19T00:00:00Z'));
         const settled = statuses(w, T('2026-05-30T00:00:00Z'));
         expect(settled.filter(record => record.status === 'verified')).toHaveLength(4);
         expect(settled.filter(record => record.status === 'reopened')).toHaveLength(0);
@@ -259,7 +275,7 @@ describe('CorrectionLoopDriver', () => {
         const during = statuses(w, T('2026-05-20T00:00:00Z'));
         expect(getByDedupeKey(during, key)).toMatchObject({ status: 'acted-on',
           verifyWindowEnd: new Date(routedAt + DEFAULT_VERIFY_WINDOW_DAYS_INFRA_GAP * DAY).toISOString() });
-        w.reply('what does the guard do?', T('2026-05-18T00:00:00Z'), { recalled: [sources[0]!] });
+        assessedReply(w, sources[0]!, T('2026-05-18T00:00:00Z'), 'recalled');
         expect(getByDedupeKey(statuses(w, T('2026-05-30T00:00:00Z')), key)!.status).toBe('verified');
         const v = correctionWorld();
         try {
@@ -333,4 +349,38 @@ describe('CorrectionLoopDriver', () => {
       } finally { w.close(); }
     });
   });
+});
+
+it.each(['unsent', 'ungraded', 'failed-observation', 'unmet'] as const)('packet inclusion with %s is not verified', mode => {
+  const w = correctionWorld();
+  try {
+    seedCrossingPreference(w, 'lead with the one action');
+    const at = T('2026-05-10T00:00:00Z');
+    present(w, at);
+    const source = w.view.order[0]!.id;
+    if (mode === 'unmet') assessedReply(w, source, at + DAY, 'preferences', 'unmet');
+    else {
+      const id = w.say('Please give me the action.', at + DAY);
+      w.answer(id, 'Here is a long preamble before any action.', at + DAY + 1, { grounding: { preferences: [source] } });
+      if (mode !== 'unsent') w.send(id, at + DAY + 2);
+      if (mode === 'failed-observation') w.pass(at + 2 * DAY, { state: 'failed' });
+    }
+    expect(statuses(w, at + 8 * DAY)[0]!.status).toBe(mode === 'unmet' ? 'inconclusive' : 'unknown');
+  } finally { w.close(); }
+});
+
+it('missing historical grounding and partial delivery cannot verify despite a separate assessed success', () => {
+  const w = correctionWorld();
+  try {
+    seedCrossingPreference(w, 'lead with the one action');
+    const at = T('2026-05-10T00:00:00Z'); present(w, at);
+    const source = w.view.order[0]!.id;
+    const id = assessedReply(w, source, at + DAY);
+    const prefix = structuredClone(w.view);
+    prefix.turns.get(id)!.replyParts = [{ text: 'tail', body: 'tail', provenance: { speaker: 'agent', principal: 'fixture', signer: 'fixture', contentHash: 'fixture', signature: 'fixture' } }];
+    expect(correctionLifecycle(prefix, w.operator, at + 8 * DAY)[0]!.status).toBe('unknown');
+    const missing = structuredClone(w.view);
+    delete missing.order.find(turn => turn.id === id)!.grounding;
+    expect(correctionLifecycle(missing, w.operator, at + 8 * DAY)[0]!.status).toBe('unknown');
+  } finally { w.close(); }
 });

@@ -13,13 +13,19 @@
 import { describe, it, expect } from 'vitest';
 import { correctionCases, evaluateCorrectionInstanceFix } from './correction-fix-gate.js';
 import { correctionWorld, T, type CorrectionWorld } from './correction-fixture.js';
-import { feedbackDispositions, openFindings, rowRefusedReason, validateRetrospective, GRAVITY_WELLS, RETROSPECTIVE_DUTIES, type RetroCase } from './retrospective.js';
+import { feedbackDispositions, openFindings, rowRefusedReason, validateRetrospective, GRAVITY_WELLS, RETROSPECTIVE_DUTIES, retrospectivePopulation, owedCases, type RetroCase } from './retrospective.js';
+
+const judgment = (caseId: string) => ({ case: caseId,
+  standardReview: { verdict: 'covered' as const, standardRef: 'Rule 85', isPolicyRelaxation: false },
+  processReview: { verdict: 'process-gap' as const, proposedDelta: 'Check carried preference in the delivered reply.' },
+  rationale: 'The standing rule exists but the output check missed it.', confidence: 'high' as const });
 
 /** A complete pass whose feedback duty opened an owned improvement item for the correction case. */
 function dispositioned(w: CorrectionWorld, caseId: string, at: number) {
   const pass = w.view.retroPasses.length;
   const finding = `retro:${String(pass)}:feedback:0`;
   w.pass(at, { cases: [caseId], result: { inspected: [caseId],
+    classReviews: [judgment(caseId)],
     feedback: [{ case: caseId, classification: 'behavior preference', disposition: 'improvement-owned', owner: 'agent', next: 'carry it on every packet', finding }],
     findings: [{ id: finding, duty: 'feedback', refs: [caseId], feedback: caseId, summary: 'behavior preference (operator feedback, improvement-owned)',
       disposition: { owner: 'agent', next: 'carry it on every packet' } }] } });
@@ -96,4 +102,53 @@ describe('correction instance-fix correspondence gate', () => {
       expect(feedbackDispositions(w.view).find(item => item.case === real)).toMatchObject({ disposition: 'verified-improvement' });
     } finally { w.close(); }
   });
+});
+
+it('investigating is not a class review; independent judgments persist before matching linked repair admission', () => {
+  const w = correctionWorld();
+  try {
+    const at = T('2026-05-01T10:00:00Z');
+    const rec = `turn:${w.preference('lead with the action', at)}`;
+    const decoy = `turn:${w.preference('keep the examples short', at + 1000)}`;
+    const cases = retrospectivePopulation(w.view, w.operator).filter(item => item.id === rec);
+    const response = (disposition: string, classReviews?: unknown[], classReviewRef = rec) => ({
+      inspected: [rec], omitted: [], duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length), wells: GRAVITY_WELLS.map(() => 0),
+      eff: 'No waste found.', findings: [], grades: [], authorizations: [], comparisons: [], closures: [], classReviews,
+      feedback: [{ case: rec, classification: 'preference', disposition, owner: 'agent', next: 'check the reply', classReviewRef }] });
+    const input = { originCorrection: true, correctionCase: rec, reviewEnabled: true };
+    const investigate = validateRetrospective(response('investigating'), { cases }, w.view, 0, at + 2000);
+    expect(investigate.feedback).toHaveLength(1);
+    expect(investigate.inspected).toEqual([]);
+    w.pass(at + 2000, { cases: [rec], result: investigate });
+    expect(evaluateCorrectionInstanceFix(w.view, input).allow).toBe(false);
+    expect(owedCases(w.view, cases, at + 86400_000).map(row => row.item.id)).toContain(rec);
+    // A partial review cannot fill the obligation or open repair work.
+    const partial = validateRetrospective(response('improvement-owned', [{ case: rec, standardReview: judgment(rec).standardReview }]), { cases }, w.view, 1);
+    expect(partial.classReviews).toBeUndefined(); expect(partial.feedback).toEqual([]);
+    // The review is saved independently, below the recurrence gate, with both judgments.
+    const reviewed = validateRetrospective(response('investigating', [judgment(rec)]), { cases }, w.view, 1, at + 3000);
+    expect(reviewed.classReviews).toEqual([judgment(rec)]);
+    w.pass(at + 3000, { cases: [rec], result: reviewed }); w.reopen();
+    expect(evaluateCorrectionInstanceFix(w.view, input).reason).toBe('review-filled');
+    const refused = validateRetrospective(response('improvement-owned', [], decoy), { cases }, w.view, 2);
+    expect(refused.feedback).toEqual([]);
+    expect(refused.omitted[0]!.reason).toContain('correspondence-mismatch');
+    const admitted = validateRetrospective(response('improvement-owned'), { cases }, w.view, 2);
+    expect(admitted.feedback[0]).toMatchObject({ disposition: 'improvement-owned', classReviewRef: rec });
+    expect(admitted.findings).toHaveLength(1);
+    expect(admitted.closures).toEqual([]); // Filled review is not completed repair.
+  } finally { w.close(); }
+});
+
+it('a recorded memory failure owes its independent review without waiting for recurrence', () => {
+  const w = correctionWorld();
+  try {
+    const { reminder } = w.forgotten('my locker is 4521', 'What is my locker?', T('2026-05-01T10:00:00Z'));
+    const caseId = `turn:${reminder}`;
+    expect(correctionCases(w.view).has(caseId)).toBe(true);
+    const population = retrospectivePopulation(w.view, w.operator);
+    expect(population.find(item => item.id === caseId)?.meta?.correction).toBe('memory-failure');
+    expect(owedCases(w.view, population).map(row => row.item.id)).toContain(caseId);
+    expect(evaluateCorrectionInstanceFix(w.view, { originCorrection: true, correctionCase: caseId, reviewEnabled: true }).allow).toBe(false);
+  } finally { w.close(); }
 });

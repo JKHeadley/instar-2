@@ -6,12 +6,14 @@
  * Pins: a gate-crossing cluster rides the review packet as `correctionCandidates`; the reservation row records
  * what was presented, durably and replayably; a recurrence finding that cites the candidate is accepted and opens
  * owned root-cause work; a finding that cites a candidate the packet never carried is refused; after the pass the
- * cluster is acted-on and is not presented again. The review answer is a scripted stub (no recorded model output
- * carries the new packet field yet), stated as such.
+ * cluster is acted-on and is not presented again. Stub boundary tests are paired with the captured
+ * real provider output and the read-only proof-room shapes below.
  */
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { createJournalWorker, type Turn } from './journal.js';
-import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION, openFindings, type RetroCase } from './retrospective.js';
+import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION, openFindings, retrospectivePlan, retrospectivePopulation, RETRO_ANSWER_BUDGET_BYTES, type RetroCase } from './retrospective.js';
+import { evaluateCorrectionInstanceFix } from './correction-fix-gate.js';
 import { correctionCandidates, correctionLifecycle, presentedCorrections } from './correction-loop-driver.js';
 import { correctionWorld, T, type CorrectionWorld } from './correction-fixture.js';
 
@@ -105,4 +107,113 @@ describe('correction candidates through the retrospective review', () => {
       } finally { v.close(); }
     } finally { w.close(); }
   }, 60_000);
+});
+
+it('five crossed clusters share the planner budget with cases and deferred candidates drain', () => {
+  const w = correctionWorld();
+  try {
+    const start = T('2026-05-01T10:00:00Z');
+    for (let i = 0; i < 4; i++) {
+      if (i === 2) w.summarize(start + DAY - 1000);
+      ['amber', 'bronze', 'cobalt', 'denim', 'emerald'].forEach((lesson, j) => w.preference(lesson, start + Math.floor(i / 2) * DAY + i * 1000 + j));
+    }
+    let now = start + 10 * DAY;
+    expect(correctionCandidates(w.view, w.operator, now).candidates).toHaveLength(5);
+    const presented = new Set<string>();
+    for (let i = 0; i < 5 && presented.size < 5; i++) {
+      const plan = retrospectivePlan(w.view, retrospectivePopulation(w.view, w.operator), now, DIGEST)!;
+      expect(plan).not.toBeNull();
+      expect(plan.cases.length).toBeGreaterThan(0);
+      expect(plan.estimatedAnswerBytes).toBeLessThanOrEqual(RETRO_ANSWER_BUDGET_BYTES);
+      expect(plan.corrections.length).toBeGreaterThan(0);
+      if (i === 0) expect(plan.corrections.length).toBeLessThan(5);
+      for (const candidate of plan.corrections) { expect(presented.has(candidate.id)).toBe(false); presented.add(candidate.id); }
+      w.pass(now, { corrections: plan.corrections, cases: plan.cases.map(item => item.id) });
+      w.reopen(); now += DAY;
+    }
+    expect(presented.size).toBe(5);
+    expect(correctionCandidates(w.view, w.operator, now).candidates).toHaveLength(0);
+  } finally { w.close(); }
+});
+
+const captured = JSON.parse(readFileSync(new URL('./fixtures/correction-retrospective-2026-11-04.json', import.meta.url), 'utf8')) as {
+  question: string; plan: { state: string }; raw: string;
+  classReviewCapture: { question: string; plan: { state: string }; raw: string };
+};
+function seedCaptured(w: CorrectionWorld) {
+  const start = T('2026-05-01T10:00:00Z');
+  for (let i = 0; i < 4; i++) {
+    if (i === 2) w.summarize(start + DAY - 1000);
+    w.preference('lead with the one action', start + Math.floor(i / 2) * DAY + i * 1000);
+  }
+}
+it.each([false, true])('replays actual provider candidate-reference output through the worker; forged=%s', async forged => {
+  const w = correctionWorld();
+  try {
+    seedCaptured(w);
+    expect(captured.question).toBe(RETROSPECTIVE_QUESTION);
+    const now = T('2026-05-01T10:00:00Z') + 10 * DAY;
+    const raw = forged ? captured.raw.replaceAll('correction:dc76622ebb2048b0', 'correction:0000000000000000') : captured.raw;
+    const r = review(w, () => raw, now);
+    await r.worker.retrospect(DIGEST);
+    expect(r.states[0]).toBe(captured.plan.state);
+    const pass = w.view.retroPasses[0]!;
+    expect(pass.state).toBe('complete');
+    expect(pass.result!.findings.filter(row => row.duty === 'recurrence')).toHaveLength(forged ? 0 : 1);
+    if (!forged) expect(pass.result!.findings[0]!.recurs).toEqual(['correction:dc76622ebb2048b0']);
+    else expect(pass.result!.duties.find(row => row.duty === 'recurrence')).toMatchObject({ disposition: 'unavailable' });
+  } finally { w.close(); }
+});
+const otherShapes = (JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
+  otherShapes: { kind: string; id: string; raw: string }[];
+}).otherShapes;
+it.each(otherShapes)('replays recorded $kind $id: it cannot masquerade as a correction review or successful outcome', async shape => {
+  const w = correctionWorld();
+  try {
+    seedCaptured(w);
+    const now = T('2026-05-01T10:00:00Z') + 10 * DAY;
+    const r = review(w, () => shape.raw, now);
+    await r.worker.retrospect(DIGEST);
+    const pass = w.view.retroPasses[0]!;
+    expect(pass.corrections).toHaveLength(1); // The new path really fired on this replay.
+    expect(pass.state).toBe('failed'); expect(pass.result).toBeUndefined();
+    expect(correctionLifecycle(w.view, w.operator, now + 8 * DAY)[0]!.status).toBe('unknown');
+  } finally { w.close(); }
+});
+
+it.each([false, true])('replays real two-question review before linked repair admission; partial=%s', async partial => {
+  const w = correctionWorld();
+  try {
+    const start = T('2026-05-01T10:00:00Z');
+    const id = w.preference('lead with the one action', start), caseId = `turn:${id}`;
+    w.pass(start + DAY, { result: { inspected: [`answer:${id}`] } });
+    const capture = captured.classReviewCapture;
+    expect(capture.question).toBe(RETROSPECTIVE_QUESTION);
+    const changed = JSON.parse(capture.raw) as { classReviews: { processReview?: unknown }[] };
+    if (partial) delete changed.classReviews[0]!.processReview;
+    const r = review(w, () => partial ? JSON.stringify(changed) : capture.raw, start + 10 * DAY);
+    await r.worker.retrospect(DIGEST);
+    expect(r.states[0]).toBe(capture.plan.state);
+    const result = w.view.retroPasses[1]!.result!;
+    expect(result.classReviews?.length ?? 0).toBe(partial ? 0 : 1);
+    w.reopen();
+    expect(evaluateCorrectionInstanceFix(w.view, { originCorrection: true, correctionCase: caseId, reviewEnabled: true }).allow).toBe(!partial);
+  } finally { w.close(); }
+});
+
+it('candidates remain schedulable after the ordinary cases have drained', () => {
+  const w = correctionWorld();
+  try {
+    seedCaptured(w);
+    const now = T('2026-05-01T10:00:00Z') + 10 * DAY;
+    const population = retrospectivePopulation(w.view, w.operator);
+    w.pass(now - DAY, { result: { inspected: population.map(item => item.id),
+      classReviews: population.filter(item => item.meta?.correction !== undefined).map(item => ({ case: item.id,
+        standardReview: { verdict: 'not-applicable', isPolicyRelaxation: false }, processReview: { verdict: 'not-applicable' },
+        rationale: 'Preference recorded; no standards change.', confidence: 'high' })) } });
+    const plan = retrospectivePlan(w.view, population, now, DIGEST)!;
+    expect(plan.cases).toEqual([]); expect(plan.corrections).toHaveLength(1);
+    w.pass(now, { corrections: plan.corrections });
+    expect(retrospectivePlan(w.view, population, now + DAY, DIGEST)).toBeNull();
+  } finally { w.close(); }
 });

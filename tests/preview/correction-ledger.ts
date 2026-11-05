@@ -27,7 +27,7 @@
  *    proposed and the journal validated on the answer path, which is accepted or refused, never scored.
  *  - A session is a context reset. 1.x counted Claude Code session ids so a preference had to recur across real
  *    context resets, not just across topics. The journal's context resets are its rolling-summary frontiers, so
- *    the session of an occurrence is the summary epoch it falls in.
+ *    the session of an occurrence is its recorded grounding frontier, never a later summary.
  *  - Lifecycle fields (status, route, verify window, reopen count) are not stored on the record. They are derived
  *    from the same journal in `correction-loop-driver.ts`, so there is no in-place state to lose or to replay
  *    differently (Part 21 §11: "change in-place state into append-only observations with rebuildable views").
@@ -59,7 +59,7 @@ export interface CorrectionOccurrence {
   dayBucket: string;
   topicId: number | null;
   /** The context-reset epoch (rolling-summary frontier) the occurrence falls in. */
-  sessionId: string;
+  sessionId: string | null;
   /** Layer-0 provenance: LEARNING_DETERMINISTIC_THRESHOLD for a verified operator turn, else 0. */
   deterministicWeight: number;
   /** For an infra-gap: the journal message the learning loop teaches recall to carry (the fact's source, or the
@@ -170,9 +170,11 @@ export function dayBucketOf(isoOrMs: string | number): string {
 
 // ── Occurrences from the journal (2.0) ────────────────────────────────
 
-/** The context-reset epoch an update falls in: the number of rolling-summary frontiers before it. */
-export function correctionSession(view: JournalView, update: number): string {
-  return `epoch:${String(view.summaries.filter(summary => summary.through < update).length)}`;
+/** Only the grounding recorded for this occurrence can establish its context reset. Later summaries cannot. */
+export function correctionSession(view: JournalView, update: number): string | null {
+  const grounding = view.order.find(turn => turn.update === update)?.grounding;
+  if (grounding === undefined || grounding.summaryThrough !== null && !Number.isSafeInteger(grounding.summaryThrough)) return null;
+  return `frontier:${String(grounding.summaryThrough)}`;
 }
 
 /** The code-determined provenance of a trigger: a verified operator message reaches the gate threshold. */
@@ -264,7 +266,7 @@ export function distinctCounts(occurrences: readonly CorrectionOccurrence[], ded
   const rows = occurrences.filter(row => keys.has(row.dedupeKey) && row.deterministicWeight >= weightThreshold);
   return { distinctDays: new Set(rows.map(row => row.dayBucket)).size,
     distinctTopics: new Set(rows.filter(row => row.topicId !== null).map(row => row.topicId)).size,
-    distinctSessions: new Set(rows.map(row => row.sessionId)).size, qualifyingOccurrences: rows.length };
+    distinctSessions: new Set(rows.filter(row => row.sessionId !== null).map(row => row.sessionId)).size, qualifyingOccurrences: rows.length };
 }
 
 /** A bounded working set over one record's occurrences: the newest `limit`, with the omission counted rather

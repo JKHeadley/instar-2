@@ -24,12 +24,12 @@
  *    and it already wrote). A presented cluster watches a fresh window of the kind's length (7 days for a
  *    preference, 14 for an infra-gap). Any member key recurring inside the window reopens the whole cluster
  *    with a fresh window, at most `maxReopens` times, then `inconclusive`. Silence is never success: with no
- *    recurrence the cluster is `verified` only when the recorded packet grounding shows the guidance was
- *    actually carried to the model in the window (1.x accepted disk presence; Part 21 §11 retires that). Answers
- *    given in the window that never carried it are `inconclusive`; no answer in the window is `unknown`.
+ *    recurrence the cluster is `verified` only with delivery and independent lesson-linked outcome grades.
+ *    Missing delivery, relevant opportunity or complete outcome observation remains `unknown`.
  */
 import { createHash } from 'node:crypto';
 import { redact } from '../../src/recall/redact.js';
+import { wholeReplySent, wholeReplySentAt } from './reply-parts.js';
 import type { JournalView, Turn } from './journal.js';
 import { correctionOccurrences, correctionRecords, type CorrectionKind, type CorrectionOccurrence,
   type CorrectionRecord } from './correction-ledger.js';
@@ -39,10 +39,10 @@ import { captureWindow } from './correction-capture.js';
 export type CorrectionStatus =
   | 'open'         // recorded, not yet presented past the recurrence gate
   | 'acted-on'     // presented to the judgment owner; verify window open
-  | 'verified'     // no routed cluster member recurred AND the guidance was carried in the window
-  | 'inconclusive' // recurred past maxReopens, or silence with answers that never carried the guidance
+  | 'verified'     // delivered guidance and independently assessed success in the window
+  | 'inconclusive' // recurred past maxReopens or independently assessed failure
   | 'reopened'     // a routed cluster member recurred; re-watching (bounded by maxReopens)
-  | 'unknown';     // the window closed with no answer in it: no relevant opportunity, nothing to conclude
+  | 'unknown';     // relevant opportunity, delivery or outcome observation is missing
 
 /** Verify-window (preference path), default 7 days. */
 export const DEFAULT_VERIFY_WINDOW_DAYS_PREFERENCE = 7;
@@ -102,22 +102,40 @@ const windowDaysFor = (kind: CorrectionKind, options: CorrectionLoopOptions) => 
 const recurredWithin = (occurrences: readonly CorrectionOccurrence[], keys: ReadonlySet<string>, start: number, end: number) =>
   occurrences.some(row => keys.has(row.dedupeKey) && row.detectedAt >= start && row.detectedAt < end);
 
-/** What the recorded packet groundings say about guidance delivery inside the window: carried, never carried
- * although answers were given, or no answer at all. Older rows without the preference list read as not carried. */
-function deliveryWithin(view: JournalView, operator: (item: Turn) => boolean, kind: CorrectionKind,
-  members: readonly CorrectionOccurrence[], start: number, end: number): 'delivered' | 'not-delivered' | 'no-answer' {
-  const answered = view.order.filter(turn => turn.accepted && operator(turn) && turn.at >= start && turn.at < end
-    && turn.modelState === 'complete' && turn.grounding !== undefined);
-  if (!answered.length) return 'no-answer';
+/** Delivery and effectiveness are separate observations. A relevant, delivered answer must have
+ * an independent outcome grade citing this lesson and later evidence; missing coverage stays unknown. */
+function effectivenessWithin(view: JournalView, operator: (item: Turn) => boolean, kind: CorrectionKind,
+  members: readonly CorrectionOccurrence[], start: number, end: number): { status: CorrectionStatus; basis: string } {
   const wanted = new Set(kind === 'user-preference' ? members.map(row => row.trigger)
     : members.flatMap(row => row.target === undefined ? [] : [row.target]));
-  const carried = answered.some(turn => {
-    const grounding = turn.grounding!;
-    const shown = kind === 'user-preference' ? grounding.preferences ?? []
-      : [...grounding.history, ...grounding.recalled, ...grounding.memoryCandidates];
-    return shown.some(id => wanted.has(id));
-  });
-  return carried ? 'delivered' : 'not-delivered';
+  if (view.order.some(turn => turn.accepted && operator(turn) && turn.at >= start && turn.at < end
+    && turn.reserved && (turn.grounding === undefined || turn.modelState !== 'complete')))
+    return { status: 'unknown', basis: 'answer observation incomplete inside the verification window' };
+  const delivered = view.order.filter(turn => turn.accepted && operator(turn) && turn.at >= start && turn.at < end
+    && turn.modelState === 'complete' && turn.grounding !== undefined).filter(turn => {
+      const shown = kind === 'user-preference' ? turn.grounding!.preferences ?? []
+        : [...turn.grounding!.history, ...turn.grounding!.recalled, ...turn.grounding!.memoryCandidates];
+      return shown.some(id => wanted.has(id));
+    });
+  if (!delivered.length) return { status: 'unknown', basis: 'no recorded guidance delivery or relevant assessed opportunity' };
+  const grades = new Map(view.retroPasses.filter(pass => pass.state === 'complete').flatMap(pass =>
+    (pass.result?.grades ?? []).map(grade => [grade.case, grade] as const)));
+  let assessed = false;
+  for (const turn of delivered) {
+    const grade = grades.get(`answer:${turn.id}`);
+    const sentAt = wholeReplySentAt(turn);
+    if (!wholeReplySent(turn) || sentAt === undefined || sentAt < start || sentAt >= end || !turn.intent?.trim() || turn.noticeClass !== undefined
+      || !grade || !grade.outcome.evidence.some(ref => wanted.has(ref.replace(/^turn:/u, '')))
+      || !grade.outcome.evidence.some(ref => {
+        const evidence = view.turns.get(ref.replace(/^(?:turn|answer):/u, ''));
+        return evidence !== undefined && evidence.accepted && operator(evidence) && evidence.at > sentAt! && evidence.at < end;
+      }) || !['met', 'unmet'].includes(grade.outcome.assessment))
+      return { status: 'unknown', basis: 'guidance carried; delivery or independent lesson outcome observation incomplete' };
+    if (grade.outcome.assessment === 'unmet') return { status: 'inconclusive', basis: 'guidance carried but assessed outcome unmet' };
+    assessed = true;
+  }
+  return assessed ? { status: 'verified', basis: 'no recurrence; guidance delivered and independent lesson outcome assessed met — verified' }
+    : { status: 'unknown', basis: 'guidance carried without an assessed relevant opportunity' };
 }
 
 /**
@@ -146,11 +164,7 @@ export function correctionLifecycle(view: JournalView, operator: (item: Turn) =>
         if (reopenCount >= maxReopens) { status = 'inconclusive'; basis = `recurred after ${String(reopenCount)} reopens — terminal inconclusive`; break; }
         reopenCount++; start = end; continue;
       }
-      const delivery = deliveryWithin(view, operator, cluster.kind, members, start, end);
-      status = delivery === 'delivered' ? 'verified' : delivery === 'no-answer' ? 'unknown' : 'inconclusive';
-      basis = delivery === 'delivered' ? 'no recurrence + guidance carried in a recorded packet — verified'
-        : delivery === 'no-answer' ? 'no recurrence but no answer in the window — no relevant opportunity'
-          : 'no recurrence but no recorded packet carried the guidance — inconclusive (silence ≠ effective)';
+      ({ status, basis } = effectivenessWithin(view, operator, cluster.kind, members, start, end));
       break;
     }
     const end = start + days * 86400_000;
