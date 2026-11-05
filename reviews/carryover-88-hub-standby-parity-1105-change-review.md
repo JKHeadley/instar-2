@@ -7,8 +7,8 @@ Outcome: Carry the existing obligation health observations into the installed At
 Affected rules: 1, 4, 7, 26, 28, 31, 32, 34, 39, 42, 44, 46, 49, 52, 53, 60, 63, 74, 79, 84, 87, 95, 101, 102, 105, 113, 116
 Affected floors: secrets — existing redaction and encrypted journal, authenticated page; spend cap — no additional model calls; stop — existing owner/stop/expiry/activation boundary precedes every append; no duplicate sends — this producer never dispatches a send or retries work; durable intake — existing journal acceptance and atomic condition/item transition, with retained history.
 Operator questions: none
-Suggested tier: significant
-Declared tier: significant
+Suggested tier: critical
+Declared tier: critical
 Tier rationale: Durable status and installed maintenance integration require real journal, HTTP and restart checks; full launcher/live acceptance belongs to the desk gate.
 Side effects: New health observations write Attention records during the existing maintenance pass. At most four health identities per installation grant/chat are generated; identical repeated observations write nothing. Status is tracking only. A new health action requires the compatible journal reader on both machines, just like the existing non-additive Attention records.
 Undo and recovery: Revert the producer before any health action is written; after a health action exists retain this reader or a compatible successor. Never delete frames to downgrade. No live root or authority installation changed.
