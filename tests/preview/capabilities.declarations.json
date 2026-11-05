@@ -704,5 +704,39 @@
         "remainder": "dark: off; preview.step-check was retired 2026-10-20 and the launcher refuses --step-check true, so it never runs"
       }
     ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.relationship-awareness",
+    "kind": "features",
+    "status": "live",
+    "requiredFacts": {
+      "metrics": [
+        "relationshipEmits",
+        "groupCarryRefreshes"
+      ]
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "data",
+      "reversibility": "costly",
+      "reach": "agent",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      7,
+      10,
+      28,
+      31,
+      32,
+      49,
+      95
+    ],
+    "holds": []
   }
 ]

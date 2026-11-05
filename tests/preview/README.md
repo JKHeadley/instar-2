@@ -34,6 +34,8 @@ The journal runner's capability briefing is generated from these lines and the f
 - `preview.rolling-summary`: keeps a faithfulness-checked rolling summary of earlier turns.
   Details: a completed, reviewed prefix can commit during a later reply if its memory basis is unchanged. Exact facts beyond the 20-item structured list stay in the reviewed prose under the existing byte ceiling; pending dated decisions do not gate summary progress. Regression coverage: `proactive-compaction.test.ts` and `summary-item-overflow.test.ts`.
 - `preview.coherence-check`: checks each reply against remembered earlier turns without a model call.
+- `preview.relationship-awareness`: knows who a mentioned person is across topics, the granted group, restarts and machines, from the journal's own people rows.
+  Details: the private journal's people, attributes and operator-confirmed name links are one relationship record per person (the 1.x One Memory record shape, ported). A granted group carry takes them as validated records and keeps them current through per-record emits the predecessor writes into its own journal and the group root applies under the same grant and audience; a forgotten or corrected person leaves as a tombstone. Served to the model only as quoted untrusted data, never as instructions.
   Details: checks each reply against remembered earlier turns, without a model call, and records the findings.
 
 ## Prerequisites and exact invocation
@@ -183,8 +185,52 @@ owned by neither until the same command is run again, which reuses the recorded 
 leaves two owners. A request that a later, still-unsettled private message may have withdrawn is not
 moved: the private root keeps holding it as before, and the group sees it only as labelled context.
 The command's output counts both (`transferredRequests`, `keptByPredecessor`). Agent promises are
-context in both roots; a promise grants no send. Nothing is recorded in the private journal when
-there is nothing to move.
+context in both roots; a promise grants no send. A carried open promise also retains its recorded
+work account, including a finished result and whether its delivery was pending, confirmed, or
+unknown at the snapshot. The predecessor retains execution and delivery ownership; this context
+creates no work or send in the group, and later private changes are not refreshed automatically.
+Rejected results awaiting rework are not offered as finished results. Nothing is recorded in the
+private journal when there is nothing to move.
+
+Relationship awareness (carryover row 40, the 1.x One Memory relationship feature): the people the
+private conversation knows travel in the same snapshot as `person` entries. Each is one
+disclosure-minimized `relationship-record` projection (`tests/preview/relationship-store.ts`, ported
+from 1.x RelationshipsReplicatedStore): the person's confirmed names as the identity surface, first
+and last mention, mention count, current attributes, the last ten mentions, and a significance score;
+never a local id or the source root path. The record is read from the journal's own people,
+attribute and operator-confirmed merge rows (`relationship-journal.ts`); a corrected or forgotten
+mention is projected out before the carry, so the forget row is the positive signal and nothing of
+that person leaves the private root. On every replay each `person` entry is re-validated by the
+store schema (ISO-8601 dates, finite counts, clamped text, non-path origin, `op:'put'` from this exact
+predecessor); a tampered, foreign-origin or tombstone entry refuses the whole lineage before any
+write. The model sees a carried person only as the 1.x foreign-record block inside
+`<replicated-untrusted-data origin="private-conversation-…">`, after the destination's own
+correction and forget projection, never as local-authoritative context. The ported
+`RelationshipManager` (`relationship-manager.ts`, store and clock injected) answers who a name is
+over the journal's people read-only; records from two roots that know the same person collapse to
+one recordKey and are flagged for the operator when they differ, never merged silently
+(`relationship-cross-machine.test.ts`). The carry is kept current (the 1.x send side, ported): while a sealed
+disclosure grant names a private root as a carry source, that root emits one disclosure-minimized record per
+changed person into its own journal (`relationship-emit` frames, `relationship-emitter.ts`): a put on a new
+mention, attribute or confirmed link, a tombstone when a person is forgotten, corrected or merged into a wider
+name set; no grant, no emits. A carried group root applies its predecessor's emits after the snapshot
+(`group-carry-refresh` frames, `relationship-applier.ts`) under the same grant, audience, posture and stop
+checks as the carry, bound to the predecessor it read, in order, each record re-validated by the store schema,
+and refuses a second or re-seeded predecessor; the `refresh-group` command does this once, and the serving loop
+does it when a poll is empty, at most every 30 seconds, reading the predecessor's journal on this machine or
+the verified replica copy the owner shipped here. The served loop is proven on real roots through the cutover
+launcher harness (`relationship-served-cycle.test.ts`): emits appear only under the sealed source grant, a refresh
+only under the verified operator-only audience, and a new member, a re-seeded predecessor, a withdrawn grant or a
+stop leave both journals unchanged. Serving unions the snapshot with every applied refresh, so a
+forgotten person leaves and a changed account replaces the old one; the quoted messages the snapshot carried
+stay as they were. A root one build back reads an emit frame as a declared forward frame and keeps its people
+rows; a refreshed group root is non-additive like the carry and is refused there. Imported channel items (`--agent-state-dir`) count as
+interactions of a person the operator already named, by the journal's own rule (the asserted sender
+is that person, or the text names them exactly), in the private root's view only: they never create
+a record or add a name, obey the operator's correct and forget rows, and never reach a group because
+the carry refuses a source that holds imports (`relationship-journal.test.ts`). Not carried: the 1.x
+HTTP routes, CLI, LLM identity prompts, anomaly scoring and plaintext JSON files; see
+`legacy-1x/relationships/README.md`.
 
 While the disclosure grant or the operator-only audience cannot be shown, every turn of the carried
 group, a due request included, is held unsent and continues once both hold again. The final model
