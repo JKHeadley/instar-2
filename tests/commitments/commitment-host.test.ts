@@ -293,11 +293,9 @@ it('cadence: newest 20 keep beacons, overflow stays open and suppressed; silence
 
 it('revival: attempt persisted before the spawn; the floor, the global cap and three attempts hold across restart; give-up stays open and visible', async () => {
   const requests: string[] = [];
-  const epochs = new Map<string, string>();
-  let revive: () => Promise<{ sessionName: string | null; refusalReason?: 'quota' }> = async () => ({ sessionName: 'revived' });
   const attention: string[] = [];
   const w = world({ beacon: { userOutputEnabled: false, escalation: { enabled: true, dryRun: false }, getSessionEpoch: () => null } },
-    { requestRevive: async request => { requests.push(request.escalationAttemptId); return revive(); }, raiseAttention: id => { attention.push(id); } });
+    { requestRevive: async request => { requests.push(request.escalationAttemptId); return { sessionName: 'revived' }; }, raiseAttention: id => { attention.push(id); } });
   try {
     w.host.tick();
     const c = w.host.tracker().record({ type: 'one-time-action', userRequest: 'r', agentResponse: 'a', topicId: 3, beaconEnabled: true, cadenceMs: 60_000, sessionEpoch: 'old' });
@@ -323,8 +321,6 @@ it('revival: attempt persisted before the spawn; the floor, the global cap and t
     expect(requests).toHaveLength(3);
     expect(w.host.tracker().get(c.id)).toMatchObject({ status: 'violated', resolution: 'session-lost-unrecovered', currentRung: '3' });
     expect(w.host.tracker().getActive().map(row => row.id)).toContain(c.id);
-    expect(epochs.size).toBe(0);
-    revive = async () => ({ sessionName: null, refusalReason: 'quota' });
   } finally { w.close(); }
 });
 
