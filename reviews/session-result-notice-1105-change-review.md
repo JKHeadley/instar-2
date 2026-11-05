@@ -1,8 +1,8 @@
 # Change review — unconfirmed task result notice
 
 Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
-Review state: frozen
-Reviewed content: sha256:e1b214422be4b32a879c9c5d6f4d8e186600713a80e2578fdf8174423820541d
+Review state: open
+Reviewed content: none
 Outcome: When an answer outcome is UNKNOWN, plainly report that task completion is unconfirmed, effects may have happened, the request and attempt are retained, and this attempt is not automatically repeated. Name the prerequisite for resuming without promising an unassigned retry. Preserve recorded tool-result counts and historical notice classification.
 Affected rules: 4, 26, 34, 36, 42, 49, 52, 55, 60, 70, 74, 89, 102, 111, 113, 116
 Affected floors: secrets — no raw tool text added; spend cap — no model calls added; stop — safety halt unchanged; no duplicate sends — existing intent and send receipts unchanged; durable intake — existing journal records unchanged.
@@ -34,3 +34,5 @@ Decision: RESULT-NOTICE-1105-2 | Keep old notice bytes recognized during history
 simplestRobustRoute: This is the simplest robust route: change the existing fixed notice and preserve old history recognition, with no extra model, store, schema, service, permission or retry machinery. Existing intake, secret, send uniqueness, stop and cap guards stay in force. No autonomous completion claim is made.
 80/20: The targeted defect is unclear UNKNOWN task reporting. Task-specific PR result extraction and ownership/retry infrastructure are not invented from absent evidence; remaining carryover16 coverage belongs to the existing desk row and combined review.
 VERDICT: Author submission for independent review; no independent acceptance or live deployment claimed.
+
+Integration review: train-182 explicitly reopens this round because its combined merge changes a covered file, tests/preview/journal-conversation-session.test.ts, which the train174-cleanup-assertions-1105 lineage also edits; the ordinary merge keeps both edits. The previous frozen content and verdict remain in git history. reviews/train-182-change-review.md covers the merged candidate, whose desk review is still required.
