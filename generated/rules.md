@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:ef4fa6b76e7bfbc47c0d2ea94c4f7296146e0bc1d947e3023088b270a0c781b5
-Source commit: b97d0f7dcc054d02a94a20b2d8c919ac5613a684
+Register generation: sha256:fbeba338c971dee1ad007fa9bdb3de529262bcaa95779d170dbdd692eeab94c2
+Source commit: c1aca34edb3e7c192d17d13702561d64bec9d855
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -185,6 +185,13 @@ Terms: term:surface
 Any statement credited to a person, whether in a message, note, rule or memory, carries a pointer to the logged message it came from and that person's own words. The pointer is checked when the statement is written and again when it is cited or enforced. A heading or label written by the agent is never evidence of who said something. Without a source, the statement says "source unknown" or is labeled the agent's own, and it never becomes that person's rule. Later changes stay traceable back to the origin. This holds for every agent, channel and machine, and needs no purchased service.
 
 Check: Nothing checks this yet; the checks are being built. Owed: a check when a credited statement is written to memory, notes or rules, and another when it is sent, cited or enforced, each resolving the pointer to a logged message from that person and comparing the words, tested on both sides with paraphrases. Whether the words support the claim made from them is a judgment, held by a model or an independent review, not a script. The 1.x design is `docs/specs/attribution-paper-trail.md` in JKHeadley/instar, not yet merged. The 2.0 form of the pointer is not designed.
+Terms: (none)
+
+## 122. Every Warning Has a Path
+
+Every Warning Has a Path. Anything shown to a person that says something is wrong or needs them carries an immediate path to act: a direct link or button to the exact item, the fix when one exists, and a way to ask the agent about it. A status word appears only when it is true for that person; internal notes stay in a quiet details path and never raise a count. An unknown state says it is unknown and never reads as healthy.
+
+Check: Nothing checks this in 2.0 yet; the check is being built. Owed: a check that fails a new warning on any person-facing surface unless it declares its path, with each declared path checked against the code and tested on both sides. Whether the path really helps is a judgment, held by a model or an independent review, not a script. The 1.x checks are `tests/unit/console-warning-paths.test.ts` in JKHeadley/instar and `WarningPathsLintTests` in the Instar iPhone app.
 Terms: (none)
 
 ## 13. Quantitative Claims Must Bind a Subject
