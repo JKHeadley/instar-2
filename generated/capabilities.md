@@ -1,7 +1,7 @@
 # Capabilities
 
-Register generation: sha256:eb7f6fc68eae801cab6437a05a71f6061f1d1994eb7460b257770d5069a11a34
-Source commit: 78180945e45994d197b33b35fa23f43664bf8703
+Register generation: sha256:0e114333e93904c25443aeb58b1c82ddb706a6475daf588a5ec8ad2ac77a587f
+Source commit: 808861c1b914db358931c28bdaebf57046ceaa03
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
