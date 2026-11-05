@@ -3,7 +3,7 @@
 Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
 Review state: open
 Reviewed content: none
-Outcome: Reduce authenticated journal snapshot parsing latency by skipping quoted payload with native byte search while preserving every scalar value, validation and bound, and the complete status report.
+Outcome: Reduce authenticated journal snapshot parsing latency by skipping quoted payload with native byte search while preserving every scalar value, validation and bound, and the complete status report. Publish the shape-only register from exact source commit 6f90d0c20fc880954a76f4bc8f95bdba1c79190c through the normal replay generator.
 Affected rules: 7, 26, 34, 42, 60, 74, 95, 101, 111, 113, 116
 Affected floors: secrets — no diagnostic payload or credentials enter source; spend cap — no model call; stop and ownership — same complete replay/report; no duplicate sends and durable intake — no writer or dispatch change.
 Operator questions: none
@@ -21,6 +21,7 @@ Convergence: none
 Prompt review: No model prompt or decision change; recorded shapes and full authenticated snapshot were parsed equivalently.
 
 Decision: STATUS-SCAN-1105-1 | Optimize the existing scalar scanner instead of weakening validation, adding a checkpoint reader or increasing status deadlines. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-read-profile-1105.md
+Decision: STATUS-SCAN-1105-2 | Publish source pins with the normal exact-commit replay generator, preserving existing runtime authority prerequisites. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-read-profile-1105.md
 
 ## Closing block
 
