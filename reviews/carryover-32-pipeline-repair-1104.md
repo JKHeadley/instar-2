@@ -34,6 +34,8 @@ Decision: R32-repair-3 | Save two-question judgments in the retrospective journa
 
 Subject (11 paths): docs/implementation/carryover-32-full-parity-r2-1104.md, tests/preview/correction-fix-gate.test.ts, tests/preview/correction-fix-gate.ts, tests/preview/correction-fixture.ts, tests/preview/correction-ledger.test.ts, tests/preview/correction-ledger.ts, tests/preview/correction-loop-driver.test.ts, tests/preview/correction-loop-driver.ts, tests/preview/correction-review.test.ts, tests/preview/fixtures/correction-retrospective-2026-11-04.json, tests/preview/retrospective.ts
 
+Deferral: generated/register.json:1 | not-a-deferral=generated register state text; all repair work is complete
+
 ## Closing block
 
 simplestRobustRoute: Use the existing durable journal, bounded retrospective, recorded grounding, outcome grades and linked improvement-work admission. This is that route. The optional classReviews and lessonSources fields prevent false review completion and false effectiveness without adding a database, worker or conversation restriction. Start/limit guards remain cap, stop, cadence and packet/answer bounds; end-state guards require correspondence and real observation. The shipped worker replays captured real provider judgments unattended in isolation; no live rollout or suggested-repair effectiveness is claimed.

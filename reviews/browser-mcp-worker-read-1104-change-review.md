@@ -26,6 +26,19 @@ Decision: MCP-READ-1104-1 | Grant read-only ACL only on the generated MCP file a
 Decision: MCP-READ-1104-2 | Commit the source repair before regenerating source-pinned register outputs, then cover both commits in this record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 Decision: MCP-SCHEMA-1104-3 | Remove top-level oneOf from the client-advertised input schema because Claude skipped the only tool; retain the existing server-side input validation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 
+Prompt finding: 4106b49fff07 | protocol-literal | Exact protocol identifiers or quoted captured prompt bytes; no fixture phrase decides meaning. The row-32 repair replays actual output and invalid-reference neighbors.
+Prompt finding: 849db3a6296a | protocol-literal | Exact protocol identifiers or quoted captured prompt bytes; no fixture phrase decides meaning. The row-32 repair replays actual output and invalid-reference neighbors.
+Prompt finding: 85544c20941f | protocol-literal | Exact protocol identifiers or quoted captured prompt bytes; no fixture phrase decides meaning. The row-32 repair replays actual output and invalid-reference neighbors.
+Prompt finding: e8708c7fea24 | protocol-literal | Exact protocol identifiers or quoted captured prompt bytes; no fixture phrase decides meaning. The row-32 repair replays actual output and invalid-reference neighbors.
+Deferral: generated/register.json:1 | not-a-deferral=retained scheduler overflow and captured replay data; repair work is completed in the row-32 pipeline repair
+Deferral: tests/preview/correction-review.test.ts:112 | not-a-deferral=retained scheduler overflow and captured replay data; repair work is completed in the row-32 pipeline repair
+Deferral: tests/preview/fixtures/correction-retrospective-2026-11-04.json:89 | not-a-deferral=retained scheduler overflow and captured replay data; repair work is completed in the row-32 pipeline repair
+Deferral: tests/preview/fixtures/correction-retrospective-2026-11-04.json:93 | not-a-deferral=retained scheduler overflow and captured replay data; repair work is completed in the row-32 pipeline repair
+Deferral: tests/preview/fixtures/correction-retrospective-2026-11-04.json:97 | not-a-deferral=retained scheduler overflow and captured replay data; repair work is completed in the row-32 pipeline repair
+Deferral: tests/preview/fixtures/correction-retrospective-2026-11-04.json:101 | not-a-deferral=retained scheduler overflow and captured replay data; repair work is completed in the row-32 pipeline repair
+Deferral: tests/preview/fixtures/correction-retrospective-2026-11-04.json:105 | not-a-deferral=retained scheduler overflow and captured replay data; repair work is completed in the row-32 pipeline repair
+Deferral: tests/preview/fixtures/correction-retrospective-2026-11-04.json:109 | not-a-deferral=retained scheduler overflow and captured replay data; repair work is completed in the row-32 pipeline repair
+
 ## Closing block
 
 simplestRobustRoute: Use the existing harness ACL helper on the one generated file before a continuing session launches.

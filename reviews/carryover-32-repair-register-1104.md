@@ -26,5 +26,5 @@ Subject (7 paths): generated/capabilities.json, generated/capabilities.md, gener
 ## Closing block
 
 simplestRobustRoute: Use the existing generator and replay check. This is the simplest route and adds no mechanism or runtime behavior.
-80/20: The seven generated views bind one implementation commit; lint and register:check verify the pins.
+80/20: The seven generated views bind one implementation commit, and earlier review rounds explicitly record their changed scope; lint and register:check verify the pins.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
