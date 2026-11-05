@@ -18,9 +18,11 @@ if sys.argv[1] == 'worker':
         command = command.strip()
         if command == 'send':
             channel.sendmsg([b'F'], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, array.array('i', [fd]))])
+            print('sent', flush=True)
+        elif command == 'close':
             os.close(fd)
             fd = None
-            print('sent', flush=True)
+            print('closed', flush=True)
         elif command == 'receive':
             _, ancillary, flags, _ = channel.recvmsg(1, socket.CMSG_SPACE(array.array('i').itemsize))
             assert not flags & socket.MSG_CTRUNC
@@ -51,7 +53,14 @@ elif sys.argv[1] == 'pair':
             assert sender.stdout.readline().strip() == 'sent'
             receiver.stdin.write('receive\n')
             receiver.stdin.flush()
-            print(receiver.stdout.readline().strip(), flush=True)
+            received = receiver.stdout.readline().strip()
+            # At least one PROCESS has the readable FD at every instant, not
+            # merely an in-flight socket capability. Receiver reads before close.
+            assert received.isdigit()
+            sender.stdin.write('close\n')
+            sender.stdin.flush()
+            assert sender.stdout.readline().strip() == 'closed'
+            print(received, flush=True)
     finally:
         for child in children:
             child.stdin.close()
