@@ -28,6 +28,8 @@ The named native contract passed on the Studio in 11.428 seconds. Nine unrelated
 
 The original failure and earlier exception report remain in the append-only desk progress and logs. This renewal claims the existing captured-frame native contract, not a live provider login or full-suite success.
 
+Publication and consumer: The declared-certificate consumer passed after renewal, architecture checks passed with no exception, and typecheck passed. Desk rehash and repin changed zero pins. Register replay from bd0086b6f3558756026efd750c571a3d86497140 emitted generation sha256:704a347fb15f7e546c7f624daba9f79c0c324a02e00b13c314569019364a532a (297 entries / 120 rules, shape-only replay). This record covers both renewal and publication commits.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: execute the existing named contract on the actual Studio, bind the unchanged measured composition to its declaration, and regenerate register publication. No new checker, capability restriction or authority path. The contract exercises start, stop, owner admission, bounded work and settlement guards; no unattended live deployment is claimed.
