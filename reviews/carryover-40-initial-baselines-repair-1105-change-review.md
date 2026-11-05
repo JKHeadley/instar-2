@@ -2,7 +2,7 @@
 
 Subject base: e4eeff1a3d285f5e9d3923a69ccd1fd37091a88f
 Review state: frozen
-Reviewed content: sha256:e8dd98a2513badf39e5c87b3425f1780919b2dfdbe3e177b536623816dcc1db6
+Reviewed content: sha256:e507dee889d905a62113bbc344e67920f2645da5f452076be4c4efd6162dafe0
 Outcome: A person carried before the ordinary emitter has run can subsequently be forgotten, and the first refresh refuses a replacement predecessor. Establish all current relationship emit witnesses before publishing the initial carry, then retain its source genesis identity for refresh and replay. Row 40 remains OPEN for installed/live/two-runner acceptance; this is the bounded source repair requested by the independent review.
 Affected rules: purpose constraint 2 and least revelation; 31, 32, 34, 44, 49, 70, 74, 78, 83, 84, 95, 101, 102, 111, 113, 116, 117.
 Affected floors: secrets — existing disclosure grant, verified audience, redacted projection and encrypted journal remain the boundaries; spend cap — no added model calls or larger context budget; stop — carry admission and pre-append stop checks remain; no duplicate sends — relationship baselines are context records, request ownership remains source-first; durable intake — baseline witnesses must be accepted by the existing journal sink before publishing the snapshot.
