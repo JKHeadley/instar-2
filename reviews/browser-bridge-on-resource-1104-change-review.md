@@ -26,11 +26,7 @@ Deferral: generated/register.json:1 | not-a-deferral=generated source hash was r
 Decision: BROWSER-MERGE-1104-1 | Merge reviewed 24194ed8 onto live 47b9c823; retain live generated output only for the merge commit, then regenerate all seven outputs from that exact merged source. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 Decision: BROWSER-MERGE-1104-2 | Reopen the copied resource-recovery review whose generated-register subject changed in the combination; cover the exact combined content here and require independent review again before release. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 
-## Closing block
 
-simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
-80/20: The two browser test files and register lifecycle test passed 31/31 on the combined branch. Full exact-head suite, independent combination review and a real signed-in multi-step group task remain required before release. No new browser service or credential custody path.
-VERDICT: author submission; this record asserts no independent verdict.
 
 ## Row 88 review invalidation
 
@@ -45,3 +41,9 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory wording 
 Prompt finding: 85544c20941f | protocol-literal | Existing retained-input acknowledgement names actual custody, not a target answer supplied by this hub change.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label grounding instruction is general and names uncertainty; it does not inject a test answer.
 Skip: tests/preview/hub-recorded.test.ts:43 | scope=Private actual-provider recordings are supplied with INSTAR_HUB_CAPTURE_ROOT; absent evidence visibly skips, and never counts as recorded proof. This unit explicitly ran all six cases with hash-verified private bytes.
+
+## Closing block
+
+simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
+80/20: The two browser test files and register lifecycle test passed 31/31 on the combined branch. Full exact-head suite, independent combination review and a real signed-in multi-step group task remain required before release. No new browser service or credential custody path.
+VERDICT: author submission; this record asserts no independent verdict.

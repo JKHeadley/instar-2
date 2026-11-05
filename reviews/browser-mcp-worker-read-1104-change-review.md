@@ -7,8 +7,8 @@ Outcome: Grant the worker read access to the generated MCP launch configuration 
 Affected rules: 31, 63, 74, 78, 95, 101, 103, 111, 113, 116
 Affected floors: secrets — only the already redacted launch file is readable, not credential custody; spend cap — unchanged; stop — unchanged; no duplicate sends — no new effect path; durable intake — unchanged.
 Operator questions: none
-Suggested tier: significant
-Declared tier: significant
+Suggested tier: critical
+Declared tier: critical
 Tier rationale: This repairs a worker account access boundary used by the signed-in browser connector. It requires a real worker-account test, full exact-head gate, independent review, and copy trial before live use.
 Side effects: The harness worker can read the generated MCP launch file for its own session. It cannot edit that file or read the owner browser profile.
 Undo and recovery: Keep live 47b9c823 serving until the corrected build proves a real signed-in multi-step browser task. Restore that live build if the later switch fails.
@@ -26,11 +26,7 @@ Decision: MCP-READ-1104-1 | Grant read-only ACL only on the generated MCP file a
 Decision: MCP-READ-1104-2 | Commit the source repair before regenerating source-pinned register outputs, then cover both commits in this record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 Decision: MCP-SCHEMA-1104-3 | Remove top-level oneOf from the client-advertised input schema because Claude skipped the only tool; retain the existing server-side input validation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 
-## Closing block
 
-simplestRobustRoute: Use the existing harness ACL helper on the one generated file before a continuing session launches.
-80/20: The worker can load the connector without changing owner profile custody. Real signed-in page reads still need copy proof before live release.
-VERDICT: author submission; this record asserts no independent verdict.
 
 ## Row 88 review invalidation
 
@@ -45,3 +41,9 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory wording 
 Prompt finding: 85544c20941f | protocol-literal | Existing retained-input acknowledgement names actual custody, not a target answer supplied by this hub change.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label grounding instruction is general and names uncertainty; it does not inject a test answer.
 Skip: tests/preview/hub-recorded.test.ts:43 | scope=Private actual-provider recordings are supplied with INSTAR_HUB_CAPTURE_ROOT; absent evidence visibly skips, and never counts as recorded proof. This unit explicitly ran all six cases with hash-verified private bytes.
+
+## Closing block
+
+simplestRobustRoute: Use the existing harness ACL helper on the one generated file before a continuing session launches.
+80/20: The worker can load the connector without changing owner profile custody. Real signed-in page reads still need copy proof before live release.
+VERDICT: author submission; this record asserts no independent verdict.
