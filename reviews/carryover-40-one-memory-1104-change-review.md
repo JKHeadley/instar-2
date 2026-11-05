@@ -1,8 +1,8 @@
 # Change review — carry the private conversation's people as validated relationship records
 
 Subject base: 6d5d8cf605b3b05858478d7f42803c10d05cb26c
-Review state: open
-Reviewed content: none
+Review state: frozen
+Reviewed content: sha256:eb1cf94b2d7929e37c78ac710500d33e3f810eace0cd2f4dccd333fd67ecc02c
 Outcome: Carryover row 40 step 2 and 3 for lanes/carryover-1028.md: the 1.x One Memory relationship feature (RelationshipManager, RelationshipsReplicatedStore and the slice of the replicated-store substrate they stand on) copied verbatim first, then adapted to the encrypted journal and its granted group carry. The people the private conversation knows travel as per-entry validated relationship-record projections, are served only as quoted untrusted data, survive restart and replica adoption on a second machine, and are refused whole when tampered with. Row 40 stays OPEN: no live run and no live two-machine union is claimed.
 Affected rules: purpose constraint 2 and least revelation; 2, 4, 7, 10, 26, 28, 31, 32, 34, 35, 36, 42, 49, 60, 74, 83, 85, 95, 96, 101, 102, 111, 113, 116, 117.
 Affected floors: secrets — every free-text field of a projected record passes the existing redactor before JSON quoting; a record carries no local id and no source root path (the origin is a digest-named label); the existing group disclosure grant and audience checks gate every carry and every serving read; spend cap — no new model call, no enlarged packet budget or snapshot limit; stop — existing carry admission checks unchanged, the new entries ride the same stop-checked append; no duplicate sends — a person entry is context only, never a commitment, request or send; durable intake — the existing encrypted carry frame, digest and replay validate the added entries, and a failing entry refuses the lineage before any write.
