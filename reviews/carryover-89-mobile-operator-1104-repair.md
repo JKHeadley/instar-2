@@ -38,6 +38,8 @@ ONEX-LESSONS sections 1/2 and their source incidents were read: docs/specs/sessi
 - No full suite or fresh full-run report produced, per the repair instruction. No live installed phone proof; row 89 stays OPEN for that desk-owned proof. No model-facing change requires an observer-106 recorded-model replay.
 - Architecture passed; the required desk rehash/repin scripts changed no owner manifests or inventory pins. The register is regenerated from the source commit and final cheap checks are recorded in the desk repair PROGRESS.
 
+The first final-head change-review check found two Rule 109 stale freezes in inherited browser records whose subjects include the regenerated register. The checker’s `open` command voided those stale rounds in browser-bridge-on-resource-1104-change-review.md and browser-mcp-worker-read-1104-change-review.md. No browser implementation or independent verdict was changed or invented; the desk reviews the resulting candidate normally.
+
 ## Closing block
 
 simplestRobustRoute: Reuse turnOutcome for clipped/redacted details, retain at most sixteen selected active conversation details beside recent messages, and resolve them through the existing route. Describe check counters as check events and derive actual holds from turn records. This is the simplest robust route: no store, endpoint, polling process or capability restriction. Existing authentication, snapshot bounds, stop, spend and send checkpoints remain the guards.
