@@ -29,6 +29,28 @@ Decision: CARRYOVER-01-SEND-GRANT | The send grant is the existing effect policy
 Decision: CARRYOVER-01-SEND-RECEIPT | Each attempt is a signed journal intent, then the worker's one outbound boundary, then its exact receipt; only a definite refusal may be tried again, and the journal itself refuses any other second attempt on replay. | reported=/home/echo/.instar/agents/echo/.instar/state/carryover-01-commitment-send-1104.md
 Decision: CARRYOVER-01-SEND-RESULT-KIND | Commitment sends are provisionally classified as results so the brief's 1.x semantics can be bound and tested, with nothing able to push until a grant exists. This conflicts with docs/18-sentinel-holders part 6 (a due date alone stays pull-visible; the 1.x observational heartbeat is not retained as a push) and is open until decided, before any grant is issued. | reported=/home/echo/.instar/agents/echo/.instar/state/carryover-01-commitment-send-1104.md
 Decision: CARRYOVER-01-SEND-TICK | Check-ins run once on the first tick and then every five minutes on the admitted tick, and the job stays open until what the tick started has settled. | reported=/home/echo/.instar/agents/echo/.instar/state/carryover-01-commitment-send-1104.md
+Deferral: src/commitments/CheckInReminderReconciler.ts:126 | not-a-deferral=a log line naming rows the bounded pass leaves for the next pass, which the durable due list picks up
+Deferral: src/commitments/CommitmentTracker.ts:63 | not-a-deferral=the CMT-xxx id format in a comment
+Deferral: src/commitments/CommitmentTracker.ts:193 | not-a-deferral=a comment describing a counted follow-up field
+Deferral: src/commitments/CommitmentTracker.ts:542 | not-a-deferral=a comment describing the carried auto-expiry deferred window
+Deferral: src/commitments/CommitmentTracker.ts:2160 | not-a-deferral=the persistence state name 'deferred'
+Deferral: src/commitments/CommitmentTracker.ts:2161 | not-a-deferral=the persistence state name 'deferred'
+Deferral: src/commitments/CommitmentTracker.ts:2259 | not-a-deferral=a carried comment about a 1.x sweep; that sweep is not carried
+Deferral: src/commitments/CommitmentTracker.ts:2403 | not-a-deferral=the persistence state name 'deferred'
+Deferral: src/commitments/CommitmentTracker.ts:2410 | not-a-deferral=the persistence state name 'deferred'
+Deferral: src/commitments/LlmQueue.ts:198 | not-a-deferral=a comment on the dispatch gap of the queue
+Deferral: src/commitments/PromiseBeacon.ts:735 | not-a-deferral=a comment on the election verdict
+Deferral: src/commitments/PromiseBeacon.ts:926 | not-a-deferral=fixed status text when a line could not be fetched
+Deferral: src/commitments/PromiseBeacon.ts:1118 | not-a-deferral=fixed close-out text quoting the promise
+Deferral: tests/commitments/1x/CommitmentTracker-auto-expiry.test.ts:107 | not-a-deferral=fixture text
+Deferral: tests/commitments/1x/CommitmentTracker-auto-expiry.test.ts:244 | not-a-deferral=fixture text
+Deferral: tests/commitments/1x/CommitmentTracker.test.ts:73 | not-a-deferral=a test title naming the id format
+Deferral: tests/commitments/1x/check-in-reminder-reconciler.test.ts:271 | not-a-deferral=a test title for the bounded pass
+Deferral: tests/commitments/1x/check-in-reminder-reconciler.test.ts:282 | not-a-deferral=a test title for the bounded pass
+Prompt finding: 4106b49fff07 | protocol-literal | existing journal.ts text this change did not edit; the diff of that file from the subject base has no line containing it
+Prompt finding: 85544c20941f | protocol-literal | existing journal.ts text this change did not edit; the diff of that file from the subject base has no line containing it
+Prompt finding: e8708c7fea24 | protocol-literal | existing journal.ts text this change did not edit; the diff of that file from the subject base has no line containing it
+Prompt finding: 849db3a6296a | protocol-literal | existing journal.ts text this change did not edit; the diff of that file from the subject base has no line containing it
 Decision: CARRYOVER-01-STATUS-DOORWAY | The status line is a reserved call on the journal's cap under a new registered judgment, recorded at the launcher's existing model boundary. | reported=/home/echo/.instar/agents/echo/.instar/state/carryover-01-commitment-send-1104.md
 
 simplestRobustRoute: Copy the proven 1.x modules and bind them to the journal through narrow ports. That is the simplest route to the promised behaviour: rewriting would lose tuned thresholds and the failure history in their tests. The added machinery is one additive frame kind and one adapter, which prevent a credible failure a second file store would cause (state outside journal replication, stop and compaction). The send slice adds four frame kinds of durable state (intent, receipt, status reservation and its result) and reuses the worker's boundary, the effect policy and the model boundary, because each of those already holds its stop, audience, grant and recording rules. Start guard: the admitted tick and a live grant. End guard: journal closure and recorded receipts. Limits: 32 due steps per tick, one check-in pass at a time, 25 per pass, five attempts, the journal's reply and call caps, 32 rows per frame, 65,536 bytes per frame, the carried cadence and revival caps. The real launcher tick was driven once on this host with its process-limit line locally removed, because dash has no ulimit -u; no unattended shipped-path completion is claimed.
