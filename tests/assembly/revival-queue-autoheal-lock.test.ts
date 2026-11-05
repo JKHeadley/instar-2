@@ -1,161 +1,101 @@
-// safe-git-allow: test fixture cleanup uses fs.rmSync on tmp dirs only.
 /**
- * autonomous-run-outlives-session — GAP-D: the resume-queue host-lock must
- * distinguish a single-host RENAME (auto-heal) from a genuine shared-volume
- * conflict (stay disabled), FAIL-CLOSED on any uncertainty, and a disabled
- * queue must self-report via guardStatus(). FD1/FD2/FD4/FD5.
+ * Single-writer custody for the revival queue.
+ *
+ * Carried from 1.x tests/unit/resume-queue-autoheal-lock.test.ts at
+ * 4f88880a45f0a119aae3cfd2ccaf9ace26d405b9 (GAP-D: the pid/hostname lockfile,
+ * its FD1–FD5 rename-vs-conflict classifier and the auto-heal lever) for
+ * carryover row 03. The lockfile is not carried: in 2.0 the queue persists in
+ * the host-owned conversation record, whose single writer is the existing
+ * conversation ownership fence (tests/preview/conversation-owner.ts —
+ * exclusive per conversation, refused across machines, inhibited when the
+ * authority is unusable, lost when the owner record changes; proven in
+ * tests/preview/journal-conversation-owner.test.ts). What this file pins is the
+ * fail-closed posture the 1.x lock cases protected, on the store port:
+ *  - the queue never probes, reclaims or auto-heals anything itself;
+ *  - an unusable store refuses the start loudly instead of starting empty;
+ *  - a write the store cannot make durable propagates, never a silent hold.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 import {
   ResumeQueue,
-  classifyDfSourceLocal,
-  type ResumeQueueDeps,
-  type ResumeQueueConfig,
-} from '../../src/monitoring/ResumeQueue.js';
+  type ResumeCandidateInput,
+  type RevivalQueueState,
+  type RevivalQueueStore,
+} from '../../src/assembly/revival-queue.js';
 
-let tmpDir: string;
-beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rq-autoheal-'));
-});
-afterEach(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-});
-
-const lockPath = (dir: string) => path.join(dir, 'state', 'resume-queue.lock');
-
-function writeForeignLock(dir: string, lock: { pid?: number; hostname?: string }, mtimeMsAgo = 0): void {
-  const p = lockPath(dir);
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(lock));
-  if (mtimeMsAgo > 0) {
-    const t = new Date(Date.now() - mtimeMsAgo);
-    fs.utimesSync(p, t, t);
-  }
+function candidate(over: Partial<ResumeCandidateInput> = {}): ResumeCandidateInput {
+  return {
+    sessionName: 'sess', tmuxSession: 'tmux-1', topicId: 42, cwd: '/tmp/project', reason: 'quota-shed',
+    disposition: 'terminal', origin: 'autonomous', workEvidence: ['build-or-autonomous-active'], ...over,
+  };
 }
 
-function makeQueue(dir: string, over: {
-  cfg?: Partial<ResumeQueueConfig>;
-  deps?: Partial<ResumeQueueDeps>;
-  nowMs?: number;
-} = {}): { q: ResumeQueue; audits: Record<string, unknown>[]; aggregated: { kind: string; detail: string }[] } {
+function makeQueue(store: RevivalQueueStore): { q: ResumeQueue; audits: Record<string, unknown>[]; aggregated: { kind: string; detail: string }[] } {
   const audits: Record<string, unknown>[] = [];
   const aggregated: { kind: string; detail: string }[] = [];
-  const q = new ResumeQueue(
-    {
-      stateDir: dir,
-      audit: (e) => audits.push(e),
-      raiseAggregated: (kind, detail) => aggregated.push({ kind, detail }),
-      now: () => over.nowMs ?? Date.now(),
-      hostname: () => 'current-host',
-      pidAlive: () => false,
-      isStateDirHostLocal: () => true,
-      ...over.deps,
-    },
-    { enabled: true, dryRun: false, ...over.cfg },
-  );
+  const q = new ResumeQueue({ store, audit: (e) => audits.push(e), raiseAggregated: (kind, detail) => aggregated.push({ kind, detail }),
+    now: () => 3_000_000_000_000 });
   return { q, audits, aggregated };
 }
 
-describe('classifyDfSourceLocal (FD1 truth-table, fail-closed)', () => {
-  it('positively-local block devices → true', () => {
-    expect(classifyDfSourceLocal('/dev/disk3s5')).toBe(true);
-    expect(classifyDfSourceLocal('/dev/sda1')).toBe(true);
+describe('single writer is the conversation ownership fence, never a queue-owned lock', () => {
+  it('the queue has no host, pid or lock surface of its own (the 1.x FD1–FD5 classifier is gone)', () => {
+    const source = readFileSync(new URL('../../src/assembly/revival-queue.ts', import.meta.url), 'utf8');
+    for (const forbidden of ['os.hostname', 'pidAlive', 'lockPath', 'autoHealStaleHostLock', 'classifyDfSourceLocal', 'takeOverLockAtomic', 'acquireLock'])
+      expect(source.includes(forbidden), forbidden).toBe(false);
+    const q = makeQueue({ load: () => null, save: () => {} }).q;
+    expect(Object.keys(q)).not.toContain('lockHeld');
   });
-  it('network/shared signatures → false', () => {
-    expect(classifyDfSourceLocal('//fileserver/share')).toBe(false); // SMB/CIFS
-    expect(classifyDfSourceLocal('nas:/exports/data')).toBe(false); // NFS host:/path
-    expect(classifyDfSourceLocal('10.0.0.5:/vol')).toBe(false);
-  });
-  it('unknown/empty/map/tmpfs → false (fail-closed)', () => {
-    expect(classifyDfSourceLocal('')).toBe(false);
-    expect(classifyDfSourceLocal('map')).toBe(false);
-    expect(classifyDfSourceLocal('tmpfs')).toBe(false);
-    expect(classifyDfSourceLocal('devfs')).toBe(false);
+
+  it('the fence that serializes writers is the existing reviewed one, and it is tested', () => {
+    const fence = readFileSync(new URL('../preview/conversation-owner.ts', import.meta.url), 'utf8');
+    expect(fence).toContain('Rule 63');
+    expect(fence).toContain("disposition: 'nonowner' | 'inhibited'");
+    const proof = readFileSync(new URL('../preview/journal-conversation-owner.test.ts', import.meta.url), 'utf8');
+    for (const title of ['a second root for the same conversation is refused without polling or sending while the owner serves',
+      'the fence: exclusive per conversation, refused across machines, inhibited when the authority is unusable, lost when the owner record changes'])
+      expect(proof).toContain(title);
   });
 });
 
-describe('foreign-host lock — rename-vs-conflict classifier', () => {
-  const STALE = 6 * 60_000; // older than the 5-min heartbeat window
-
-  it('auto-heals a provable RENAME (local FS + dead pid + stale heartbeat) when enabled', () => {
-    writeForeignLock(tmpDir, { pid: 99999, hostname: 'old-host-name' }, STALE);
-    const { q, audits } = makeQueue(tmpDir, { cfg: { autoHealStaleHostLock: true } });
-    expect(q.start()).toBe(true);
-    expect(q.isDisabled()).toBeFalsy();
-    // lock rewritten to the current host
-    const lock = JSON.parse(fs.readFileSync(lockPath(tmpDir), 'utf-8'));
-    expect(lock.hostname).toBe('current-host');
-    expect(audits.some((a) => a.event === 'lock-foreign-host-autohealed' && a.took === true)).toBe(true);
+describe('fail-closed on an unusable store (what the lock cases protected)', () => {
+  it('an unreadable store refuses the start loudly; no empty queue is started', () => {
+    const { q } = makeQueue({ load: () => { throw new Error('EACCES: owner record'); }, save: () => {} });
+    expect(() => q.start()).toThrow(/EACCES/);
+    expect(q.considerEnqueue(candidate()).why).toBe('queue-off');
+    expect(q.list()).toEqual([]);
   });
 
-  it('STAYS DISABLED on a non-local FS even with dead pid + stale heartbeat (FS-local dispositive)', () => {
-    writeForeignLock(tmpDir, { pid: 99999, hostname: 'old-host-name' }, STALE);
-    const { q, aggregated } = makeQueue(tmpDir, {
-      cfg: { autoHealStaleHostLock: true },
-      deps: { isStateDirHostLocal: () => false },
-    });
-    expect(q.start()).toBe(false);
-    expect(q.isDisabled()).toBeTruthy();
-    expect(aggregated.some((a) => a.kind === 'lock-foreign-host')).toBe(true);
+  it('a record from an unrecognized writer refuses the start and is preserved untouched', () => {
+    const foreign = Object.freeze({ version: 7, entries: [], tombstones: [], paused: false }) as unknown as RevivalQueueState;
+    let saved = 0;
+    const { q } = makeQueue({ load: () => foreign, save: () => { saved++; } });
+    expect(() => q.start()).toThrow(/unrecognized; preserved/);
+    expect(saved).toBe(0);
   });
 
-  it('STAYS DISABLED when the foreign pid is alive (genuine conflict), never pid-clobbered', () => {
-    writeForeignLock(tmpDir, { pid: 4242, hostname: 'old-host-name' }, STALE);
-    const { q } = makeQueue(tmpDir, {
-      cfg: { autoHealStaleHostLock: true },
-      deps: { pidAlive: (pid) => pid === 4242 },
-    });
-    expect(q.start()).toBe(false);
-    expect(q.isDisabled()).toBeTruthy();
-  });
-
-  it('dryRun: logs would-autoheal and STAYS DISABLED without rewriting the lock', () => {
-    writeForeignLock(tmpDir, { pid: 99999, hostname: 'old-host-name' }, STALE);
-    const { q, audits, aggregated } = makeQueue(tmpDir, { cfg: { autoHealStaleHostLock: true, dryRun: true } });
-    expect(q.start()).toBe(false);
-    expect(audits.some((a) => a.event === 'lock-foreign-host-would-autoheal')).toBe(true);
-    expect(aggregated.some((a) => a.kind === 'lock-foreign-host-would-autoheal')).toBe(true);
-    // NOT rewritten — still the old host
-    const lock = JSON.parse(fs.readFileSync(lockPath(tmpDir), 'utf-8'));
-    expect(lock.hostname).toBe('old-host-name');
-  });
-
-  it('auto-heal OFF (default) → today\'s disable-on-mismatch behavior preserved', () => {
-    writeForeignLock(tmpDir, { pid: 99999, hostname: 'old-host-name' }, STALE);
-    const { q } = makeQueue(tmpDir, { cfg: { autoHealStaleHostLock: false } });
-    expect(q.start()).toBe(false);
-    expect(q.isDisabled()).toBeTruthy();
-  });
-});
-
-describe('guardStatus() — a disabled queue self-reports (D2)', () => {
-  it('reports enabled:false + reason when disabled by an un-healable foreign lock', () => {
-    writeForeignLock(tmpDir, { pid: 4242, hostname: 'old-host-name' });
-    const { q } = makeQueue(tmpDir, {
-      cfg: { autoHealStaleHostLock: false },
-    });
+  it('a write the store cannot make durable propagates to the caller (never a silent hold)', () => {
+    let fail = false;
+    let record: RevivalQueueState | null = null;
+    const { q } = makeQueue({ load: () => record, save: next => { if (fail) throw new Error('ENOSPC'); record = next; } });
     q.start();
-    const gs = q.guardStatus();
-    expect(gs.enabled).toBe(false);
-    expect(gs.reason).toMatch(/disabled/i);
+    expect(q.considerEnqueue(candidate()).enqueued).toBe(true);
+    fail = true;
+    expect(() => q.considerEnqueue(candidate({ topicId: 2, tmuxSession: 't2' }))).toThrow(/ENOSPC/);
+    expect(() => q.pause('emergency stop')).toThrow(/ENOSPC/);
+    fail = false;
+    expect(q.list().filter((e) => e.status === 'queued').map((e) => e.stableKey)).toEqual(['topic:42', 'topic:2']);
   });
 
-  it('reports enabled:true after a healthy start (no lock contention)', () => {
-    const { q } = makeQueue(tmpDir, { cfg: { autoHealStaleHostLock: true } });
-    expect(q.start()).toBe(true);
-    expect(q.guardStatus().enabled).toBe(true);
-  });
-
-  it('guardStatus reflects runtime state regardless of dryRun (always loud)', () => {
-    writeForeignLock(tmpDir, { pid: 4242, hostname: 'old-host-name' });
-    const { q } = makeQueue(tmpDir, { cfg: { autoHealStaleHostLock: false, dryRun: true } });
-    q.start();
-    const gs = q.guardStatus();
-    expect(gs.enabled).toBe(false);
-    expect(gs.dryRun).toBe(true);
+  it('two queues over one record: the later loader sees the earlier writer\'s durable state, never a private copy', () => {
+    let record: RevivalQueueState | null = null;
+    const store: RevivalQueueStore = { load: () => record === null ? null : structuredClone(record), save: next => { record = Object.freeze(structuredClone(next)); } };
+    const a = makeQueue(store).q; a.start();
+    expect(a.considerEnqueue(candidate()).enqueued).toBe(true);
+    const b = makeQueue(store).q; b.start();
+    expect(b.list().map((e) => e.stableKey)).toEqual(['topic:42']);
+    expect(b.considerEnqueue(candidate({ tmuxSession: 'renamed' })).why).toBe('duplicate-open-entry');
   });
 });

@@ -1,39 +1,32 @@
-// safe-git-allow: test fixture cleanup uses fs.rmSync on tmp dirs only.
 /**
- * ResumeQueueDrainer (reap-notify spec R2.4–R2.11) — calm-ticks, one-per-tick,
+ * RevivalDrainer (reap-notify spec R2.4–R2.11) — calm-ticks, one-per-tick,
  * re-entrancy, EACH drain-time validation both sides, pause semantics, the
- * failure ladder + breaker, dry-run inertness, Tier1 observe-only paths, and
+ * failure ladder + breaker, capacity holds, Tier1 observe-only paths, and
  * the oscillating-load calm-ticks reset.
+ *
+ * Carried from 1.x tests/unit/resume-queue-drainer.test.ts at
+ * 4f88880a45f0a119aae3cfd2ccaf9ace26d405b9 for carryover row 03. The drainer
+ * now runs on the host's injected clock and bounded wait with its brakes
+ * durable through the host store; the 1.x dry-run posture and the Layer-2
+ * stale-emergency-pause auto-resume are not carried (Rules 73/76 and 4/93),
+ * and the capacity hold learned by admitting replaces the 1.x pre-gate.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { describe, it, expect, vi } from 'vitest';
 
-import { ResumeQueue, type ResumeCandidateInput } from '../../src/monitoring/ResumeQueue.js';
+import { ResumeQueue, type ResumeCandidateInput, type RevivalQueueState } from '../../src/assembly/revival-queue.js';
 import {
   ResumeQueueDrainer,
   buildResumeSanityPrompt,
   buildResumeSanityEvaluationOptions,
+  DP_RESUME_SANITY_CHECK,
   RESUME_SANITY_CHECK_PROMPT_ID,
   type ResumeQueueDrainerDeps,
-} from '../../src/monitoring/ResumeQueueDrainer.js';
+  type RevivalDrainerBrakes,
+} from '../../src/assembly/revival-drainer.js';
 import {
   AGE_LIMIT_ACTIVE_RUN_REASON,
   COMMITMENT_ACTIVE_RUN_REASON,
-  isAutoResumableEmergencyPauseReason,
-} from '../../src/core/WorkEvidence.js';
-import { DP_RESUME_SANITY_CHECK } from '../../src/data/provenanceCoverage.js';
-
-let tmpDir: string;
-
-beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'resume-drainer-test-'));
-});
-
-afterEach(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-});
+} from '../../src/assembly/work-evidence.js';
 
 function candidate(over: Partial<ResumeCandidateInput> = {}): ResumeCandidateInput {
   return {
@@ -60,27 +53,41 @@ interface Harness {
   notices: string[];
   setTier: (t: 'normal' | 'moderate' | 'critical') => void;
   advance: (ms: number) => void;
+  /** A second host over the same durable records (restart). */
+  reopen: () => Harness;
+}
+
+/** One durable host record: queue state and drainer brakes, frozen once saved. */
+function records() {
+  let queue: RevivalQueueState | null = null, brakes: RevivalDrainerBrakes | null = null;
+  return {
+    queue: { load: () => queue === null ? null : structuredClone(queue), save: (next: RevivalQueueState) => { queue = Object.freeze(structuredClone(next)); } },
+    brakes: { load: () => brakes === null ? null : structuredClone(brakes), save: (next: RevivalDrainerBrakes) => { brakes = Object.freeze(structuredClone(next)); } },
+  };
 }
 
 function harness(over?: {
-  queueCfg?: Partial<import('../../src/monitoring/ResumeQueue.js').ResumeQueueConfig>;
-  drainerCfg?: Partial<import('../../src/monitoring/ResumeQueueDrainer.js').ResumeQueueDrainerConfig>;
+  queueCfg?: Partial<import('../../src/assembly/revival-queue.js').ResumeQueueConfig>;
+  drainerCfg?: Partial<import('../../src/assembly/revival-drainer.js').ResumeQueueDrainerConfig>;
   deps?: Partial<ResumeQueueDrainerDeps>;
+  stores?: ReturnType<typeof records>;
+  clock?: { now: number };
 }): Harness {
   const audits: Array<Record<string, unknown>> = [];
   const aggregated: Array<{ kind: string; detail: string }> = [];
   const respawns: string[] = [];
   const notices: string[] = [];
-  let nowMs = 4_000_000_000_000;
+  const clock = over?.clock ?? { now: 4_000_000_000_000 };
+  const stores = over?.stores ?? records();
   let tier: 'normal' | 'moderate' | 'critical' = 'normal';
   const queue = new ResumeQueue(
     {
-      stateDir: tmpDir,
+      store: stores.queue,
       audit: (e) => audits.push(e),
       raiseAggregated: (kind, detail) => aggregated.push({ kind, detail }),
-      now: () => nowMs,
+      now: () => clock.now,
     },
-    { dryRun: false, ...over?.queueCfg },
+    over?.queueCfg,
   );
   queue.start();
   const deps: ResumeQueueDrainerDeps = {
@@ -105,7 +112,9 @@ function harness(over?: {
     notifyResumed: (entry) => notices.push(entry.id),
     raiseAggregated: (kind, detail) => aggregated.push({ kind, detail }),
     audit: (e) => audits.push(e),
-    now: () => nowMs,
+    wait: async (ms) => { clock.now += ms; },
+    brakes: stores.brakes,
+    now: () => clock.now,
     ...over?.deps,
   };
   const drainer = new ResumeQueueDrainer(deps, {
@@ -122,7 +131,8 @@ function harness(over?: {
     respawns,
     notices,
     setTier: (t) => { tier = t; },
-    advance: (ms) => { nowMs += ms; },
+    advance: (ms) => { clock.now += ms; },
+    reopen: () => harness({ ...over, stores, clock }),
   };
 }
 
@@ -136,9 +146,9 @@ describe('ResumeQueueDrainer — Tier-1 provenance', () => {
     const entry = candidate({
       reason: 'cobalt-lantern private completion contradiction',
       workEvidence: ['cobalt-lantern-private-signal'],
-    }) as any;
-    const prompt = buildResumeSanityPrompt(entry);
-    const options = buildResumeSanityEvaluationOptions({ promptText: prompt, entry });
+    }) as unknown as import('../../src/assembly/revival-queue.js').ResumeQueueEntry;
+    const prompt = buildResumeSanityPrompt({ ...entry, queuedAt: 4_000_000_000_000, attempts: 0 });
+    const options = buildResumeSanityEvaluationOptions({ promptText: prompt, entry: { ...entry, queuedAt: 4_000_000_000_000, attempts: 0 } });
 
     expect(prompt).toContain('cobalt-lantern');
     expect(options.provenance).toMatchObject({
@@ -147,6 +157,7 @@ describe('ResumeQueueDrainer — Tier-1 provenance', () => {
       promptId: RESUME_SANITY_CHECK_PROMPT_ID,
     });
     expect(JSON.stringify(options.provenance?.context)).not.toContain('cobalt-lantern');
+    expect(options.provenance.context.promptIdentitySha256).toMatch(/^sha256:([0-9a-f]{16}:){3}[0-9a-f]{16}$/);
   });
 });
 
@@ -172,6 +183,15 @@ describe('ResumeQueueDrainer — calm gates (R2.4)', () => {
     expect((await h.drainer.tick()).blocked).toBe('calm-ticks'); // calm=1 again
     expect((await h.drainer.tick()).blocked).toBe('calm-ticks'); // calm=2
     expect((await h.drainer.tick()).resumed).toBe(true); // calm=3
+  });
+
+  it('the calm streak is a durable reading of the gauge: a host restart keeps it', async () => {
+    const h = harness();
+    h.queue.considerEnqueue(candidate());
+    await h.drainer.tick(); await h.drainer.tick(); // calm=2
+    const next = h.reopen();
+    expect(next.drainer.status().calmTicks).toBe(2);
+    expect((await next.drainer.tick()).resumed).toBe(true);
   });
 
   it('quota / session-cap / migration gates each block (never bypassable)', async () => {
@@ -207,6 +227,24 @@ describe('ResumeQueueDrainer — calm gates (R2.4)', () => {
     for (let i = 0; i < 5; i++) {
       expect((await h.drainer.tick()).blocked).toBe('calm-ticks');
     }
+  });
+});
+
+describe('ResumeQueueDrainer — a resource hold learned by admitting is not a failed spawn', () => {
+  it('respawnTopic returning null keeps the entry queued with zero attempts, audited as the quota gate', async () => {
+    let capacity = false;
+    const h = harness({ deps: { respawnTopic: async (entry) => capacity ? `respawned-${entry.tmuxSession}` : null } });
+    const d = h.queue.considerEnqueue(candidate());
+    await warmCalm(h, 2);
+    for (let n = 0; n < 4; n++) {
+      expect((await h.drainer.tick()).blocked).toBe('quota');
+      expect(h.queue.get(d.entry!.id)).toMatchObject({ status: 'queued', attempts: 0 });
+    }
+    expect(h.audits.filter((a) => a.event === 'gates-blocked' && a.gate === 'quota')).toHaveLength(1);
+    expect(h.drainer.status().consecutiveFailures).toBe(0);
+    capacity = true;
+    expect((await h.drainer.tick()).resumed).toBe(true);
+    expect(h.audits.some((a) => a.event === 'gates-cleared')).toBe(true);
   });
 });
 
@@ -252,6 +290,14 @@ describe('ResumeQueueDrainer — one per tick, ordering, re-entrancy (R2.4/R2.5)
     expect((await h.drainer.tick()).blocked).toBe('paused');
     expect(h.respawns).toHaveLength(0);
   });
+
+  it('a job entry without job deps invalidates instead of spawning (2.0 scheduled work has its own owner)', async () => {
+    const h = harness({ deps: { jobCheck: undefined, triggerJob: undefined } });
+    h.queue.considerEnqueue(candidate({ topicId: null, jobSlug: 'nightly', jobResumeOptIn: true, workEvidence: ['open-commitment'] }));
+    await warmCalm(h, 2);
+    expect((await h.drainer.tick()).invalidated).toBe(1);
+    expect(h.queue.list()[0]!.status).toBe('invalidated:job-recovery-unwired');
+  });
 });
 
 describe('ResumeQueueDrainer — drain-time reality validations (R2.6, both sides)', () => {
@@ -271,7 +317,7 @@ describe('ResumeQueueDrainer — drain-time reality validations (R2.6, both side
       const r = await h.drainer.tick();
       expect(r.invalidated).toBe(1);
       expect(h.respawns).toHaveLength(0);
-      const entry = h.queue.list()[0];
+      const entry = h.queue.list()[0]!;
       expect(entry.status).toBe(`invalidated:${why}`);
     });
   }
@@ -284,7 +330,7 @@ describe('ResumeQueueDrainer — drain-time reality validations (R2.6, both side
     await warmCalm(h, 2);
     const r = await h.drainer.tick();
     expect(r.invalidated).toBe(1);
-    expect(h.queue.list()[0].status).toBe('invalidated:job-ran-since');
+    expect(h.queue.list()[0]!.status).toBe('invalidated:job-ran-since');
   });
 
   it('all validations passing → the spawn happens (the other side)', async () => {
@@ -302,7 +348,7 @@ describe('ResumeQueueDrainer — drain-time reality validations (R2.6, both side
     await warmCalm(h, 2);
     const r = await h.drainer.tick();
     expect(r.invalidated).toBe(1);
-    expect(h.queue.list()[0].status).toBe('invalidated:corrupt-entry');
+    expect(h.queue.list()[0]!.status).toBe('invalidated:corrupt-entry');
     expect(h.respawns).toHaveLength(0);
   });
 });
@@ -316,12 +362,26 @@ describe('ResumeQueueDrainer — failure ladder + breaker (R2.9)', () => {
     h.queue.considerEnqueue(candidate());
     await warmCalm(h, 2);
     expect((await h.drainer.tick()).blocked).toBe('attempt-failed'); // attempt 1
-    expect(h.queue.list()[0].status).toBe('queued');
-    expect(h.queue.list()[0].attempts).toBe(1);
+    expect(h.queue.list()[0]!.status).toBe('queued');
+    expect(h.queue.list()[0]!.attempts).toBe(1);
+    expect((await h.drainer.tick()).blocked).toBe('empty'); // backing off: no candidate due
     h.advance(2000); // past backoff
     expect((await h.drainer.tick()).blocked).toBe('attempt-failed'); // attempt 2 = max
-    expect(h.queue.list()[0].status).toBe('gave-up:max-attempts');
+    expect(h.queue.list()[0]!.status).toBe('gave-up:max-attempts');
     expect(h.aggregated.some((a) => a.kind === 'gave-up')).toBe(true);
+  });
+
+  it('the source backoff doubles from two minutes per attempt', async () => {
+    const h = harness({ deps: { spawnAliveAfterGrace: async () => false }, drainerCfg: { attemptBackoffMs: undefined, maxAttempts: 3, breakerThreshold: 99 } });
+    const d = h.queue.considerEnqueue(candidate());
+    await warmCalm(h, 2);
+    const first = h.deps.now();
+    await h.drainer.tick();
+    expect(h.queue.get(d.entry!.id)!.nextAttemptAt).toBe(first + 2 * 60_000);
+    h.advance(2 * 60_000);
+    const second = h.deps.now();
+    await h.drainer.tick();
+    expect(h.queue.get(d.entry!.id)!.nextAttemptAt).toBe(second + 4 * 60_000);
   });
 
   it('breakerThreshold consecutive failures opens the breaker for the cooldown, ONE aggregated notice', async () => {
@@ -338,6 +398,8 @@ describe('ResumeQueueDrainer — failure ladder + breaker (R2.9)', () => {
     expect(h.aggregated.filter((a) => a.kind === 'breaker')).toHaveLength(1);
     expect(h.drainer.status().breakerOpen).toBe(true);
     expect((await h.drainer.tick()).blocked).toBe('breaker-open');
+    // The breaker is durable: a restarted host stays braked.
+    expect((await h.reopen().drainer.tick()).blocked).toBe('breaker-open');
     // Cooldown elapses → the breaker closes and draining resumes.
     h.advance(31 * 60_000);
     h.advance(2000);
@@ -360,20 +422,30 @@ describe('ResumeQueueDrainer — failure ladder + breaker (R2.9)', () => {
     await h.drainer.tick(); // t2 succeeds → streak resets
     expect(h.drainer.status().consecutiveFailures).toBe(0);
   });
-});
 
-describe('ResumeQueueDrainer — dry-run inertness + Tier1 paths (R2.4 / P7)', () => {
-  it('dry-run: audits would-resume ONCE per entry, never spawns, never notices', async () => {
-    const h = harness({ queueCfg: { dryRun: true } });
-    h.queue.considerEnqueue(candidate());
+  it('a replacement that died with effects the host cannot prove absent is invalidated, never retried', async () => {
+    const h = harness({ deps: { spawnAliveAfterGrace: async () => 'uncertain' }, drainerCfg: { maxAttempts: 3 } });
+    const d = h.queue.considerEnqueue(candidate());
     await warmCalm(h, 2);
-    expect((await h.drainer.tick()).blocked).toBe('dry-run');
-    expect((await h.drainer.tick()).blocked).toBe('dry-run');
-    expect(h.respawns).toHaveLength(0);
-    expect(h.notices).toHaveLength(0);
-    expect(h.audits.filter((a) => a.event === 'would-resume')).toHaveLength(1);
+    expect((await h.drainer.tick()).invalidated).toBe(1);
+    expect(h.queue.get(d.entry!.id)).toMatchObject({ status: 'invalidated:uncertain-after-spawn', attempts: 0 });
+    expect(h.drainer.status().consecutiveFailures).toBe(0);
+    expect(h.aggregated.some((a) => a.kind === 'invalidated' && a.detail.includes('uncertain-after-spawn'))).toBe(true);
+    expect((await h.drainer.tick()).blocked).toBe('empty');
   });
 
+  it('a launch the host settled itself (unknown launch) propagates and enters no ladder', async () => {
+    const h = harness({ deps: { respawnTopic: async (entry) => { h.queue.transition(entry.id, 'invalidated:uncertain-launch'); throw new Error('host lost during launch'); } } });
+    const d = h.queue.considerEnqueue(candidate());
+    await warmCalm(h, 2);
+    await expect(h.drainer.tick()).rejects.toThrow(/host lost during launch/);
+    expect(h.queue.get(d.entry!.id)).toMatchObject({ status: 'invalidated:uncertain-launch', attempts: 0 });
+    expect(h.drainer.status().consecutiveFailures).toBe(0);
+    expect((await h.drainer.tick()).blocked).toBe('empty'); // the tick lock was released
+  });
+});
+
+describe('ResumeQueueDrainer — Tier1 paths (P7)', () => {
   it('Tier1 observe-only: a NEGATIVE verdict is audited and the resume still happens', async () => {
     const h = harness({
       deps: { tier1Check: async () => ({ sensible: false, reasoning: 'reason contradicts evidence' }) },
@@ -383,10 +455,10 @@ describe('ResumeQueueDrainer — dry-run inertness + Tier1 paths (R2.4 / P7)', (
     expect((await h.drainer.tick()).resumed).toBe(true); // never defers
     const verdicts = h.audits.filter((a) => a.event === 'tier1-verdict');
     expect(verdicts).toHaveLength(1);
-    expect(verdicts[0].sensible).toBe(false);
+    expect(verdicts[0]!.sensible).toBe(false);
   });
 
-  it('Tier1 deadline: a hung check sheds and the gates proceed', async () => {
+  it('Tier1 deadline: a hung check sheds through the host wait and the gates proceed', async () => {
     const h = harness({
       deps: { tier1Check: () => new Promise(() => { /* never resolves */ }) },
       drainerCfg: { tier1DeadlineMs: 10 },
@@ -395,7 +467,24 @@ describe('ResumeQueueDrainer — dry-run inertness + Tier1 paths (R2.4 / P7)', (
     await warmCalm(h, 2);
     expect((await h.drainer.tick()).resumed).toBe(true);
     const verdicts = h.audits.filter((a) => a.event === 'tier1-verdict');
-    expect(verdicts[0].supervision).toBe('shed');
+    expect(verdicts[0]!.supervision).toBe('shed');
+  });
+
+  it('Tier1 default deadline is five seconds of the host clock', async () => {
+    const before = 4_000_000_000_000;
+    const h = harness({ deps: { tier1Check: () => new Promise(() => { /* never resolves */ }) } });
+    h.queue.considerEnqueue(candidate());
+    await warmCalm(h, 2);
+    expect((await h.drainer.tick()).resumed).toBe(true);
+    expect(h.deps.now()).toBe(before + 5_000);
+  });
+
+  it('a throwing check sheds and never blocks the resume', async () => {
+    const h = harness({ deps: { tier1Check: async () => { throw new Error('doorway down'); } } });
+    h.queue.considerEnqueue(candidate());
+    await warmCalm(h, 2);
+    expect((await h.drainer.tick()).resumed).toBe(true);
+    expect(h.audits.find((a) => a.event === 'tier1-verdict')?.supervision).toBe('shed');
   });
 
   it('tier1Check:false lever switches the check off entirely', async () => {
@@ -474,74 +563,16 @@ describe('ResumeQueueDrainer — ACT-839 R2.2 worktree-revival obligation hook',
   });
 });
 
-describe('isAutoResumableEmergencyPauseReason — closed-world predicate (codex r2 #2)', () => {
-  it('matches the MessageSentinel emergency-stop reason → true', () => {
-    expect(isAutoResumableEmergencyPauseReason('message-sentinel emergency stop')).toBe(true);
-  });
-  it('does NOT match the deliberate autonomous stop-all reason → false', () => {
-    expect(isAutoResumableEmergencyPauseReason('autonomous stop-all')).toBe(false);
-  });
-  it('does NOT match an unrelated maintenance-style reason → false', () => {
-    expect(isAutoResumableEmergencyPauseReason('scheduled maintenance pause')).toBe(false);
-  });
-  it('a missing/undefined reason → false (safe side)', () => {
-    expect(isAutoResumableEmergencyPauseReason(undefined)).toBe(false);
-    expect(isAutoResumableEmergencyPauseReason(null)).toBe(false);
-  });
-
-  // Mechanical closed-world enforcement (codex r6 #2): a comment is not enough.
-  // Discover every STRING-LITERAL passed to `ResumeQueue.pause(...)` across src/
-  // and assert each is pinned to a KNOWN auto-resume verdict here. A new pause
-  // callsite with an un-pinned reason fails this test — so a future reason can
-  // never silently change Layer-2 auto-resume behavior.
-  it('every ResumeQueue.pause(...) string-literal callsite in src/ is pinned to a known verdict', () => {
-    const srcRoot = path.resolve(__dirname, '../../src');
-    const KNOWN: Record<string, boolean> = {
-      'message-sentinel emergency stop': true, // routes.ts MessageSentinel emergency-stop → auto-resumable
-      'autonomous stop-all': false,            // routes.ts deliberate operator halt → NOT auto-resumable
-    };
-    const found = new Set<string>();
-    const walk = (dir: string): void => {
-      for (const name of fs.readdirSync(dir)) {
-        const full = path.join(dir, name);
-        const st = fs.statSync(full);
-        if (st.isDirectory()) { walk(full); continue; }
-        if (!full.endsWith('.ts')) continue;
-        const text = fs.readFileSync(full, 'utf-8');
-        // Match `.pause('…')` / `.pause("…")` string-literal callsites (the
-        // resume-queue pause lever; dynamic-reason callsites, if any, are
-        // out of scope for the literal scan and would be caught at review).
-        const re = /\.pause\(\s*(['"])([^'"]+)\1/g;
-        let m: RegExpExecArray | null;
-        while ((m = re.exec(text)) !== null) found.add(m[2]);
-      }
-    };
-    walk(srcRoot);
-    // Every discovered literal reason must be a known, pinned verdict.
-    for (const reason of found) {
-      expect(
-        Object.prototype.hasOwnProperty.call(KNOWN, reason),
-        `Unpinned ResumeQueue.pause() reason "${reason}" — add it to KNOWN with its ` +
-        `auto-resume verdict (and consider isAutoResumableEmergencyPauseReason()).`,
-      ).toBe(true);
-      expect(isAutoResumableEmergencyPauseReason(reason)).toBe(KNOWN[reason]);
-    }
-    // Sanity: the scan actually found the two known resume-queue pause reasons.
-    expect(found.has('message-sentinel emergency stop')).toBe(true);
-    expect(found.has('autonomous stop-all')).toBe(true);
-  });
-});
-
-describe('ResumeQueueDrainer — stale emergency-pause robustness (Layer 1 + Layer 2)', () => {
+describe('ResumeQueueDrainer — paused queue: Layer 1 notice carried, Layer 2 auto-resume not carried (Rules 4/93)', () => {
   const EMERGENCY = 'message-sentinel emergency stop';
   const STOP_ALL = 'autonomous stop-all';
 
-  /** Enqueue an active-autonomous-run entry (the only reason that triggers Layer 2). */
+  /** Enqueue an active-autonomous-run entry (the only reason 1.x Layer 2 would auto-resume). */
   function activeRunCandidate(over: Partial<ResumeCandidateInput> = {}): ResumeCandidateInput {
     return candidate({ reason: AGE_LIMIT_ACTIVE_RUN_REASON, ...over });
   }
 
-  it('Layer 1: paused + waiting + live → raises paused-waiting ONCE per pause episode; never spawns; still blocked:paused when not stale', async () => {
+  it('Layer 1: paused + waiting → raises paused-waiting ONCE per pause episode; never spawns; still blocked:paused', async () => {
     const h = harness();
     h.queue.considerEnqueue(candidate()); // plain mid-work entry (not active-run)
     await warmCalm(h, 2);
@@ -552,6 +583,16 @@ describe('ResumeQueueDrainer — stale emergency-pause robustness (Layer 1 + Lay
     // Fired exactly once across the steady episode.
     expect(h.aggregated.filter((a) => a.kind === 'paused-waiting')).toHaveLength(1);
     expect(h.respawns).toHaveLength(0);
+  });
+
+  it('Layer 1: the notice marker is durable — a restart mid-pause does not re-alert', async () => {
+    const h = harness();
+    h.queue.considerEnqueue(candidate());
+    h.queue.pause(EMERGENCY);
+    await h.drainer.tick();
+    const next = h.reopen();
+    await next.drainer.tick();
+    expect(next.aggregated.filter((a) => a.kind === 'paused-waiting')).toHaveLength(0);
   });
 
   it('Layer 1: a NEW pause episode (unpause + re-pause) re-raises paused-waiting', async () => {
@@ -578,142 +619,49 @@ describe('ResumeQueueDrainer — stale emergency-pause robustness (Layer 1 + Lay
     expect(h.aggregated.filter((a) => a.kind === 'paused-waiting')).toHaveLength(2);
   });
 
-  it('Layer 1+2: paused + waiting + DRY-RUN → no alert, no auto-resume (observe-only silence)', async () => {
-    const h = harness({ queueCfg: { dryRun: true } });
-    h.queue.considerEnqueue(activeRunCandidate());
-    h.queue.pause(EMERGENCY);
-    h.advance(61 * 60_000); // well past the 60-min default — would be stale if live
-    expect((await h.drainer.tick()).blocked).toBe('paused');
-    expect(h.aggregated.filter((a) => a.kind === 'paused-waiting')).toHaveLength(0);
-    expect(h.aggregated.filter((a) => a.kind === 'auto-resumed-stale-pause')).toHaveLength(0);
-    expect(h.queue.isPaused()).toBe(true);
-  });
-
-  it('Layer 2: stale emergency pause (active-run entry queued > threshold after pausedAt) → unpause, audit, notice, then drains', async () => {
+  it('a stale emergency pause is NEVER auto-resumed: an active-run entry queued well past the 1.x threshold stays paused', async () => {
     const h = harness();
-    await warmCalm(h, 3); // satisfy calm gate so the fall-through actually drains
+    await warmCalm(h, 3); // calm satisfied, so only the pause holds the revival
     h.queue.pause(EMERGENCY); // pausedAt = T0
-    h.advance(61 * 60_000); // past 60-min default
+    h.advance(61 * 60_000); // past the 1.x 60-minute Layer-2 threshold
     h.queue.considerEnqueue(activeRunCandidate()); // queuedAt = T0 + 61m
-    const r = await h.drainer.tick();
-    expect(r.resumed).toBe(true); // fell through to normal draining and spawned
-    expect(h.queue.isPaused()).toBe(false);
-    expect(h.audits.some((a) => a.event === 'auto-resumed-stale-pause')).toBe(true);
-    expect(h.aggregated.some((a) => a.kind === 'auto-resumed-stale-pause')).toBe(true);
-    expect(h.respawns).toHaveLength(1);
-  });
-
-  it('Layer 2 boundary: exactly AT threshold → NOT stale (strict >), stays paused', async () => {
-    const h = harness({ drainerCfg: { staleEmergencyPauseAutoResumeMin: 60 } });
-    h.queue.pause(EMERGENCY);
-    h.advance(60 * 60_000); // exactly 60 min → NOT strictly greater
-    h.queue.considerEnqueue(activeRunCandidate());
-    expect((await h.drainer.tick()).blocked).toBe('paused');
+    for (let i = 0; i < 3; i++) expect((await h.drainer.tick()).blocked).toBe('paused');
     expect(h.queue.isPaused()).toBe(true);
-  });
-
-  it('Layer 2 boundary: just over threshold (+1ms) → stale, auto-resumes', async () => {
-    const h = harness({ drainerCfg: { staleEmergencyPauseAutoResumeMin: 60 } });
-    await warmCalm(h, 3);
-    h.queue.pause(EMERGENCY);
-    h.advance(60 * 60_000 + 1); // strictly greater
-    h.queue.considerEnqueue(activeRunCandidate());
-    await h.drainer.tick();
-    expect(h.queue.isPaused()).toBe(false);
-  });
-
-  it('Layer 2: malformed pausedAt → NOT stale (safe side, no unpause)', async () => {
-    const h = harness();
-    h.queue.considerEnqueue(activeRunCandidate());
-    h.queue.pause(EMERGENCY);
-    // Corrupt the persisted pausedAt out-of-band (simulates on-disk corruption).
-    (h.queue as unknown as { state: { pausedAt: string } }).state.pausedAt = 'not-a-date';
-    h.advance(120 * 60_000);
-    expect((await h.drainer.tick()).blocked).toBe('paused');
-    expect(h.queue.isPaused()).toBe(true);
-  });
-
-  it('Layer 2: FRESH emergency pause (active-run queued < threshold after pausedAt) → does NOT auto-resume', async () => {
-    const h = harness();
-    h.queue.pause(EMERGENCY);
-    h.advance(5 * 60_000); // only 5 min — fresh
-    h.queue.considerEnqueue(activeRunCandidate());
-    expect((await h.drainer.tick()).blocked).toBe('paused');
-    expect(h.queue.isPaused()).toBe(true);
+    expect(h.audits.some((a) => a.event === 'auto-resumed-stale-pause')).toBe(false);
     expect(h.aggregated.some((a) => a.kind === 'auto-resumed-stale-pause')).toBe(false);
-    // Layer 1 still fires for the waiting entry.
+    expect(h.respawns).toHaveLength(0);
+    // Layer 1 still tells the operator the work is waiting.
     expect(h.aggregated.filter((a) => a.kind === 'paused-waiting')).toHaveLength(1);
   });
 
-  it('Layer 2: deliberate autonomous stop-all pause + active-run entry → does NOT auto-resume', async () => {
+  it('a deliberate stop-all pause + active-run entry stays paused as well', async () => {
     const h = harness();
-    h.queue.pause(STOP_ALL); // reason does NOT match /emergency|sentinel/i
+    h.queue.pause(STOP_ALL);
     h.advance(120 * 60_000);
     h.queue.considerEnqueue(activeRunCandidate());
     expect((await h.drainer.tick()).blocked).toBe('paused');
     expect(h.queue.isPaused()).toBe(true);
   });
 
-  it('overlap: stop-all THEN emergency-stop → deliberate halt NOT downgraded; NOT auto-resumed (codex r4 #3 / gemini r4 #2)', async () => {
-    const h = harness();
-    h.queue.pause(STOP_ALL); // the deliberate halt pauses FIRST
-    h.queue.pause(EMERGENCY); // no-op: an emergency stop never downgrades a deliberate halt
-    expect(h.queue.pauseInfo().reason).toBe(STOP_ALL); // the deliberate halt is preserved
-    h.advance(120 * 60_000);
-    h.queue.considerEnqueue(activeRunCandidate());
-    expect((await h.drainer.tick()).blocked).toBe('paused');
-    expect(h.queue.isPaused()).toBe(true);
-  });
-
-  it('overlap: emergency-stop THEN stop-all → pause UPGRADED to the deliberate halt; NOT auto-resumed (codex r5 #1 / gemini r5 #2)', async () => {
-    const h = harness();
-    const pausedAtBefore = (() => { h.queue.pause(EMERGENCY); return h.queue.pauseInfo().pausedAt; })();
-    h.queue.pause(STOP_ALL); // a later deliberate halt UPGRADES the auto-resumable pause
-    expect(h.queue.pauseInfo().reason).toBe(STOP_ALL);
-    expect(h.queue.pauseInfo().pausedAt).toBe(pausedAtBefore); // freeze clock continuous (pausedAt unchanged)
-    expect(h.audits.some((a) => a.event === 'pause-upgraded' && a.to === STOP_ALL)).toBe(true);
-    h.advance(120 * 60_000);
-    h.queue.considerEnqueue(activeRunCandidate());
-    expect((await h.drainer.tick()).blocked).toBe('paused'); // the upgraded halt is not auto-resumed
-    expect(h.queue.isPaused()).toBe(true);
-  });
-
-  it('Layer 2: a plain mid-work entry (not active-run) under a stale emergency pause → does NOT auto-resume', async () => {
-    const h = harness();
-    h.queue.pause(EMERGENCY);
-    h.advance(120 * 60_000);
-    h.queue.considerEnqueue(candidate()); // reason 'quota-shed', not AGE_LIMIT_ACTIVE_RUN_REASON
-    expect((await h.drainer.tick()).blocked).toBe('paused');
-    expect(h.queue.isPaused()).toBe(true);
-  });
-
-  it('Layer 2: autoResumeStalePause:false → Layer 2 off, Layer 1 still fires', async () => {
-    const h = harness({ drainerCfg: { autoResumeStalePause: false } });
-    h.queue.pause(EMERGENCY);
-    h.advance(120 * 60_000);
-    h.queue.considerEnqueue(activeRunCandidate());
-    expect((await h.drainer.tick()).blocked).toBe('paused');
-    expect(h.queue.isPaused()).toBe(true);
-    expect(h.aggregated.filter((a) => a.kind === 'paused-waiting')).toHaveLength(1);
-  });
-
-  it('Layer 2: after auto-resume, a candidate whose topic has an operatorStopSince record is still invalidated:operator-stop (per-topic guardrail intact — gemini r2 #1)', async () => {
+  it('only an explicit unpause clears the pause, and the per-topic stop guard still invalidates after it (gemini r2 #1)', async () => {
     const h = harness({ deps: { operatorStopSince: () => true } });
     await warmCalm(h, 3);
     h.queue.pause(EMERGENCY);
     h.advance(61 * 60_000);
     h.queue.considerEnqueue(activeRunCandidate());
+    expect((await h.drainer.tick()).blocked).toBe('paused');
+    h.queue.unpause();
     const r = await h.drainer.tick();
-    // The queue auto-resumed, but the per-topic stop guard still blocks the spawn.
+    // The queue resumed, but the per-topic stop guard still blocks the spawn.
     expect(h.queue.isPaused()).toBe(false);
     expect(r.invalidated).toBe(1);
     expect(h.respawns).toHaveLength(0);
-    expect(h.queue.list()[0].status).toBe('invalidated:operator-stop');
+    expect(h.queue.list()[0]!.status).toBe('invalidated:operator-stop');
   });
 });
 
 describe('ResumeQueueDrainer — GAP-B D9 commitment drain-time re-check (both sides)', () => {
-  const committedCandidate = (over?: Partial<import('../../src/monitoring/ResumeQueue.js').ResumeQueueEntry>) =>
+  const committedCandidate = (over?: Partial<ResumeCandidateInput>) =>
     candidate({ reason: COMMITMENT_ACTIVE_RUN_REASON, workEvidence: ['build-or-autonomous-active'], ...over });
 
   it('commitment still active at drain ⇒ spawn proceeds', async () => {
@@ -731,7 +679,7 @@ describe('ResumeQueueDrainer — GAP-B D9 commitment drain-time re-check (both s
     const r = await h.drainer.tick();
     expect(r.invalidated).toBe(1);
     expect(h.respawns).toHaveLength(0);
-    expect(h.queue.list()[0].status).toBe('invalidated:commitment-no-longer-active');
+    expect(h.queue.list()[0]!.status).toBe('invalidated:commitment-no-longer-active');
   });
 
   it('the re-check is gated on the COMMITMENT reason only (a quota-shed entry never consults it)', async () => {
@@ -756,6 +704,22 @@ describe('ResumeQueueDrainer — GAP-B D9 commitment drain-time re-check (both s
   });
 });
 
+describe('ResumeQueueDrainer — TTL sweep at the tick (R2.9)', () => {
+  it('expiries fold into ONE ttl-expired notice naming the pressure-starved count', async () => {
+    const h = harness({ queueCfg: { entryTtlHours: 1 } });
+    h.queue.considerEnqueue(candidate({ topicId: 1, tmuxSession: 't1' }));
+    h.queue.considerEnqueue(candidate({ topicId: 2, tmuxSession: 't2' }));
+    h.setTier('critical');
+    h.advance(2 * 3600_000);
+    await h.drainer.tick();
+    const notices = h.aggregated.filter((a) => a.kind === 'ttl-expired');
+    expect(notices).toHaveLength(1);
+    expect(notices[0]!.detail).toContain('2 queued resume(s) expired after 24h');
+    expect(notices[0]!.detail).toContain('2 pressure-starved');
+    expect(h.queue.list().every((e) => e.status === 'gave-up:ttl' && e.pressureStarved)).toBe(true);
+  });
+});
+
 describe('ResumeQueueDrainer — G2: no silent pressure-held revival (agent-always-reachable)', () => {
   const NOTICE_MS = 10_000;
 
@@ -777,8 +741,20 @@ describe('ResumeQueueDrainer — G2: no silent pressure-held revival (agent-alwa
 
     const held = h.aggregated.filter((a) => a.kind === 'pressure-held');
     expect(held).toHaveLength(1);
-    expect(held[0].detail).toContain('under memory/CPU pressure');
-    expect(held[0].detail).toContain('freeing resources');
+    expect(held[0]!.detail).toContain('under memory/CPU pressure');
+    expect(held[0]!.detail).toContain('freeing resources');
+  });
+
+  it('the source window is twenty minutes', async () => {
+    const h = harness({ drainerCfg: { pressureHeldNoticeMs: undefined } });
+    h.setTier('moderate');
+    h.queue.considerEnqueue(candidate());
+    h.advance(20 * 60_000 - 1);
+    await h.drainer.tick();
+    expect(h.aggregated.filter((a) => a.kind === 'pressure-held')).toHaveLength(0);
+    h.advance(1);
+    await h.drainer.tick();
+    expect(h.aggregated.filter((a) => a.kind === 'pressure-held')).toHaveLength(1);
   });
 
   it('does NOT emit while the entry has waited LESS than the window (no premature notice)', async () => {
@@ -790,7 +766,7 @@ describe('ResumeQueueDrainer — G2: no silent pressure-held revival (agent-alwa
     expect(h.aggregated.filter((a) => a.kind === 'pressure-held')).toHaveLength(0);
   });
 
-  it('suppresses repeats — the notice fires ONCE per pressure episode, not every tick', async () => {
+  it('suppresses repeats — the notice fires ONCE per pressure episode, not every tick, including across a restart', async () => {
     const h = heldHarness();
     h.queue.considerEnqueue(candidate());
     h.advance(NOTICE_MS);
@@ -799,15 +775,9 @@ describe('ResumeQueueDrainer — G2: no silent pressure-held revival (agent-alwa
     await h.drainer.tick();
     await h.drainer.tick();
     expect(h.aggregated.filter((a) => a.kind === 'pressure-held')).toHaveLength(1);
-  });
-
-  it('is SILENT in dry-run (a dry-run queue must never page)', async () => {
-    const h = heldHarness({ queueCfg: { dryRun: true } });
-    h.queue.considerEnqueue(candidate());
-    h.advance(NOTICE_MS);
-
-    await h.drainer.tick();
-    expect(h.aggregated.filter((a) => a.kind === 'pressure-held')).toHaveLength(0);
+    const next = h.reopen(); next.setTier('moderate');
+    await next.drainer.tick();
+    expect(next.aggregated.filter((a) => a.kind === 'pressure-held')).toHaveLength(0);
   });
 
   it('does NOT fire for a NON-pressure hold (quota), and re-arms for a later pressure episode', async () => {

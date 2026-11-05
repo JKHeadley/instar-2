@@ -1,31 +1,27 @@
-// safe-git-allow: test fixture cleanup uses fs.rmSync on tmp dirs only.
 /**
- * ResumeQueue (reap-notify spec R2.2/R2.3/R2.9/R2.10) — enqueue rules,
+ * RevivalQueue (reap-notify spec R2.2/R2.3/R2.9/R2.10) — enqueue rules,
  * stable-key dedupe + resurrection ledger (across job re-trigger chains with
  * fresh tmux names AND across a topic rename), ordering, TTL incident-age
- * semantics + pause-freeze, bounds, corrupt-file sidecar, lockfile
- * stale-reclaim vs live-claimant vs foreign-host, requeue clamps.
+ * semantics + pause-freeze, bounds, durable-store refusal of corrupt state,
+ * requeue clamps.
+ *
+ * Carried from 1.x tests/unit/resume-queue.test.ts at
+ * 4f88880a45f0a119aae3cfd2ccaf9ace26d405b9 for carryover row 03. The queue now
+ * persists through the host-owned durable store port instead of its own
+ * state file, so the fixture is an in-memory store that freezes every saved
+ * record (as the conversation store does) and hands back clones. The 1.x
+ * lockfile cases are replaced: single-writer is the existing conversation
+ * ownership fence (tests/preview/journal-conversation-owner.test.ts).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { describe, it, expect } from 'vitest';
 
 import {
   ResumeQueue,
   classifyEligibility,
   type ResumeCandidateInput,
-} from '../../src/monitoring/ResumeQueue.js';
-
-let tmpDir: string;
-
-beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'resume-queue-test-'));
-});
-
-afterEach(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-});
+  type RevivalQueueState,
+  type RevivalQueueStore,
+} from '../../src/assembly/revival-queue.js';
 
 function candidate(over: Partial<ResumeCandidateInput> = {}): ResumeCandidateInput {
   return {
@@ -42,27 +38,36 @@ function candidate(over: Partial<ResumeCandidateInput> = {}): ResumeCandidateInp
   };
 }
 
+/** A host-owned store: atomic, durable before return, frozen once saved, cloned on load. */
+export function memoryStore(initial: RevivalQueueState | null = null): RevivalQueueStore & { saves: number; record(): RevivalQueueState | null } {
+  let record: RevivalQueueState | null = initial;
+  return {
+    saves: 0,
+    load: () => record === null ? null : structuredClone(record),
+    save(next) { record = Object.freeze(structuredClone(next)); this.saves++; },
+    record: () => record,
+  };
+}
+
 function makeQueue(over?: {
-  cfg?: Partial<import('../../src/monitoring/ResumeQueue.js').ResumeQueueConfig>;
+  cfg?: Partial<import('../../src/assembly/revival-queue.js').ResumeQueueConfig>;
   now?: () => number;
-  hostname?: () => string;
-  pidAlive?: (pid: number) => boolean;
+  store?: RevivalQueueStore;
 }) {
   const audits: Array<Record<string, unknown>> = [];
   const aggregated: Array<{ kind: string; detail: string }> = [];
   let nowMs = 3_000_000_000_000;
+  const store = over?.store ?? memoryStore();
   const q = new ResumeQueue(
     {
-      stateDir: tmpDir,
+      store,
       audit: (e) => audits.push(e),
       raiseAggregated: (kind, detail) => aggregated.push({ kind, detail }),
       now: over?.now ?? (() => nowMs),
-      hostname: over?.hostname,
-      pidAlive: over?.pidAlive,
     },
-    { dryRun: false, ...over?.cfg },
+    over?.cfg,
   );
-  return { q, audits, aggregated, advance: (ms: number) => { nowMs += ms; }, nowAt: () => nowMs };
+  return { q, store, audits, aggregated, advance: (ms: number) => { nowMs += ms; }, nowAt: () => nowMs };
 }
 
 // ── Eligibility classifier (R2.2), both sides ─────────────────────────
@@ -110,18 +115,24 @@ describe('classifyEligibility (R2.2)', () => {
 // ── Queue mechanics ───────────────────────────────────────────────────
 
 describe('ResumeQueue — enqueue, dedupe, ordering, bounds', () => {
-  it('enqueues an eligible candidate durably (survives a reload)', () => {
-    const { q } = makeQueue();
+  it('enqueues an eligible candidate durably (survives a reload through the host store)', () => {
+    const { q, store } = makeQueue();
     expect(q.start()).toBe(true);
     const d = q.considerEnqueue(candidate());
     expect(d.enqueued).toBe(true);
+    expect(store.saves).toBe(1);
     q.stop();
 
-    const second = makeQueue();
+    const second = makeQueue({ store });
     expect(second.q.start()).toBe(true);
     expect(second.q.list()).toHaveLength(1);
-    expect(second.q.list()[0].stableKey).toBe('topic:42');
+    expect(second.q.list()[0]!.stableKey).toBe('topic:42');
     second.q.stop();
+  });
+
+  it('a stopped (not started) queue refuses enqueues', () => {
+    const { q } = makeQueue();
+    expect(q.considerEnqueue(candidate()).why).toBe('queue-off');
   });
 
   it('dedupes on stable identity — a second reap of the same topic while queued is one entry', () => {
@@ -172,6 +183,16 @@ describe('ResumeQueue — enqueue, dedupe, ordering, bounds', () => {
     expect(d.entry!.workEvidence).toEqual(['open-commitment']);
     q.stop();
   });
+
+  it('string topic identities (2.0 conversation ids) key the ledger and cancellation exactly', () => {
+    const { q } = makeQueue();
+    q.start();
+    expect(q.considerEnqueue(candidate({ topicId: 'operator:main', tmuxSession: 'p1' })).entry!.stableKey).toBe('topic:operator:main');
+    expect(q.considerEnqueue(candidate({ topicId: 'operator:7', tmuxSession: 'p2' })).enqueued).toBe(true);
+    expect(q.cancelByTopic('operator:main')).toBe(1);
+    expect(q.resurrectionCountForTopic('operator:main')).toBe(0);
+    q.stop();
+  });
 });
 
 describe('ResumeQueue — resurrection ledger (R2.9)', () => {
@@ -201,6 +222,17 @@ describe('ResumeQueue — resurrection ledger (R2.9)', () => {
     advance(25 * 3600_000); // past the window
     expect(q.considerEnqueue(candidate({ tmuxSession: 't2' })).enqueued).toBe(true);
     q.stop();
+  });
+
+  it('the ledger survives a host restart through the store (the loop brake is durable)', () => {
+    const { q, store } = makeQueue({ cfg: { maxResurrections: 1 } });
+    q.start();
+    const d1 = q.considerEnqueue(candidate());
+    q.transition(d1.entry!.id, 'respawned');
+    q.recordResumeSuccess('topic:42');
+    const second = makeQueue({ store, cfg: { maxResurrections: 1 } });
+    second.q.start();
+    expect(second.q.considerEnqueue(candidate({ tmuxSession: 't2' })).why).toBe('resurrection-cap');
   });
 
   // 2026-09-30, topic 52075: idle reaps at 10:57 and 12:51 were both revived;
@@ -294,8 +326,8 @@ describe('ResumeQueue — TTL incident-age + pause freeze (R2.7/R2.9)', () => {
     advance(2 * 3600_000);
     const expired = q.expireTtl(false);
     expect(expired).toHaveLength(1);
-    expect(expired[0].status).toBe('gave-up:ttl');
-    expect(expired[0].pressureStarved).toBe(true);
+    expect(expired[0]!.status).toBe('gave-up:ttl');
+    expect(expired[0]!.pressureStarved).toBe(true);
     q.stop();
   });
 
@@ -312,7 +344,7 @@ describe('ResumeQueue — TTL incident-age + pause freeze (R2.7/R2.9)', () => {
     advance(45 * 60_000); // 30m + 45m unpaused > 1h TTL
     const expired = q.expireTtl(true);
     expect(expired).toHaveLength(1);
-    expect(expired[0].pressureStarved).toBe(false);
+    expect(expired[0]!.pressureStarved).toBe(false);
     q.stop();
   });
 
@@ -356,6 +388,20 @@ describe('ResumeQueue — requeue clamps + pause refusals (R2.7/R2.10)', () => {
     q.stop();
   });
 
+  it('a pause is first-writer-wins and only an explicit unpause clears it (Rules 4/93)', () => {
+    const { q, audits, advance } = makeQueue();
+    q.start();
+    q.pause('message-sentinel emergency stop');
+    const pausedAt = q.pauseInfo().pausedAt;
+    advance(120 * 60_000);
+    q.pause('autonomous stop-all');
+    expect(q.pauseInfo()).toEqual({ paused: true, pausedAt, reason: 'message-sentinel emergency stop' });
+    expect(audits.filter((a) => a.event === 'paused')).toHaveLength(1);
+    q.unpause();
+    expect(q.isPaused()).toBe(false);
+    q.stop();
+  });
+
   it('cancelByTopic cancels only that topic and only open entries', () => {
     const { q } = makeQueue();
     q.start();
@@ -371,13 +417,13 @@ describe('ResumeQueue — requeue clamps + pause refusals (R2.7/R2.10)', () => {
 
 describe('ResumeQueue — durability + boot reconciliation (R2.3/R2.4)', () => {
   it("'starting' found at load counts as a failed attempt", () => {
-    const { q } = makeQueue();
+    const { q, store } = makeQueue();
     q.start();
     const d = q.considerEnqueue(candidate());
     q.transition(d.entry!.id, 'starting');
     q.stop();
 
-    const second = makeQueue();
+    const second = makeQueue({ store });
     second.q.start();
     const entry = second.q.get(d.entry!.id)!;
     expect(entry.status).toBe('queued');
@@ -386,13 +432,13 @@ describe('ResumeQueue — durability + boot reconciliation (R2.3/R2.4)', () => {
   });
 
   it("'starting' at load that exhausts maxAttempts goes gave-up:max-attempts", () => {
-    const { q } = makeQueue({ cfg: { maxAttempts: 1 } });
+    const { q, store } = makeQueue({ cfg: { maxAttempts: 1 } });
     q.start();
     const d = q.considerEnqueue(candidate());
     q.transition(d.entry!.id, 'starting');
     q.stop();
 
-    const second = makeQueue({ cfg: { maxAttempts: 1 } });
+    const second = makeQueue({ store, cfg: { maxAttempts: 1 } });
     second.q.start();
     expect(second.q.get(d.entry!.id)!.status).toBe('gave-up:max-attempts');
     second.q.stop();
@@ -416,84 +462,45 @@ describe('ResumeQueue — durability + boot reconciliation (R2.3/R2.4)', () => {
     q.stop();
   });
 
-  it('a corrupt state file is sidecar-preserved, the queue starts empty, the surface is loud', () => {
-    fs.mkdirSync(path.join(tmpDir, 'state'), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, 'state', 'resume-queue.json'), '{ not json !!!', 'utf-8');
-    const { q, aggregated } = makeQueue();
-    expect(q.start()).toBe(true); // never a crash
-    expect(q.list()).toHaveLength(0);
-    const sidecars = fs.readdirSync(path.join(tmpDir, 'state')).filter((f) => f.includes('corrupt'));
-    expect(sidecars).toHaveLength(1);
-    expect(aggregated.some((a) => a.kind === 'state-corrupt')).toBe(true);
-    q.stop();
-  });
-});
-
-describe('ResumeQueue — single-writer lockfile (R2.3)', () => {
-  it('reclaims a dead-pid lock on the same host', () => {
-    fs.mkdirSync(path.join(tmpDir, 'state'), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, 'state', 'resume-queue.lock'),
-      JSON.stringify({ pid: 999999, hostname: os.hostname() }),
-    );
-    const { q } = makeQueue({ pidAlive: () => false });
-    expect(q.start()).toBe(true);
-    expect(q.isDisabled()).toBeNull();
-    q.stop();
+  it('a corrupt durable record refuses to start instead of silently resetting the ledger (Rules 26/40/42)', () => {
+    // 1.x sidecar-preserved the corrupt file and started empty, losing the resurrection
+    // ledger. The host store contract is: corrupt state throws, never looks empty.
+    const corrupt = memoryStore({ version: 2 as unknown as 1, paused: false, entries: 'nope' as unknown as [], tombstones: [] });
+    const { q } = makeQueue({ store: corrupt });
+    expect(() => q.start()).toThrow(/unrecognized; preserved/);
+    expect(q.considerEnqueue(candidate()).why).toBe('queue-off');
+    const unreadable: RevivalQueueStore = { load: () => { throw new Error('store unreadable'); }, save: () => {} };
+    expect(() => makeQueue({ store: unreadable }).q.start()).toThrow(/store unreadable/);
   });
 
-  it('reclaims a stale-heartbeat lock even when the pid is alive', () => {
-    fs.mkdirSync(path.join(tmpDir, 'state'), { recursive: true });
-    const lockPath = path.join(tmpDir, 'state', 'resume-queue.lock');
-    fs.writeFileSync(lockPath, JSON.stringify({ pid: 12345, hostname: os.hostname() }));
-    const old = new Date(Date.now() - 10 * 60_000);
-    fs.utimesSync(lockPath, old, old);
-    const { q } = makeQueue({ pidAlive: () => true, now: () => Date.now() });
-    expect(q.start()).toBe(true);
-    q.stop();
-  });
-
-  it('a LIVE other process (fresh heartbeat) disables the queue loudly', () => {
-    fs.mkdirSync(path.join(tmpDir, 'state'), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, 'state', 'resume-queue.lock'),
-      JSON.stringify({ pid: 12345, hostname: os.hostname() }),
-    );
-    const { q, aggregated } = makeQueue({ pidAlive: () => true, now: () => Date.now() });
-    expect(q.start()).toBe(false);
-    expect(q.isDisabled()).toContain('another live process');
-    expect(aggregated.some((a) => a.kind === 'lock-live-other')).toBe(true);
-    // A disabled queue refuses enqueues.
-    expect(q.considerEnqueue(candidate()).why).toBe('queue-disabled');
-  });
-
-  it('a FOREIGN-HOST lock is NEVER probed or reclaimed — loud disable with the recovery path', () => {
-    fs.mkdirSync(path.join(tmpDir, 'state'), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, 'state', 'resume-queue.lock'),
-      JSON.stringify({ pid: 1, hostname: 'some-other-machine' }),
-    );
-    let probed = false;
-    const { q } = makeQueue({ pidAlive: () => { probed = true; return false; }, now: () => Date.now() });
-    expect(q.start()).toBe(false);
-    expect(probed).toBe(false); // the invariant: no cross-host pid probe
-    expect(q.isDisabled()).toContain('some-other-machine');
-    expect(q.isDisabled()).toContain('delete state/resume-queue.lock');
-  });
-});
-
-describe('ResumeQueue — dry-run posture + notifier feed (R1.2)', () => {
-  it('hasLiveQueuedEntryFor is FALSE in dry-run even with a queued entry', () => {
-    const { q } = makeQueue({ cfg: { dryRun: true } });
+  it('every mutation persists synchronously through the store and a frozen record never blocks the next one', () => {
+    const { q, store } = makeQueue();
     q.start();
     const d = q.considerEnqueue(candidate());
-    expect(d.enqueued).toBe(true); // durably enqueued (the soak observable)
-    expect(q.hasLiveQueuedEntryFor('tmux-1')).toBe(false); // never claimed to the user
-    q.stop();
+    const saves = store.saves;
+    q.transition(d.entry!.id, 'starting');
+    q.transition(d.entry!.id, 'queued');
+    q.pause('emergency stop');
+    q.unpause();
+    expect(store.saves).toBe(saves + 4);
+    expect(Object.isFrozen(store.record())).toBe(true);
+    expect(store.record()!.entries[0]!.status).toBe('queued');
+  });
+});
+
+describe('ResumeQueue — ownership feed (R1.2)', () => {
+  it('hasLiveQueuedEntryFor is FALSE before start even with a stored entry', () => {
+    const { q, store } = makeQueue();
+    q.start();
+    q.considerEnqueue(candidate());
+    const second = makeQueue({ store });
+    expect(second.q.hasLiveQueuedEntryFor('tmux-1')).toBe(false);
+    second.q.start();
+    expect(second.q.hasLiveQueuedEntryFor('tmux-1')).toBe(true);
   });
 
-  it('hasLiveQueuedEntryFor is TRUE for a live queued entry when not dry-run', () => {
-    const { q } = makeQueue({ cfg: { dryRun: false } });
+  it('hasLiveQueuedEntryFor is TRUE for a live queued entry', () => {
+    const { q } = makeQueue();
     q.start();
     q.considerEnqueue(candidate());
     expect(q.hasLiveQueuedEntryFor('tmux-1')).toBe(true);

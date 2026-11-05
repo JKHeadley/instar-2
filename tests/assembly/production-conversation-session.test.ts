@@ -52,7 +52,9 @@ function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | '
     },
     parent: 'run-1', owner: 'machine-1', placement: 'local', transport: 'fake', workingScope: '/scope',
     resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'incarnation',
-    deadlineMs: 2000, pollMs: 100, maxCalls: 6, maxSteps: 3, maxResultBytes: 65536, ...options,
+    deadlineMs: 2000, pollMs: 100, maxCalls: 6, maxSteps: 3, maxResultBytes: 65536,
+    // This fixture runs on a 2-second lifetime; the 1.x 15-second settling period scales with it.
+    revival: { settlingMs: 100 }, ...options,
   };
   const port = value(createConversationSessionPort(config));
   const request = (operation: string) => ({ operation, question: 'What do you remember?', context: '{"memory":"tea"}', authority: 'existing-role' });

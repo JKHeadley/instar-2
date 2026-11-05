@@ -1,9 +1,14 @@
 /**
- * Session Crash Detector — JSONL Analysis for Dead Sessions
+ * Session Crash Detector — JSONL Analysis for Dead Sessions. Carried from 1.x
+ * `src/monitoring/crash-detector.ts` at 4f88880a45f0a119aae3cfd2ccaf9ace26d405b9
+ * for carryover row 03. The harness adapter that owns the transcript reads its
+ * tail (the 1.x 128 KB tail read and partial-first-line skip live there) and
+ * supplies the parsed entries and the clock; this core function judges them and
+ * never touches a file (NF-52; Rule 30).
  *
- * Detects when a Claude Code session has crashed by analyzing the JSONL
- * conversation file in combination with process status. A crash occurs when:
- * 1. The Claude process is no longer alive
+ * Detects when a harness session has crashed by analyzing the JSONL
+ * conversation tail in combination with process status. A crash occurs when:
+ * 1. The worker process is no longer alive
  * 2. The JSONL ends in a problematic state (tool_use with no result, error pattern)
  *
  * Also detects error loops — repeated identical errors that suggest the session
@@ -12,8 +17,7 @@
  * Part of PROP-session-stall-recovery Phase B
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import { contentBlocks, isToolResultBlock, isToolUseBlock, type TranscriptEntry, type TranscriptTail } from './stall-detector.js';
 
 // ============================================================================
 // Types
@@ -21,9 +25,9 @@ import * as path from 'node:path';
 
 export interface CrashInfo {
   type: 'crash';
-  jsonlPath: string;
   sessionUuid: string;
-  detectedAt: string;
+  /** Milliseconds since the epoch, from the injected clock. */
+  detectedAt: number;
   errorMessage?: string;
   errorType: 'tool_use_incomplete' | 'parsing' | 'api' | 'internal' | 'unknown';
   lastToolName?: string;
@@ -32,9 +36,8 @@ export interface CrashInfo {
 
 export interface ErrorLoopInfo {
   type: 'error_loop';
-  jsonlPath: string;
   sessionUuid: string;
-  detectedAt: string;
+  detectedAt: number;
   loopCount: number;
   failingPattern: string;
   failingCommand?: string;
@@ -45,28 +48,31 @@ export interface ErrorLoopInfo {
 // ============================================================================
 
 /**
- * Detect if a Claude Code session has crashed.
+ * Detect if a harness session has crashed.
  * A crash = process dead + JSONL ends in a non-terminal state.
  *
- * @param jsonlPath - Path to the conversation JSONL file
- * @param processAlive - Whether the Claude process is still running
+ * @param tail - The parsed transcript tail (the adapter reads the last ~20 entries)
+ * @param processAlive - Whether the worker process is still running
+ * @param now - The host clock, milliseconds since the epoch
  * @returns CrashInfo if crashed, null if clean exit or process still alive
  */
 export function detectCrashedSession(
-  jsonlPath: string,
+  tail: TranscriptTail,
   processAlive: boolean,
+  now: number,
 ): CrashInfo | null {
   // If process is still alive, it's not a crash (might be a stall — handled by stall-detector)
   if (processAlive) return null;
 
-  const entries = readTailEntries(jsonlPath);
+  const entries = tail.entries.slice(-20);
   if (entries.length === 0) return null;
 
   // Find the last entry with a message
-  let lastEntry: any = null;
+  let lastEntry: TranscriptEntry | null = null;
   for (let i = entries.length - 1; i >= 0; i--) {
-    if (entries[i].message || entries[i].type === 'assistant' || entries[i].type === 'user') {
-      lastEntry = entries[i];
+    const entry = entries[i]!;
+    if (entry.message || entry.type === 'assistant' || entry.type === 'user') {
+      lastEntry = entry;
       break;
     }
   }
@@ -81,34 +87,32 @@ export function detectCrashedSession(
 
   // Crash indicator 1: Last assistant message has stop_reason: 'tool_use' but no result follows
   if (lastEntry.type === 'assistant' && message.stop_reason === 'tool_use') {
-    const toolBlocks = (message.content || []).filter((b: any) => b.type === 'tool_use');
+    const toolBlocks = contentBlocks(message.content).filter(isToolUseBlock);
     const lastTool = toolBlocks[toolBlocks.length - 1];
 
     return {
       type: 'crash',
-      jsonlPath,
-      sessionUuid: extractSessionUuid(jsonlPath),
-      detectedAt: new Date().toISOString(),
+      sessionUuid: tail.sessionUuid,
+      detectedAt: now,
       errorType: 'tool_use_incomplete',
-      lastToolName: lastTool?.name,
-      lastToolInput: lastTool?.input,
+      ...(lastTool?.name !== undefined ? { lastToolName: lastTool.name } : {}),
+      ...(lastTool?.input !== undefined ? { lastToolInput: lastTool.input } : {}),
     };
   }
 
   // Crash indicator 2: Last entry is a tool_result with is_error: true
   if (lastEntry.type === 'user' && Array.isArray(message.content)) {
     const errorResults = message.content.filter(
-      (b: any) => b.type === 'tool_result' && b.is_error
-    );
+      (b: unknown) => isToolResultBlock(b) && b.is_error
+    ).filter(isToolResultBlock);
     if (errorResults.length > 0) {
-      const lastError = errorResults[errorResults.length - 1];
+      const lastError = errorResults[errorResults.length - 1]!;
       const errorMsg = typeof lastError.content === 'string' ? lastError.content : '';
 
       return {
         type: 'crash',
-        jsonlPath,
-        sessionUuid: extractSessionUuid(jsonlPath),
-        detectedAt: new Date().toISOString(),
+        sessionUuid: tail.sessionUuid,
+        detectedAt: now,
         errorMessage: errorMsg.slice(0, 500),
         errorType: classifyError(errorMsg),
       };
@@ -125,15 +129,17 @@ export function detectCrashedSession(
 /**
  * Detect if a session is stuck in an error loop — repeating the same failing approach.
  *
- * @param jsonlPath - Path to the conversation JSONL file
+ * @param tail - The parsed transcript tail (the adapter reads the last ~50 entries for loops)
+ * @param now - The host clock, milliseconds since the epoch
  * @param minRepetitions - Minimum number of identical errors to count as a loop (default: 3)
  * @returns ErrorLoopInfo if loop detected, null otherwise
  */
 export function detectErrorLoop(
-  jsonlPath: string,
+  tail: TranscriptTail,
+  now: number,
   minRepetitions: number = 3,
 ): ErrorLoopInfo | null {
-  const entries = readTailEntries(jsonlPath, 50); // Look at more entries for loop detection
+  const entries = tail.entries.slice(-50); // Look at more entries for loop detection
   if (entries.length === 0) return null;
 
   // Collect all error results
@@ -143,8 +149,8 @@ export function detectErrorLoop(
   for (const entry of entries) {
     // Track tool_use commands
     if (entry.type === 'assistant' && entry.message?.content) {
-      for (const block of entry.message.content) {
-        if (block.type === 'tool_use' && block.id) {
+      for (const block of contentBlocks(entry.message.content)) {
+        if (isToolUseBlock(block) && block.id) {
           const cmd = block.input?.command || block.input?.file_path || block.name || '';
           commands.set(block.id, String(cmd));
         }
@@ -154,7 +160,7 @@ export function detectErrorLoop(
     // Collect errors
     if (entry.type === 'user' && Array.isArray(entry.message?.content)) {
       for (const block of entry.message.content) {
-        if (block.type === 'tool_result' && block.is_error) {
+        if (isToolResultBlock(block) && block.is_error) {
           const content = typeof block.content === 'string' ? block.content : '';
           errors.push({
             content: normalizeError(content),
@@ -182,12 +188,11 @@ export function detectErrorLoop(
 
       return {
         type: 'error_loop',
-        jsonlPath,
-        sessionUuid: extractSessionUuid(jsonlPath),
-        detectedAt: new Date().toISOString(),
+        sessionUuid: tail.sessionUuid,
+        detectedAt: now,
         loopCount: count,
         failingPattern: pattern.slice(0, 200),
-        failingCommand,
+        ...(failingCommand !== undefined ? { failingCommand } : {}),
       };
     }
   }
@@ -198,48 +203,6 @@ export function detectErrorLoop(
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/**
- * Read the tail entries of a JSONL file.
- */
-function readTailEntries(jsonlPath: string, maxEntries: number = 20): any[] {
-  let tailContent: string;
-  try {
-    const stat = fs.statSync(jsonlPath);
-    if (stat.size === 0) return [];
-
-    const TAIL_BYTES = 128 * 1024; // 128KB for crash/loop detection (need more context)
-    const fd = fs.openSync(jsonlPath, 'r');
-    try {
-      const readStart = Math.max(0, stat.size - TAIL_BYTES);
-      const buffer = Buffer.alloc(Math.min(TAIL_BYTES, stat.size));
-      fs.readSync(fd, buffer, 0, buffer.length, readStart);
-      tailContent = buffer.toString('utf-8');
-    } finally {
-      fs.closeSync(fd);
-    }
-  } catch { // @silent-fallback-ok — pure detector function; empty array means "no crash detected"
-    return [];
-  }
-
-  if (!tailContent.trim()) return [];
-
-  const lines = tailContent.trim().split('\n');
-  const tailLines = lines.length > maxEntries
-    ? lines.slice(-maxEntries)
-    : (lines.length > 1 ? lines.slice(1) : lines); // Skip potentially truncated first line
-
-  const entries: any[] = [];
-  for (const line of tailLines) {
-    try {
-      entries.push(JSON.parse(line));
-    } catch {
-      // Skip corrupt lines
-    }
-  }
-
-  return entries;
-}
 
 /**
  * Normalize an error message for comparison (strip variable parts like timestamps, PIDs).
@@ -267,11 +230,4 @@ function classifyError(errorMessage: string): CrashInfo['errorType'] {
     return 'internal';
   }
   return 'unknown';
-}
-
-/**
- * Extract session UUID from JSONL filename.
- */
-function extractSessionUuid(jsonlPath: string): string {
-  return path.basename(jsonlPath, '.jsonl');
 }

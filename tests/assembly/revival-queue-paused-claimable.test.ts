@@ -1,35 +1,27 @@
-// safe-git-allow: test fixture cleanup uses fs.rmSync on tmp dirs only.
 /**
  * honest-session-state-surfaces Finding (c) — the split predicate.
  *
- * `hasLiveQueuedEntryFor` (OWNERSHIP, paused-BLIND) feeds the PromiseBeacon I2
- * double-spawn coordination guard and must stay TRUE while the queue is paused
- * (the queue still owns its frozen entry). `hasClaimableQueuedEntryFor`
- * (CLAIMABILITY = live AND !paused) feeds the user-facing "A restart is queued"
- * copy and must be FALSE while paused (a paused queue won't revive yet, so the
- * claim would be a promise it cannot currently keep).
+ * `hasLiveQueuedEntryFor` (OWNERSHIP, paused-BLIND) feeds the double-spawn
+ * coordination guard and must stay TRUE while the queue is paused (the queue
+ * still owns its frozen entry). `hasClaimableQueuedEntryFor` (CLAIMABILITY =
+ * live AND !paused) feeds the user-facing "A restart is queued" copy and must
+ * be FALSE while paused (a paused queue won't revive yet, so the claim would be
+ * a promise it cannot currently keep).
+ *
+ * Carried from 1.x tests/unit/ResumeQueue-paused-claimable.test.ts at
+ * 4f88880a45f0a119aae3cfd2ccaf9ace26d405b9 for carryover row 03; the queue now
+ * persists through the host store port and the 1.x dry-run posture is not carried.
  *
  * These tests pin BOTH sides of the boundary — including the I2-guard regression
  * assertion that ownership survives a pause.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { describe, it, expect } from 'vitest';
 
 import {
   ResumeQueue,
   type ResumeCandidateInput,
-} from '../../src/monitoring/ResumeQueue.js';
-
-let tmpDir: string;
-
-beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'resume-claimable-test-'));
-});
-afterEach(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-});
+  type RevivalQueueState,
+} from '../../src/assembly/revival-queue.js';
 
 function candidate(over: Partial<ResumeCandidateInput> = {}): ResumeCandidateInput {
   return {
@@ -46,16 +38,17 @@ function candidate(over: Partial<ResumeCandidateInput> = {}): ResumeCandidateInp
   };
 }
 
-function makeQueue(cfg?: Partial<import('../../src/monitoring/ResumeQueue.js').ResumeQueueConfig>) {
+function makeQueue(cfg?: Partial<import('../../src/assembly/revival-queue.js').ResumeQueueConfig>) {
   let nowMs = 3_000_000_000_000;
+  let record: RevivalQueueState | null = null;
   const q = new ResumeQueue(
     {
-      stateDir: tmpDir,
+      store: { load: () => record === null ? null : structuredClone(record), save: next => { record = Object.freeze(structuredClone(next)); } },
       audit: () => {},
       raiseAggregated: () => {},
       now: () => nowMs,
     },
-    { dryRun: false, ...cfg },
+    cfg,
   );
   return q;
 }
@@ -79,8 +72,8 @@ describe('ResumeQueue split predicate (Finding c)', () => {
 
     // The user-facing "restart is queued" copy must NOT claim a revival.
     expect(q.hasClaimableQueuedEntryFor('tmux-1')).toBe(false);
-    // …but the queue STILL owns the frozen topic — the PromiseBeacon I2
-    // double-spawn coordination guard reads this and must keep deferring.
+    // …but the queue STILL owns the frozen topic — the double-spawn
+    // coordination guard reads this and must keep deferring.
     expect(q.hasLiveQueuedEntryFor('tmux-1')).toBe(true);
   });
 
@@ -97,18 +90,18 @@ describe('ResumeQueue split predicate (Finding c)', () => {
     expect(q.hasLiveQueuedEntryFor('tmux-1')).toBe(true);
   });
 
-  it('dryRun → BOTH predicates false (existing guard unbroken on both)', () => {
-    const q = makeQueue({ dryRun: true });
-    q.start();
-    q.considerEnqueue(candidate());
-
+  it('not started → BOTH predicates false (no claim before the durable record is loaded)', () => {
+    const q = makeQueue();
+    // No start() — the started guard fires before any entry can be read.
     expect(q.hasLiveQueuedEntryFor('tmux-1')).toBe(false);
     expect(q.hasClaimableQueuedEntryFor('tmux-1')).toBe(false);
   });
 
-  it('disabled (enabled:false) → BOTH predicates false', () => {
-    const q = makeQueue({ enabled: false });
-    // No start() needed — the enabled guard fires before any entry can exist.
+  it('stopped → BOTH predicates false', () => {
+    const q = makeQueue();
+    q.start();
+    q.considerEnqueue(candidate());
+    q.stop();
     expect(q.hasLiveQueuedEntryFor('tmux-1')).toBe(false);
     expect(q.hasClaimableQueuedEntryFor('tmux-1')).toBe(false);
   });

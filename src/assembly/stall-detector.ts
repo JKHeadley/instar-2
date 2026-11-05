@@ -1,8 +1,13 @@
 /**
- * Session Stall Detector — JSONL Tail Analysis
+ * Session Stall Detector — JSONL Tail Analysis. Carried from 1.x
+ * `src/monitoring/stall-detector.ts` at 4f88880a45f0a119aae3cfd2ccaf9ace26d405b9
+ * for carryover row 03. The harness adapter that owns the transcript reads its
+ * tail and parses the entries (the 1.x 64 KB tail read and partial-first-line
+ * skip live there); this core function judges the parsed entries against the
+ * injected clock and never touches a file (NF-52; Rule 30).
  *
- * Detects when a Claude Code session has stalled mid-tool-call by analyzing
- * the conversation JSONL file. A stall occurs when:
+ * Detects when a harness session has stalled mid-tool-call by analyzing
+ * the conversation JSONL tail. A stall occurs when:
  * 1. The last assistant message has stop_reason: "tool_use"
  * 2. No subsequent tool_result has been received
  * 3. The time since the tool_use exceeds the threshold for that tool type
@@ -10,18 +15,40 @@
  * Part of PROP-XXX: Session Stall Detection & Auto-Recovery
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-
 export interface StallInfo {
-  jsonlPath: string;
   sessionUuid: string;
-  stalledAt: string;
+  /** Milliseconds since the epoch, converted by the adapter from the entry timestamp. */
+  stalledAt: number;
   stallDurationMs: number;
   lastToolName: string;
   lastToolInput: Record<string, unknown>;
   lastToolUseId: string;
 }
+
+/** One parsed transcript entry as the adapter supplies it; timestamps already in epoch ms. */
+export interface TranscriptEntry {
+  type: string;
+  timestampMs?: number;
+  message?: {
+    stop_reason?: string;
+    content?: unknown;
+  };
+}
+
+/** A parsed transcript tail: the session's identity and its last entries, oldest first. */
+export interface TranscriptTail {
+  sessionUuid: string;
+  entries: readonly TranscriptEntry[];
+}
+
+interface ToolUseBlock { type: 'tool_use'; id?: string; name?: string; input?: Record<string, unknown> }
+interface ToolResultBlock { type: 'tool_result'; tool_use_id?: string; is_error?: boolean; content?: unknown }
+
+export const isToolUseBlock = (block: unknown): block is ToolUseBlock =>
+  !!block && typeof block === 'object' && (block as { type?: unknown }).type === 'tool_use';
+export const isToolResultBlock = (block: unknown): block is ToolResultBlock =>
+  !!block && typeof block === 'object' && (block as { type?: unknown }).type === 'tool_result';
+export const contentBlocks = (content: unknown): readonly unknown[] => Array.isArray(content) ? content : [];
 
 /**
  * Per-tool stall thresholds in milliseconds.
@@ -47,61 +74,27 @@ export const DEFAULT_TOOL_THRESHOLDS: Record<string, number> = {
 };
 
 /**
- * Detect if a Claude Code session has stalled mid-tool-call.
+ * Detect if a harness session has stalled mid-tool-call.
  *
- * @param jsonlPath - Path to the conversation JSONL file
+ * @param tail - The parsed transcript tail (the adapter reads the last ~20 entries)
+ * @param now - The host clock, milliseconds since the epoch
  * @param maxAgeMs - Optional global override for stall threshold (overrides per-tool thresholds)
  * @returns StallInfo if stalled, null otherwise
  */
 export function detectToolCallStall(
-  jsonlPath: string,
+  tail: TranscriptTail,
+  now: number,
   maxAgeMs?: number
 ): StallInfo | null {
-  // 1. Read the tail of the file (last ~64KB — enough for ~20 JSONL entries)
-  // Avoids reading entire 50MB+ files for a check that only needs the last few lines
-  let tailContent: string;
-  try {
-    const stat = fs.statSync(jsonlPath);
-    if (stat.size === 0) return null;
-
-    const TAIL_BYTES = 64 * 1024; // 64KB tail read
-    const fd = fs.openSync(jsonlPath, 'r');
-    try {
-      const readStart = Math.max(0, stat.size - TAIL_BYTES);
-      const buffer = Buffer.alloc(Math.min(TAIL_BYTES, stat.size));
-      fs.readSync(fd, buffer, 0, buffer.length, readStart);
-      tailContent = buffer.toString('utf-8');
-    } finally {
-      fs.closeSync(fd);
-    }
-  } catch { // @silent-fallback-ok — pure detector function; null means "no stall detected"
-    return null; // File doesn't exist or can't be read
-  }
-
-  if (!tailContent.trim()) return null; // Empty content
-
-  // 2. Parse JSONL lines from tail (only care about the last ~20 for efficiency)
-  const lines = tailContent.trim().split('\n');
-  // Skip first line if we started mid-file (likely a partial line)
-  const tailLines = lines.length > 20
-    ? lines.slice(-20)
-    : (lines.length > 1 ? lines.slice(1) : lines); // Skip potentially truncated first line
-
-  const entries: Array<{ type: string; message?: any; timestamp?: string }> = [];
-  for (const line of tailLines) {
-    try {
-      entries.push(JSON.parse(line));
-    } catch { // @silent-fallback-ok — skipping corrupt JSONL lines is expected during tail-read parsing
-      // Skip corrupt lines
-    }
-  }
+  // 1–2. The adapter has read the tail and parsed the last ~20 JSONL entries.
+  const entries = tail.entries.slice(-20);
 
   if (entries.length === 0) return null;
 
   // 3. Find the last assistant message
   let lastAssistantIdx = -1;
   for (let i = entries.length - 1; i >= 0; i--) {
-    if (entries[i].type === 'assistant') {
+    if (entries[i]!.type === 'assistant') {
       lastAssistantIdx = i;
       break;
     }
@@ -109,7 +102,7 @@ export function detectToolCallStall(
 
   if (lastAssistantIdx === -1) return null;
 
-  const lastAssistant = entries[lastAssistantIdx];
+  const lastAssistant = entries[lastAssistantIdx]!;
   const message = lastAssistant.message;
   if (!message) return null;
 
@@ -117,25 +110,20 @@ export function detectToolCallStall(
   if (message.stop_reason !== 'tool_use') return null;
 
   // 5. Find the tool_use content blocks
-  const contentBlocks = message.content || [];
-  const toolUseBlocks = contentBlocks.filter(
-    (b: any) => b.type === 'tool_use'
-  );
+  const toolUseBlocks = contentBlocks(message.content).filter(isToolUseBlock);
 
   if (toolUseBlocks.length === 0) return null;
 
   // 6. Check if any subsequent entry contains a tool_result for these tool_use IDs
-  const toolUseIds = new Set(toolUseBlocks.map((b: any) => b.id));
+  const toolUseIds = new Set(toolUseBlocks.map((b) => b.id));
   let hasToolResult = false;
 
   for (let i = lastAssistantIdx + 1; i < entries.length; i++) {
-    const entry = entries[i];
+    const entry = entries[i]!;
     if (entry.type === 'user' && entry.message?.content) {
-      const resultBlocks = Array.isArray(entry.message.content)
-        ? entry.message.content
-        : [];
+      const resultBlocks = contentBlocks(entry.message.content);
       for (const block of resultBlocks) {
-        if (block.type === 'tool_result' && toolUseIds.has(block.tool_use_id)) {
+        if (isToolResultBlock(block) && toolUseIds.has(block.tool_use_id)) {
           hasToolResult = true;
           break;
         }
@@ -147,28 +135,26 @@ export function detectToolCallStall(
   if (hasToolResult) return null; // Tool completed — no stall
 
   // 7. Calculate stall duration
-  const toolUseTimestamp = lastAssistant.timestamp;
-  if (!toolUseTimestamp) return null;
+  const toolUseTimestamp = lastAssistant.timestampMs;
+  if (toolUseTimestamp === undefined || !Number.isFinite(toolUseTimestamp)) return null;
 
-  const stalledAt = new Date(toolUseTimestamp);
-  const now = new Date();
-  const stallDurationMs = now.getTime() - stalledAt.getTime();
+  const stalledAt = toolUseTimestamp;
+  const stallDurationMs = now - stalledAt;
 
   // 8. Get the last tool_use block (the one that stalled)
-  const lastToolUse = toolUseBlocks[toolUseBlocks.length - 1];
+  const lastToolUse = toolUseBlocks[toolUseBlocks.length - 1]!;
   const toolName: string = lastToolUse.name || 'unknown';
 
   // 9. Check against threshold
-  const threshold = maxAgeMs ?? (DEFAULT_TOOL_THRESHOLDS[toolName] || DEFAULT_TOOL_THRESHOLDS._default);
+  const threshold = maxAgeMs ?? (DEFAULT_TOOL_THRESHOLDS[toolName] || DEFAULT_TOOL_THRESHOLDS._default!);
   if (stallDurationMs < threshold) return null;
 
-  // 10. Extract session UUID from filename
-  const sessionUuid = path.basename(jsonlPath, '.jsonl');
+  // 10. The session UUID is the transcript identity the adapter resolved.
+  const sessionUuid = tail.sessionUuid;
 
   return {
-    jsonlPath,
     sessionUuid,
-    stalledAt: toolUseTimestamp,
+    stalledAt,
     stallDurationMs,
     lastToolName: toolName,
     lastToolInput: lastToolUse.input || {},

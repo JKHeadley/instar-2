@@ -1,42 +1,47 @@
 /**
- * SessionRecovery — Mechanical session crash/stall recovery via JSONL analysis.
+ * WorkerRecovery — mechanical session crash/stall recovery. Carried from 1.x
+ * `src/monitoring/SessionRecovery.ts` at 4f88880a45f0a119aae3cfd2ccaf9ace26d405b9
+ * (PROP-session-stall-recovery) for carryover row 03, and wired behind Part Ten's
+ * existing ports:
  *
- * A fast, deterministic layer that runs BEFORE the LLM-powered TriageOrchestrator.
+ *  - The three detectors are observation ports (`detectStall`, `detectErrorLoop`,
+ *    `detectCrash`), fed by the harness adapter that owns the transcript. The 1.x
+ *    `lsof`-based transcript lookup and tail reads are the adapter's, never the
+ *    core's (NF-52; Rule 30). The pure 1.x detector logic over supplied JSONL
+ *    entries is carried in stall-detector.ts and crash-detector.ts.
+ *  - Transcript truncation (jsonl-truncator) is deliberately not carried: Part Ten
+ *    never rewinds a transcript to authorize replay (Rules 4/26/63; a rewound
+ *    action can be replayed with unknown effects). The 1.x escalation ladder
+ *    (last_exchange → last_successful_tool → n_exchanges_back) is kept as the
+ *    recorded strategy and the respawn prompt says so only when a host port
+ *    actually performed a rewind.
+ *  - Recovery state (attempt counts, cooldowns, the durable context-wall latch)
+ *    persists through the host-owned store instead of `.instar/recovery-state.json`.
+ *  - The event log is an injected sink instead of `recovery-events.jsonl`; the
+ *    EventEmitter is an injected `onEvent` port.
+ *  - The 3-second kill-to-respawn settle uses the host's bounded `wait`.
+ *  - The in-flight reply race (poll topic history for 7 s at 500 ms) is replaced by
+ *    the host's exact send receipts: an injected `inFlightReply` port answers from
+ *    durable send intent/receipt, never from an arbitrary sleep (Rules 1/26/63).
+ *
+ * A fast, deterministic layer that runs BEFORE any model-powered triage.
  * Detects three failure modes without any LLM calls:
  * 1. Tool call stalls (process alive but frozen mid-tool)
  * 2. Crashes (process dead with incomplete JSONL)
  * 3. Error loops (same error repeated 3+ times)
  *
- * Recovery strategy: truncate JSONL to safe point + respawn with recovery prompt.
+ * Recovery strategy: respawn with a recovery prompt.
  * Escalation ladder: last_exchange → last_successful_tool → n_exchanges_back → alert human.
- *
- * Self-contained — no Dawn dependencies. Uses only:
- * - stall-detector.ts (pure function)
- * - crash-detector.ts (pure function)
- * - jsonl-truncator.ts (pure function)
- *
- * Part of PROP-session-stall-recovery (Instar integration)
  */
 
-import { EventEmitter } from 'events';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as os from 'node:os';
-import { execFileSync } from 'node:child_process';
-
-import { detectToolCallStall, type StallInfo } from './stall-detector.js';
-import { detectCrashedSession, detectErrorLoop, type CrashInfo, type ErrorLoopInfo } from './crash-detector.js';
-import { truncateJsonlToSafePoint, type TruncationStrategy } from './jsonl-truncator.js';
-import { detectContextExhaustion } from './QuotaExhaustionDetector.js';
-import { SafeFsExecutor } from '../core/SafeFsExecutor.js';
-import {
-  transcriptDelta,
-  type TranscriptProbe,
-} from './transcriptProber.js';
+import type { StallInfo } from './stall-detector.js';
+import type { CrashInfo, ErrorLoopInfo } from './crash-detector.js';
 
 // ============================================================================
 // Types
 // ============================================================================
+
+export type TruncationStrategy = 'last_exchange' | 'last_successful_tool' | 'n_exchanges_back';
 
 export interface SessionRecoveryConfig {
   enabled: boolean;
@@ -44,8 +49,6 @@ export interface SessionRecoveryConfig {
   maxAttempts: number;
   /** Cooldown between recovery attempts (ms) */
   cooldownMs: number;
-  /** Project directory (used to find JSONL files) */
-  projectDir: string;
   /** A context-wall latch older than this forces recovery even when work
    * evidence remains ambiguous. Default: 30 minutes. */
   contextExhaustionDeferralCeilingMs: number;
@@ -54,6 +57,29 @@ export interface SessionRecoveryConfig {
 export interface RecoveryAttempt {
   lastAttempt: number;
   count: number;
+}
+
+/** A session transcript receipt: resolved only when a path resolved AND statting it succeeded. */
+export interface TranscriptProbe {
+  readonly resolved: boolean;
+  readonly path: string;
+  readonly size: number;
+  readonly mtime: number;
+}
+
+export type TranscriptDelta = 'grew' | 'static' | 'unknown';
+
+/**
+ * Compare two probes of the same session over an observation window (1.x transcriptProber).
+ *  - `'grew'`    — size or mtime advanced ⇒ the session produced output (WORKING).
+ *  - `'static'`  — both probes resolved, same file identity, no growth ⇒ quiet.
+ *  - `'unknown'` — either probe unresolved, or the file identity changed ⇒ caller KEEPS.
+ */
+export function transcriptDelta(baseline: TranscriptProbe, current: TranscriptProbe): TranscriptDelta {
+  if (!baseline.resolved || !current.resolved) return 'unknown';
+  if (current.path !== baseline.path) return 'unknown';
+  if (current.size > baseline.size || current.mtime > baseline.mtime) return 'grew';
+  return 'static';
 }
 
 function isTranscriptProbe(value: unknown): value is TranscriptProbe {
@@ -82,26 +108,36 @@ export interface RecoveryResult {
   deferred?: boolean;
 }
 
+export interface RecoveryEvent {
+  timestamp: number;
+  failureType: RecoveryResult['failureType'];
+  recovered: boolean;
+  topicId: number | string;
+  sessionName: string;
+  attempt: number;
+}
+
+/** Durable recovery state; the host store owns atomic persistence. */
+export interface WorkerRecoveryState {
+  attempts: Record<string, RecoveryAttempt>;
+  wedgedSeen: Record<string, { firstSeenAt: number; transcript?: TranscriptProbe }>;
+}
+
 export interface SessionRecoveryDeps {
-  /** Check if a tmux session's Claude process is alive */
+  /** Check if a session's worker process is alive */
   isSessionAlive: (sessionName: string) => boolean;
-  /** Get the PID of the pane in a tmux session */
-  getPanePid?: (sessionName: string) => number | null;
   /**
-   * Kill a tmux session — for kill-to-respawn paths this should route through
-   * `SessionManager.terminateSession(id, 'session-recovery', { disposition:
-   * 'recovery-bounce', finalStatus: 'killed', bypassRecoveryFlag: true })` so the
-   * §P3 notifier stays silent (a bounce is not a disappearance) and the kill
-   * lands in the reap-log as a recovery-bounce (UNIFIED-SESSION-LIFECYCLE §P0 #8).
+   * Kill a session — for kill-to-respawn paths this routes through the host's
+   * exact retirement (close admission, confirmed stop, lease release) so a
+   * bounce is never reported as a disappearance and lands in the durable record.
    * Implementations may be async; callers `await` the result.
    */
   killSession: (sessionName: string) => void | Promise<void>;
   /**
-   * P1/P2 cross-check (UNIFIED-SESSION-LIFECYCLE §P0 #8): does the session's
-   * tmux pane have active child processes? A JSONL stall on a process that is
-   * still producing real work is almost always a false read — keep the session
-   * and let the next tick re-evaluate. Undefined ⇒ check is skipped (defaults
-   * to the pre-Phase-2 behavior).
+   * P1/P2 cross-check (UNIFIED-SESSION-LIFECYCLE §P0 #8): does the session have
+   * active child processes? A stall reading on a process that is still producing
+   * real work is almost always a false read — keep the session and let the next
+   * tick re-evaluate. Undefined ⇒ check is skipped.
    */
   hasActiveProcesses?: (sessionName: string) => boolean;
   /**
@@ -111,84 +147,89 @@ export interface SessionRecoveryDeps {
    */
   probeTranscript?: (sessionName: string) => TranscriptProbe;
   /** Deterministic clock seam for latch ceilings and tests. */
-  now?: () => number;
+  now: () => number;
+  /** The host's bounded wait (the 3-second kill-to-respawn settle). */
+  wait: (ms: number) => Promise<void>;
   /** Respawn a session for a topic, optionally with a recovery prompt */
-  respawnSession: (topicId: number, sessionName?: string, recoveryPrompt?: string) => Promise<void>;
-  /** Send a message to a topic */
-  sendToTopic?: (topicId: number, message: string) => Promise<void>;
-  /** Capture tmux output for a session (needed for context exhaustion detection) */
+  respawnSession: (topicId: number | string, sessionName?: string, recoveryPrompt?: string) => Promise<void>;
+  /** Capture terminal output for a session (needed for context exhaustion detection) */
   captureSessionOutput?: (sessionName: string, lines: number) => string | null;
+  /** The adapter's context-wall classifier over captured output (1.x detectContextExhaustion). */
+  detectContextExhaustion?: (output: string) => { matched: boolean; pattern: string | null };
   /** Respawn a session fresh (no --resume) for context exhaustion recovery */
-  respawnSessionFresh?: (topicId: number, sessionName?: string, recoveryPrompt?: string) => Promise<void>;
+  respawnSessionFresh?: (topicId: number | string, sessionName?: string, recoveryPrompt?: string) => Promise<void>;
   /**
-   * Non-destructive context-wall escalation: press `/compact` for a session
-   * genuinely stuck at "Context limit reached · /compact or /clear to continue"
-   * and verify the wall cleared. This PRESERVES the conversation (Claude
-   * compacts in place) — the rung that should be tried BEFORE the destructive
-   * fresh respawn. Resolves `{ cleared: true }` when the wall is gone after
-   * compaction, `{ cleared: false, reason }` when compaction itself fails
-   * (e.g. the conversation is too long to even compact) or times out — in
-   * which case recovery falls through to the fresh respawn. Undefined ⇒ the
-   * rung is skipped (pre-escalation behavior: straight to fresh respawn).
+   * Non-destructive context-wall escalation: compact a session genuinely stuck
+   * at the context wall and verify the wall cleared. This PRESERVES the
+   * conversation — the rung tried BEFORE the destructive fresh respawn. Resolves
+   * `{ cleared: true }` when the wall is gone after compaction, `{ cleared:
+   * false, reason }` when compaction itself fails or times out — in which case
+   * recovery falls through to the fresh respawn. Undefined ⇒ the rung is skipped.
    */
-  attemptCompaction?: (sessionName: string, topicId: number) => Promise<{ cleared: boolean; reason?: string }>;
+  attemptCompaction?: (sessionName: string, topicId: number | string) => Promise<{ cleared: boolean; reason?: string }>;
   /**
-   * Get recent messages for a topic (used by context-exhaustion recovery to
-   * capture any in-flight agent reply that lands between detection and respawn,
-   * so the fresh session can avoid duplicating it).
+   * The exact reply the dying session already sent after `detectedAt`, from the
+   * host's durable send receipts, so the fresh session can avoid duplicating it.
+   * Absent ⇒ no reply is assumed; an unknown send stays with the host's own
+   * uncertainty handling, never a guessed "nothing landed".
    */
-  getRecentTopicMessages?: (topicId: number, limit: number) => Array<{
-    text: string;
-    fromUser: boolean;
-    timestamp: string | number | Date;
-  }>;
+  inFlightReply?: (topicId: number | string, detectedAt: number) => Promise<string | null>;
+  /** Observation ports for the three mechanical failure modes (adapter-owned reads). */
+  detectStall?: (sessionName: string) => StallInfo | null;
+  detectErrorLoop?: (sessionName: string) => ErrorLoopInfo | null;
+  detectCrash?: (sessionName: string) => CrashInfo | null;
+  /** Transcript rewind, when a host actually provides one. Absent: no rewind, the prompt says so. */
+  truncate?: (sessionName: string, strategy: TruncationStrategy, exchanges?: number) => void;
+  /** Durable recovery state. */
+  store: { load(): WorkerRecoveryState | null; save(state: WorkerRecoveryState): void };
+  /** Recovery event sink (1.x recovery-events.jsonl). */
+  logEvent?: (event: RecoveryEvent) => void;
+  /** Lifecycle event port (1.x EventEmitter). */
+  onEvent?: (name: string, payload: Record<string, unknown>) => void;
 
   // ── Part D: double-dispatch recovery gate (docs/specs/ownership-follows-live-work.md) ──
   // Injected primitives that let `checkAndRecover` consult per-topic ownership
   // BEFORE re-running a recovery locally, so a machine that no longer owns a topic
   // FORWARDS to the owner instead of double-dispatching the same inbound. All
   // optional — when absent (or `ownershipFollowsLiveWork()` resolves false) the
-  // gate is a strict no-op and the existing recovery logic runs unchanged (the
-  // byte-identical legacy path). The decision logic lives in `checkAndRecover` so
-  // both sides of every ownership state are unit-testable here.
+  // gate is a strict no-op and the existing recovery logic runs unchanged. The
+  // decision logic lives in `checkAndRecover` so both sides of every ownership
+  // state are unit-testable here.
 
-  /** The dev-gated flag (resolveDevAgentGate). False / absent ⇒ gate is a no-op. */
+  /** The gate flag. False / absent ⇒ gate is a no-op. */
   ownershipFollowsLiveWork?: () => boolean;
   /**
-   * `ownReg.ownerOf(String(topicId))` — the topic's owner machine id, or null
-   * when no record / released. MAY THROW (registry unreadable); the gate treats a
-   * throw as the fail-OPEN registry-unknown branch (re-run locally + telemetry),
-   * distinct from a reachability throw (which names a peer → withhold).
+   * The topic's owner machine id, or null when no record / released. MAY THROW
+   * (registry unreadable); the gate treats a throw as the fail-OPEN
+   * registry-unknown branch (re-run locally + telemetry), distinct from a
+   * reachability throw (which names a peer → withhold).
    */
-  ownerOfTopic?: (topicId: number) => string | null;
+  ownerOfTopic?: (topicId: number | string) => string | null;
   /** This machine's mesh id (null when single-machine / not yet resolved). */
   selfMachineId?: () => string | null;
   /**
-   * Is the (peer) owner machine reachable right now?
-   * `machinePoolRegistry.getCapacity(owner)?.online === true`. MAY THROW /
-   * be indeterminate → the gate treats that as the UNREACHABLE-peer branch
+   * Is the (peer) owner machine reachable right now? MAY THROW / be
+   * indeterminate → the gate treats that as the UNREACHABLE-peer branch
    * (withhold the local re-run; the record NAMES a peer, so we don't
    * double-dispatch) — NOT the fail-open registry-unknown branch.
    */
   isOwnerReachable?: (owner: string) => boolean;
   /**
    * Forward the topic's ALREADY-DURABLE pending inbound through the existing
-   * route() drain (FIFO, never a fabricated message). Returns the count forwarded
+   * route drain (FIFO, never a fabricated message). Returns the count forwarded
    * + a `nonePending` flag (true ⇒ nothing to serve; the gate withholds the local
    * respawn and emits no forward). Ordering + exactly-once are the queue drain's +
-   * route()'s per-event-id ledger's responsibility — the gate adds neither.
+   * the per-event-id ledger's responsibility — the gate adds neither.
    */
-  forwardPendingInboundViaRoute?: (topicId: number) => Promise<{ forwarded: number; nonePending: boolean }>;
+  forwardPendingInboundViaRoute?: (topicId: number | string) => Promise<{ forwarded: number; nonePending: boolean }>;
   /**
    * Emit ONE neutral observational telemetry row for the fail-OPEN /
-   * reachability-unknown branches (`recovery-gate-registry-unknown` /
-   * `recovery-gate-reachability-unknown`) to the machine-local sentinel-events
-   * audit, so the fail-open tradeoff is MEASURED (the fleet-promotion gate reads
-   * it), not assumed. Best-effort; a throw never affects the recovery decision.
+   * reachability-unknown branches so the fail-open tradeoff is MEASURED, not
+   * assumed. Best-effort; a throw never affects the recovery decision.
    */
   emitRecoveryGateTelemetry?: (row: {
     kind: 'recovery-gate-registry-unknown' | 'recovery-gate-reachability-unknown';
-    topicId: number;
+    topicId: number | string;
     decision: 're-run-local' | 'withhold';
     reason: string;
   }) => void;
@@ -213,42 +254,42 @@ export type OwnershipRecoveryDecision = 'proceed' | 'forward' | 'withhold';
 // SessionRecovery Class
 // ============================================================================
 
-export class SessionRecovery extends EventEmitter {
+export class SessionRecovery {
   private config: SessionRecoveryConfig;
   private deps: SessionRecoveryDeps;
   private recoveryAttempts: Map<string, RecoveryAttempt> = new Map();
   /** Durable memory that the existing context detector matched for a topic.
    * The timestamp supplies the bounded-deferral ceiling; the optional probe is
    * the prior observation used to prove transcript growth. */
-  private contextWedgedSeen = new Map<number, {
+  private contextWedgedSeen = new Map<string, {
     firstSeenAt: number;
     transcript?: TranscriptProbe;
   }>();
-  private stateFilePath: string;
 
   constructor(config: Partial<SessionRecoveryConfig>, deps: SessionRecoveryDeps) {
-    super();
     this.config = {
       enabled: config.enabled ?? true,
       maxAttempts: config.maxAttempts ?? 3,
       cooldownMs: config.cooldownMs ?? 15 * 60 * 1000,
-      projectDir: config.projectDir || process.cwd(),
       contextExhaustionDeferralCeilingMs:
         config.contextExhaustionDeferralCeilingMs ?? 30 * 60 * 1000,
     };
     this.deps = deps;
-    this.stateFilePath = path.join(this.config.projectDir, '.instar', 'recovery-state.json');
     this.loadState();
+  }
+
+  private emit(name: string, payload: Record<string, unknown>): void {
+    try { this.deps.onEvent?.(name, payload); } catch { /* @silent-fallback-ok — an event listener never endangers recovery */ }
   }
 
   /**
    * Check a session for mechanical failures and attempt recovery.
-   * Should be called from SessionMonitor.checkSession() before LLM triage.
+   * Should be called from the session monitor before any model triage.
    *
-   * @returns RecoveryResult — if recovered is true, caller should skip LLM triage
+   * @returns RecoveryResult — if recovered is true, caller should skip model triage
    */
   async checkAndRecover(
-    topicId: number,
+    topicId: number | string,
     sessionName: string,
   ): Promise<RecoveryResult> {
     if (!this.config.enabled) {
@@ -263,15 +304,15 @@ export class SessionRecovery extends EventEmitter {
     const ownershipDecision = this.decideOwnershipForRecovery(topicId);
     if (ownershipDecision === 'forward') {
       // Reachable peer owns the topic: do NOT recover locally — forward the topic's
-      // pending inbound through route() (which re-resolves the live owner + applies
-      // isRemotelyHandled at dispatch). No pending inbound ⇒ nothing to serve; the
-      // leftover idle session is converged by the existing reaper/reconciler.
+      // pending inbound through the route (which re-resolves the live owner at
+      // dispatch). No pending inbound ⇒ nothing to serve; the leftover idle session
+      // is converged by the existing reaper/reconciler.
       let forwarded = 0;
       let nonePending = true;
       try {
         const r = await this.deps.forwardPendingInboundViaRoute?.(topicId);
         if (r) { forwarded = r.forwarded; nonePending = r.nonePending; }
-      } catch { /* @silent-fallback-ok — forward is best-effort; route()'s own ledger owns delivery + exactly-once */ }
+      } catch { /* @silent-fallback-ok — forward is best-effort; the route's own ledger owns delivery + exactly-once */ }
       return {
         recovered: false,
         failureType: null,
@@ -296,14 +337,14 @@ export class SessionRecovery extends EventEmitter {
     const processAlive = this.deps.isSessionAlive(sessionName);
 
     // 1. Check for context exhaustion (process alive but conversation too long)
-    // This runs FIRST and doesn't need JSONL — it scans tmux output directly.
+    // This runs FIRST and doesn't need JSONL — it scans terminal output directly.
     // A session at the "conversation too long" prompt is alive and not stalled,
     // it just can't accept any more input without hitting the same error.
-    if (processAlive && this.deps.captureSessionOutput) {
+    if (processAlive && this.deps.captureSessionOutput && this.deps.detectContextExhaustion) {
       const tmuxOutput = this.deps.captureSessionOutput(sessionName, 50);
       let matchedPattern: string | null = null;
       if (tmuxOutput) {
-        const contextCheck = detectContextExhaustion(tmuxOutput);
+        const contextCheck = this.deps.detectContextExhaustion(tmuxOutput);
         if (contextCheck.matched) {
           this.markContextWedgedSeen(topicId);
           matchedPattern = contextCheck.pattern;
@@ -317,15 +358,15 @@ export class SessionRecovery extends EventEmitter {
       }
     }
 
-    // 2. Find the JSONL file for this session (needed for stall/crash/error-loop detection)
-    const jsonlPath = this.findJsonlForSession(sessionName);
-    if (!jsonlPath) {
+    // 2. The adapter-owned detectors (the 1.x JSONL lookup lives there). Absent ⇒
+    // skip recovery rather than risk reading the wrong session's transcript.
+    if (!this.deps.detectStall && !this.deps.detectErrorLoop && !this.deps.detectCrash) {
       return { recovered: false, failureType: null, message: 'No JSONL found' };
     }
 
     // 3. Check for stall (process alive but frozen)
     if (processAlive) {
-      const stall = detectToolCallStall(jsonlPath);
+      const stall = this.deps.detectStall?.(sessionName) ?? null;
       if (stall) {
         const result = await this.recoverFromStall(topicId, sessionName, stall);
         this.logEvent(result, topicId, sessionName);
@@ -334,18 +375,18 @@ export class SessionRecovery extends EventEmitter {
     }
 
     // 4. Check for error loop (can happen with alive OR dead process)
-    const errorLoop = detectErrorLoop(jsonlPath);
+    const errorLoop = this.deps.detectErrorLoop?.(sessionName) ?? null;
     if (errorLoop) {
-      const result = await this.recoverFromErrorLoop(topicId, sessionName, jsonlPath, errorLoop);
+      const result = await this.recoverFromErrorLoop(topicId, sessionName, errorLoop);
       this.logEvent(result, topicId, sessionName);
       return result;
     }
 
     // 5. Check for crash (process dead with incomplete state)
     if (!processAlive) {
-      const crash = detectCrashedSession(jsonlPath, false);
+      const crash = this.deps.detectCrash?.(sessionName) ?? null;
       if (crash) {
-        const result = await this.recoverFromCrash(topicId, sessionName, jsonlPath, crash);
+        const result = await this.recoverFromCrash(topicId, sessionName, crash);
         this.logEvent(result, topicId, sessionName);
         return result;
       }
@@ -355,26 +396,26 @@ export class SessionRecovery extends EventEmitter {
   }
 
   /** Remember only that the unchanged detector has already matched this topic. */
-  markContextWedgedSeen(topicId: number): void {
-    if (this.contextWedgedSeen.has(topicId)) return;
-    this.contextWedgedSeen.set(topicId, { firstSeenAt: this.now() });
+  markContextWedgedSeen(topicId: number | string): void {
+    if (this.contextWedgedSeen.has(String(topicId))) return;
+    this.contextWedgedSeen.set(String(topicId), { firstSeenAt: this.now() });
     this.saveState();
   }
 
-  /** Mechanical read seam for SessionMonitor; this makes no recovery decision. */
-  hasContextWedgedSeen(topicId: number): boolean {
-    return this.contextWedgedSeen.has(topicId);
+  /** Mechanical read seam for the session monitor; this makes no recovery decision. */
+  hasContextWedgedSeen(topicId: number | string): boolean {
+    return this.contextWedgedSeen.has(String(topicId));
   }
 
   /** Explicit manual-intervention seam; successful recovery uses this same clear. */
-  clearContextWedgedSeen(topicId: number): void {
-    if (!this.contextWedgedSeen.delete(topicId)) return;
+  clearContextWedgedSeen(topicId: number | string): void {
+    if (!this.contextWedgedSeen.delete(String(topicId))) return;
     this.saveState();
   }
 
   /** First detector observation, exposed for honest status surfaces/tests. */
-  getContextWedgedFirstSeenAt(topicId: number): number | null {
-    return this.contextWedgedSeen.get(topicId)?.firstSeenAt ?? null;
+  getContextWedgedFirstSeenAt(topicId: number | string): number | null {
+    return this.contextWedgedSeen.get(String(topicId))?.firstSeenAt ?? null;
   }
 
   /**
@@ -392,7 +433,7 @@ export class SessionRecovery extends EventEmitter {
    *    double-reply. (A *persistent* registry failure degrades to the OLD
    *    double-dispatch-prone behavior — an already-broken state, not a new regression.)
    */
-  private decideOwnershipForRecovery(topicId: number): OwnershipRecoveryDecision {
+  private decideOwnershipForRecovery(topicId: number | string): OwnershipRecoveryDecision {
     // Flag OFF / deps absent → strict no-op (legacy behavior: always proceed).
     if (!this.deps.ownershipFollowsLiveWork || !this.deps.ownershipFollowsLiveWork()) return 'proceed';
     if (!this.deps.ownerOfTopic || !this.deps.selfMachineId) return 'proceed';
@@ -446,12 +487,11 @@ export class SessionRecovery extends EventEmitter {
   }
 
   /**
-   * Log a recovery event to the JSONL event log for observability.
+   * Log a recovery event to the host's event sink for observability.
    */
-  logEvent(result: RecoveryResult, topicId: number, sessionName: string): void {
-    const eventLogPath = path.join(this.config.projectDir, '.instar', 'recovery-events.jsonl');
-    const entry = {
-      timestamp: new Date().toISOString(),
+  logEvent(result: RecoveryResult, topicId: number | string, sessionName: string): void {
+    const entry: RecoveryEvent = {
+      timestamp: this.now(),
       failureType: result.failureType,
       recovered: result.recovered,
       topicId,
@@ -459,20 +499,16 @@ export class SessionRecovery extends EventEmitter {
       attempt: result.attemptNumber ?? 1,
     };
     try {
-      const dir = path.dirname(eventLogPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.appendFileSync(eventLogPath, JSON.stringify(entry) + '\n');
+      this.deps.logEvent?.(entry);
     } catch { // @silent-fallback-ok — event logging is best-effort observability
       // Can't write — skip
     }
   }
 
   /**
-   * Aggregate recovery stats from the event log since a given timestamp.
+   * Aggregate recovery stats from recorded events since a given timestamp.
    */
-  getStats(sinceMs: number): {
+  static getStats(events: readonly RecoveryEvent[], sinceMs: number): {
     attempts: { stall: number; crash: number; errorLoop: number; contextExhaustion: number };
     successes: { stall: number; crash: number; errorLoop: number; contextExhaustion: number };
   } {
@@ -481,28 +517,18 @@ export class SessionRecovery extends EventEmitter {
       successes: { stall: 0, crash: 0, errorLoop: 0, contextExhaustion: 0 },
     };
 
-    const eventLogPath = path.join(this.config.projectDir, '.instar', 'recovery-events.jsonl');
-    if (!fs.existsSync(eventLogPath)) return stats;
+    for (const entry of events) {
+      if (entry.timestamp < sinceMs) continue;
 
-    try {
-      const lines = fs.readFileSync(eventLogPath, 'utf-8').trim().split('\n').filter(Boolean);
-      for (const line of lines) {
-        const entry = JSON.parse(line);
-        const ts = new Date(entry.timestamp).getTime();
-        if (ts < sinceMs) continue;
+      const key = entry.failureType === 'error_loop' ? 'errorLoop'
+        : entry.failureType === 'stall' ? 'stall'
+        : entry.failureType === 'crash' ? 'crash'
+        : entry.failureType === 'context_exhaustion' ? 'contextExhaustion'
+        : null;
+      if (!key) continue;
 
-        const key = entry.failureType === 'error_loop' ? 'errorLoop'
-          : entry.failureType === 'stall' ? 'stall'
-          : entry.failureType === 'crash' ? 'crash'
-          : entry.failureType === 'context_exhaustion' ? 'contextExhaustion'
-          : null;
-        if (!key) continue;
-
-        stats.attempts[key]++;
-        if (entry.recovered) stats.successes[key]++;
-      }
-    } catch { // @silent-fallback-ok — corrupt log returns empty stats
-      // Can't read — return zeros
+      stats.attempts[key]++;
+      if (entry.recovered) stats.successes[key]++;
     }
 
     return stats;
@@ -514,13 +540,11 @@ export class SessionRecovery extends EventEmitter {
 
   /**
    * Shared kill-to-respawn entry (UNIFIED-SESSION-LIFECYCLE §P0 #8).
-   *  - P1/P2 cross-check first: if the tmux pane has active child processes the
-   *    session is doing real work and the JSONL "stall/crash" reading is almost
+   *  - P1/P2 cross-check first: if the session has active child processes the
+   *    session is doing real work and the "stall/crash" reading is almost
    *    certainly stale — defer this recovery attempt, let the next tick re-read.
-   *  - Otherwise route through the dep's killSession (which is wired in
-   *    server.ts to `terminateSession(disposition:'recovery-bounce',
-   *    bypassRecoveryFlag:true)` so the §P3 notifier stays silent — a bounce is
-   *    not a disappearance — and the kill lands in the reap-log).
+   *  - Otherwise route through the dep's killSession (the host's exact
+   *    retirement, so a bounce is not a disappearance and lands in the record).
    *
    *  @returns `'killed'` on a kill we performed; `'deferred-still-working'`
    *           when the work-check vetoed the kill.
@@ -534,10 +558,7 @@ export class SessionRecovery extends EventEmitter {
       && this.deps.hasActiveProcesses
       && this.deps.hasActiveProcesses(sessionName)
     ) {
-      console.log(
-        `[SessionRecovery] "${sessionName}": P1/P2 cross-check found active child processes — `
-          + `deferring recovery (JSONL stall but the process is still producing work)`,
-      );
+      this.emit('recovery:deferred', { sessionName, reason: 'active child processes — the stall reading is unreliable while the process is producing work' });
       return 'deferred-still-working';
     }
     await this.deps.killSession(sessionName);
@@ -545,7 +566,7 @@ export class SessionRecovery extends EventEmitter {
   }
 
   private async recoverFromStall(
-    topicId: number,
+    topicId: number | string,
     sessionName: string,
     stall: StallInfo,
   ): Promise<RecoveryResult> {
@@ -571,7 +592,7 @@ export class SessionRecovery extends EventEmitter {
       };
     }
 
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await this.deps.wait(3000);
 
     const recoveryPrompt = this.buildStallRecoveryPrompt(stall);
 
@@ -583,12 +604,12 @@ export class SessionRecovery extends EventEmitter {
         attemptNumber,
         message: `Recovered from stall (${stall.lastToolName}, attempt ${attemptNumber})`,
       };
-    } catch (err: any) { // @silent-fallback-ok — recovery code; returning recovered:false IS the degradation signal
+    } catch (err) { // @silent-fallback-ok — recovery code; returning recovered:false IS the degradation signal
       return {
         recovered: false,
         failureType: 'stall',
         attemptNumber,
-        message: `Stall recovery respawn failed: ${err.message}`,
+        message: `Stall recovery respawn failed: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
   }
@@ -596,13 +617,13 @@ export class SessionRecovery extends EventEmitter {
   /**
    * Recover from context exhaustion ("conversation too long").
    *
-   * Unlike stall/crash recovery which truncates the JSONL and resumes,
-   * context exhaustion means the ENTIRE conversation is too large.
-   * Recovery strategy: kill the session and respawn FRESH with telegram
-   * history as the context seed. No --resume, no JSONL reuse.
+   * Unlike stall/crash recovery which resumes, context exhaustion means the
+   * ENTIRE conversation is too large. Recovery strategy: compact in place when
+   * the host can, otherwise kill the session and respawn FRESH with the
+   * conversation history as the context seed.
    */
   private async recoverFromContextExhaustion(
-    topicId: number,
+    topicId: number | string,
     sessionName: string,
     matchedPattern: string | null,
   ): Promise<RecoveryResult> {
@@ -619,9 +640,9 @@ export class SessionRecovery extends EventEmitter {
     // Context-wall work is measured from the session's transcript, not from
     // helper-process existence. MCP/browser/SSH children can remain alive at a
     // hard wall while the model produces nothing.
-    const latch = this.contextWedgedSeen.get(topicId)
+    const latch = this.contextWedgedSeen.get(String(topicId))
       ?? { firstSeenAt: this.now() };
-    this.contextWedgedSeen.set(topicId, latch);
+    this.contextWedgedSeen.set(String(topicId), latch);
     const latchAgeMs = Math.max(0, this.now() - latch.firstSeenAt);
     const ceilingReached =
       latchAgeMs >= this.config.contextExhaustionDeferralCeilingMs;
@@ -671,14 +692,11 @@ export class SessionRecovery extends EventEmitter {
       transcriptGrowth: growth,
     });
 
-    // ── Rung 1: non-destructive /compact (preserves the conversation) ──
+    // ── Rung 1: non-destructive compaction (preserves the conversation) ──
     // Before killing the session and losing the conversation, try the escalation
-    // the wall itself asks for: press `/compact`. This is gated to a GENUINELY
-    // stuck session (no active child processes — a working session at 100%
-    // context is handled by the kill-defer below, never compacted out from under
-    // its work). If /compact clears the wall the conversation survives; if it
-    // fails (too long to even compact) or times out, we fall through to the
-    // destructive fresh respawn — never worse than the prior behavior.
+    // the wall itself asks for. If compaction clears the wall the conversation
+    // survives; if it fails (too long to even compact) or times out, we fall
+    // through to the destructive fresh respawn — never worse than the prior behavior.
     if (this.deps.attemptCompaction) {
       try {
         const compaction = await this.deps.attemptCompaction(sessionName, topicId);
@@ -688,7 +706,7 @@ export class SessionRecovery extends EventEmitter {
             recovered: true,
             failureType: 'context_exhaustion',
             attemptNumber,
-            message: `Recovered via /compact — conversation preserved${matchedPattern ? ` (pattern: "${matchedPattern}", attempt ${attemptNumber})` : ` (attempt ${attemptNumber})`}`,
+            message: `Recovered via compaction — conversation preserved${matchedPattern ? ` (pattern: "${matchedPattern}", attempt ${attemptNumber})` : ` (attempt ${attemptNumber})`}`,
           };
         }
         // compaction.cleared === false → fall through to the destructive respawn.
@@ -697,15 +715,14 @@ export class SessionRecovery extends EventEmitter {
       }
     }
 
-    // Record detection moment so we can identify any in-flight agent reply that
-    // lands AFTER this point — the dying session may have generated a reply that
-    // hasn't been written to topic history yet at respawn time.
-    const detectedAt = Date.now();
+    // Record detection moment so the host's send receipts can identify any
+    // in-flight agent reply that lands AFTER this point.
+    const detectedAt = this.now();
 
     // ── Rung 2: kill + fresh respawn (conversation lost) ──
-    // Reached only when /compact was unavailable, declined (active children), or
-    // could not clear the wall. The session is stuck at the "conversation too
-    // long" prompt and a fresh start is the only remaining recovery.
+    // Reached only when compaction was unavailable, declined, or could not clear
+    // the wall. The session is stuck at the "conversation too long" prompt and a
+    // fresh start is the only remaining recovery.
     if ((await this.killForRecovery(sessionName, {
       // Transcript evidence already made the context-wall decision. A helper
       // process must not re-veto it here.
@@ -717,15 +734,13 @@ export class SessionRecovery extends EventEmitter {
       };
     }
 
-    // Grace period: poll topic history for any in-flight agent reply from the
-    // dying session. If one lands, capture its text so the fresh session can
-    // avoid duplicating it. The previous 3s static sleep left a race window
-    // where a reply landing at T+4s would never be known to the fresh session.
+    // The exact reply the dying session already sent, from the host's durable send
+    // receipts (never an arbitrary poll), so the fresh session does not repeat it.
     const inFlightReply = await this.waitForInFlightReply(topicId, detectedAt);
 
     const baseRecoveryPrompt =
       `[RECOVERY] Your previous session hit the context window limit — the conversation became too long ` +
-      `for Claude to process. The session was killed and restarted FRESH with thread history. ` +
+      `for the model to process. The session was killed and restarted FRESH with thread history. ` +
       `You are NOT resuming the old conversation — this is a clean start with the recent message history ` +
       `loaded as context. Continue helping the user from where the conversation left off.`;
 
@@ -751,62 +766,42 @@ export class SessionRecovery extends EventEmitter {
           ? `Recovered from context exhaustion with in-flight reply captured (pattern: "${matchedPattern}", attempt ${attemptNumber}) — fresh session knows what was already sent`
           : `Recovered from context exhaustion (pattern: "${matchedPattern}", attempt ${attemptNumber}) — fresh session spawned`,
       };
-    } catch (err: any) { // @silent-fallback-ok — recovery code; returning recovered:false IS the degradation signal
+    } catch (err) { // @silent-fallback-ok — recovery code; returning recovered:false IS the degradation signal
       return {
         recovered: false,
         failureType: 'context_exhaustion',
         attemptNumber,
-        message: `Context exhaustion recovery respawn failed: ${err.message}`,
+        message: `Context exhaustion recovery respawn failed: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
   }
 
   /**
    * After a context-exhausted session is killed, an in-flight reply it was
-   * generating may still land in topic history a few seconds later. This
-   * helper polls history for a new agent message with a timestamp after
-   * detection, returning its text if found (or null if nothing landed in
-   * the grace window).
+   * generating may already have been sent. The host's durable send intent and
+   * receipt records answer this exactly; the 1.x 7-second poll of topic history
+   * at 500 ms is not carried, because an elapsed sleep cannot establish that no
+   * duplicate send happened (Rules 1/26/63).
    *
    * Purpose: pass the captured reply into the recovery prompt so the fresh
    * session does not re-answer a question the dying session already answered.
-   * Without this, the fresh session's bootstrap snapshot is a view of history
-   * that predates the dying reply, and the fresh session duplicates output.
-   *
-   * Grace window: 7s. Empirically, in-flight replies land 2-6s after detection;
-   * 7s covers the common case without adding much latency when nothing arrives.
-   * Breaks early the moment a reply is seen.
    */
-  private async waitForInFlightReply(topicId: number, detectedAt: number): Promise<string | null> {
-    if (!this.deps.getRecentTopicMessages) {
-      // No topic-history source — fall back to the legacy 3s static delay
-      // to preserve previous behavior and give the kill + filesystem time to settle.
-      await new Promise(resolve => setTimeout(resolve, 3000));
+  private async waitForInFlightReply(topicId: number | string, detectedAt: number): Promise<string | null> {
+    if (!this.deps.inFlightReply) {
+      // No send-receipt source — keep the legacy 3s settle so the kill lands
+      // before the fresh respawn; no reply is assumed either way.
+      await this.deps.wait(3000);
       return null;
     }
-
-    const graceMs = 7000;
-    const pollMs = 500;
-    const start = Date.now();
-    while (Date.now() - start < graceMs) {
-      await new Promise(resolve => setTimeout(resolve, pollMs));
-      try {
-        const recent = this.deps.getRecentTopicMessages(topicId, 5);
-        for (const m of recent) {
-          const ts = new Date(m.timestamp).getTime();
-          if (!m.fromUser && ts > detectedAt && m.text && m.text.trim().length > 0) {
-            return m.text;
-          }
-        }
-      } catch { /* best effort — continue polling */ }
-    }
-    return null;
+    try {
+      const text = await this.deps.inFlightReply(topicId, detectedAt);
+      return text && text.trim().length > 0 ? text : null;
+    } catch { return null; /* best effort — the host's own uncertainty handling owns an unreadable receipt */ }
   }
 
   private async recoverFromCrash(
-    topicId: number,
+    topicId: number | string,
     sessionName: string,
-    jsonlPath: string,
     crash: CrashInfo,
   ): Promise<RecoveryResult> {
     const key = `crash:${crash.sessionUuid || sessionName}`;
@@ -824,17 +819,21 @@ export class SessionRecovery extends EventEmitter {
 
     this.emit('recovery:crash', { topicId, sessionName, crash, attemptNumber, strategy });
 
-    // Truncate JSONL
-    try {
-      truncateJsonlToSafePoint(jsonlPath, strategy, strategy === 'n_exchanges_back' ? 3 : undefined);
-    } catch (err: any) { // @silent-fallback-ok — recovery code; returning recovered:false IS the degradation signal
-      return {
-        recovered: false,
-        failureType: 'crash',
-        strategy,
-        attemptNumber,
-        message: `JSONL truncation failed: ${err.message}`,
-      };
+    // Rewind only through a host port that actually performs one; the core never rewinds.
+    let rewound = false;
+    if (this.deps.truncate) {
+      try {
+        this.deps.truncate(sessionName, strategy, strategy === 'n_exchanges_back' ? 3 : undefined);
+        rewound = true;
+      } catch (err) { // @silent-fallback-ok — recovery code; returning recovered:false IS the degradation signal
+        return {
+          recovered: false,
+          failureType: 'crash',
+          strategy,
+          attemptNumber,
+          message: `JSONL truncation failed: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
     }
 
     // Kill (might already be dead) and respawn
@@ -844,9 +843,9 @@ export class SessionRecovery extends EventEmitter {
         message: `Crash recovery deferred for ${sessionName} — work-check found active children (the JSONL "crashed" reading conflicts with a running process)`,
       };
     }
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await this.deps.wait(3000);
 
-    const recoveryPrompt = this.buildCrashRecoveryPrompt(crash, strategy);
+    const recoveryPrompt = this.buildCrashRecoveryPrompt(crash, strategy, rewound);
 
     try {
       await this.deps.respawnSession(topicId, sessionName, recoveryPrompt);
@@ -857,21 +856,20 @@ export class SessionRecovery extends EventEmitter {
         attemptNumber,
         message: `Recovered from crash (${strategy}, attempt ${attemptNumber})`,
       };
-    } catch (err: any) { // @silent-fallback-ok — recovery code; returning recovered:false IS the degradation signal
+    } catch (err) { // @silent-fallback-ok — recovery code; returning recovered:false IS the degradation signal
       return {
         recovered: false,
         failureType: 'crash',
         strategy,
         attemptNumber,
-        message: `Crash recovery respawn failed: ${err.message}`,
+        message: `Crash recovery respawn failed: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
   }
 
   private async recoverFromErrorLoop(
-    topicId: number,
+    topicId: number | string,
     sessionName: string,
-    jsonlPath: string,
     loop: ErrorLoopInfo,
   ): Promise<RecoveryResult> {
     const key = `loop:${loop.sessionUuid || sessionName}`;
@@ -890,17 +888,20 @@ export class SessionRecovery extends EventEmitter {
 
     this.emit('recovery:error_loop', { topicId, sessionName, loop, attemptNumber, strategy });
 
-    // Truncate JSONL
-    try {
-      truncateJsonlToSafePoint(jsonlPath, strategy);
-    } catch (err: any) { // @silent-fallback-ok — recovery code; returning recovered:false IS the degradation signal
-      return {
-        recovered: false,
-        failureType: 'error_loop',
-        strategy,
-        attemptNumber,
-        message: `JSONL truncation failed: ${err.message}`,
-      };
+    let rewound = false;
+    if (this.deps.truncate) {
+      try {
+        this.deps.truncate(sessionName, strategy);
+        rewound = true;
+      } catch (err) { // @silent-fallback-ok — recovery code; returning recovered:false IS the degradation signal
+        return {
+          recovered: false,
+          failureType: 'error_loop',
+          strategy,
+          attemptNumber,
+          message: `JSONL truncation failed: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
     }
 
     // Kill and respawn
@@ -910,9 +911,9 @@ export class SessionRecovery extends EventEmitter {
         message: `Error-loop recovery deferred for ${sessionName} — work-check found active children`,
       };
     }
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await this.deps.wait(3000);
 
-    const recoveryPrompt = this.buildErrorLoopRecoveryPrompt(loop, strategy);
+    const recoveryPrompt = this.buildErrorLoopRecoveryPrompt(loop, strategy, rewound);
 
     try {
       await this.deps.respawnSession(topicId, sessionName, recoveryPrompt);
@@ -923,13 +924,13 @@ export class SessionRecovery extends EventEmitter {
         attemptNumber,
         message: `Recovered from error loop (${loop.loopCount}x "${loop.failingPattern.slice(0, 50)}", attempt ${attemptNumber})`,
       };
-    } catch (err: any) { // @silent-fallback-ok — recovery code; returning recovered:false IS the degradation signal
+    } catch (err) { // @silent-fallback-ok — recovery code; returning recovered:false IS the degradation signal
       return {
         recovered: false,
         failureType: 'error_loop',
         strategy,
         attemptNumber,
-        message: `Error loop recovery respawn failed: ${err.message}`,
+        message: `Error loop recovery respawn failed: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
   }
@@ -947,7 +948,7 @@ export class SessionRecovery extends EventEmitter {
     );
   }
 
-  private buildCrashRecoveryPrompt(crash: CrashInfo, strategy: TruncationStrategy): string {
+  private buildCrashRecoveryPrompt(crash: CrashInfo, strategy: TruncationStrategy, rewound: boolean): string {
     const errorDetail = crash.errorMessage
       ? ` Error: "${crash.errorMessage.slice(0, 200)}"`
       : crash.lastToolName
@@ -955,18 +956,23 @@ export class SessionRecovery extends EventEmitter {
         : '';
     return sanitizeForPrompt(
       `[RECOVERY] Your previous session crashed (${crash.errorType}).${errorDetail} ` +
-      `The conversation was rewound using strategy "${strategy}" and the session was restarted. ` +
-      `Some recent messages may be missing. Continue where you left off — avoid repeating ` +
+      (rewound
+        ? `The conversation was rewound using strategy "${strategy}" and the session was restarted. ` +
+          `Some recent messages may be missing. `
+        : `The session was restarted without rewinding the conversation. `) +
+      `Continue where you left off — avoid repeating ` +
       `the action that caused the crash.`
     );
   }
 
-  private buildErrorLoopRecoveryPrompt(loop: ErrorLoopInfo, strategy: TruncationStrategy): string {
+  private buildErrorLoopRecoveryPrompt(loop: ErrorLoopInfo, strategy: TruncationStrategy, rewound: boolean): string {
     return sanitizeForPrompt(
       `[RECOVERY] Your previous session was stuck in an error loop — ` +
       `the same error repeated ${loop.loopCount} times: "${loop.failingPattern.slice(0, 100)}". ` +
       (loop.failingCommand ? `Failing command: "${loop.failingCommand.slice(0, 100)}". ` : '') +
-      `The conversation was rewound using strategy "${strategy}" and the session was restarted. ` +
+      (rewound
+        ? `The conversation was rewound using strategy "${strategy}" and the session was restarted. `
+        : `The session was restarted without rewinding the conversation. `) +
       `Try a DIFFERENT approach — the previous one kept failing.`
     );
   }
@@ -998,58 +1004,40 @@ export class SessionRecovery extends EventEmitter {
   }
 
   /**
-   * Load recovery state from disk. Prevents infinite kill-respawn loops
-   * across dawn-server restarts by preserving attempt counts and cooldowns.
+   * Load recovery state from the host store. Prevents infinite kill-respawn loops
+   * across host restarts by preserving attempt counts and cooldowns.
    */
   private loadState(): void {
-    try {
-      if (fs.existsSync(this.stateFilePath)) {
-        const data = JSON.parse(fs.readFileSync(this.stateFilePath, 'utf-8'));
-        if (data.attempts && typeof data.attempts === 'object') {
-          for (const [key, value] of Object.entries(data.attempts)) {
-            const attempt = value as RecoveryAttempt;
-            if (attempt.lastAttempt && attempt.count) {
-              this.recoveryAttempts.set(key, attempt);
-            }
-          }
-        }
-        if (data.wedgedSeen && typeof data.wedgedSeen === 'object') {
-          for (const [topic, seen] of Object.entries(data.wedgedSeen)) {
-            const topicId = Number(topic);
-            if (!Number.isInteger(topicId)) continue;
-            if (seen === true) {
-              // Legacy true-only state: keep the latch, start the ceiling clock
-              // now because its historical first-seen time was never recorded.
-              this.contextWedgedSeen.set(topicId, { firstSeenAt: this.now() });
-              continue;
-            }
-            if (seen && typeof seen === 'object') {
-              const row = seen as { firstSeenAt?: unknown; transcript?: unknown };
-              const firstSeenAt = Number(row.firstSeenAt);
-              if (!Number.isFinite(firstSeenAt) || firstSeenAt <= 0) continue;
-              const transcript = isTranscriptProbe(row.transcript)
-                ? row.transcript
-                : undefined;
-              this.contextWedgedSeen.set(topicId, { firstSeenAt, transcript });
-            }
-          }
+    const data = this.deps.store.load();
+    if (!data) return;
+    if (data.attempts && typeof data.attempts === 'object') {
+      for (const [key, value] of Object.entries(data.attempts)) {
+        const attempt = value as RecoveryAttempt;
+        if (attempt.lastAttempt && attempt.count) {
+          this.recoveryAttempts.set(key, attempt);
         }
       }
-    } catch { // @silent-fallback-ok — corrupt state file means fresh start, which is safe
-      // Can't load — start fresh (safe default)
+    }
+    if (data.wedgedSeen && typeof data.wedgedSeen === 'object') {
+      for (const [topic, seen] of Object.entries(data.wedgedSeen)) {
+        if (seen && typeof seen === 'object') {
+          const row = seen as { firstSeenAt?: unknown; transcript?: unknown };
+          const firstSeenAt = Number(row.firstSeenAt);
+          if (!Number.isFinite(firstSeenAt) || firstSeenAt <= 0) continue;
+          const transcript = isTranscriptProbe(row.transcript)
+            ? row.transcript
+            : undefined;
+          this.contextWedgedSeen.set(topic, transcript ? { firstSeenAt, transcript } : { firstSeenAt });
+        }
+      }
     }
   }
 
   /**
-   * Persist recovery state to disk so it survives process restarts.
+   * Persist recovery state so it survives host restarts.
    */
   private saveState(): void {
     try {
-      const dir = path.dirname(this.stateFilePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
       const data: Record<string, RecoveryAttempt> = {};
       // Only persist entries less than 1 hour old
       const ONE_HOUR = 60 * 60 * 1000;
@@ -1059,125 +1047,30 @@ export class SessionRecovery extends EventEmitter {
         }
       }
 
-      const wedgedSeen: Record<string, {
-        firstSeenAt: number;
-        transcript?: TranscriptProbe;
-      }> = {};
+      const wedgedSeen: WorkerRecoveryState['wedgedSeen'] = {};
       for (const [topicId, state] of this.contextWedgedSeen) {
-        wedgedSeen[String(topicId)] = state;
+        wedgedSeen[topicId] = state;
       }
-      fs.writeFileSync(this.stateFilePath, JSON.stringify({ attempts: data, wedgedSeen }, null, 2));
+      this.deps.store.save({ attempts: data, wedgedSeen });
     } catch { // @silent-fallback-ok — state persistence is best-effort; in-memory state still works
       // Can't save — in-memory state still works for this process lifetime
     }
   }
 
   private now(): number {
-    return this.deps.now?.() ?? Date.now();
+    return this.deps.now();
   }
 
   /**
-   * Find the JSONL file for a session using lsof (Strategy 1) with NO fallback.
-   *
-   * Previous implementation fell back to most-recently-modified JSONL which
-   * could match a DIFFERENT healthy session, leading to cross-session corruption
-   * during truncation. Now returns null if lsof can't identify the file —
-   * better to skip recovery than corrupt the wrong session.
-   */
-  private findJsonlForSession(sessionName: string): string | null {
-    const projectDir = this.config.projectDir;
-    const projectHash = projectDir.replace(/[\/\.]/g, '-');
-    const projectJsonlDir = path.join(os.homedir(), '.claude', 'projects', projectHash);
-
-    if (!fs.existsSync(projectJsonlDir)) return null;
-
-    // Strategy 1: Use lsof to find the JSONL file held open by the session's process
-    if (this.deps.getPanePid) {
-      const pid = this.deps.getPanePid(sessionName);
-      if (pid) {
-        try {
-          // lint-allow-blocking-scan: targeted `lsof -p <pid>` (one specific process,
-          // not a full enumeration), 5s timeout, runs once during a session's JSONL
-          // recovery — not on a cadence, so it can't starve /health the way the #972
-          // every-tick scans did.
-          const output = execFileSync('lsof', ['-p', String(pid), '-Fn'], {
-            encoding: 'utf-8',
-            timeout: 5000,
-          });
-          // Look for .jsonl files in the output
-          for (const line of output.split('\n')) {
-            if (line.startsWith('n') && line.endsWith('.jsonl')) {
-              const filePath = line.slice(1); // Remove 'n' prefix
-              if (filePath.startsWith(projectJsonlDir) && fs.existsSync(filePath)) {
-                return filePath;
-              }
-            }
-          }
-        } catch { // @silent-fallback-ok — lsof failure is expected on some platforms; null return triggers skip-recovery path
-          // lsof failed — fall through to null (do NOT fallback to mtime-based)
-        }
-      }
-    }
-
-    // Strategy 2 (removed): Most-recently-modified JSONL was unsafe — could match
-    // a concurrent healthy session, leading to cross-session corruption during truncation.
-    // If lsof fails, we skip recovery rather than risk corrupting the wrong session.
-
-    return null;
-  }
-
-  /**
-   * Clean up old recovery tracking entries and stale .bak files.
+   * Clean up old recovery tracking entries. (The 1.x `.bak` transcript cleanup is
+   * not carried: no transcript backups are made because no transcript is rewound.)
    */
   cleanup(): void {
     const ONE_HOUR = 60 * 60 * 1000;
     for (const [key, entry] of Array.from(this.recoveryAttempts.entries())) {
-      if (Date.now() - entry.lastAttempt > ONE_HOUR) {
+      if (this.now() - entry.lastAttempt > ONE_HOUR) {
         this.recoveryAttempts.delete(key);
       }
-    }
-
-    // Clean up .bak files older than 24 hours
-    this.cleanupBackupFiles();
-  }
-
-  /**
-   * Remove .bak.* files older than maxAge from the Claude projects JSONL directory.
-   * Each recovery creates a full backup — without cleanup these accumulate indefinitely,
-   * consuming disk and retaining sensitive conversation data.
-   */
-  private cleanupBackupFiles(maxAgeMs: number = 24 * 60 * 60 * 1000): void {
-    const projectDir = this.config.projectDir;
-    const projectHash = projectDir.replace(/[\/\.]/g, '-');
-    const projectJsonlDir = path.join(os.homedir(), '.claude', 'projects', projectHash);
-
-    if (!fs.existsSync(projectJsonlDir)) return;
-
-    try {
-      const files = fs.readdirSync(projectJsonlDir);
-      const now = Date.now();
-      let cleaned = 0;
-
-      for (const file of files) {
-        if (!file.includes('.bak.')) continue;
-
-        const filePath = path.join(projectJsonlDir, file);
-        try {
-          const stat = fs.statSync(filePath);
-          if (now - stat.mtimeMs > maxAgeMs) {
-            SafeFsExecutor.safeUnlinkSync(filePath, { operation: 'src/monitoring/SessionRecovery.ts:727' });
-            cleaned++;
-          }
-        } catch { // @silent-fallback-ok — best-effort cleanup; skipping one file is fine
-          // Skip files we can't stat/delete
-        }
-      }
-
-      if (cleaned > 0) {
-        this.emit('cleanup:backups', { cleaned, directory: projectJsonlDir });
-      }
-    } catch { // @silent-fallback-ok — best-effort cleanup; directory read failure is non-critical
-      // Can't read directory — skip cleanup
     }
   }
 }
@@ -1193,7 +1086,7 @@ export class SessionRecovery extends EventEmitter {
 export function sanitizeForPrompt(text: string, maxLength: number = 2000): string {
   return text
     // Strip Unicode directional overrides and invisible characters (CVE-class attack vector)
-    .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, '')
+    .replace(/[​-‏‪-‮⁠-⁩﻿]/g, '')
     // Strip ASCII control characters (except newlines and tabs)
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
     // Normalize Unicode to NFC

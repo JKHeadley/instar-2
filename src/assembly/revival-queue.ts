@@ -1,23 +1,26 @@
 /**
- * ResumeQueue — the durable, ordered queue of mid-work reaped sessions
- * awaiting revival (reap-notify spec R2.2/R2.3, parts of R2.9/R2.10).
+ * RevivalQueue — the durable, ordered queue of mid-work lost workers awaiting
+ * revival. Carried from 1.x `src/monitoring/ResumeQueue.ts` at
+ * 4f88880a45f0a119aae3cfd2ccaf9ace26d405b9 (reap-notify spec R2.2/R2.3, parts
+ * of R2.9/R2.10) for carryover row 03, and wired behind Part Ten's existing
+ * ports:
  *
- * One queue per machine, JSON-file backed (`state/resume-queue.json`),
- * in-memory authoritative with SYNCHRONOUS persist on every mutation using
- * the crash-durable discipline: write temp → fsync temp → rename → fsync
- * parent dir. A crash loses at most the latest mutation, which boot
- * reconciliation absorbs (a lost enqueue is re-created from the reap-log; a
- * lost transition replays as a failed attempt).
- *
- * Single-writer is ENFORCED, not assumed: a lockfile
- * (`state/resume-queue.lock`, pid + hostname + heartbeat mtime) is taken at
- * start. Stale-lock recovery is automatic on the SAME host (dead pid or old
- * heartbeat ⇒ reclaim + log); a LIVE other process disables the queue loudly.
- * HARD INVARIANT: a lock whose hostname differs from this host is NEVER
- * liveness-probed or reclaimed — pid checks are meaningless cross-host — it
- * disables the queue loudly instead, and the disable message documents the
- * operational recovery (verify nothing else uses the state dir, delete the
- * lock, restart).
+ *  - Persistence is the host-owned durable store the conversation already
+ *    uses (`ConversationSessionStore` discipline: atomic, durable before
+ *    return, corrupt state throws and never looks empty). The 1.x temp → fsync
+ *    → rename → fsync-dir discipline lives in that host store
+ *    (scripts/conversation-host-store.mjs), not here. In-memory authoritative
+ *    with a SYNCHRONOUS persist on every mutation, as in 1.x.
+ *  - Single-writer is ENFORCED by the existing conversation ownership fence
+ *    (tests/preview/conversation-owner.ts: exclusive per conversation, refused
+ *    across machines, inhibited when the authority is unusable), so the 1.x
+ *    pid/hostname lockfile, its stale-lock reclaim and the FD1–FD5 foreign-host
+ *    auto-heal are not carried. Rules 32/63/113.
+ *  - Time is the injected clock (`now`), as numbers of milliseconds; the core
+ *    boundary reaches no ambient clock (NF-52).
+ *  - The 1.x dry-run fleet posture is not carried: this route ships reviewed and
+ *    live, a dark safety feature guards nothing (Rules 73/76), and the register's
+ *    own status field is the posture.
  *
  * Eligibility (R2.2) is stricter than midWork: terminal + autonomous +
  * (≥1 strong signal, OR topic-bound with ≥2 distinct weak signals); jobs
@@ -27,21 +30,9 @@
  * queue. The resurrection LEDGER (keyed on stable identity
  * `topicId ?? jobSlug ?? tmuxSession`, tombstones surviving dequeue, 24h
  * reset window) caps kill-resume-kill loops at `maxResurrections`.
- *
- * Dry-run posture (the fleet's shipped default): entries ARE durably
- * enqueued (observable in `GET /sessions/resume-queue` — the soak needs real
- * midWork entries), but the drainer never spawns (it audits `would-resume`)
- * and nothing user-facing claims a queued resume. Deliberate interpretation
- * of "observe-only", recorded in the side-effects review.
  */
 
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { execFileSync } from 'node:child_process';
-import { SafeFsExecutor } from '../core/SafeFsExecutor.js';
-import { evidenceEligible, clampWorkEvidence, isAutoResumableEmergencyPauseReason } from '../core/WorkEvidence.js';
-import { mergeDefaults } from '../core/mergeDefaults.js';
+import { evidenceEligible, clampWorkEvidence } from './work-evidence.js';
 
 export type ResumePriorityClass = 'interactive' | 'job' | 'other';
 
@@ -56,14 +47,15 @@ export type ResumeEntryStatus =
 
 export interface ResumeQueueEntry {
   id: string;
-  queuedAt: string;
+  /** Milliseconds since the epoch, from the injected clock. */
+  queuedAt: number;
   /** TTL re-anchor on an operator requeue (R2.10); TTL keys on max(queuedAt, requeuedAt). */
-  requeuedAt?: string;
+  requeuedAt?: number | undefined;
   /** Stable identity: topicId ?? jobSlug ?? tmuxSession (R2.3). */
   stableKey: string;
   sessionName: string;
   tmuxSession: string;
-  topicId?: number;
+  topicId?: number | string;
   /** Threadline conversation recovered after an unbound warm worker is reaped. */
   threadId?: string;
   /** Canonical inbound message whose processing must be retried. */
@@ -78,77 +70,24 @@ export interface ResumeQueueEntry {
   workEvidence: string[];
   attempts: number;
   status: ResumeEntryStatus;
-  lastAttemptAt?: string;
+  lastAttemptAt?: number | undefined;
   /** Backoff hold between attempts (R2.9). */
-  nextAttemptAt?: string;
+  nextAttemptAt?: number | undefined;
   /** Milliseconds of operator-pause time excluded from this entry's TTL clock. */
-  frozenMs?: number;
+  frozenMs?: number | undefined;
   /** TTL expiry under sustained pressure carries this marker (R2.9). */
-  pressureStarved?: boolean;
+  pressureStarved?: boolean | undefined;
 }
 
 /** Tombstone ledger row — survives dequeue (R2.9 resurrection cap). */
 export interface ResurrectionTombstone {
   stableKey: string;
   resurrections: number;
-  windowStartAt: string;
-  lastResumeAt?: string;
-}
-
-/**
- * FD1 — Is the resume-queue state dir on a HOST-LOCAL filesystem (not a network/
- * shared mount)? FAIL-CLOSED: anything we cannot positively confirm as local
- * returns false, so a genuine shared volume is NEVER auto-healed (the two-hosts-
- * one-volume corruption the host-lock invariant protects against). Portable
- * device-column classification via `df -P` (field 1 of the data row):
- *   - `/dev/...`           → local disk          → true
- *   - `host:/path` (NFS) / `//host/share` (SMB)  → network             → false
- *   - df failure / timeout / unparseable / unknown source → false (fail-closed)
- * Checked ONCE at lock-acquisition. Exported for the unit truth-table + canary.
- */
-export function isStateDirHostLocalDefault(stateDir: string): boolean {
-  let out: string;
-  try {
-    out = execFileSync('df', ['-P', stateDir], { timeout: 3000, encoding: 'utf-8' });
-  } catch {
-    // @silent-fallback-ok — df unavailable/failed ⇒ cannot confirm local ⇒
-    // fail-closed to NOT-local (the safe direction: never auto-heal on doubt).
-    return false;
-  }
-  const lines = out.trim().split('\n');
-  if (lines.length < 2) return false; // unparseable → fail-closed
-  const source = lines[1]?.trim().split(/\s+/)[0] ?? '';
-  return classifyDfSourceLocal(source);
-}
-
-/**
- * Pure FD1 classifier over the `df -P` device-source column. Exported for the
- * unit truth-table + drift canary. FAIL-CLOSED: only a positively-recognized
- * local block device is local; network signatures and anything unrecognized
- * (map/tmpfs/empty) are NOT local.
- */
-export function classifyDfSourceLocal(source: string): boolean {
-  if (!source) return false;
-  // Network/shared mount signatures → NOT local.
-  if (source.startsWith('//')) return false; // SMB/CIFS //host/share
-  if (/^[^/][^:]*:/.test(source)) return false; // NFS host:/path (a colon before any slash)
-  // Positively-local: a real block device.
-  if (source.startsWith('/dev/')) return true;
-  // map (devfs/autofs), tmpfs, anything else we don't recognize → fail-closed.
-  return false;
+  windowStartAt: number;
+  lastResumeAt?: number | undefined;
 }
 
 export interface ResumeQueueConfig {
-  enabled: boolean;
-  dryRun: boolean;
-  /**
-   * FD5 — auto-heal a stale FOREIGN-host lock when it is provably a single-host
-   * RENAME (local FS + dead pid + stale heartbeat), instead of disabling the
-   * queue. Fleet code-default FALSE (touches a durable-state-corruption
-   * invariant — never "cheap"); the dev-agent gate flips it true at the
-   * consumption site, dryRun-first. When false → today's disable-on-mismatch.
-   */
-  autoHealStaleHostLock: boolean;
   maxAttempts: number;
   maxResurrections: number;
   entryTtlHours: number;
@@ -157,9 +96,6 @@ export interface ResumeQueueConfig {
 }
 
 export const DEFAULT_RESUME_QUEUE_CONFIG: ResumeQueueConfig = {
-  enabled: true,
-  dryRun: true, // code default — the fleet ships observe-only (decision 2)
-  autoHealStaleHostLock: false, // FD5 — fleet code-default OFF; dev-agent gate flips true
   maxAttempts: 3,
   maxResurrections: 2,
   entryTtlHours: 24,
@@ -170,11 +106,11 @@ export const DEFAULT_RESUME_QUEUE_CONFIG: ResumeQueueConfig = {
 const RESURRECTION_WINDOW_MS = 24 * 3600_000;
 const REASON_CAP = 500;
 
-interface PersistedState {
+export interface RevivalQueueState {
   version: 1;
   paused: boolean;
-  pausedAt?: string;
-  pauseReason?: string;
+  pausedAt?: number | undefined;
+  pauseReason?: string | undefined;
   entries: ResumeQueueEntry[];
   tombstones: ResurrectionTombstone[];
 }
@@ -182,14 +118,14 @@ interface PersistedState {
 export interface EnqueueDecision {
   enqueued: boolean;
   /** Why not (audit vocabulary). */
-  why?: string;
+  why?: string | undefined;
   entry?: ResumeQueueEntry;
 }
 
 export interface ResumeCandidateInput {
   sessionName: string;
   tmuxSession: string;
-  topicId?: number | null;
+  topicId?: number | string | null;
   threadId?: string;
   threadlineMessageId?: string;
   jobSlug?: string;
@@ -211,19 +147,28 @@ export interface ResumeCandidateInput {
   seenWorkingPastAgeLimit?: boolean;
 }
 
+/** The host-owned durable store slice this queue persists into. A corrupt record must
+ * throw from `load`, never look empty: a silently reset ledger would drop the loop brake. */
+export interface RevivalQueueStore {
+  load(): RevivalQueueState | null;
+  save(state: RevivalQueueState): void;
+}
+
 export interface ResumeQueueDeps {
-  /** `.instar` state dir — files live under `<stateDir>/state/`. */
-  stateDir: string;
-  /** Decision-transition audit sink (logs/resume-queue.jsonl). */
+  store: RevivalQueueStore;
+  /** Decision-transition audit sink. */
   audit?: (event: Record<string, unknown>) => void;
   /** Aggregated attention surface (ONE rolling item — the caller dedupes). */
   raiseAggregated?: (kind: string, detail: string) => void;
-  now?: () => number;
-  hostname?: () => string;
-  /** pid liveness probe (tests override). */
-  pidAlive?: (pid: number) => boolean;
-  /** FD1 host-local FS probe (tests override; default `isStateDirHostLocalDefault`). */
-  isStateDirHostLocal?: (stateDir: string) => boolean;
+  now: () => number;
+}
+
+/** Lay optional config over defaults without letting an `undefined` erase a default
+ * (1.x mergeDefaults: an explicit `key: undefined` from an omitted operator field must not spin a timer). */
+function mergeDefaults<D extends object>(defaults: D, override?: Partial<D>): D {
+  const out = { ...defaults } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(override ?? {})) if (value !== undefined) out[key] = value;
+  return out as D;
 }
 
 /** Pure eligibility classifier (R2.2) — exported for tests. */
@@ -256,349 +201,66 @@ export class ResumeQueue {
   private readonly deps: ResumeQueueDeps;
   private readonly cfg: ResumeQueueConfig;
   private readonly now: () => number;
-  private readonly statePath: string;
-  private readonly lockPath: string;
-  private state: PersistedState = { version: 1, paused: false, entries: [], tombstones: [] };
+  private state: RevivalQueueState = { version: 1, paused: false, entries: [], tombstones: [] };
   private seq = 0;
-  /** Non-null ⇒ the queue is disabled (lock conflict / foreign lock). */
-  private disabledReason: string | null = null;
-  private lockHeld = false;
+  private started = false;
 
   constructor(deps: ResumeQueueDeps, cfg?: Partial<ResumeQueueConfig>) {
     this.deps = deps;
-    this.cfg = mergeDefaults(DEFAULT_RESUME_QUEUE_CONFIG, (cfg ?? {}));
-    this.now = deps.now ?? (() => Date.now());
-    const stateRoot = path.join(deps.stateDir, 'state');
-    this.statePath = path.join(stateRoot, 'resume-queue.json');
-    this.lockPath = path.join(stateRoot, 'resume-queue.lock');
+    this.cfg = mergeDefaults(DEFAULT_RESUME_QUEUE_CONFIG, cfg);
+    this.now = deps.now;
   }
 
   config(): ResumeQueueConfig {
     return { ...this.cfg };
   }
 
-  isDisabled(): string | null {
-    return this.disabledReason;
-  }
-
   isPaused(): boolean {
     return this.state.paused;
   }
 
-  isDryRun(): boolean {
-    return this.cfg.dryRun;
-  }
-
   /**
-   * Acquire the single-writer lock + load the durable state. Returns false
-   * (queue disabled, reason in `isDisabled()`) on a live-other-process or
-   * foreign-host lock — never throws for those.
+   * Load the durable state under the existing ownership fence. A corrupt store
+   * throws here (Rules 26/40/42: refuse malformed state and preserve it) rather
+   * than starting an empty queue that has silently lost its resurrection ledger.
    */
   start(): boolean {
-    if (!this.acquireLock()) return false;
     this.load();
     this.reconcileStartingEntries();
+    this.started = true;
     return true;
   }
 
   stop(): void {
-    if (this.lockHeld) {
-      try {
-        SafeFsExecutor.safeUnlinkSync(this.lockPath, { operation: 'ResumeQueue.stop lock release' });
-      } catch {
-        /* already gone */
-      }
-      this.lockHeld = false;
-    }
-  }
-
-  /** Refresh the lock heartbeat (drainer calls this every tick). */
-  heartbeat(): void {
-    if (!this.lockHeld) return;
-    try {
-      const t = new Date(this.now());
-      fs.utimesSync(this.lockPath, t, t);
-    } catch {
-      /* @silent-fallback-ok — heartbeat touch is best-effort; a missing lock
-         is re-created on next start, and a stale heartbeat only makes THIS
-         holder's lock reclaimable (the safe direction). */
-    }
-  }
-
-  private acquireLock(): boolean {
-    const hostname = this.deps.hostname?.() ?? os.hostname();
-    const pidAlive =
-      this.deps.pidAlive ??
-      ((pid: number) => {
-        try {
-          process.kill(pid, 0);
-          return true;
-        } catch {
-          // @silent-fallback-ok — not a fallback: kill(pid, 0) throwing IS the
-          // "pid is dead" answer this probe exists to produce.
-          return false;
-        }
-      });
-    try {
-      fs.mkdirSync(path.dirname(this.lockPath), { recursive: true });
-      if (fs.existsSync(this.lockPath)) {
-        let lock: { pid?: number; hostname?: string } = {};
-        try {
-          lock = JSON.parse(fs.readFileSync(this.lockPath, 'utf-8'));
-        } catch {
-          // @silent-fallback-ok — corrupt/unreadable lock ⇒ no pid/hostname ⇒
-          // the stale-reclaim path below runs and AUDITS the reclaim.
-          lock = {};
-        }
-        if (lock.hostname && lock.hostname !== hostname) {
-          // A foreign-host lock. DEFAULT (HARD INVARIANT): treat as a shared-
-          // volume conflict and disable WITHOUT probing (the original behavior;
-          // a cross-host pid is meaningless here). FD1–FD5: ONLY when auto-heal
-          // is ENABLED do we probe to distinguish a single-host RENAME (provably
-          // local FS + dead pid + stale heartbeat) and self-heal — fail-closed.
-          let fsLocal = false;
-          let pidDead = false;
-          let foreignHeartbeatStale = false;
-          if (this.cfg.autoHealStaleHostLock) {
-            const foreignMtime = (() => {
-              try {
-                return fs.statSync(this.lockPath).mtimeMs;
-              } catch {
-                // @silent-fallback-ok — unreadable mtime ⇒ heartbeat treated as
-                // stale (one of three conjunctive conditions; FS-local still gates).
-                return 0;
-              }
-            })();
-            foreignHeartbeatStale = this.now() - foreignMtime >= 5 * 60_000;
-            const isHostLocal = this.deps.isStateDirHostLocal ?? isStateDirHostLocalDefault;
-            // FD2: FS-local is DISPOSITIVE and evaluated first. A foreign lock on
-            // a non-local/unknown FS is treated as a genuine shared-volume case.
-            fsLocal = (() => {
-              try {
-                return isHostLocal(this.deps.stateDir);
-              } catch {
-                // @silent-fallback-ok — detector threw ⇒ cannot confirm local ⇒
-                // fail-closed (never auto-heal on doubt).
-                return false;
-              }
-            })();
-            // Only probe the pid once FS-local is confirmed — preserves the
-            // "never pid-probe a genuine foreign/shared-volume lock" invariant.
-            pidDead = fsLocal && (typeof lock.pid !== 'number' || !pidAlive(lock.pid));
-          }
-          const renameSafe = fsLocal && pidDead && foreignHeartbeatStale;
-          if (this.cfg.autoHealStaleHostLock && renameSafe) {
-            if (this.cfg.dryRun) {
-              // dryRun: log what we WOULD do, do NOT rewrite, then disable. The
-              // surface still fires below-equivalent here, so it is never silent.
-              this.audit({
-                event: 'lock-foreign-host-would-autoheal',
-                lockHost: lock.hostname,
-                thisHost: hostname,
-                fsLocal,
-                pidDead,
-                foreignHeartbeatStale,
-              });
-              this.deps.raiseAggregated?.(
-                'lock-foreign-host-would-autoheal',
-                `resume-queue WOULD auto-heal a stale rename lock from host "${lock.hostname}" → "${hostname}" (dryRun: not rewritten).`,
-              );
-              this.disabledReason =
-                `resume-queue disabled (dryRun): WOULD auto-heal stale rename lock from "${lock.hostname}" → "${hostname}" ` +
-                `(fsLocal, pid dead, heartbeat stale). Set dryRun:false to enable the self-heal.`;
-              return false;
-            }
-            // FD4: atomic first-writer-wins takeover. Loser re-evaluates next
-            // start (never blind-overwrites).
-            const took = this.takeOverLockAtomic(hostname);
-            this.audit({ event: 'lock-foreign-host-autohealed', lockHost: lock.hostname, thisHost: hostname, took });
-            if (took) {
-              this.lockHeld = true;
-              this.disabledReason = null;
-              return true;
-            }
-            this.disabledReason =
-              `resume-queue disabled: lost the atomic takeover race healing a rename lock from "${lock.hostname}". Re-evaluates next start.`;
-            this.deps.raiseAggregated?.('lock-autoheal-lost-race', this.disabledReason);
-            return false;
-          }
-          // Not a safe rename (or auto-heal off): disable + LOUD surface.
-          const declined = this.cfg.autoHealStaleHostLock
-            ? `Auto-heal declined (fsLocal=${fsLocal}, pidDead=${pidDead}, heartbeatStale=${foreignHeartbeatStale}). `
-            : '';
-          this.disabledReason =
-            `resume-queue disabled: lock at ${this.lockPath} belongs to host "${lock.hostname}" ` +
-            `(this host: "${hostname}"). The queue's state dir must be host-local; shared volumes are ` +
-            `unsupported. ${declined}Recovery: after verifying nothing else uses this state dir (host renamed, or ` +
-            `restored from a backup), delete state/resume-queue.lock and restart.`;
-          this.audit({
-            event: 'lock-foreign-host',
-            lockHost: lock.hostname,
-            thisHost: hostname,
-            autoHeal: this.cfg.autoHealStaleHostLock,
-            fsLocal,
-            pidDead,
-            foreignHeartbeatStale,
-          });
-          this.deps.raiseAggregated?.('lock-foreign-host', this.disabledReason);
-          return false;
-        }
-        const mtime = (() => {
-          try {
-            return fs.statSync(this.lockPath).mtimeMs;
-          } catch {
-            // @silent-fallback-ok — unreadable mtime ⇒ heartbeat treated as
-            // stale ⇒ the audited reclaim path, never a silent hold.
-            return 0;
-          }
-        })();
-        const heartbeatFresh = this.now() - mtime < 5 * 60_000;
-        const live = typeof lock.pid === 'number' && lock.pid !== process.pid && pidAlive(lock.pid) && heartbeatFresh;
-        if (live) {
-          this.disabledReason =
-            `resume-queue disabled: another live process (pid ${lock.pid}) holds ${this.lockPath} ` +
-            `with a fresh heartbeat. Only one queue owner per machine is supported.`;
-          this.audit({ event: 'lock-live-other', otherPid: lock.pid });
-          this.deps.raiseAggregated?.('lock-live-other', this.disabledReason);
-          return false;
-        }
-        // Dead pid or stale heartbeat — safe automatic reclaim.
-        this.audit({ event: 'lock-stale-reclaimed', priorPid: lock.pid, heartbeatFresh });
-      }
-      fs.writeFileSync(this.lockPath, JSON.stringify({ pid: process.pid, hostname }), 'utf-8');
-      this.lockHeld = true;
-      this.disabledReason = null;
-      return true;
-    } catch (err) {
-      // @silent-fallback-ok — not silent: the failure is stored as
-      // disabledReason, surfaced by isDisabled() and the /sessions/resume-queue
-      // route, and the queue refuses to start (safe side).
-      this.disabledReason = `resume-queue disabled: lock acquisition raised: ${err instanceof Error ? err.message : String(err)}`;
-      return false;
-    }
-  }
-
-  /**
-   * FD4 — atomic first-writer-wins takeover of a classified-stale lock. Removes
-   * the stale lock then creates the new one with O_EXCL ('wx'): exactly one
-   * racer's create succeeds; a concurrent boot gets EEXIST → false (it disables
-   * and re-evaluates next start, never blind-overwrites). The next-acquire
-   * live-pid + heartbeat check backstops the ultra-narrow double-unlink window.
-   */
-  private takeOverLockAtomic(hostname: string): boolean {
-    try {
-      try {
-        SafeFsExecutor.safeUnlinkSync(this.lockPath, { operation: 'ResumeQueue.takeOverLockAtomic stale-rename heal' });
-      } catch {
-        // @silent-fallback-ok — already gone (another racer removed it) is fine;
-        // the 'wx' create below is the actual mutual-exclusion gate.
-      }
-      const fd = fs.openSync(this.lockPath, 'wx');
-      try {
-        fs.writeSync(fd, JSON.stringify({ pid: process.pid, hostname }));
-      } finally {
-        fs.closeSync(fd);
-      }
-      return true;
-    } catch {
-      // @silent-fallback-ok — EEXIST (lost the race) or any error ⇒ we did NOT
-      // take the lock; caller disables and re-evaluates. The safe direction.
-      return false;
-    }
-  }
-
-  /**
-   * D2 — guard-posture self-report. `enabled:false` whenever the queue is
-   * disabled (e.g. an un-healable foreign-host lock), so the guard-posture
-   * inventory classifies a disabled revival queue as `off-runtime-divergent`
-   * (config on, runtime off → the alerting class) instead of it being visible
-   * only as a `disabled:` string. ALWAYS reflects live runtime state — NOT
-   * dryRun-gated (a disabled guard must be loud even during a dryRun soak).
-   */
-  guardStatus(): { enabled: boolean; dryRun: boolean; reason?: string } {
-    return {
-      enabled: this.cfg.enabled && !this.disabledReason,
-      dryRun: this.cfg.dryRun,
-      reason: this.disabledReason ?? undefined,
-    };
+    this.started = false;
   }
 
   private load(): void {
-    let raw: string | null = null;
-    try {
-      raw = fs.readFileSync(this.statePath, 'utf-8');
-    } catch {
-      raw = null; // first run — empty queue
+    const parsed = this.deps.store.load();
+    if (parsed == null) return;
+    if (parsed && parsed.version === 1 && Array.isArray(parsed.entries)) {
+      // The host store may hand back a frozen record; the queue mutates its own copy.
+      this.state = structuredClone({
+        version: 1,
+        paused: !!parsed.paused,
+        pausedAt: parsed.pausedAt,
+        pauseReason: parsed.pauseReason,
+        entries: parsed.entries,
+        tombstones: Array.isArray(parsed.tombstones) ? parsed.tombstones : [],
+      });
+      return;
     }
-    if (raw == null) return;
-    try {
-      const parsed = JSON.parse(raw) as PersistedState;
-      if (parsed && parsed.version === 1 && Array.isArray(parsed.entries)) {
-        this.state = {
-          version: 1,
-          paused: !!parsed.paused,
-          pausedAt: parsed.pausedAt,
-          pauseReason: parsed.pauseReason,
-          entries: parsed.entries,
-          tombstones: Array.isArray(parsed.tombstones) ? parsed.tombstones : [],
-        };
-        return;
-      }
-      throw new Error('unrecognized shape');
-    } catch (err) {
-      // Corrupt file: sidecar-preserve, start empty, surface loudly — never a
-      // silent reset, never a crash (R2.3).
-      const sidecar = path.join(
-        path.dirname(this.statePath),
-        `resume-queue.corrupt-${this.now().toString(36)}.json`,
-      );
-      try {
-        fs.copyFileSync(this.statePath, sidecar);
-      } catch {
-        /* keep going — the original may be unreadable */
-      }
-      this.state = { version: 1, paused: false, entries: [], tombstones: [] };
-      this.audit({ event: 'state-corrupt', sidecar, error: err instanceof Error ? err.message : String(err) });
-      this.deps.raiseAggregated?.(
-        'state-corrupt',
-        `resume-queue.json was unreadable and has been preserved at ${sidecar}; the queue restarted empty. ` +
-        `Losing the resurrection ledger in this rare path is accepted and surfaced.`,
-      );
-    }
+    throw new Error('revival queue state unrecognized; preserved for reconciliation');
   }
 
-  /** Crash-durable persist: temp → fsync temp → rename → fsync parent dir. */
+  /** Persist through the host store: durable before return, never partially visible. */
   private persist(): void {
-    const dir = path.dirname(this.statePath);
-    const tmp = path.join(dir, `.resume-queue.tmp-${process.pid}`);
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-      const fd = fs.openSync(tmp, 'w');
-      try {
-        fs.writeSync(fd, JSON.stringify(this.state, null, 2));
-        fs.fsyncSync(fd);
-      } finally {
-        fs.closeSync(fd);
-      }
-      fs.renameSync(tmp, this.statePath);
-      try {
-        const dirFd = fs.openSync(dir, 'r');
-        try {
-          fs.fsyncSync(dirFd);
-        } finally {
-          fs.closeSync(dirFd);
-        }
-      } catch {
-        /* dir-fsync unsupported on some platforms — rename already landed */
-      }
-    } catch (err) {
-      this.audit({ event: 'persist-failed', error: err instanceof Error ? err.message : String(err) });
-    }
+    this.deps.store.save(structuredClone(this.state));
   }
 
   private audit(event: Record<string, unknown>): void {
     try {
-      this.deps.audit?.({ ts: new Date(this.now()).toISOString(), ...event });
+      this.deps.audit?.({ ts: this.now(), ...event });
     } catch {
       /* @silent-fallback-ok — the audit sink never endangers the queue; the
          decision the audit row describes still happened and is persisted. */
@@ -641,7 +303,7 @@ export class ResumeQueue {
     return enqueued;
   }
 
-  private stableKeyFor(input: { topicId?: number | null; threadId?: string; jobSlug?: string; tmuxSession: string }): string {
+  private stableKeyFor(input: { topicId?: number | string | null; threadId?: string; jobSlug?: string; tmuxSession: string }): string {
     if (input.topicId != null) return `topic:${input.topicId}`;
     if (input.threadId) return `thread:${input.threadId}`;
     if (input.jobSlug) return `job:${input.jobSlug}`;
@@ -650,12 +312,10 @@ export class ResumeQueue {
 
   /**
    * The enqueue decision (R2.2 + R2.3 + R2.9 resurrection cap). Audited on
-   * every outcome. In dry-run the entry is still durably enqueued (the soak's
-   * observable), but nothing downstream spawns or claims a resume.
+   * every outcome.
    */
   considerEnqueue(input: ResumeCandidateInput, opts?: { source?: string }): EnqueueDecision {
-    if (this.disabledReason) return { enqueued: false, why: 'queue-disabled' };
-    if (!this.cfg.enabled) return { enqueued: false, why: 'queue-off' };
+    if (!this.started) return { enqueued: false, why: 'queue-off' };
 
     const verdict = classifyEligibility(input, this.cfg);
     if (!verdict.eligible) {
@@ -679,18 +339,18 @@ export class ResumeQueue {
     // the most diagnostic event this feature produces (P14).
     const tombstone = this.tombstoneFor(stableKey);
     if (tombstone?.lastResumeAt) {
-      const windowFresh = this.now() - Date.parse(tombstone.windowStartAt) < RESURRECTION_WINDOW_MS;
+      const windowFresh = this.now() - tombstone.windowStartAt < RESURRECTION_WINDOW_MS;
       if (input.seenWorkingPastAgeLimit) {
         // The revived session worked past its whole age limit — not a loop.
         // Restart the ledger; later re-reaps are counted from here.
         tombstone.resurrections = 0;
-        tombstone.windowStartAt = new Date(this.now()).toISOString();
+        tombstone.windowStartAt = this.now();
         this.audit({ event: 'resurrection-ledger-reset', why: 'worked-past-age-limit', stableKey, source: opts?.source });
       } else if (!windowFresh) {
         // The prior resume is outside the 24h window — stale history, not a
         // kill-resume-kill loop. Reset the ledger; this re-reap starts fresh.
         tombstone.resurrections = 0;
-        tombstone.windowStartAt = new Date(this.now()).toISOString();
+        tombstone.windowStartAt = this.now();
       } else {
         tombstone.resurrections += 1;
       }
@@ -714,7 +374,7 @@ export class ResumeQueue {
       const dropOrder: ResumePriorityClass[] = ['other', 'job', 'interactive'];
       let dropped: ResumeQueueEntry | undefined;
       for (const cls of dropOrder) {
-        dropped = openEntries.filter((e) => e.priorityClass === cls).sort((a, b) => a.queuedAt.localeCompare(b.queuedAt))[0];
+        dropped = openEntries.filter((e) => e.priorityClass === cls).sort((a, b) => a.queuedAt - b.queuedAt)[0];
         if (dropped) break;
       }
       if (dropped) {
@@ -730,7 +390,7 @@ export class ResumeQueue {
 
     const entry: ResumeQueueEntry = {
       id: `rq-${this.now().toString(36)}-${(this.seq++).toString(36)}`,
-      queuedAt: new Date(this.now()).toISOString(),
+      queuedAt: this.now(),
       stableKey,
       sessionName: input.sessionName,
       tmuxSession: input.tmuxSession,
@@ -755,7 +415,6 @@ export class ResumeQueue {
       stableKey,
       priorityClass: entry.priorityClass,
       midWorkEvidence: entry.workEvidence,
-      dryRun: this.cfg.dryRun,
       source: opts?.source,
     });
     return { enqueued: true, entry };
@@ -774,7 +433,7 @@ export class ResumeQueue {
    * reconciler's redie counter makes the two paths share ONE effective give-up
    * bound. Read-only; never mutates. 0 when no tombstone exists.
    */
-  resurrectionCountForTopic(topicId: number): number {
+  resurrectionCountForTopic(topicId: number | string): number {
     return this.tombstoneFor(`topic:${topicId}`)?.resurrections ?? 0;
   }
 
@@ -785,11 +444,11 @@ export class ResumeQueue {
       tombstone = {
         stableKey,
         resurrections: 0,
-        windowStartAt: new Date(this.now()).toISOString(),
+        windowStartAt: this.now(),
       };
       this.state.tombstones.push(tombstone);
     }
-    tombstone.lastResumeAt = new Date(this.now()).toISOString();
+    tombstone.lastResumeAt = this.now();
     this.persist();
   }
 
@@ -800,7 +459,7 @@ export class ResumeQueue {
       .filter((e) => e.status === 'queued')
       .sort(
         (a, b) =>
-          order[a.priorityClass] - order[b.priorityClass] || a.queuedAt.localeCompare(b.queuedAt),
+          order[a.priorityClass] - order[b.priorityClass] || a.queuedAt - b.queuedAt,
       );
   }
 
@@ -831,7 +490,7 @@ export class ResumeQueue {
     return this.transition(id, 'cancelled');
   }
 
-  cancelByTopic(topicId: number): number {
+  cancelByTopic(topicId: number | string): number {
     let n = 0;
     for (const entry of this.state.entries) {
       if (entry.topicId === topicId && (entry.status === 'queued' || entry.status === 'starting')) {
@@ -860,7 +519,7 @@ export class ResumeQueue {
       this.audit({ event: 'resurrection-override-granted', stableKey: entry.stableKey, id });
     }
     entry.attempts = 0;
-    entry.requeuedAt = new Date(this.now()).toISOString();
+    entry.requeuedAt = this.now();
     entry.nextAttemptAt = undefined;
     entry.pressureStarved = false;
     return this.transition(id, 'queued') ? { ok: true } : { ok: false, why: 'transition-failed' };
@@ -869,32 +528,16 @@ export class ResumeQueue {
   /**
    * Queue-global pause (R2.7): entries keep their states; TTLs freeze.
    *
-   * UPGRADE-ON-DELIBERATE-HALT (spec: resume-queue-stale-emergency-pause.md,
-   * review rounds 4–5 — codex/gemini): pause is first-writer-wins EXCEPT that a
-   * DELIBERATE, non-auto-resumable reason (e.g. `'autonomous stop-all'`) UPGRADES
-   * an existing AUTO-RESUMABLE (emergency/sentinel) pause — so an operator's
-   * explicit "halt all automation" issued while a stale-emergency pause is active
-   * is honored, not silently no-op'd into something the drainer can later
-   * auto-clear. The reverse (an emergency stop while a deliberate halt is active)
-   * stays a no-op: a deliberate halt is never downgraded into auto-resumable.
+   * First-writer-wins. The 1.x "upgrade an auto-resumable emergency pause into a
+   * deliberate halt" rule existed only because 1.x could auto-clear a stale
+   * emergency pause; Part Ten never clears a pause on its own (Rules 4/93: a
+   * directive holds until superseded or done; stop is never weakened by
+   * elapsed time), so every pause is already the deliberate kind.
    */
   pause(reason: string): void {
-    if (this.state.paused) {
-      const currentAutoResumable = isAutoResumableEmergencyPauseReason(this.state.pauseReason);
-      const incomingAutoResumable = isAutoResumableEmergencyPauseReason(reason);
-      // Only upgrade: auto-resumable (current) → deliberate halt (incoming).
-      if (currentAutoResumable && !incomingAutoResumable) {
-        const priorReason = this.state.pauseReason;
-        this.state.pauseReason = reason;
-        // pausedAt is NOT advanced — the freeze clock is continuous; only the
-        // reason (and thus the auto-resume eligibility) is upgraded.
-        this.persist();
-        this.audit({ event: 'pause-upgraded', from: priorReason, to: reason });
-      }
-      return;
-    }
+    if (this.state.paused) return;
     this.state.paused = true;
-    this.state.pausedAt = new Date(this.now()).toISOString();
+    this.state.pausedAt = this.now();
     this.state.pauseReason = reason;
     this.persist();
     this.audit({ event: 'paused', reason });
@@ -903,7 +546,7 @@ export class ResumeQueue {
   /** Explicit unpause lever (R2.7) — accumulates the pause into frozenMs. */
   unpause(): void {
     if (!this.state.paused) return;
-    const pausedMs = this.state.pausedAt ? this.now() - Date.parse(this.state.pausedAt) : 0;
+    const pausedMs = this.state.pausedAt !== undefined ? this.now() - this.state.pausedAt : 0;
     for (const entry of this.state.entries) {
       if (entry.status === 'queued' || entry.status === 'starting') {
         entry.frozenMs = (entry.frozenMs ?? 0) + pausedMs;
@@ -916,7 +559,7 @@ export class ResumeQueue {
     this.audit({ event: 'unpaused', pausedMs });
   }
 
-  pauseInfo(): { paused: boolean; pausedAt?: string; reason?: string } {
+  pauseInfo(): { paused: boolean; pausedAt?: number | undefined; reason?: string | undefined } {
     return { paused: this.state.paused, pausedAt: this.state.pausedAt, reason: this.state.pauseReason };
   }
 
@@ -933,7 +576,7 @@ export class ResumeQueue {
     const ttlMs = this.cfg.entryTtlHours * 3600_000;
     for (const entry of this.state.entries) {
       if (entry.status !== 'queued') continue;
-      const anchor = Date.parse(entry.requeuedAt ?? entry.queuedAt);
+      const anchor = entry.requeuedAt ?? entry.queuedAt;
       const ageMs = this.now() - anchor - (entry.frozenMs ?? 0);
       if (ageMs > ttlMs) {
         entry.pressureStarved = !pressureCalm;
@@ -946,47 +589,42 @@ export class ResumeQueue {
     return expired;
   }
 
-  /** Snapshot for the API surface (R2.10). */
+  /** Snapshot for the pull surface (R2.10). */
   snapshot(): {
     paused: boolean;
-    pauseReason?: string;
-    disabled: string | null;
-    dryRun: boolean;
+    pauseReason?: string | undefined;
     entries: ResumeQueueEntry[];
     tombstones: ResurrectionTombstone[];
   } {
     return {
       paused: this.state.paused,
       pauseReason: this.state.pauseReason,
-      disabled: this.disabledReason,
-      dryRun: this.cfg.dryRun,
       entries: this.list(),
       tombstones: [...this.state.tombstones],
     };
   }
 
-  /** OWNERSHIP predicate — true when a LIVE (non-dry-run) queued entry exists
-   *  for this tmux session, REGARDLESS of pause state. Intentionally
-   *  paused-BLIND: a paused queue still OWNS its frozen entries (the drainer
-   *  skips them precisely because they are paused), so the PromiseBeacon I2
-   *  double-spawn coordination guard (server.ts) must read THIS to keep
-   *  deferring to the queue while paused — flipping it false during a pause
-   *  would let an escalation re-spawn a revive the queue was meant to own.
+  /** OWNERSHIP predicate — true when a queued entry exists for this tmux
+   *  session, REGARDLESS of pause state. Intentionally paused-BLIND: a paused
+   *  queue still OWNS its frozen entries (the drainer skips them precisely
+   *  because they are paused), so the double-spawn coordination guard must read
+   *  THIS to keep deferring to the queue while paused — flipping it false during
+   *  a pause would let an escalation re-spawn a revive the queue was meant to own.
    *  (honest-session-state-surfaces Finding (c): do NOT add a paused check here.) */
   hasLiveQueuedEntryFor(tmuxSession: string): boolean {
-    if (this.cfg.dryRun || this.disabledReason || !this.cfg.enabled) return false;
+    if (!this.started) return false;
     return this.state.entries.some(
       (e) => e.tmuxSession === tmuxSession && (e.status === 'queued' || e.status === 'starting'),
     );
   }
 
-  /** CLAIMABILITY predicate — true when a live queued entry exists AND the queue
+  /** CLAIMABILITY predicate — true when a queued entry exists AND the queue
    *  is NOT paused, i.e. a revival will actually happen soon. Feeds the
-   *  user-facing "A restart is queued — I'll bring it back" copy (ReapNotifier):
-   *  while the queue is paused (e.g. an emergency stop) the entry will NOT revive
-   *  until the queue resumes, so the claim would be a promise the queue cannot
+   *  user-facing "A restart is queued — I'll bring it back" copy: while the
+   *  queue is paused (e.g. an emergency stop) the entry will NOT revive until
+   *  the queue resumes, so the claim would be a promise the queue cannot
    *  currently keep. Distinct from hasLiveQueuedEntryFor (ownership), which the
-   *  I2 double-spawn guard reads and which stays true while paused.
+   *  double-spawn guard reads and which stays true while paused.
    *  (honest-session-state-surfaces Finding (c).) */
   hasClaimableQueuedEntryFor(tmuxSession: string): boolean {
     return this.hasLiveQueuedEntryFor(tmuxSession) && !this.isPaused();

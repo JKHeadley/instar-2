@@ -5,6 +5,10 @@ import { canonical, type Result } from '../index.js';
 import { sessionWorkPolicy, SESSION_WORK_LIMITS } from './production-session-work.js';
 import type { SessionWorkConfig, SessionWorkEdge, SessionWorkEdgeClose, SessionWorkCall, SessionWorkLease,
   SessionWorkOutcome, SessionWorkRequest } from './production-session-work.js';
+import { ResumeQueue } from './revival-queue.js';
+import type { ResumeQueueConfig, ResumeQueueEntry, RevivalQueueState } from './revival-queue.js';
+import { ResumeQueueDrainer } from './revival-drainer.js';
+import type { ResumeQueueDrainerConfig, RevivalDrainerBrakes } from './revival-drainer.js';
 
 /** One conversation, one admission and one reserved allowance. Turns do not replenish it.
  * The host must close this port at its lifecycle boundary, including while it is idle. */
@@ -24,6 +28,18 @@ export interface ConversationSessionPort {
   idleCleanupStatus?(): readonly string[];
   /** Automatic reasons require confirmation and grace; omitted means explicit host lifecycle retirement. */
   retireIdle(reason?: 'pressure' | 'idle'): Promise<boolean>;
+  /** Carryover row 03: the 1.x revival queue's operator levers and pull-only status (R2.7/R2.10). */
+  readonly revival?: RevivalControl;
+}
+export interface RevivalControl {
+  /** Queue-global pause: entries keep their states and their TTL clocks freeze. Only an explicit resume clears it. */
+  pause(reason: string): void;
+  unpause(): void;
+  /** Requeue a gave-up entry (never a cancelled one, never while paused); re-anchors its TTL clock. */
+  requeue(operation: string): { ok: boolean; why?: string | undefined };
+  cancel(operation: string): boolean;
+  status(): Readonly<{ paused: boolean; pauseReason?: string | undefined; entries: readonly ResumeQueueEntry[];
+    calmTicks: number; breakerOpen: boolean; breakerOpenUntil: number | null; consecutiveFailures: number; lastTickAt: number | null }>;
 }
 export type ConversationSessionOutcome = SessionWorkOutcome | Readonly<{
   state: 'queued'; detail: string; edge: string; child: string | null;
@@ -38,10 +54,10 @@ export interface ConversationInput {
   readonly effectsAtDispatch?: number;
   readonly contextRecovery?: 'compacting' | 'restoring' | 'continued';
   readonly workerRecovery?: 'restoring' | 'continued';
-  /** Carryover row 03: a revival queued only AFTER exact retirement and a proven
-   * no-launch capacity refusal. A starting/unknown attempt is never retry authority. */
+  /** Carryover row 03: a revival queued only AFTER exact retirement, bound to its durable
+   * revival-queue entry. A starting/unknown attempt is never retry authority. */
   readonly revival?: Readonly<{ authority: string; parent: string; owner: string; scope: string;
-    placement: string; deadline: number; digest: string; capacityRefusals: number }> | null;
+    placement: string; deadline: number; digest: string; capacityRefusals: number; entry: string }> | null;
 
 }
 export interface IdleCleanupState {
@@ -59,6 +75,10 @@ export interface ConversationState {
   readonly idleCleanup?: IdleCleanupState;
   readonly spent: number; readonly claimCalls: number;
   readonly halt?: Readonly<{ reason: 'deadline' | 'calls'; at: number; limit: number }>;
+  /** The 1.x revival queue (entries, pause, resurrection ledger) and the drainer's brakes and
+   * notice markers, durable in this same host-owned record: no second store, timer or owner. */
+  readonly revivalQueue?: RevivalQueueState;
+  readonly revivalBrakes?: RevivalDrainerBrakes;
 }
 export interface ConversationSessionStore {
   /** Host-owned, atomic, durable before return; corrupt state must throw, never look empty.
@@ -96,6 +116,22 @@ export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'crea
   readonly currentAuthority: () => string;
   readonly store: ConversationSessionStore;
   readonly createAdapter: (resolve: (operation: string) => ConversationDelivery | undefined) => HarnessAdapterPort<2>;
+  /** The host's shared pressure gauge (its one resource owner). With it, a lost-worker revival
+   * waits for three consecutive normal ticks (1.x ResumeQueueDrainer R2.4). Without a gauge the
+   * host cannot count calm ticks; the resource owner's own admission remains the pressure gate. */
+  readonly pressure?: () => 'normal' | 'moderate' | 'critical';
+  /** ONE rolling aggregated attention surface for revival notices (Rules 52/87/88). The drainer's
+   * durable markers prevent a repeat across restart; the host owns the surface and its provenance. */
+  readonly notice?: (kind: string, detail: string) => void;
+  /** Decision-transition audit sink for the revival queue and drainer. */
+  readonly audit?: (event: Record<string, unknown>) => void;
+  /** Observe-only Tier-1 sanity check (1.x P7): its verdict is audited, never a gate; the
+   * host's judgment doorway records the model call. The five-second deadline uses `io.wait`. */
+  readonly sanityCheck?: (entry: ResumeQueueEntry) => Promise<{ sensible: boolean; reasoning?: string }>;
+  /** Cross-conversation "one revival per tick" lever (1.x R2.4) supplied by the topics owner. */
+  readonly revivalGate?: () => boolean;
+  /** Tuned 1.x thresholds, overridable only downward by a reviewed host; defaults are the source values. */
+  readonly revival?: Partial<ResumeQueueConfig & ResumeQueueDrainerConfig & { settlingMs: number }>;
 }
 
 /** Exact identity validation only; meaning and each answer's declarations stay with their existing reader. */
@@ -207,6 +243,72 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     ensure(adapter.describe().version === 2 && adapter.describe().subsequentInput, 'conversation adapter v2 required');
     let lease: SessionWorkLease | null = null, draining: Promise<void> | null = null, closing = false;
     let recovered = false, retiring: Promise<void> | null = null;
+    // Carryover row 03: the 1.x ResumeQueue and ResumeQueueDrainer, persisted in this same
+    // host-owned record and driven by this port's own tick. The source thresholds stand:
+    // 3 calm ticks, 3 attempts with 2-minute exponential backoff, 3 failures open a 30-minute
+    // breaker, 2 resurrections per 24 hours, a 24-hour TTL, a 15-second settling period.
+    const settlingMs = config.revival?.settlingMs ?? 15_000;
+    ensure(Number.isSafeInteger(settlingMs) && settlingMs >= 0 && settlingMs <= 60_000, 'bounded revival settling period required');
+    const notice = (kind: string, detail: string) => { try { config.notice?.(kind, detail); } catch { /* a notice surface never endangers custody */ } };
+    const audit = (event: Record<string, unknown>) => { try { config.audit?.(event); } catch { /* audit is observability only */ } };
+    const queue = new ResumeQueue({ now: config.now, audit, raiseAggregated: notice,
+      store: { load: () => state.revivalQueue ?? null, save: next => persist({ revivalQueue: next }) } }, config.revival);
+    queue.start();
+    let pendingRevival: Readonly<{ id: string; request: SessionWorkRequest; prior: ConversationDelivery; deadline: number }> | null = null;
+    const effectsUnknownSince = (claim: string, since: number) => {
+      // The same exact-evidence floor the first revival used: no unknown sends, no tool
+      // preparation by this claim, no open child work.
+      const admission = config.io.admissionState(claim);
+      return config.contextRecoveryAllowed?.() !== true || admission === null || admission.refused
+        || admission.uncertainEffects !== 0 || (admission.toolPreparations ?? 0) !== since || admission.openDelegations.length !== 0;
+    };
+    const drainer = new ResumeQueueDrainer({ queue, now: config.now, audit, raiseAggregated: notice,
+      pressureTier: config.pressure ?? (() => 'normal'),
+      ...(config.revivalGate ? { canSpawnSession: config.revivalGate } : {}),
+      liveSessionForTopic: () => state.worker !== null && state.claim !== null,
+      currentResumeUuid: () => null,
+      topicOwnerElsewhere: () => pendingRevival !== null && row(pendingRevival.id).revival?.owner !== config.owner,
+      topicBindingMatches: (_topic, cwd) => cwd === config.workingScope,
+      operatorStopSince: () => config.stopped() || !config.authorized(),
+      // The adapter validates the working scope at launch; the core cannot stat a path.
+      pathExists: () => true,
+      respawnTopic: async entry => {
+        const pending = pendingRevival;
+        ensure(pending !== null && entry.sessionName === pending.id && row(pending.id).revival?.entry === entry.id,
+          'revival entry and queued input differ; no automatic replay');
+        // Persist starting BEFORE any launch. A crash here becomes uncertain in
+        // recover(), just like every other interrupted dispatch.
+        update(pending.id, { state: 'dispatching' });
+        let launched: boolean;
+        try { launched = await replace(pending.request, { operation: pending.id, digest: pending.prior.digest, deadline: pending.deadline }); }
+        catch (error) {
+          // A launch that threw is unknown, never a failed attempt to retry (Rules 4/26).
+          queue.transition(entry.id, 'invalidated:uncertain-launch'); throw error;
+        }
+        if (!launched) { queueRevival(pending.id, pending.request.authority, pending.prior, pending.deadline, entry.id); return null; }
+        return state.worker!.launch;
+      },
+      spawnAliveAfterGrace: async launch => {
+        ensure(state.worker?.launch === launch && state.claim, 'revival settling observes an unknown worker');
+        const claim = state.claim, preparations = config.io.admissionState(claim)?.toolPreparations ?? 0;
+        // The settling period never outlives the admitted lifetime; the deadline halts the turn itself.
+        await config.io.wait(Math.max(0, Math.min(settlingMs, state.deadline - config.now())));
+        const observed = await adapter.observe({ ...state.worker!, delivery: null, cursor: 0, limit: 2 });
+        ensure(observed.complete, 'revival settling observation gap');
+        for (const event of observed.observations) if (event.kind === 'exit' && event.safetyDeadline !== undefined) recordHalt('deadline', event.safetyDeadline);
+        if (!observed.observations.some(event => event.kind === 'exit')) return true;
+        // The replacement died inside the settling period. Only exact evidence that it had
+        // no effect admits the 1.x retry ladder; anything else retains the work as uncertain.
+        if (state.halt || effectsUnknownSince(claim, preparations)) return 'uncertain';
+        await retire(); return false;
+      },
+      notifyResumed: entry => notice('resumed', `The worker for ${entry.sessionName} was restarted after it was lost mid-work; its pending message continues on the restarted worker.`),
+      ...(config.sanityCheck ? { tier1Check: config.sanityCheck } : {}),
+      wait: ms => config.io.wait(ms),
+      brakes: { load: () => state.revivalBrakes ?? null, save: next => persist({ revivalBrakes: next }) },
+    }, { ...config.revival,
+      // Calm ticks are readings of the shared gauge; a host without one has nothing to count.
+      requiredCalmTicks: config.pressure ? config.revival?.requiredCalmTicks ?? 3 : 0 });
     const outcome = (detail: string): SessionWorkOutcome => freeze({ state: 'uncertain', detail,
       edge: state.edge?.id ?? 'no-edge', child: state.worker?.launch ?? null,
       ...(state.halt ? { safetyCeiling: state.halt.reason } : {}) });
@@ -324,6 +426,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       ensure(!state.edge || state.edge.budget.calls === config.maxCalls, 'conversation allowance cannot change on restart');
       for (const input of state.inputs) if (input.state === 'dispatching' || input.state === 'accepted')
         settle(input.request.operation, outcome('host restarted with an unresolved turn; no automatic replay'));
+      // A queue entry whose input is no longer waiting (an interrupted launch settled as
+      // uncertain above, or a stop) must not be drained as fresh work after restart.
+      for (const entry of queue.list()) if ((entry.status === 'queued' || entry.status === 'starting')
+        && row(entry.sessionName)?.state !== 'revival-queued') queue.transition(entry.id, 'invalidated:input-settled');
       recovered = true;
     };
     const replace = async (request: SessionWorkRequest, restore?: { operation: string; digest: string; deadline: number }) => {
@@ -372,12 +478,30 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     // ResumeQueueDrainer keeps resource holds separate from failed spawn attempts.
     // Its 60-second drain cadence is retained; the original lifetime is the brake.
     // Existing durable input custody and the owner's tick supply persistence/scheduling.
-    const queueRevival = (id: string, authority: string, delivery: ConversationDelivery, deadline: number) => {
+    const drainIntervalMs = (config.revival?.drainIntervalSec ?? 60) * 1000;
+    const queueRevival = (id: string, authority: string, delivery: ConversationDelivery, deadline: number, entry: string, retryAt?: number) => {
       ensure(!state.worker && !state.claim, 'revival requires confirmed retirement and no replacement claim');
-      const capacityRefusals = (row(id).revival?.capacityRefusals ?? 0) + 1;
+      const capacityRefusals = (row(id).revival?.capacityRefusals ?? 0) + (retryAt === undefined ? 1 : 0);
       const revival = { authority, parent: config.parent, owner: config.owner, scope: config.workingScope,
-        placement: config.placement, deadline, digest: delivery.digest, capacityRefusals };
-      update(id, { revival, state: 'revival-queued', retryAt: Math.min(deadline, config.now() + 60_000) });
+        placement: config.placement, deadline, digest: delivery.digest, capacityRefusals, entry };
+      update(id, { revival, state: 'revival-queued', retryAt: Math.min(deadline, retryAt ?? config.now() + drainIntervalMs) });
+    };
+    /** Map one drainer tick onto the waiting input's durable state; true only when the revival launched. */
+    const applyTick = (id: string, result: Awaited<ReturnType<ResumeQueueDrainer['tick']>>): boolean => {
+      const input = row(id), entry = input.revival ? queue.get(input.revival.entry) : undefined;
+      if (result.resumed) return true;
+      if (input.state !== 'revival-queued') return false; // a capacity hold already re-queued it
+      if (result.invalidated || !entry || entry.status.startsWith('invalidated:')) {
+        settle(id, outcome(`queued revival invalidated: ${entry?.status ?? 'entry missing'}; input retained, no automatic replay`)); return false;
+      }
+      if (entry.status.startsWith('gave-up:')) {
+        settle(id, { ...outcome(`lost worker revival gave up: ${entry.status} after ${entry.attempts} attempt(s); input retained`), state: 'failed' }); return false;
+      }
+      if (entry.status === 'cancelled') { settle(id, outcome('queued revival cancelled by the operator; input retained')); return false; }
+      // Held by calm ticks, the breaker, a pause, a gate or backoff: wait at the drain cadence
+      // or until the ladder's next attempt, never past the original lifetime.
+      update(id, { retryAt: Math.min(input.revival!.deadline, Math.max(config.now() + drainIntervalMs, entry.nextAttemptAt ?? 0)) });
+      return false;
     };
     const work = async (waiting: readonly string[]) => {
       let ids = waiting;
@@ -404,18 +528,20 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             && revival.authority === request.authority && revival.digest === prior.digest && digest(prior.text) === prior.digest
             && prior.operation === id && prior.maxBytes === config.maxResultBytes
             && prior.resultPath === `${config.resultDirectory}/conversation-${slug(id)}.json`
-            && Number.isSafeInteger(revival.capacityRefusals) && revival.capacityRefusals > 0,
+            && Number.isSafeInteger(revival.capacityRefusals) && revival.capacityRefusals >= 0,
           'queued revival identity or grant changed; no automatic replay');
           ensure(config.contextRecoveryAllowed?.() === true, 'queued revival has unknown outward sends; no automatic replay');
           ensure(Number.isSafeInteger(revival.deadline) && config.now() < revival.deadline
             && revival.deadline === state.deadline && revival.deadline <= parentDeadline(), 'queued revival lifetime exhausted; work retained');
           ensure(calls() < config.maxCalls, 'queued revival allowance exhausted; work retained');
-          // Persist starting BEFORE any launch. A crash here becomes uncertain in
-          // recover(), just like every other interrupted dispatch.
-          update(id, { state: 'dispatching' });
-          if (!await replace(request, { operation: id, digest: prior.digest, deadline: revival.deadline })) {
-            queueRevival(id, request.authority, prior, revival.deadline); return false;
-          }
+          const entry = queue.get(revival.entry);
+          ensure(entry && entry.sessionName === id && (entry.status === 'queued' || entry.status === 'starting'), 'queued revival entry missing or settled; no automatic replay');
+          // The 1.x drainer decides this tick: calm ticks, gates, reality validation, the
+          // observe-only sanity check, one launch, the settling check and the failure ladder.
+          pendingRevival = { id, request, prior, deadline: revival.deadline };
+          let tick: Awaited<ReturnType<ResumeQueueDrainer['tick']>>;
+          try { tick = await drainer.tick(); } finally { pendingRevival = null; }
+          if (!applyTick(id, tick)) return false;
           delivery = { ...prior, ...state.worker! };
           update(id, { delivery, state: 'accepted', workerRecovery: 'continued', cursor: 0, revival: null });
         } else {
@@ -506,13 +632,23 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             // one existing respawn funnel. PendingInjectStore custody is preserved;
             // its historical at-least-once replay is not permission for tool effects.
             updateBatch({ workerRecovery: 'restoring' });
-            const originalDeadline = state.deadline;
-            if (!await replace(request, { operation: id, digest: delivery.digest, deadline: originalDeadline })) {
-              queueRevival(id, request.authority, delivery, originalDeadline); return false;
+            const originalDeadline = state.deadline, lost = state.worker!;
+            // The loss is a terminal reap with the pending input as its work evidence; the
+            // queue decides admission (stable-key dedupe, resurrection ledger, bound) before
+            // exact retirement. A refusal retains the input, never a silent drop.
+            const decision = queue.considerEnqueue({ sessionName: id, tmuxSession: lost.launch, topicId: config.conversation,
+              cwd: config.workingScope, reason: `lost worker: exact exit observed mid-turn (${exit.evidence})`,
+              disposition: 'terminal', origin: 'autonomous', workEvidence: ['pending-injection'] });
+            if (!decision.enqueued) {
+              settleBatch({ ...outcome(`lost worker revival refused: ${decision.why}; input retained`),
+                ...(decision.why === 'resurrection-cap' ? { state: 'failed' as const } : {}) });
+              await retire(); return false;
             }
-            delivery = { ...delivery, ...state.worker! };
-            updateBatch({ delivery, workerRecovery: 'continued', cursor: 0 });
-            continue;
+            await retire();
+            queueRevival(id, request.authority, delivery, originalDeadline, decision.entry!.id, config.now());
+            // The input is head-of-line again as a queued revival due now; the drain loop
+            // re-enters it through the drainer's gates on this same tick.
+            return true;
           }
           const pause = batch.observations.find(event => event.kind === 'paused');
           if (pause?.kind === 'paused' && (pause.reason === 'context-too-long' || pause.reason === 'context-wedge')) {
@@ -589,10 +725,17 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     };
     const available = () => !state.halt && !closing && !config.stopped() && config.authorized() && config.now() < parentDeadline()
       && state.inputs.length < 4096 && state.inputs.filter(input => input.state !== 'settled').length < 64;
+    const revivalDetail = (id: string): string => {
+      const entry = row(id).revival ? queue.get(row(id).revival!.entry) : undefined, brakes = drainer.status();
+      const hold = queue.isPaused() ? 'the revival queue is paused' : brakes.breakerOpen ? 'the revival breaker is open'
+        : entry?.nextAttemptAt !== undefined && entry.nextAttemptAt > config.now() ? `attempt ${entry.attempts} failed; backing off`
+        : brakes.calmTicks < (config.revival?.requiredCalmTicks ?? 3) && config.pressure ? 'waiting for calm host pressure' : 'waiting for capacity';
+      return `lost worker revival durably queued after confirmed retirement; ${hold}`;
+    };
     const currentOutcome = (id: string): ConversationSessionOutcome => row(id).outcome
       ?? (state.halt || closing || config.stopped() || config.now() >= parentDeadline()
         ? outcome('queued input retained after conversation lifetime or stop boundary')
-        : { ...outcome(row(id).revival ? 'lost worker revival durably queued after confirmed retirement; waiting for capacity' : 'input durably queued; not dispatched'), state: 'queued' });
+        : { ...outcome(row(id).revival ? revivalDetail(id) : 'input durably queued; not dispatched'), state: 'queued' });
     const collect = async (operation: string) => {
       if (!row(operation)) return null;
       await draining;
@@ -735,7 +878,21 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       retiring = (async () => { await recover(); await retire(); })().finally(() => { retiring = null; });
       await retiring; return true;
     };
-    return Object.freeze({ owner: 'part-eight' as const, available, run, runBatch, collect, close, maintain, reserveCall, retireIdle,
+    const entryOf = (operation: string) => row(operation)?.revival?.entry ?? queue.list().find(entry => entry.sessionName === operation)?.id ?? '';
+    const revival: RevivalControl = Object.freeze({
+      pause: (reason: string) => queue.pause(reason),
+      unpause: () => queue.unpause(),
+      requeue: (operation: string) => {
+        const result = queue.requeue(entryOf(operation));
+        // A requeued entry reopens the retained input for the drainer's next tick.
+        if (result.ok && row(operation)?.outcome && row(operation).revival)
+          update(operation, { state: 'revival-queued', outcome: null, retryAt: config.now() });
+        return result;
+      },
+      cancel: (operation: string) => queue.cancel(entryOf(operation)),
+      status: () => ({ ...queue.snapshot(), ...drainer.status() }),
+    });
+    return Object.freeze({ owner: 'part-eight' as const, available, run, runBatch, collect, close, maintain, reserveCall, retireIdle, revival,
       idleCleanupStatus: () => state.idleCleanup?.inhibited
         ? ['Idle cleanup is paused after an unconfirmed closure; capacity release is uncertain and needs repair.']
         : !state.worker && state.idleCleanup?.lastClosure ? [state.idleCleanup.lastClosure.detail] : [] });
