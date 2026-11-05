@@ -127,6 +127,8 @@ const SHELL_VARIABLES = Object.freeze(['PWD', 'SHLVL', 'OLDPWD']);
 const LIMIT_SCRIPT = [
   'if [ "$5" = gate ]; then read -r go <&3 || exit 125; [ "$go" = go ] || exit 125; exec 3<&-; fi',
   'lim() {',
+  '  case "$2" in ""|*[!0-9]*) exit 125;; esac',
+  '  [ "$2" -ge 0 ] 2>/dev/null || exit 125',
   '  s=$(ulimit -S "$1") || exit 125',
   '  h=$(ulimit -H "$1") || exit 125',
   '  if [ "$s" = unlimited ] || [ "$s" -gt "$2" ]; then ulimit -S "$1" "$2" || exit 125; fi',

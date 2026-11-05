@@ -24,7 +24,7 @@ const expectBound = (report, bound) => {
   expect(report.processes).toEqual({ soft: bound.processLimit, hard: bound.processLimit });
 };
 
-it('names one fixed shell for every launch, the kernel census unit of each host, and ships the shim file unchanged', () => {
+it('names one fixed shell for every launch, the kernel census unit of each host, and ships the exact canonical shim file', () => {
   expect(LIMIT_SHELL).toBe('/bin/bash');
   expect(existsSync(LIMIT_SHELL)).toBe(true);
   expect(readFileSync(LIMIT_FILE, 'utf8')).toBe(LIMIT_FILE_TEXT);
@@ -117,4 +117,16 @@ require('node:dns').lookup('localhost',()=>{ out.afterLookup=status();
   expect(evidence.held).toBeLessThan(6);
   expect(evidence.refusals.length).toBeGreaterThan(0);
   expect(new Set(evidence.refusals)).toEqual(new Set(['EAGAIN']));
+});
+
+// A finite inherited limit must not turn a failed integer comparison into permission to skip the setter.
+// Reproduced on Linux and Darwin: without validation, handles="many" dispatched with exit 0.
+it.each(['inline', 'file'])('the %s shim refuses malformed bounds even when both inherited limits are finite', mode => {
+  for (const handles of ['many', '-1', '1.5', '9999999999999999999999']) {
+    const command = { executable: '/bin/echo', args: ['DISPATCHED'], ...measured(), handles, env };
+    const argv = mode === 'file' ? limitedFileArgv({ label: 'REQUEST', ...command }) : limitedArgv({ ...command, gated: false });
+    const child = run(LIMIT_SHELL, ['-p', '-c', 'ulimit -S -n 256; ulimit -H -n 256; exec "$@"', 'finite-inherited', LIMIT_SHELL, ...argv]);
+    expect(child.status, `${handles}: ${child.stderr}`).toBe(125);
+    expect(child.stdout).toBe('');
+  }
 });
