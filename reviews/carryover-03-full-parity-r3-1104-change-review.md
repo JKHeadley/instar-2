@@ -30,7 +30,7 @@ Deferral: src/assembly/production-conversation-session.ts:798 | not-a-deferral=t
 Deferral: src/assembly/production-conversation-session.ts:806 | not-a-deferral=the carried 1.x latch semantics (a deferred tick re-evaluates on the next poll; no work is postponed)
 Deferral: src/assembly/production-conversation-session.ts:820 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker produces work is a decision outcome, not postponed work)
 Deferral: tests/assembly/production-conversation-recovery.test.ts:6 | not-a-deferral=test header naming the carried latch behavior under test; no work is postponed
-Deferral: tests/assembly/production-conversation-recovery.test.ts:154 | not-a-deferral=test of the carried deferred recovery outcome; no work is postponed
+Deferral: tests/assembly/production-conversation-recovery.test.ts:158 | not-a-deferral=test of the carried deferred recovery outcome; no work is postponed
 
 Decision: CARRYOVER-03-R3-1104-1 | Make transcript observation an optional port on the continuing adapter contract, resolved by the production driver from the recorded session id and read by the session IO as a bounded tail; an absent observer or unreadable transcript runs no detector and keeps the worker. | reported=/Users/adriana/echo-compute/builders/row03-production-report.md
 Decision: CARRYOVER-03-R3-1104-2 | A detector-driven loss takes the exit path's no-replay floor from the still-open admission before retirement and becomes the same queued revival; the ladder is keyed per conversation and durable; open child work vetoes the kill; an exhausted or cooling ladder keeps the worker and tells the operator once. | reported=/Users/adriana/echo-compute/builders/row03-production-report.md
