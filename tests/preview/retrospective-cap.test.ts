@@ -50,14 +50,20 @@ it('keeps the actual truncated terminal result refused, while the earlier comple
   expect(() => validate(failed!.terminalResult!)).toThrow();
 });
 
-it('replays the historical cap evidence and identifies the added memory policy separately', () => {
+it('replays the historical cap evidence and identifies later memory and correction guidance separately', () => {
   // These outputs were captured on October 17. Bind that prompt exactly while
-  // identifying the sole later policy addition; this is not a fresh provider run.
+  // identifying later memory and correction guidance; this is not a fresh provider run.
   const memoryGuidance = MEMORY_LEARNING_POLICY
     + 'The remembered count is durable fact writes from that turn, including in followUps. A positive count supports a save claim; no separate save request is needed.';
   const lines = RETROSPECTIVE_QUESTION.split('\n');
   expect(lines.filter(line => line === memoryGuidance)).toHaveLength(1);
-  const capturedQuestion = lines.filter(line => line !== memoryGuidance).join('\n');
+  const correctionLines = lines.filter(line => line.startsWith('lessonSources on an answer') || line.startsWith('classReviews:'));
+  expect(correctionLines).toHaveLength(2);
+  expect(lines.filter(line => line.includes(' correctionCandidates, when present,'))).toHaveLength(1);
+  const classReviewShape = ',"classReviews":[{"case":id,"standardReview":{},"processReview":{},"rationale":text,"confidence":text}]';
+  expect(lines.filter(line => line.includes(classReviewShape))).toHaveLength(1);
+  const capturedQuestion = lines.filter(line => line !== memoryGuidance && !correctionLines.includes(line))
+    .map(line => line.replace(/ correctionCandidates, when present,.*$/, '').replace(classReviewShape, '')).join('\n');
   expect(fixture.replays.length).toBeGreaterThanOrEqual(2);
   for (const replay of fixture.replays) {
     expect(replay.questionSha256).toBe(createHash('sha256').update(capturedQuestion).digest('hex'));

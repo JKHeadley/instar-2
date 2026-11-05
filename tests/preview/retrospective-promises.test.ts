@@ -22,6 +22,9 @@ const quote = "I'll fold that time into the note.";
 const review = (cases: readonly RetroCase[], proposals: Record<string, unknown[]> = {}) => ({
   inspected: cases.map(item => item.id), omitted: [], uninspected: [], wells: GRAVITY_WELLS.map(() => 0),
   eff: 'Review the existing recorded replies once.', findings: [],
+  classReviews: cases.filter(item => item.meta?.correction !== undefined).map(item => ({ case: item.id,
+    standardReview: { verdict: 'covered', standardRef: 'Rule 85', isPolicyRelaxation: false },
+    processReview: { verdict: 'not-applicable' }, rationale: 'The recorded correction is already reflected.', confidence: 'high' })),
   feedback: cases.filter(item => item.meta?.correction !== undefined).map(item => ({ case: item.id,
     classification: 'Recorded correction', disposition: 'declined-with-reason', reason: 'Already reflected in the delivered correction.' })),
   closures: [], comparisons: [],
@@ -63,6 +66,8 @@ it.each([0, 60])('replays omitted promise 840342898 through the worker and acts 
     for (let pass = 0; pass < 20 && !w.journal.view.commitments.some(note => note.source === source); pass++) {
       await w.worker.retrospect(digest); w.advance();
     }
+    expect(w.journal.view.retroPasses.flatMap(pass => pass.result?.classReviews ?? []).map(row => row.case))
+      .toContain('turn:telegram:8968100844:update:840342897');
     const id = w.journal.view.commitments.findIndex(note => note.source === source);
     expect(id, JSON.stringify(w.journal.view.retroPasses.map(p => ({state:p.state,reason:p.reason,cases:p.cases,omitted:p.result?.omitted})))).toBeGreaterThanOrEqual(0);
     expect(openLoops(w.journal.view, w.now()).find(item => item.id === `commitment:${id}`))
@@ -111,6 +116,10 @@ it('requires delivered evidence and keeps missing or malformed reconciliation ow
   const w = world();
   try {
     const turn = w.journal.view.turns.get(source)!;
+    const correction = retrospectiveCases(w.journal.view).find(item => item.id === 'turn:telegram:8968100844:update:840342897')!;
+    const unreviewed = { ...review([correction]), classReviews: [] };
+    expect(validateRetrospective(unreviewed, { cases: [correction] }, w.journal.view, 0).omitted)
+      .toContainEqual({ case: correction.id, reason: 'class review row missing; deferred to a later pass' });
     const actual = retrospectiveCases(w.journal.view).find(item => item.id === `answer:${source}`)!;
     expect(actual.deliveredReply).toBe(turn.intent);
     const plan = { cases: [actual] };
