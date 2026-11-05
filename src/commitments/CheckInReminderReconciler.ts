@@ -39,6 +39,8 @@ export interface CheckInReminderDeps {
   send: (topicId: number, text: string, identity: { commitmentId: string; checkInAt: string; logicalSendId: string }) => Promise<unknown>;
   /** The original send's receipt: true delivered, false definitely not, undefined unknown. */
   resolveDelivery?: (logicalSendId: string) => Promise<boolean | undefined>;
+  /** Whether this topic may be sent to now. A row it refuses waits unspent, so a withdrawn grant burns no attempt. */
+  admits?: (topicId: number) => boolean;
   time: { now(): number; iso(ms: number): string; parse(iso: string): number; formatWhen(ms: number): string };
   log?: (line: string) => void;
 }
@@ -54,6 +56,8 @@ export interface CheckInReminderConfig {
 export interface CheckInReminderPassReport {
   ran: boolean;
   dryRun: boolean;
+  /** Due rows left unspent because their topic has no live send grant. */
+  heldNoGrant: number;
   scanned: number;
   due: number;
   sent: number;
@@ -72,6 +76,7 @@ const DEFAULT_MAX_PER_PASS = 25;
 
 function emptyReport(over: Partial<CheckInReminderPassReport> = {}): CheckInReminderPassReport {
   return {
+    heldNoGrant: 0,
     ran: false,
     dryRun: false,
     scanned: 0,
@@ -132,6 +137,7 @@ export class CheckInReminderReconciler {
     report.sent += settled;
 
     for (const commitment of batch) {
+      if (this.deps.admits && !this.deps.admits(commitment.topicId!)) { report.heldNoGrant++; continue; }
       if (this.config.dryRun) {
         report.wouldSend++;
         this.log(`[check-in-reminder] would remind ${commitment.id} in topic ${commitment.topicId}`);

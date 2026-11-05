@@ -70,7 +70,10 @@ import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, oper
 import { chatYesReference, reviewYesReference, SHARED_ACCESS_NOTE } from '../../src/operator/explicit-yes.js';
 import type { ExplicitYesInstallation, SharedAccessDisclosure } from '../../src/operator/explicit-yes.js';
 import { reviewLink, type ReviewYesSource } from './review-yes-source.js';
-import { applyCommitmentStoreRecord, checkCommitmentStoreRecord, type CommitmentStoreRecord, type CommitmentStoreView } from './commitment-record.js';
+import { applyCommitmentSendIntent, applyCommitmentSendReceipt, applyCommitmentStatusReserve, applyCommitmentStatusSettled, applyCommitmentStoreRecord, checkCommitmentSendIntent, checkCommitmentStoreRecord,
+  commitmentSendTarget, commitmentStatusId, type CommitmentSendIntentRecord, type CommitmentSendSentRecord, type CommitmentStatusReserveRecord, type CommitmentStatusSettledRecord,
+  type CommitmentStoreRecord, type CommitmentStoreView } from './commitment-record.js';
+import { createCommitmentDoorway, type CommitmentSendAdmission, type CommitmentStatusModel } from './commitment-send.js';
 import { applySentinelRecord, checkSentinelRecord, retainedSentinelEvidence, presenceNoteDue, type SentinelRecord, type SentinelView } from './sentinel-record.js';
 import { taskFields } from './answer-reading.js';
 import { encodeReply, fitsOneMessage, replyPartTarget, splitReply, wholeReplySent, MAX_ANSWER_BYTES, MAX_REPLY_PARTS, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
@@ -605,8 +608,10 @@ export const GROUP_DISCLOSURE_HOLD_NOTICE = 'PREVIEW — I\'m holding a reply un
 /** Rule 87: every push is classified at the one send boundary. `status` is pull-only (status,
  * self-state, digest) and is never pushed; a limited answer to an incoming message is its result. */
 export type OutboundDisposition = 'result' | 'action-needed' | 'status';
-export type OutboundKind = 'reply' | 'held-notice' | 'reminder' | 'limited-answer' | 'incident' | 'approval' | 'request-result';
+export type OutboundKind = 'reply' | 'held-notice' | 'reminder' | 'limited-answer' | 'incident' | 'approval' | 'request-result' | 'commitment';
 export const OUTBOUND_DISPOSITIONS: Readonly<Record<OutboundKind, OutboundDisposition>> = Object.freeze({ reply: 'result', 'request-result': 'result',
+  // A check-in the person asked for, or a slow bounded line on work still owed to them under an exact grant (Rule 87).
+  commitment: 'result',
   // An unchanged held status is pull-only (Rule 87): it stays in `status`, never a push.
   'held-notice': 'status', reminder: 'result', 'limited-answer': 'action-needed', incident: 'action-needed', approval: 'action-needed' });
 
@@ -1083,7 +1088,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['commitment-store', 'send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['commitment-store', 'commitment-send-intent', 'commitment-send-sent', 'commitment-status-reserve', 'commitment-status-settled', 'send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1105,6 +1110,10 @@ export type JournalRecord =
   | PhaseTiming
   /** Additive: the commitment and beacon modules' durable rows (commitment-record.ts). */
   | CommitmentStoreRecord
+  | CommitmentSendIntentRecord
+  | CommitmentSendSentRecord
+  | CommitmentStatusReserveRecord
+  | CommitmentStatusSettledRecord
   // Non-additive: an older writer must not discard the no-repeat expectation.
   | { kind: 'media-claim'; id: string; digest: string; at: number }
   | { kind: 'media-custody'; id: string; result: MediaCustodyResult; at: number }
@@ -3243,6 +3252,7 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
   const index = /^summary:index:(0|[1-9][0-9]*)$/u.exec(row.id);
   const valid = work ? row.role === 'model' && view.obligationWork[work[1]!]?.inFlight === Number(work[2])
     : index ? row.role === 'summary' && view.indexOpen?.key === `index:${index[1]!}`
+    : /^commitment-status:\d+$/u.test(row.id) ? row.role === 'model' && !!view.commitmentStore?.statusOpen.includes(Number(row.id.slice(18)))
     : row.role === 'summary' ? !!summary && view.summaryReservations.has(Number(summary[1]))
     && (summary[2] === undefined || view.summaryReviews.has(Number(summary[1])))
     : row.role === 'reply-review' ? row.id.endsWith(':held-notice-review') && !!view.turns.get(row.id.slice(0, -19))?.heldNoticeReviewReserved
@@ -3306,6 +3316,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
     return turn?.heldNoticeIntent !== undefined ? { sent: turn.heldNoticeSent } : undefined; }
   if (kind === 'reply-part') { const part = view.turns.get(rest.slice(1).join(':'))?.replyParts?.[Number(rest[0]) - 2];
     return part?.started ? { sent: part.sent } : undefined; }
+  if (kind === 'commitment-send') { const send = view.commitmentStore?.sends[Number(key)];
+    return send ? { sent: send.sent } : undefined; }
   if (kind === 'requested-reminder') { const batch = view.reminders.get(requestedBatchKey(Number(key)));
     return batch?.requested ? { sent: batch.sent } : undefined; }
   if (kind === 'limited') { const turn = view.turns.get(key);
@@ -3402,6 +3414,7 @@ export function sendOutcomeCounts(view: JournalView) {
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
   }
   for (const [key, batch] of view.reminders) settle(reminderTarget(view, key, batch), batch.sent);
+  for (const send of view.commitmentStore?.sends ?? []) settle(commitmentSendTarget(send.ordinal), send.sent);
   return { accepted, refused: refusedItems, unknown, speakers: { ...view.speakers },
     lastRefusal: view.sendOutcomes.filter(item => item.outcome === 'refused').at(-1) ?? null,
     unknownReasons, lastUnknown: view.sendOutcomes.filter(item => item.outcome === 'unknown').at(-1) ?? null };
@@ -3436,7 +3449,8 @@ function checkModelCall(row: ModelCallRecord): void {
     throw Error('preview journal: model call record refused');
 }
 /** The exact act an outbound intent's signature covers. */
-export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' | 'held-notice-intent' | 'requested-reminder-intent' | 'limited-intent' | 'operator-result-intent' | 'retract-request' }>): OutboundSubject {
+export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' | 'held-notice-intent' | 'requested-reminder-intent' | 'limited-intent' | 'operator-result-intent' | 'retract-request' | 'commitment-send-intent' }>): OutboundSubject {
+  if (row.kind === 'commitment-send-intent') return { target: commitmentSendTarget(row.ordinal), chat: row.chat, thread: row.thread, body: row.text };
   if (row.kind === 'retract-request') return { target: `retract-request:${row.request.id}`, chat: row.chat, body: row.text };
   const thread = row.thread === undefined ? {} : { thread: row.thread };
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
@@ -3907,12 +3921,13 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   // Update only after validation. UNKNOWN intents count too: absence of a receipt is not silence proof.
   const intent = row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'limited-intent'
     || row.kind === 'operator-result-intent' || row.kind === 'requested-reminder-intent' || row.kind === 'reminder-intent'
-    || row.kind === 'retract-request';
+    || row.kind === 'retract-request' || row.kind === 'commitment-send-intent';
   const receipt = row.kind === 'sent' || row.kind === 'held-notice-sent' || row.kind === 'limited-sent'
     || row.kind === 'reply-part-start' || row.kind === 'reply-part-sent' || row.kind === 'reminder-sent'
-    || row.kind === 'requested-reminder-sent' || row.kind === 'operator-result-sent' || row.kind === 'retract-request-sent';
+    || row.kind === 'requested-reminder-sent' || row.kind === 'operator-result-sent' || row.kind === 'retract-request-sent' || row.kind === 'commitment-send-sent';
   if (intent || receipt) {
     const thread = 'thread' in row ? row.thread : 'id' in row ? view.turns.get(row.id)?.thread
+      : row.kind === 'commitment-send-sent' ? view.commitmentStore?.sends[row.ordinal]?.thread
       : row.kind === 'requested-reminder-sent' ? view.turns.get(view.reminders.get(requestedBatchKey(row.batch))?.items[0]?.source ?? '')?.thread
         : row.kind === 'operator-result-sent' || row.kind === 'retract-request-sent'
           ? view.operatorRequests.find(item => item.request.id === row.request)?.thread : undefined;
@@ -4028,7 +4043,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       latencyMs: row.latencyMs, usage: row.usage, at: row.at }].slice(-20);
     return;
   }
-  if ((row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'requested-reminder-intent' || row.kind === 'limited-intent') && row.provenance)
+  if ((row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'requested-reminder-intent' || row.kind === 'limited-intent' || row.kind === 'commitment-send-intent') && row.provenance)
     view.speakers[row.provenance.speaker]++;
   if (row.kind === 'reminder-grant') {
     if (view.reminderGrant !== null || view.stop || row.trial !== view.genesis.grant
@@ -4483,6 +4498,22 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   if (row.kind === 'commitment-store') {
     checkCommitmentStoreRecord(row);
     view.commitmentStore = applyCommitmentStoreRecord(view.commitmentStore, row); return;
+  }
+  if (row.kind === 'commitment-send-intent') {
+    checkCommitmentSendIntent(view, row);
+    view.commitmentStore = applyCommitmentSendIntent(view.commitmentStore, row);
+    view.replies++; return;
+  }
+  if (row.kind === 'commitment-send-sent') { applyCommitmentSendReceipt(view, row); return; }
+  if (row.kind === 'commitment-status-reserve') {
+    if (view.stop || view.calls >= view.limits.maxCalls) throw Error('preview journal: commitment status reservation refused');
+    view.commitmentStore = applyCommitmentStatusReserve(view.commitmentStore, row);
+    reserveTokens(view, commitmentStatusId(row.ordinal), 'summary', view.limits.maxBytes, subscriptionOutputMaximum);
+    view.calls++; return;
+  }
+  if (row.kind === 'commitment-status-settled') {
+    applyCommitmentStatusSettled(view.commitmentStore, row);
+    settleTokens(view, commitmentStatusId(row.ordinal), row.usage); return;
   }
   if (row.kind === 'sentinel') {
     checkSentinelRecord(row, id => view.turns.has(id));
@@ -5575,7 +5606,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       if (row.kind === 'genesis' && row.forum !== undefined) validateChatBinding(row);
       if (row.kind === 'genesis' && row.origin !== undefined && row.origin !== 'test') throw Error('preview journal: invalid genesis origin');
       if ((row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'limited-intent' || row.kind === 'operator-result-intent'
-        || row.kind === 'retract-request') && row.provenance !== undefined && !verifyOutbound(row.provenance, outboundSubjectOf(row)))
+        || row.kind === 'retract-request' || row.kind === 'commitment-send-intent') && row.provenance !== undefined && !verifyOutbound(row.provenance, outboundSubjectOf(row)))
         throw Error('preview journal: outbound provenance refused');
       if (row.kind === 'intent' && row.parts !== undefined && row.parts.some((part, index) => !verifyOutbound(part.provenance,
         { target: replyPartTarget(row.id, index + 2), chat: row.chat, ...(row.thread === undefined ? {} : { thread: row.thread }), body: part.body })))
@@ -6115,6 +6146,8 @@ export interface PreviewPorts {
   /** The bounded retrospective review: one subscription attempt over the pass's case packet.
    * `value` is the model's JSON answer text; anything else leaves the cases owed. `question` is set only for the
    * pass's duty follow-up (RETRO_DUTY_FOLLOWUP_QUESTION); absent, the port asks RETROSPECTIVE_QUESTION. */
+  /** Row 01: the beacon's status line through the launcher's recorded model boundary. */
+  commitmentStatus?: CommitmentStatusModel;
   retrospect?(state: string, id: string, question?: string): Promise<{ state: 'complete'; value: string; usage?: ModelUsage }
     | { state: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage }>;
   /** Typed seam for evidence other builds own (build 5: waiver authorizations and acts). Absent: the duty is recorded unavailable. */
@@ -6171,6 +6204,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       : { kind: 'refused', reason: 'group disclosure authority or audience refused' },
     ...(original.sessionWork ? { sessionWork: guarded(original.sessionWork) } : {}),
     ...(original.retrospect ? { retrospect: guarded(original.retrospect) } : {}),
+    ...(original.commitmentStatus ? { commitmentStatus: guarded(original.commitmentStatus) } : {}),
     ...(original.stepCheck ? { stepCheck: { jev: guarded(original.stepCheck.jev) } } : {}),
     ...(original.summaryCheck ? { summaryCheck: guarded(original.summaryCheck) } : {}),
     ...(original.replyCheck ? { replyCheck: { ...original.replyCheck,
@@ -10547,6 +10581,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (outcome.kind === 'accepted') try { journal.append({ kind: 'operator-result-sent', request: id, message: outcome.message, at: ports.now() }); }
     catch { /* stays UNKNOWN; never repeated */ }
   };
+  /** Row 01: commitment sends and status lines through this worker's one outbound boundary and its model port. */
+  const commitmentDoorway = (admit: CommitmentSendAdmission) => createCommitmentDoorway({ journal, admit, now: ports.now, stopped: ports.stopped, checkOutbound: ports.checkOutbound,
+    push: (target, provenance, input) => push('commitment', target, provenance, input),
+    ...(ports.commitmentStatus ? { model: ports.commitmentStatus } : {}) });
   /** A raise request exists only with a challenge the independent verifier issued for its exact subject. */
   const issueRaise = (lead: Turn, reason: RaiseReason): ApprovalRequest | undefined => {
     const surface = ports.approvalSurface, view = journal.view;
@@ -12264,7 +12302,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     for (const turn of acknowledgementTimers.keys()) void acknowledgeReply(turn).catch(() => {});
     await answerLimited();
     await pollReviewRequests(); await issueRetractRequest(); };
-  return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
+  return { commitmentDoorway, intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };

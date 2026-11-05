@@ -208,6 +208,26 @@ export function admitEffect(proposal, policy = DEFAULT_EFFECT_POLICY, operations
     reason: `effect doorway: ${proposal.effect} is ${disposition}; admitted under its recorded role and installed durability path` };
 }
 
+/** Row 01: a commitment send is an ordinary Telegram send (P-08's closed set) whose target names its topic. */
+export const commitmentSendGrantTarget = topic => `commitment-send:${String(topic)}`;
+/** The operator's grant for commitment sends to one topic, as the policy reads now: a grant naming exactly this topic,
+ * live and in the closed set. A wider grant does not stand in for it, and an unreadable policy admits nothing. */
+export function admitCommitmentSend(config, topic, now) {
+  if (config.effectPolicy.type !== 'PreviewEffectPolicy') return { admitted: false, reason: `the effect policy is unavailable: ${String(config.effectPolicy.reason)}` };
+  const target = commitmentSendGrantTarget(topic);
+  const proposal = { effect: 'telegram:ordinary-reply', target }, options = { ...(config.irreversibleTerm ? { irreversibleTerm: config.irreversibleTerm } : {}), now };
+  const admission = admitEffect(proposal, config.effectPolicy, config.operations, options);
+  if (!admission.admitted) return { admitted: false, reason: admission.reason };
+  const grant = classifyEffect(proposal, config.effectPolicy, options).grants.find(item => item.target === target && item.approves.includes('scope'));
+  return grant ? { admitted: true, grant: grant.id } : { admitted: false, reason: `no operator grant names ${target}` };
+}
+/** Whether any commitment send grant is live now: the beacon's output gate and the check-in pass read this. */
+export function anyCommitmentSendGrant(config, now) {
+  if (config.effectPolicy.type !== 'PreviewEffectPolicy') return false;
+  return config.effectPolicy.grants.some(grant => typeof grant.target === 'string' && grant.target.startsWith('commitment-send:')
+    && /^\d+$/u.test(grant.target.slice('commitment-send:'.length)) && admitCommitmentSend(config, Number(grant.target.slice('commitment-send:'.length)), now).admitted);
+}
+
 /** The proposal a consequential tool call makes, or null for ordinary in-workspace work (never routed here). */
 export function toolEffectProposal(tool, input) {
   if (tool.startsWith('mcp__')) return { effect: 'tool:mcp', target: tool.slice(0, 256) };

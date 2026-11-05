@@ -712,7 +712,8 @@ export class PromiseBeacon extends CommitmentEmitter {
 
     const timer = this.ports.timers.after(delay, () => {
       this.timers.delete(c.id);
-      this.fire(c.id).catch(err => {
+      // Returned so the host's admitted job holds open until this heartbeat has settled.
+      return this.fire(c.id).catch(err => {
         this.ports.log(`[PromiseBeacon] fire() error for ${c.id}:`, (err as Error).message);
       });
     });
@@ -1738,7 +1739,7 @@ export class PromiseBeacon extends CommitmentEmitter {
     const delay = Math.max(1, this.aggregateDueAt(state) - this.now());
     const timer = this.ports.timers.after(delay, () => {
       this.aggregateTimers.delete(topicId);
-      this.flushTopicAggregate(topicId).catch(err => {
+      return this.flushTopicAggregate(topicId).catch(err => {
         this.reportAggregateDegradation(
           'scheduled aggregate flush',
           'retain the durable batch and retry on its bounded cadence',

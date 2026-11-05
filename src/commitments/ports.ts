@@ -54,7 +54,9 @@ export type DeliveryOutcome =
   | { delivered: false; outcome: 'already-delivered-recently' }
   | { delivered: false; outcome: 'not-delivered'; reason: string; detail?: string;
     originHold?: { operationId: string | null; outcome: string; reason: string; logicalReplaySafe?: boolean };
-    permanent?: boolean; standDown?: boolean };
+    permanent?: boolean; standDown?: boolean;
+    /** The doorway knows nothing reached the transport or the transport refused it. Absent means it may have. */
+    definite?: boolean };
 /** A send that the transport holds under its original operation. Not a failure, not a delivery. */
 export class TelegramOriginHoldError extends Error {
   readonly terminalForCallerRetry = true;

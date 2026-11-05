@@ -12,4 +12,6 @@ Removed from 1.x on purpose, each with a test on the other side:
 - Send-before-stamp check-ins. The start is durable, a definite failure retries within the cap, and an unknown result is settled by its receipt and never sent again.
 - The observe-only self-action governor and the signal-only identifier-leak pass. The cadence clamp and per-topic aggregate bound the beacon (Rule 61); the outbound doorway owns outbound checks.
 
-Beacon output is off unless explicitly enabled (Rule 87). With no send bound, every send is a definite refusal, recorded and never a delivery.
+`tests/preview/commitment-send.ts` binds the send, receipt and status ports to the worker's outbound boundary and the launcher's model boundary. A send needs the operator's effect-policy grant naming exactly that topic (`commitment-send:<topic>`), read at each decision. With none, beacon output is off (Rule 87), a due check-in waits with no attempt spent, and a direct send is a definite refusal before any intent. Each attempt is a signed journal intent, then the boundary, then its exact receipt. An unknown result holds under its operation, is never repeated and closes nothing.
+
+The status line is 2.0's own wording: 1.x never wired its hook. It is a reserved call recorded at the model boundary, and it only runs where a session frame exists to read, which the one-shot runner does not provide yet.

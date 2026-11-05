@@ -6,8 +6,10 @@
  *   ownership or an expiry stops everything by not ticking, and a restart re-arms from durable anchors (Rules 55, 63).
  * - A reply promise stays the journal's. Each open note is mirrored one way under `commitment:<id>`: the journal's
  *   closure closes the mirror, the mirror never closes the note (Rules 33, 83).
- * - Sending goes through the `send` port only. Without one, every send is a definite refusal and retained as such.
- *   Beacon output stays off unless explicitly enabled, as in 1.x (Rule 87). */
+ * - Sending goes through the `send` port only (commitment-send.ts binds it to the outbound boundary). Without one, every
+ *   send is a definite refusal and retained as such. Beacon output stays off unless a live send grant or an explicit
+ *   option enables it (Rule 87), and check-ins run only while a grant is live, so none spends an attempt without one.
+ * - What a tick starts settles inside the same admitted job: `tick` requests `settle` as one of its steps. */
 import { CommitmentTracker, type Commitment, type CommitmentStore, type CommitmentTrackerConfig } from '../../src/commitments/CommitmentTracker.js';
 import { PromiseBeacon, type PromiseBeaconConfig, type ReviveRequest, type ReviveResult } from '../../src/commitments/PromiseBeacon.js';
 import { CheckInReminderReconciler, checkInSendId, type CheckInReminderPassReport } from '../../src/commitments/CheckInReminderReconciler.js';
@@ -15,10 +17,13 @@ import { LlmQueue } from '../../src/commitments/LlmQueue.js';
 import { ProxyCoordinator } from '../../src/commitments/ProxyCoordinator.js';
 import type { CommitmentTrackerPorts, ConfigWatchPort, DeliveryOutcome } from '../../src/commitments/ports.js';
 import { commitmentOpen, commitmentWaitsOn, type JournalRecord, type JournalView } from './journal.js';
-import { COMMITMENT_STORE_GENERATION, emptyCommitmentStore, type CommitmentStoreRecord } from './commitment-record.js';
+import { COMMITMENT_STORE_GENERATION, commitmentSendTarget, emptyCommitmentStore, type CommitmentStoreRecord } from './commitment-record.js';
+import type { CommitmentDoorway, CommitmentSendAdmission } from './commitment-send.js';
 
 const forward = { generation: COMMITMENT_STORE_GENERATION, additive: true } as const;
 const MAX_ROWS_PER_FRAME = 32, MAX_TEXT = 2048, MAX_TIMERS_PER_TICK = 32;
+/** One reminder pass per five minutes, the 1.x job's schedule. */
+export const CHECK_IN_PASS_MS = 300_000;
 /** Read back from the journal alone, for the status surfaces. */
 export function commitmentStoreReport(view: JournalView) {
   const store = view.commitmentStore;
@@ -28,7 +33,11 @@ export function commitmentStoreReport(view: JournalView) {
     atRisk: open.filter(row => row.atRisk).length, paused: open.filter(row => row.beaconPaused).length,
     violated: open.filter(row => row.status === 'violated').map(row => row.id),
     checkInsUnsettled: open.filter(row => row.checkInReminderSendStartedAt).map(row => checkInSendId(row.id)),
-    checkInsFailed: rows.filter(row => row.checkInReminderFailedAt).map(row => row.id), lastSweep: store.ledger.at(-1) ?? null };
+    checkInsFailed: rows.filter(row => row.checkInReminderFailedAt).map(row => row.id), lastSweep: store.ledger.at(-1) ?? null,
+    sends: { attempts: store.sends.length, delivered: store.sends.filter(send => send.sent !== undefined).length,
+      refused: store.sends.filter(send => view.sendOutcomes.find(item => item.target === commitmentSendTarget(send.ordinal))?.outcome === 'refused').length,
+      unsettled: store.sends.filter(send => send.sent === undefined && view.sendOutcomes.find(item => item.target === commitmentSendTarget(send.ordinal))?.outcome !== 'refused').map(send => send.logicalSendId),
+      refusedBeforeIntent: store.refusals, lastRefusal: store.lastRefusal } };
 }
 const clamp = (text: string) => text.length <= MAX_TEXT ? text : `${text.slice(0, MAX_TEXT - 1)}…`;
 export const mirrorKey = (id: number) => `commitment:${id}`;
@@ -46,6 +55,17 @@ export interface CommitmentHostPorts {
   send?: CommitmentSend;
   /** The original send's receipt: true delivered, false definitely not, undefined unknown. */
   resolveDelivery?(logicalSendId: string): Promise<boolean | undefined>;
+  /** The beacon's held send: only its exact receipt settles it. */
+  resolveOriginDelivery?(operationId: string): Promise<boolean>;
+  /** Whether any commitment send is granted now. Absent: only an explicit beacon option turns output on. */
+  sendGranted?(): boolean;
+  /** Whether this topic may be sent to now. */
+  sendAdmits?(topicId: number): boolean;
+  generateStatusLine?(promiseText: string, recentOutput: string): Promise<string>;
+  /** The owning session's recent output, where it has any; the one-shot runner has none. */
+  captureSessionOutput?(session: string): string | null;
+  getSessionForTopic?(topicId: number): string | null;
+  isSessionAlive?(session: string): boolean;
   /** Act on a lost owning session through the owner's bounded step; never a second session of its own. */
   requestRevive?(request: ReviveRequest): Promise<ReviveResult>;
   raiseAttention?(id: string, detail: string): void;
@@ -55,6 +75,14 @@ export interface CommitmentHostPorts {
     beacon?: Partial<Pick<PromiseBeaconConfig, 'userOutputEnabled' | 'quietHours' | 'escalation' | 'agentOwnedFollowthrough' | 'looksActivelyWorking' | 'getSessionEpoch'>>;
     checkIns?: { enabled: boolean; dryRun: boolean };
   };
+}
+
+/** The runner's binding: the host's send, receipt and status ports on the worker's doorways, under the effect policy. */
+export function createBoundCommitmentHost(journal: Parameters<typeof createCommitmentHost>[0], ports: Omit<CommitmentHostPorts, 'send' | 'resolveDelivery' | 'resolveOriginDelivery' | 'sendGranted' | 'sendAdmits' | 'generateStatusLine'>,
+  worker: { commitmentDoorway(admit: CommitmentSendAdmission): CommitmentDoorway }, grant: { admit: CommitmentSendAdmission; any(): boolean }) {
+  const doorway = worker.commitmentDoorway(grant.admit);
+  return createCommitmentHost(journal, { ...ports, send: doorway.send, resolveDelivery: doorway.resolveDelivery, resolveOriginDelivery: doorway.resolveOrigin,
+    sendGranted: grant.any, sendAdmits: topic => grant.admit(topic).admitted, generateStatusLine: doorway.statusLine });
 }
 
 export function createCommitmentHost(journal: { readonly view: JournalView; append(row: JournalRecord): void }, ports: CommitmentHostPorts) {
@@ -103,9 +131,21 @@ export function createCommitmentHost(journal: { readonly view: JournalView; appe
     },
     expiryLedger: { append(row) { append({ ledger: row }); } },
   };
-  const deliver = async (topicId: number, text: string, opts: { logicalSendId: string }): Promise<DeliveryOutcome> => ports.send
-    ? ports.send(topicId, text, { logicalSendId: opts.logicalSendId, source: 'commitments' })
-    : { delivered: false, outcome: 'not-delivered', reason: 'no-send-grant', standDown: true };
+  /** Work started on a tick; `settle` holds the admitted job open until it ends. */
+  const inFlight = new Set<Promise<unknown>>();
+  const track = <T>(work: Promise<T>): Promise<T> => {
+    const held = work.then(() => {}, () => {}).finally(() => { inFlight.delete(held); });
+    inFlight.add(held);
+    return work;
+  };
+  const deliver = async (topicId: number, text: string, opts: { logicalSendId: string }): Promise<DeliveryOutcome> => {
+    const outcome = await track(ports.send
+      ? ports.send(topicId, text, { logicalSendId: opts.logicalSendId, source: 'commitments' })
+      : Promise.resolve<DeliveryOutcome>({ delivered: false, outcome: 'not-delivered', reason: 'no-send-grant', standDown: true, definite: true }));
+    if (outcome.outcome === 'not-delivered' && outcome.reason === 'no-send-grant')
+      try { append({ refusal: { logicalSendId: opts.logicalSendId, reason: outcome.reason } }); } catch { /* the caller's result still says it */ }
+    return outcome;
+  };
 
   const build = () => {
     const tracker = new CommitmentTracker({ ports: trackerPorts, liveConfig: ports.config, ...ports.options?.tracker });
@@ -121,30 +161,44 @@ export function createCommitmentHost(journal: { readonly view: JournalView; appe
           aggregateTopics: () => Object.keys(stored().aggregates).map(Number),
         } },
       // The runner's sessions are one-shot; there is no frame to capture or hold open.
-      captureSessionOutput: () => null, getSessionForTopic: () => null, isSessionAlive: () => false,
+      captureSessionOutput: session => ports.captureSessionOutput?.(session) ?? null, getSessionForTopic: topic => ports.getSessionForTopic?.(topic) ?? null,
+      isSessionAlive: session => ports.isSessionAlive?.(session) ?? false,
       sendMessage: async (topicId, text) => { const outcome = await deliver(topicId, text, { logicalSendId: `beacon:${topicId}` });
         if (!outcome.delivered) throw Error(outcome.outcome); },
       deliverMessage: (topicId, text, opts) => deliver(topicId, text, opts),
       ...(ports.requestRevive ? { requestRevive: ports.requestRevive } : {}),
       ...(ports.raiseAttention ? { raiseAttention: ports.raiseAttention } : {}),
+      ...(ports.resolveOriginDelivery ? { resolveOriginDelivery: ports.resolveOriginDelivery } : {}),
+      ...(ports.sendAdmits ? { ownsConversation: ports.sendAdmits } : {}),
+      ...(ports.generateStatusLine ? { generateStatusLine: (promise: string, output: string) => ports.generateStatusLine!(promise, output) } : {}),
       ...ports.options?.beacon,
+      // Read at each send, so a grant added or withdrawn takes effect without a restart.
+      get userOutputEnabled() { return ports.sendGranted ? ports.sendGranted() : ports.options?.beacon?.userOutputEnabled === true; },
     });
     const checkIns = new CheckInReminderReconciler({
       tracker, log: line => ports.log(line),
       time: { ...clock, formatWhen: ports.formatWhen },
       ...(ports.resolveDelivery ? { resolveDelivery: ports.resolveDelivery } : {}),
+      ...(ports.sendAdmits ? { admits: ports.sendAdmits } : {}),
       send: async (topicId, text, identity) => {
         const outcome = await deliver(topicId, text, { logicalSendId: identity.logicalSendId });
         if (outcome.delivered || outcome.outcome === 'already-delivered-recently') return 'delivered';
         // A typed refusal sent nothing; anything else may have reached the person.
-        if (outcome.outcome === 'not-delivered' && (outcome.standDown || outcome.permanent || outcome.reason === 'no-send-grant')) throw Error(outcome.reason);
+        if (outcome.outcome === 'not-delivered' && (outcome.definite || outcome.standDown || outcome.permanent || outcome.reason === 'no-send-grant')) throw Error(outcome.reason);
         return 'unknown';
       },
     }, ports.options?.checkIns ?? { enabled: true, dryRun: false });
     return { tracker, beacon, checkIns, frames: stored().frames };
   };
   let live = build(), started = false;
-  const start = () => { live.tracker.start(); live.beacon.start(); started = true; };
+  let passing: Promise<CheckInReminderPassReport> | null = null, passCancel: { cancel(): void } | null = null;
+  const runCheckIns = (): Promise<CheckInReminderPassReport> => passing ??= track(live.checkIns.runPass()).finally(() => { passing = null; });
+  const start = () => { live.tracker.start(); live.beacon.start(); started = true;
+    passCancel?.cancel();
+    // Once on the first tick, so a restart settles what it can at once, then at the 1.x cadence.
+    const pass = () => { if (ports.sendGranted?.()) void runCheckIns().catch(error => ports.log('[check-in]', (error as Error).message)); };
+    passCancel = ports.sendGranted ? timers.every(CHECK_IN_PASS_MS, pass) : null;
+    if (ports.sendGranted) timers.after(0, pass); };
 
   /** One way, from the owner's notes. Open and agent-owned gets a mirror; a closed note closes it. */
   const mirrorPromises = () => {
@@ -183,13 +237,16 @@ export function createCommitmentHost(journal: { readonly view: JournalView; appe
     const ready = [...due].filter(item => item.due <= ports.now()).sort((a, b) => a.due - b.due).slice(0, MAX_TIMERS_PER_TICK);
     for (const item of ready) {
       if (item.every === undefined) due.delete(item); else item.due = ports.now() + item.every;
-      try { item.run(); } catch (error) { failures.push((error as Error).message); }
+      try { const started = (item.run as () => unknown)(); if (started instanceof Promise) void track(started).catch(() => {}); }
+      catch (error) { failures.push((error as Error).message); }
     }
     tickFailures += failures.length;
     return { ran: ready.length, failures };
   };
   const report = () => ({ ...commitmentStoreReport(journal.view), health: live.tracker.getHealth(), tickFailures });
-  return { tick, report, tracker: () => live.tracker, beacon: () => live.beacon,
-    runCheckIns: (): Promise<CheckInReminderPassReport> => live.checkIns.runPass(), stop() { live.tracker.stop(); live.beacon.stop(); due.clear(); } };
+  /** Holds the admitted job open until everything this host started has ended. */
+  const settle = async () => { while (inFlight.size) await Promise.all(inFlight); };
+  return { tick, settle, report, tracker: () => live.tracker, beacon: () => live.beacon,
+    runCheckIns, stop() { live.tracker.stop(); live.beacon.stop(); due.clear(); } };
 }
 export type { Commitment, CommitmentStore };
