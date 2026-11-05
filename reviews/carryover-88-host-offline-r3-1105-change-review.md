@@ -36,6 +36,8 @@ Decision: AQ88-r3-publication | Regenerate the existing source roster and capabi
 
 Publication: source 55a2bc90582cad0dfaca1535329aea6eb2789e88, generation sha256:0b53ad697d46030f486c5e777314a85edc196b12bbc21278247128378d942fa8; 297 entries, 118 rules, 34 terms, 48 warnings, 110 prerequisites. Replay is shape-only, never an activation. The native macOS certificate is unchanged and requires the Studio's real contract run.
 
+Recovery refinement: independent custody read or consumption failure leaves the signed act pending and never stops the main owner loop. An already delivered journal acknowledgement is consumed on recovery without applying it again; the real passkey/owner test injects both failure boundaries.
+
 ## Closing block
 
 simplestRobustRoute: Extend the existing closed method set and existing independently authenticated store. Reuse the encrypted journal, dispatch fence, physical sender and dashboard authentication. Cache only the distinct tracking request to prevent owner-outbox loss from removing operator custody. Select each verified receipt separately so one receipt cannot authorize or reject another acknowledgement. No new general approval protocol or standby database.

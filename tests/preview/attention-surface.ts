@@ -78,7 +78,11 @@ export function createAttentionSurface(journal: ReturnType<typeof openPreviewJou
     if (!tracking || !admitted()) return;
     // Existing independent custody is the intake store until the legitimate owner
     // returns. Verification consumes nothing until this journal's durable result.
-    const pending = tracking.pending();
+    let pending: string[];
+    try { pending = tracking.pending(); } catch { return; } // independent custody can be temporarily unavailable
+    const complete = (proof: string) => {
+      try { tracking.complete(proof); } catch { /* retained delivered ack permits later consumption without reapplying */ }
+    };
     const start = pending.length ? trackingCursor % pending.length : 0;
     const batch = [...pending.slice(start), ...pending.slice(0, start)].slice(0, 64);
     trackingCursor = start + batch.length;
@@ -95,7 +99,7 @@ export function createAttentionSurface(journal: ReturnType<typeof openPreviewJou
       if (!item || s.targetMachineId !== (item.machineId ?? host.machine) || !status) continue;
       const prior = journal.view.attention?.acknowledgements.find(a => a.authority === verified.authority);
       if (prior?.lastOutcome === 'delivered') {
-        if (await host.replicated() && admitted()) tracking.complete(proof);
+        if (await host.replicated() && admitted()) complete(proof);
         continue;
       }
       if (verified.decision !== 'approve' || item.revision !== s.revision) continue;
@@ -105,7 +109,7 @@ export function createAttentionSurface(journal: ReturnType<typeof openPreviewJou
       try { tracking.verify(proof); } catch { continue; }
       queue.drain(a => admitted() && a.operatorUid === journal.view.genesis.operator, a => a.authority === verified.authority);
       if (await host.replicated() && admitted()
-        && journal.view.attention?.acknowledgements.some(a => a.authority === verified.authority && a.lastOutcome === 'delivered')) tracking.complete(proof);
+        && journal.view.attention?.acknowledgements.some(a => a.authority === verified.authority && a.lastOutcome === 'delivered')) complete(proof);
     }
   };
   const maintain = async () => {

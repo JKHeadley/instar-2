@@ -322,10 +322,18 @@ it('retains a tracking receipt in independent custody across absent owner files 
   expect(client.verifier.verify(issued.challenge, proof, 'approve').kind).toBe('Refused');
   expect(client.tracking.verify(proof)).toMatchObject({ act: null, decision: 'approve' });
   journal = openPreviewJournal(path, new Uint8Array(32).fill(9));
-  attention = createAttentionSurface(journal, { ...host, tracking: { ...client.tracking, link: client.link } });
+  let unavailable = true, consumeFailure = true;
+  attention = createAttentionSurface(journal, { ...host, tracking: { ...client.tracking, link: client.link,
+    pending: () => { if (unavailable) throw Error('operator custody unavailable'); return client.tracking.pending(); },
+    complete: (proof: string) => { if (consumeFailure) throw Error('owner consumption write interrupted'); client.tracking.complete(proof); } } });
   await attention.drainTracking(); expect(journal.view.attention!.items[0]!.status).toBe('OPEN');
-  owner = true; await attention.drainTracking();
+  owner = true; await attention.drainTracking(); expect(journal.view.attention!.items[0]!.status).toBe('OPEN');
+  unavailable = false; await attention.drainTracking();
   expect(journal.view.attention!.items[0]!).toMatchObject({ status: 'DONE', revision: 2 });
+  expect(client.tracking.pending()).toHaveLength(1); // journal apply survived, consumption did not
+  const appliedBytes = journal.size;
+  consumeFailure = false; await attention.drainTracking();
+  expect(journal.size).toBe(appliedBytes); // owner recovery consumes only, never applies twice
   expect(client.tracking.pending()).toHaveLength(0);
   const bytes = journal.size; await attention.maintain(); expect(journal.size).toBe(bytes);
   journal.compact(); journal.close(); journal = openPreviewJournal(path, new Uint8Array(32).fill(9));
