@@ -40,3 +40,6 @@ Decision: train-175-desk | Use cint-L37-PROGRESS.md authenticated snapshot 81a04
 simplestRobustRoute: This is the simplest robust route: ordinary merges of exactly reviewed heads and regeneration with the existing desk tools. No new machinery; five safety floors and independent gate remain. No unattended product-completion claim.
 80/20: Only changed/direct-importer tests and explicitly required journal/pinned/constitution checks; no full suite.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+
+Register replay: b75031cd26ed1330f7abbd81aa1bd0630db68319 regenerates all seven register outputs from combined source 688c6294aa4635a0876dc49829080ca14b5a1cbd: 297 entries and 120 rules. This record includes that generated commit in its coverage. No deadline override or live-authority claim.
+Verification so far: build, typecheck, lint (architecture passed; issues []), register check, mobile dashboard/reply-parts/constitution-pairing 62 tests and default-context-floor 6 tests pass. Remaining journal and pinned checks are reported by the desk handoff. History-wide review has only unavailable Studio report/evidence paths after closing this generated-commit coverage gap; their contents and paths are not fabricated locally.
