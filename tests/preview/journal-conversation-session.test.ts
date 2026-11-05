@@ -993,3 +993,29 @@ it('the shipped host wires the worker capacity read to its real login pool (null
   expect(read(null)).toBeNull();
   expect(read({ outage: () => ({ resetAt: 7 }) })).toEqual({ resetAt: 7 });
 });
+
+
+it.each(shapes.otherShapes)('carryover 08 collects completed single input after a crash with recorded $kind ($id)', async row => {
+  const f = fixture();
+  try {
+    f.evidence({ recordedShape: row });
+    if (row.kind === 'delivered-reply' || row.kind === 'empty-reply-in-recorded-context')
+      f.answer(JSON.stringify({ reply: row.raw, memory: [] }));
+    f.busy(true); f.worker.intake([update(1, 'Continue the conversation')]); await f.worker.drain();
+    f.busy(false); f.advance(200); await f.port.maintain();
+    expect(f.state().inputs[0]!.outcome?.state).toBe('complete');
+    const packet = f.state().inputs[0]!.request.context;
+    expect(packet).toContain(JSON.stringify(row.raw));
+    // Model reply and authenticated end survived; host terminal snapshot did not.
+    f.restore({ ...f.state(), inputs: f.state().inputs.map(input => ({ ...input, state: 'accepted', outcome: null, reply: null, cursor: 0 })) });
+    await f.restart(true);
+    const calls = f.journal.view.calls;
+    await f.worker.drain();
+    expect(f.state().inputs[0]!.outcome?.state).toBe('complete');
+    expect(f.state().inputs[0]!.request.context).toBe(packet);
+    expect(f.journal.view.calls).toBe(calls);
+    expect(f.delivered).toHaveLength(1); expect(f.sent).toHaveLength(1); expect(f.sent[0]!.trim()).not.toBe('');
+    expect(f.journal.view.order[0]!.failureClass).toBe(row.kind === 'empty-reply-in-recorded-context' ? 'empty' : undefined);
+    await f.restart(); await f.worker.drain(); expect(f.sent).toHaveLength(1);
+  } finally { await f.close(); }
+});

@@ -22,6 +22,25 @@ it('keeps legacy JSON bytes, including escapes, omitted fields, sparse arrays an
 it.each(['', '{', '[1,]', '{"a":1,}', '{"a" 1}', '{a:1}', '[1 2]', '{}{}', '"unterminated', 'true false', '01', '[true,false', '"bad\nstring"'])(
   'refuses malformed snapshot JSON %j', text => expect(() => parseJournalJson([Buffer.from(text)])).toThrow());
 
+it('preserves quote escape parity across empty chunks and split backslash runs', () => {
+  for (let slashes = 0; slashes <= 8; slashes++) {
+    const value = { text: `${'\\'.repeat(slashes)}"🌱${'\\'.repeat(slashes)}`, next: ['after', false] };
+    const bytes = Buffer.from(JSON.stringify(value));
+    for (let split = 0; split <= bytes.length; split++) {
+      expect(parseJournalJson([bytes.subarray(0, split), Buffer.alloc(0), bytes.subarray(split)]))
+        .toEqual(value);
+    }
+    expect(parseJournalJson([...bytes].map(byte => Buffer.from([byte])))).toEqual(value);
+  }
+});
+
+it.each(['"bad\\q"', '"bad\\uXYZZ"', '"escaped\\"', '["escaped\\"still open]', '"a""b"'])(
+  'still delegates malformed quoted scalars to JSON validation: %j', text => {
+    const bytes = Buffer.from(text);
+    for (let split = 0; split <= bytes.length; split++)
+      expect(() => parseJournalJson([bytes.subarray(0, split), bytes.subarray(split)])).toThrow();
+  });
+
 it('refuses an oversized scalar but permits a container larger than the scalar ceiling', () => {
   expect(() => parseJournalJson(journalJsonChunks('x'.repeat(JOURNAL_JSON_STRING_BYTES)))).toThrow('scalar exceeds');
   const row = 'x'.repeat(32_768), rows = Array(70).fill(row);
