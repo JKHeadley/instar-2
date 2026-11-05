@@ -11,7 +11,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { LIMIT_FILE, LIMIT_FILE_TEXT, LIMIT_SHELL, limitedArgv, limitedFileArgv, uidLimitQuery, uidLimitUnit } from '../../scripts/resource-owner.mjs';
 import { transportEnvironment } from '../../scripts/production-boot-io.mjs';
 
-const env = { PATH: '/usr/bin:/bin' };
+const env = transportEnvironment();
 const run = (shell, args, extra = {}) => spawnSync(shell, args, { encoding: 'utf8', timeout: 15000, maxBuffer: 1024 * 1024, env, ...extra });
 /** What the child itself reports as its effective soft and hard limits (Rule 26: the state, not the argv). */
 const REPORT = 'const l=process.report.getReport().userLimits;process.stdout.write(JSON.stringify({handles:l.open_files,cpu:l.cpu_time_seconds,processes:l.max_user_processes}))';
