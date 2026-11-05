@@ -35,6 +35,29 @@ def same(actual, expected):
 request = json.load(sys.stdin)
 mode = request['mode']; target = request.get('target', {}); pid = request.get('pid', target.get('pid'))
 fd = None
+lineage = []
+def pin_lineage(child_pid, root):
+    if not isinstance(root, dict) or not isinstance(root.get('pid'), int) or root['pid'] <= 1 or root['pid'] == child_pid:
+        raise ValueError('registered worker root required; target must be a descendant')
+    with open('/proc/sys/kernel/random/boot_id') as f: boot = f.read().strip()
+    seen = {child_pid}; ancestor = stat(child_pid)[0]
+    for _ in range(128):
+        if ancestor <= 1 or ancestor in seen: raise ValueError('target is outside registered worker ancestry')
+        seen.add(ancestor)
+        handle = os.pidfd_open(ancestor)
+        probe = select.poll(); probe.register(handle, select.POLLIN)
+        parent, start = stat(ancestor)
+        lineage.append((handle, probe, ancestor, parent, start))
+        if probe.poll(0): raise ValueError('worker ancestry exited during observation')
+        if ancestor == root['pid']:
+            if boot+':'+start != root.get('startIdentity'): raise ValueError('registered worker root incarnation changed')
+            return
+        ancestor = parent
+    raise ValueError('worker ancestry observation bound exhausted')
+
+def lineage_current():
+    return all(not probe.poll(0) and stat(pid) == (parent, start)
+               for _, probe, pid, parent, start in lineage)
 try:
     if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 1: raise ValueError('invalid exact PID')
     if not hasattr(os, 'pidfd_open') or not hasattr(signal, 'pidfd_send_signal'):
@@ -57,13 +80,16 @@ try:
             gone = actual['startIdentity'] != target.get('startIdentity')
             emit('refused' if mode == 'signal' else 'exited' if gone else 'unknown', 'exact process identity changed')
         elif mode == 'observe':
+            pin_lineage(pid, request.get('workerRoot'))
+            if not lineage_current() or poll.poll(0): raise ValueError('worker ancestry changed')
             emit('running', 'exact target independently observed running')
         elif mode == 'signal':
             selected = request.get('signal')
             if selected not in ('SIGINT', 'SIGTERM', 'SIGKILL'): raise ValueError('unsupported signal')
+            pin_lineage(pid, request.get('workerRoot'))
             # Re-observe the complete target immediately at the action boundary.
             # The pidfd, rather than this precheck, closes the PID-reuse race.
-            if poll.poll(0) or not same(identity(pid), target):
+            if poll.poll(0) or not lineage_current() or not same(identity(pid), target):
                 emit('refused', 'target changed at action boundary')
             else:
                 signal.pidfd_send_signal(fd, getattr(signal, selected))
@@ -78,6 +104,7 @@ except (PermissionError, FileNotFoundError, OSError, ValueError, KeyError) as er
     emit('refused' if mode == 'signal' else 'unknown', str(error))
 finally:
     if fd is not None: os.close(fd)
+    for handle, _, _, _, _ in lineage: os.close(handle)
 `;
 
 function query(input) {
@@ -101,14 +128,16 @@ export function readExactProcessIdentity(pid) { return query({ mode: 'inspect', 
 /** Bind machine/incarnation at trusted composition; callers cannot select a host. */
 export function createKernelProcessControl(binding) {
   const current = target => target?.machine === binding.machine && target?.incarnation === binding.incarnation;
+  const workerRoot = binding.workerRoot ? Object.freeze({ ...binding.workerRoot }) : null;
   return Object.freeze({
+    workerRoot,
     signal(target, selected) {
       if (!current(target)) return { state: 'refused', detail: 'target machine or owner incarnation differs' };
-      return query({ mode: 'signal', target, signal: selected });
+      return query({ mode: 'signal', target, signal: selected, workerRoot });
     },
     observe(target) {
       if (!current(target)) return { state: 'unknown', detail: 'target machine or owner incarnation differs' };
-      return query({ mode: 'observe', target });
+      return query({ mode: 'observe', target, workerRoot });
     },
   });
 }

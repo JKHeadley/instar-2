@@ -6,7 +6,9 @@ import { createKernelProcessControl, readExactProcessIdentity } from '../../scri
 
 const children: ChildProcess[] = [];
 const binding = { machine: 'isolated-linux-fixture', incarnation: 'fixture-owner' };
-const port = createKernelProcessControl(binding);
+const rootObservation = process.platform === 'linux' ? readExactProcessIdentity(process.pid) : null;
+const workerRoot = { pid: process.pid, startIdentity: rootObservation?.identity?.startIdentity ?? 'unsupported' };
+const port = createKernelProcessControl({ ...binding, workerRoot });
 afterEach(async () => {
   for (const child of children.splice(0)) {
     if (child.exitCode === null && child.signalCode === null) {
@@ -55,6 +57,17 @@ describe.skipIf(process.platform !== 'linux')('kernel-pinned exact process signa
       expect(port.signal(changed, 'SIGKILL').state).toBe('refused');
       expect(port.observe(target).state).toBe('running');
     });
+  it('refuses a non-descendant and a reused registered root even with an exact target', async () => {
+    const { target } = await fixture();
+    const other = await fixture();
+    const unrelated = createKernelProcessControl({ ...binding, workerRoot: { pid: other.target.pid, startIdentity: other.target.startIdentity } });
+    expect(unrelated.signal(target, 'SIGKILL').state).toBe('refused');
+    const staleRoot = createKernelProcessControl({ ...binding, workerRoot: { ...workerRoot, startIdentity: 'old-boot:1' } });
+    expect(staleRoot.signal(target, 'SIGKILL').state).toBe('refused');
+    expect(createKernelProcessControl(binding).signal(target, 'SIGKILL').state).toBe('refused');
+    expect(port.observe(target).state).toBe('running');
+    expect(port.observe(other.target).state).toBe('running');
+  });
   it('does not call an unreadable exact identity dead or accept a different signal', async () => {
     const { target } = await fixture();
     expect(port.observe({ ...target, parentStartIdentity: 'unrelated' }).state).toBe('unknown');
