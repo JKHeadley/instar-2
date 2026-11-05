@@ -6079,8 +6079,6 @@ export interface PreviewPorts {
     requestWindowMs?: number;
     /** Plan #389: the desk's current retraction proposal, read from the root by the host (propose-retract), or none. */
     retractProposal?(): RetractProposal | undefined };
-  /** Continuing conversations send first; model review is a durable signal for the next turn. */
-  replyReviewTiming?: 'before-send' | 'after-send';
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
     verdict: 'pass' | 'violation' | 'unavailable'; latencyMs: number; retryable?: true; usage?: ModelUsage }>;
     /** The mind's one revision of an objected draft (same model envelope as review). Absent: no revision round. */
@@ -8650,62 +8648,28 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       catch { return; }
     }
   };
-  const reviewAfterSend = async (turn: Turn): Promise<void> => {
-    if (ports.replyReviewTiming !== 'after-send' || !ports.replyCheck || turn.intent === undefined
-      || turn.answer === undefined || halted()) return;
-    if (turn.afterSendReview) {
-      if (turn.checked === undefined) {
-        const review = turn.replyChecks?.at(-1);
-        // A durable terminal judgment only needs its coherence projection rebuilt. A Jev pass is terminal
-        // only when no contextual review was required; a reservation without a result is never replayed.
-        const terminal = review?.path === 'subscription' || review?.path === 'holding'
-          || review?.path === 'jev' && review.verdict === 'pass' && !turn.reviewReserved
-            && !confidentReplyNeedsReview(projectedReplyPrompt(turn.prompt));
-        if (!terminal) journal.append({ kind: 'reply-check', id: turn.id, result: {
-          verdict: 'unavailable', ruleIds: review?.ruleIds ?? [], confidence: null, path: 'holding', latencyMs: 0,
-          reason: 'retrospective review interrupted; no paid call replayed'
-            + (review ? `; recorded ${review.path} ${review.verdict}: ${review.reason ?? 'no reason recorded'}` : ''),
-        }, at: ports.now() });
-        checkCoherence(turn);
-      }
-      return;
-    }
-    if (turn.jevReserved || turn.reviewReserved) return;
-    journal.append({ kind: 'reply-review-after-send', id: turn.id, at: ports.now() });
-    const text = turn.intent, candidateDigest = createHash('sha256').update(text).digest('hex');
-    const checkPorts = { ...ports.replyCheck, now: ports.now,
-      deadlineAt: ports.now() + REPLY_CHECK_BUDGET_MS,
-      reserveEscalation: (candidate: string, prompt?: string) => {
-        if (halted() || journal.view.calls >= journal.view.limits.maxCalls) return false;
-        journal.append({ kind: 'reply-review-reserve', id: turn.id, candidate,
-          ...(prompt === undefined ? {} : { prompt }), maxInputTokens: journal.view.limits.maxBytes,
-          maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); return true;
-      },
-      record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id,
-        result: { ...result, candidateDigest }, at: ports.now() }) };
-    // No replay of a paid call after a crash. Its durable reservation remains UNKNOWN.
-    if (journal.view.jevChecks >= journal.view.limits.maxReplies) {
-      await reviewReply(text, turn.id, checkPorts, [], projectedReplyPrompt(turn.prompt));
-    } else {
-      const shared = fromOperator(turn) ? disclosedApproval(journal.view) : undefined;
-      const facts = shared && approvalFacts(shared);
-      journal.append({ kind: 'reply-jev-reserve', id: turn.id,
-        maxInputTokens: Buffer.byteLength(jevRequestBody(text, facts)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
-      await checkReply(text, turn.id, checkPorts, projectedReplyPrompt(turn.prompt), facts);
-    }
+  /** Legacy after-send history (builds before 2026-11-05 selected review after the send for continuing
+   * conversations; the register's pre-send team and Part 18 §16 never allowed that order). A journal written
+   * by such a build may hold a `reply-review-after-send` marker whose review was interrupted: the durable
+   * terminal judgment is projected once, and a reservation without a result is recorded as unavailable and
+   * never paid again. No review starts here: every answer now takes the pre-send route in drainTopic. */
+  const recoverAfterSendHistory = (turn: Turn): void => {
+    if (!turn.afterSendReview || turn.checked !== undefined || turn.intent === undefined || turn.answer === undefined || halted()) return;
+    const review = turn.replyChecks?.at(-1);
+    // A durable terminal judgment only needs its coherence projection rebuilt. A Jev pass is terminal
+    // only when no contextual review was required; a reservation without a result is never replayed.
+    const terminal = review?.path === 'subscription' || review?.path === 'holding'
+      || review?.path === 'jev' && review.verdict === 'pass' && !turn.reviewReserved
+        && !confidentReplyNeedsReview(projectedReplyPrompt(turn.prompt));
+    if (!terminal) journal.append({ kind: 'reply-check', id: turn.id, result: {
+      verdict: 'unavailable', ruleIds: review?.ruleIds ?? [], confidence: null, path: 'holding', latencyMs: 0,
+      reason: 'retrospective review interrupted; no paid call replayed'
+        + (review ? `; recorded ${review.path} ${review.verdict}: ${review.reason ?? 'no reason recorded'}` : ''),
+    }, at: ports.now() });
     checkCoherence(turn);
   };
-  // The durable intents are the queue. One serial review pass runs beside the send drain,
-  // within its existing concurrency ceiling; provider admission and spend limits still apply.
-  // A crash retains the intent/reservation, and reviewAfterSend recovers without replaying spend.
-  let replyReviewJob: Promise<void> | null = null;
-  const reviewReplies = (): Promise<void> => {
-    if (replyReviewJob) return replyReviewJob;
-    replyReviewJob = (async () => {
-      for (const turn of journal.view.order) await reviewAfterSend(turn);
-    })().finally(() => { replyReviewJob = null; });
-    return replyReviewJob;
-  };
+  /** One pass over legacy after-send history: no model call, no send, no spend; idempotent after it. */
+  const recoverAfterSendReviews = (): void => { for (const turn of journal.view.order) recoverAfterSendHistory(turn); };
   /** Ordinary answers drain on every cycle. A requested action is proactive: it is created and answered only at
    * the due point `sendRequested()`, or just after admitting an already-late relative request.
    * Both paths settle queued withdrawals first (Rules 57, 93). */
@@ -9727,8 +9691,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         };
         const { rules: linkRules, reason: linkReason } = usableRefs(reply);
 
-        const retrospective = ports.replyReviewTiming === 'after-send' && turn.answer !== undefined && !turn.requestedAction;
-        if (ports.replyCheck && !retrospective) {
+        // Every model-written answer, continuing conversation or not, takes this one pre-send review before its
+        // intent (register §11's pre-send team; Part 18 §16; Rules 4, 14, 86, 95). Its bounds are unchanged: one
+        // response round, the shared 60 s deadline, the call allowance, advisory release for the operator's own
+        // chat and the content-free holding note for any other audience. Nothing selects review after the send.
+        if (ports.replyCheck) {
           const reviewed = turn.replyChecks?.at(-1);
           if (turn.noticeClass !== 'unknown-answer' && turn.reviewReserved && reviewed?.path === 'subscription' && (reviewed.verdict === 'pass' || reviewed.verdict === 'violation')
             && turn.reviewCandidate !== undefined && turn.reviewMentionedDates !== undefined
@@ -10082,7 +10049,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Failure leaves the answer byte-for-byte intact and requeues its grounded correction sources.
         let correctionDeferred = turn.answerCorrection !== undefined;
         const correction = boundedCorrection(turn.answerCorrection);
-        if (correction && !retrospective && !heldBack && speaker === 'agent' && ports.replyCheck && turn.prompt !== undefined) {
+        if (correction && !heldBack && speaker === 'agent' && ports.replyCheck && turn.prompt !== undefined) {
           const candidate = `${reply.trimEnd()}\n\n${correction}`;
           const deadline = (turn.jevReservedAt ?? turn.reviewReservedAt ?? turn.answerAt ?? ports.now()) + REPLY_CHECK_BUDGET_MS;
           const heldValues = (() => { try { return ports.heldSecrets?.() ?? []; } catch { return []; } })();
@@ -11786,15 +11753,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const checkCoherence = (reviewed?: Turn) => {
     for (const turn of journal.view.order) {
       if (turn.intent === undefined || turn.checked !== undefined || turn.answer === undefined) continue;
-      // A pending asynchronous review must not acquire a terminal coherence projection before
-      // its judgment exists. Only that review's completion/recovery projects its own findings.
-      if (ports.replyReviewTiming === 'after-send' && ports.replyCheck && !turn.requestedAction
-        && !turn.jevReserved && !turn.reviewReserved && !turn.afterSendReview && turn !== reviewed) continue;
+      // A legacy after-send marker (see recoverAfterSendHistory) projects only through its own recovery, so a
+      // fast neighbouring check cannot hide a judgment that was still owed when that build stopped.
       if (turn.afterSendReview && turn !== reviewed) continue;
       const earlier = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update < turn.update).map(item => item.text);
       let findings: CoherenceFinding[], failed = false;
       try { findings = checkCoherenceOf({ reply: sentText(turn)!, earlier }); } catch { findings = []; failed = true; }
-      // Surviving pre-send objections reach the mind by the same note (Rules 14, 86).
+      // Legacy history: a judgment recorded after the send reaches the mind by the same note (Rules 14, 86).
       if (turn.afterSendReview) {
         const review = turn.replyChecks?.at(-1);
         if (review && review.verdict !== 'pass') findings = [{ rule: 58,
@@ -12248,7 +12213,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     for (const turn of acknowledgementTimers.keys()) void acknowledgeReply(turn).catch(() => {});
     await answerLimited();
     await pollReviewRequests(); await issueRetractRequest(); };
-  return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
+  return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, recoverAfterSendReviews, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };

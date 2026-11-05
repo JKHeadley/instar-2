@@ -12,11 +12,11 @@ import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
 import { createConversationTopicsPort, type ConversationTopicsState } from '../../src/assembly/conversation-topics.js';
-import { parseReplyReviewVerdict, type ReplyCheckResult } from './reply-check.js';
+import { GROUP_REVIEW_FINAL_NOTICE, JEV_MODEL, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, jevQuestions, parseReplyReviewVerdict, type ReplyCheckResult } from './reply-check.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 import { createJournalWorker, openPreviewJournal, ModelNotStarted, ModelDisclosureRefused,
-  createModelLaunchBoundary, type PreviewPorts } from './journal-test-worker.js';
+  createModelLaunchBoundary, REPLY_ACKNOWLEDGEMENT, type PreviewPorts } from './journal-test-worker.js';
 
 // Execute the shipped host closure, substituting only its physical/model dependencies.
 const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
@@ -518,110 +518,202 @@ it('collects a queued reserved format repair under its child identity and sends 
   } finally { await f.close(); }
 });
 
-it('drains two queued sends and a later send while the first review is slow; records each advisory result once', async () => {
-  let release!: () => void;
-  const delayed = new Promise<void>(resolve => { release = resolve; });
-  const events: string[] = [];
-  let started!: () => void;
-  const reviewStarted = new Promise<void>(resolve => { started = resolve; });
-  const f = fixture(true, true, 200, { replyReviewTiming: 'after-send',
-    replyCheck: { elapsedMs: () => 0,
-      jev: async () => { events.push('jev'); started(); await delayed; return { value: {}, latencyMs: 1 }; },
-      escalate: async () => { events.push('review'); return { verdict: 'violation', confidence: 1, latencyMs: 1, ruleIds: ['self_state_claim'],
-        reason: 'The answer claims work without evidence.' }; } } });
-  try {
-    f.worker.intake([update(1, 'First question'), update(2, 'Second question')]);
-    await f.worker.drain();
-    expect(f.sent).toHaveLength(2);
-    const reviewing = f.worker.reviewReplies();
-    expect(f.worker.reviewReplies()).toBe(reviewing); // Re-entry shares the one bounded pass.
-    await reviewStarted;
-    expect(events).toEqual(['jev']);
-    f.worker.checkCoherence();
-    expect(f.journal.view.order.every(turn => turn.checked === undefined)).toBe(true);
-    f.worker.intake([update(3, 'Third question')]); await f.worker.drain();
-    expect(f.sent).toHaveLength(3); // Neither this drain nor the earlier queued send waited for review.
-    expect(events).toEqual(['jev']);
-    release(); await reviewing;
-    expect(events).toEqual(['jev', 'review', 'jev', 'review', 'jev', 'review']);
-    for (const turn of f.journal.view.order) {
-      expect(turn.replyChecks?.at(-1)?.verdict).toBe('violation');
-      expect(turn.afterSendReview).toBe(true);
-      expect(JSON.stringify(turn.checked)).toContain('self_state_claim');
-      expect(turn.replyChecks?.at(-1)?.candidateDigest).toBe(createHash('sha256').update(turn.intent!).digest('hex'));
-    }
-    await f.worker.drain(); await f.worker.reviewReplies();
-    expect(f.sent).toHaveLength(3); expect(events).toHaveLength(6);
-    f.worker.intake([update(4, 'What did the review find?')]); await f.worker.drain(); await f.worker.reviewReplies();
-    expect(f.delivered[3]).toContain('self_state_claim');
-  } finally { release(); await f.worker.reviewReplies(); await f.close(); }
-});
+// The shipped host's own worker options decide when review runs. Before 2026-11-05 the continuing host selected review
+// after the send (a worker timing option set to after-send); the register's pre-send team and Part 18 §16 never allowed
+// that order (live-presend-review-order-1105). The cases below read the shipped options, so they are red on that
+// selection and green only when the host passes no such timing and the worker reviews every answer before its intent.
+const hostWorkerOptions = host.split('worker = createJournalWorker(journal, {')[1]!.split('\n      toolRoute:')[0]!;
+const hostReviewTiming = (() => {
+  const line = /replyReviewTiming:\s*(.+?),?\s*$/mu.exec(hostWorkerOptions);
+  return line ? Function('conversationSession', `return (${line[1]!});`)(true) as string : undefined;
+})();
+const hostTimingPorts = (hostReviewTiming === undefined ? {} : { replyReviewTiming: hostReviewTiming }) as Partial<PreviewPorts>;
+const jevAnswer = (scores: Record<string, number> = {}) => ({ model: JEV_MODEL,
+  answers: Object.fromEntries(Object.keys(jevQuestions).map(rule => [rule, { type: 'noul', noul: scores[rule] ?? 0.02 }])) });
+const digest = (text: string) => createHash('sha256').update(text).digest('hex');
 
-it.each(['SECRET', 'stop'] as const)('after-send review preserves the %s wall', async kind => {
-  let reviews = 0;
-  const f = fixture(true, true, 200, { replyReviewTiming: 'after-send', replyCheck: {
-    elapsedMs: () => 0, jev: async () => { reviews++; return { value: {}, latencyMs: 0 }; },
-    escalate: async () => ({ verdict: 'pass', confidence: 1, latencyMs: 1, ruleIds: [] }) } });
+it('the shipped continuing host reviews every answer before its send intent: Jev, contextual review, one response round, revision review, then the exact candidate', async () => {
+  expect(hostReviewTiming).toBeUndefined(); // The host no longer selects a review timing: there is one route, before the send.
+  const events: string[] = [];
+  let atSend: { checks: number; reviewed: string | undefined; revisionReview: string | undefined; intent: string | undefined } | undefined;
+  const revised = 'I finished the two steps you asked for; the third is still open.';
+  const f = fixture(true, true, 200, { ...hostTimingPorts,
+    send: async input => {
+      const turn = f.journal.view.order[0]!;
+      atSend = { checks: turn.replyChecks?.length ?? 0, reviewed: turn.reviewCandidate, revisionReview: turn.revisionReview?.verdict, intent: turn.intent };
+      events.push(`send:${input.expectedText}`); f.sent.push(input.expectedText); return f.sent.length; },
+    replyCheck: { elapsedMs: () => 0,
+      jev: async () => { events.push('jev'); return { value: jevAnswer({ quits_on_self: 0.6 }), latencyMs: 1 }; },
+      escalate: async (_text, _id, _prompt, rules, _deadline, operation) => {
+        events.push(operation === 'revision' ? 'revision-review' : 'review');
+        if (operation === 'revision') return { verdict: 'pass', confidence: 1, latencyMs: 1, ruleIds: [] };
+        expect(rules).toContain('quits_on_self'); expect(rules).toContain('self_state_claim');
+        return { verdict: 'violation', confidence: 1, latencyMs: 1, ruleIds: ['self_state_claim'], reason: 'The answer claims finished work its records do not show.' };
+      },
+      revise: async input => { events.push('revise'); return { state: 'complete', text: revised,
+        dispositions: (input.objections ?? []).map(objection => ({ objection, decision: 'accept' as const, reason: 'Restated to match my records.' })) }; } } });
   try {
-    if (kind === 'SECRET') f.answer(JSON.stringify({ reply: 'SECRET', memory: [] }));
-    f.worker.intake([update(1, 'Question')]);
-    if (kind === 'stop') f.stop();
-    try { await f.worker.drain(); await f.worker.reviewReplies(); } catch { /* stop is an explicit refusal */ }
-    expect(f.sent).toHaveLength(0); expect(reviews).toBe(0);
+    f.prepare(input => prepareJournalEnvelope(input as Parameters<typeof prepareJournalEnvelope>[0], 'claude-sonnet-5', 'grant:preview', 9999999999999, 262144));
+    f.worker.intake([update(1, 'What did you finish today?')]); await f.worker.drain();
+    expect(events).toEqual(['jev', 'review', 'revise', 'revision-review', `send:${revised}`]);
+    const turn = f.journal.view.order[0]!;
+    expect(turn.afterSendReview).toBeUndefined();
+    expect(turn.intent).toBe(revised); expect(turn.sent).toBe(1);
+    expect(turn.replyChecks?.map(check => [check.path, check.verdict])).toEqual([['jev', 'unsure'], ['subscription', 'violation']]);
+    expect(turn.reviewCandidate).toBe('A useful answer.');
+    expect(turn.replyChecks?.at(-1)?.candidateDigest).toBe(digest(turn.reviewCandidate!));
+    expect(turn.release).toMatchObject({ review: 'violation', revised: true, objections: ['self_state_claim'],
+      dispositions: [{ objection: 'self_state_claim', decision: 'accept' }] });
+    expect(turn.revisionReview?.verdict).toBe('pass');
+    // At the moment of the physical send the review, the agent's response and the revision review were already durable.
+    expect(atSend).toEqual({ checks: 2, reviewed: 'A useful answer.', revisionReview: 'pass', intent: revised });
   } finally { await f.close(); }
 });
 
-it('reopens the post-send journal without repeating review or delivery', async () => {
+it('a slow review holds only its own candidate: durable intake, the acknowledgement and the minimal responder stay reachable, the shared deadline bounds the hold, and the next turn follows in order', async () => {
+  let release!: () => void;
+  const delayed = new Promise<void>(resolve => { release = resolve; });
+  let started!: () => void;
+  const reviewStarted = new Promise<void>(resolve => { started = resolve; });
   let reviews = 0;
-  const f = fixture(true, true, 200, { replyReviewTiming: 'after-send', replyCheck: {
-    elapsedMs: () => 0, jev: async () => { reviews++; return { value: {}, latencyMs: 0 }; },
+  const f = fixture(true, true, 200, { ...hostTimingPorts, acknowledgementTimer: () => () => {},
+    replyCheck: { elapsedMs: () => 0,
+      jev: async () => { reviews++; if (reviews === 1) { started(); await delayed; } return { value: jevAnswer(), latencyMs: 1 }; },
+      escalate: async () => { throw Error('never reached: Jev passes'); } } });
+  try {
+    f.worker.intake([update(1, 'First question')]);
+    const draining = f.worker.drain();
+    await reviewStarted;
+    expect(f.sent).toEqual([]); expect(f.journal.view.order[0]!.intent).toBeUndefined();
+    // Intake, the acknowledgement and the minimal path never wait on the reviewer (Rules 15, 77, 87).
+    f.worker.intake([update(2, 'Second question')]);
+    expect(f.journal.view.order).toHaveLength(2);
+    f.advance(7000); await f.worker.minimal();
+    expect(f.sent).toEqual([REPLY_ACKNOWLEDGEMENT, REPLY_ACKNOWLEDGEMENT]); expect(f.speakers).toEqual(['infrastructure', 'infrastructure']);
+    expect(f.journal.view.order.every(turn => turn.intent === undefined)).toBe(true);
+    // The hold is bounded by the loop's one shared deadline: a reviewer answering past it is an honest unavailable,
+    // and the operator's own chat is released with that recorded (Rules 14, 77, 95), never held longer.
+    f.advance(REPLY_CHECK_BUDGET_MS + 1);
+    release(); await draining;
+    expect(f.sent).toEqual([REPLY_ACKNOWLEDGEMENT, REPLY_ACKNOWLEDGEMENT, 'A useful answer.', 'A useful answer.']);
+    const [first, second] = f.journal.view.order as [typeof f.journal.view.order[0], typeof f.journal.view.order[0]];
+    expect(first.release).toMatchObject({ review: 'unavailable', reason: REPLY_CHECK_BUDGET_REASON });
+    expect(first.replyChecks?.at(-1)).toMatchObject({ path: 'jev', verdict: 'unavailable' });
+    expect(second.release).toBeUndefined();
+    expect(second.replyChecks?.at(-1)).toMatchObject({ path: 'jev', verdict: 'pass' });
+    expect(first.sent).toBe(3); expect(second.sent).toBe(4); expect(reviews).toBe(2);
+    expect(f.journal.view.order.every(turn => turn.afterSendReview === undefined)).toBe(true);
+  } finally { release(); await f.close(); }
+});
+
+it('a stop that arrives while the review is pending refuses the send; the draft and its review stay recorded', async () => {
+  let release!: () => void;
+  const delayed = new Promise<void>(resolve => { release = resolve; });
+  let started!: () => void;
+  const reviewStarted = new Promise<void>(resolve => { started = resolve; });
+  const f = fixture(true, true, 200, { ...hostTimingPorts, replyCheck: { elapsedMs: () => 0,
+    jev: async () => { started(); await delayed; return { value: jevAnswer(), latencyMs: 1 }; },
+    escalate: async () => { throw Error('never reached: Jev passes'); } } });
+  try {
+    f.worker.intake([update(1, 'First question')]);
+    const draining = f.worker.drain();
+    await reviewStarted; f.stop(); release();
+    await expect(draining).rejects.toThrow();
+    const turn = f.journal.view.order[0]!;
+    expect(f.sent).toEqual([]); expect(turn.intent).toBeUndefined();
+    expect(turn.answer).toBe('A useful answer.');
+    expect(turn.replyChecks?.at(-1)).toMatchObject({ path: 'jev', verdict: 'pass' });
+  } finally { release(); await f.close(); }
+});
+
+it.each(['SECRET', 'html', 'split', 'stop'] as const)('the exact final outbound wall and stop still refuse after the pre-send review: %s', async kind => {
+  let reviews = 0;
+  const f = fixture(true, true, 200, { ...hostTimingPorts, replyCheck: {
+    elapsedMs: () => 0, jev: async () => { reviews++; return { value: jevAnswer(), latencyMs: 0 }; },
+    escalate: async () => { throw Error('never reached: Jev passes'); } },
+    // Every rendered variant (canonical, HTML, plain, each split part) passes the one wall before the intent.
+    checkOutbound: text => { if (text.includes('SECRET') || text.includes('&lt;')) throw Error('credential'); } });
+  try {
+    if (kind === 'SECRET') f.answer(JSON.stringify({ reply: 'The key is SECRET.', memory: [] }));
+    if (kind === 'html') f.answer(JSON.stringify({ reply: 'Compare a < b first.', memory: [] }));
+    if (kind === 'split') f.answer(JSON.stringify({ reply: `${'A plain sentence of ordinary words. '.repeat(200)}The key is SECRET.`, memory: [] }));
+    f.worker.intake([update(1, 'Question')]);
+    if (kind === 'stop') f.stop();
+    try { await f.worker.drain(); } catch { /* stop is an explicit refusal */ }
+    const turn = f.journal.view.order[0]!;
+    expect(f.sent).toHaveLength(0); expect(turn.intent).toBeUndefined();
+    expect(reviews).toBe(kind === 'stop' ? 0 : 1);
+    if (kind !== 'stop') expect(turn.held).toBe('outbound secret refused');
+  } finally { await f.close(); }
+});
+
+it('reopens the journal after a reviewed send without repeating the review or the delivery', async () => {
+  let reviews = 0;
+  const f = fixture(true, true, 200, { ...hostTimingPorts, replyCheck: {
+    elapsedMs: () => 0, jev: async () => { reviews++; return { value: jevAnswer(), latencyMs: 0 }; },
     escalate: async () => ({ verdict: 'pass', confidence: 1, latencyMs: 1, ruleIds: [] }) } });
-  f.worker.intake([update(1, 'Question')]); await f.worker.drain(); await f.worker.reviewReplies(); await f.close();
+  f.worker.intake([update(1, 'Question')]); await f.worker.drain(); await f.close();
+  expect(reviews).toBe(1);
   const journal = openPreviewJournal(join(f.root, 'journal.encrypted'), new Uint8Array(32).fill(61));
   try {
     const worker = createJournalWorker(journal, { now: () => 2000, stopped: () => false,
       model: async () => { throw Error('unexpected model replay'); },
       send: async () => { throw Error('unexpected duplicate send'); }, checkOutbound: () => {},
-      replyReviewTiming: 'after-send', replyCheck: { elapsedMs: () => 0,
+      replyCheck: { elapsedMs: () => 0,
         jev: async () => { throw Error('unexpected review replay'); },
         escalate: async () => { throw Error('unexpected review replay'); } } });
-    await worker.drain(); await worker.reviewReplies();
-    expect(reviews).toBe(1); expect(journal.view.order[0]?.afterSendReview).toBe(true);
+    await worker.drain(); worker.recoverAfterSendReviews();
+    expect(reviews).toBe(1); expect(journal.view.order[0]?.afterSendReview).toBeUndefined();
+    expect(journal.view.order[0]?.replyChecks).toHaveLength(1);
     expect(journal.view.order[0]?.sent).toBe(1);
   } finally { journal.close(); }
 });
 
-it('sends under the exact answer/session cap and records unavailable review without exceeding it', async () => {
+it.each([false, true])('at the exact answer/session cap the refused review is recorded as unavailable before the send, without exceeding it (shared audience=%s)', async shared => {
   let escalations = 0;
-  const f = fixture(true, true, 11, { replyReviewTiming: 'after-send', replyCheck: { elapsedMs: () => 0,
-    jev: async () => ({ value: {}, latencyMs: 0 }),
-    escalate: async () => { escalations++; return { verdict: 'pass', confidence: 1, latencyMs: 1, ruleIds: [] }; } } });
+  const f = fixture(true, true, 11, { ...hostTimingPorts, replyCheck: { elapsedMs: () => 0,
+    jev: async () => ({ value: jevAnswer({ parks_on_user: 0.6 }), latencyMs: 0 }),
+    escalate: async () => { escalations++; return { verdict: 'pass', confidence: 1, latencyMs: 1, ruleIds: [] }; } },
+    ...(shared ? { prepareModel: () => JSON.stringify({ messages: [{ role: 'context',
+      content: JSON.stringify({ packet: { audience: { surface: 'telegram-group-topic', operatorOnlyVerified: false } } }) }] }) } : {}) });
   try {
-    f.worker.intake([update(1, 'Question')]); await f.worker.drain(); await f.worker.reviewReplies();
-    expect(f.sent).toEqual(['A useful answer.']);
+    f.worker.intake([update(1, 'Question')]); await f.worker.drain();
     expect(f.journal.view.calls).toBeLessThanOrEqual(11); expect(escalations).toBe(0);
-    expect(f.journal.view.order[0]?.replyChecks?.at(-1)?.verdict).toBe('unavailable');
+    const turn = f.journal.view.order[0]!;
+    expect(turn.replyChecks?.at(-1)?.verdict).toBe('unavailable');
+    expect(turn.afterSendReview).toBeUndefined(); expect(turn.answer).toBe('A useful answer.');
+    if (shared) {
+      // No completed review for a shared audience: the existing content-free holding note, the draft kept.
+      expect(f.sent).toEqual([GROUP_REVIEW_FINAL_NOTICE]); expect(turn.release).toBeUndefined();
+      expect(turn.heldReview).toMatchObject({ objections: ['parks_on_user'], reason: 'review not run: call cap reached' });
+    } else {
+      expect(f.sent).toEqual(['A useful answer.']);
+      expect(turn.release).toMatchObject({ review: 'unavailable', objections: ['parks_on_user'], reason: 'review not run: call cap reached' });
+    }
   } finally { await f.close(); }
 });
 
-it('recovers queued reviews from durable sends after compaction and restart, without repeating delivery', async () => {
+it('reviews before each send; compaction and restart repeat neither the review nor the delivery', async () => {
   let reviews = 0;
-  const f = fixture(true, true, 200, { replyReviewTiming: 'after-send', replyCheck: {
-    elapsedMs: () => 0, jev: async () => { reviews++; return { value: {}, latencyMs: 0 }; },
-    escalate: async () => ({ verdict: 'pass', confidence: 1, latencyMs: 1, ruleIds: [] }) } });
+  const f = fixture(true, true, 200, { ...hostTimingPorts, replyCheck: {
+    elapsedMs: () => 0, jev: async () => { reviews++; return { value: jevAnswer(), latencyMs: 0 }; },
+    escalate: async () => { throw Error('never reached: Jev passes'); } } });
   try {
     f.worker.intake([update(1, 'First question'), update(2, 'Second question')]); await f.worker.drain();
-    expect(f.sent).toHaveLength(2); expect(reviews).toBe(0);
+    expect(f.sent).toHaveLength(2); expect(reviews).toBe(2);
     f.worker.checkCoherence(); f.journal.compact(); await f.restart();
-    await f.worker.reviewReplies(); await f.worker.drain(); await f.worker.reviewReplies();
+    f.worker.recoverAfterSendReviews(); await f.worker.drain(); f.worker.recoverAfterSendReviews();
     expect(reviews).toBe(2); expect(f.sent).toHaveLength(2);
-    expect(f.journal.view.order.every(turn => turn.afterSendReview && turn.checked !== undefined)).toBe(true);
+    expect(f.journal.view.order.every(turn => turn.afterSendReview === undefined && turn.checked !== undefined
+      && turn.replyChecks?.length === 1)).toBe(true);
   } finally { await f.close(); }
 });
 
-it('recovers an interrupted paid review as an unavailable signal without dispatching it again', async () => {
+// Legacy history: journals written by builds before 2026-11-05 carry `reply-review-after-send` markers. Their
+// interrupted reviews are projected once on recovery, with no paid call replayed and no send repeated.
+it('recovers a legacy interrupted after-send paid review as an unavailable signal without dispatching it again', async () => {
   const f = fixture();
-  f.worker.intake([update(1, 'Question')]); await f.worker.drain(); await f.worker.reviewReplies();
+  f.worker.intake([update(1, 'Question')]); await f.worker.drain();
   const id = f.journal.view.order[0]!.id;
   f.journal.append({ kind: 'reply-review-after-send', id, at: 1500 });
   f.journal.append({ kind: 'reply-jev-reserve', id, at: 1500 });
@@ -631,10 +723,10 @@ it('recovers an interrupted paid review as an unavailable signal without dispatc
     const worker = createJournalWorker(journal, { now: () => 2000, stopped: () => false,
       model: async () => { throw Error('unexpected answer'); },
       send: async () => { throw Error('duplicate send'); }, checkOutbound: () => {},
-      replyReviewTiming: 'after-send', replyCheck: { elapsedMs: () => 0,
+      replyCheck: { elapsedMs: () => 0,
         jev: async () => { throw Error('paid call repeated'); },
         escalate: async () => { throw Error('paid call repeated'); } } });
-    await worker.drain(); await worker.reviewReplies(); await worker.drain(); await worker.reviewReplies();
+    await worker.drain(); worker.recoverAfterSendReviews(); await worker.drain(); worker.recoverAfterSendReviews();
     expect(journal.view.order[0]?.replyChecks).toHaveLength(1);
     expect(journal.view.order[0]?.replyChecks?.[0]).toMatchObject({ verdict: 'unavailable', path: 'holding' });
     expect(journal.view.order[0]?.checked).toBeDefined();
@@ -645,7 +737,7 @@ it('recovers an interrupted paid review as an unavailable signal without dispatc
 async function recoverReview(results: ReplyCheckResult[], subscriptionReserved = false, shared = false) {
   const f = fixture(true, true, 200, shared ? { prepareModel: () => JSON.stringify({ messages: [{ role: 'context',
     content: JSON.stringify({ packet: { audience: { surface: 'telegram-group-topic', operatorOnlyVerified: false } } }) }] }) } : {});
-  f.worker.intake([update(1, 'Question')]); await f.worker.drain(); await f.worker.reviewReplies();
+  f.worker.intake([update(1, 'Question')]); await f.worker.drain();
   const id = f.journal.view.order[0]!.id;
   f.journal.append({ kind: 'reply-review-after-send', id, at: 1500 });
   f.journal.append({ kind: 'reply-jev-reserve', id, at: 1500 });
@@ -663,10 +755,10 @@ async function recoverReview(results: ReplyCheckResult[], subscriptionReserved =
     const worker = createJournalWorker(journal, { now: () => 2000, stopped: () => false,
       model: async () => { throw Error('unexpected model replay'); },
       send: async () => { throw Error('unexpected duplicate send'); }, checkOutbound: () => {},
-      replyReviewTiming: 'after-send', replyCheck: { elapsedMs: () => 0,
+      replyCheck: { elapsedMs: () => 0,
         jev: async () => { throw Error('unexpected review replay'); },
         escalate: async () => { throw Error('unexpected review replay'); } } });
-    await worker.drain(); await worker.reviewReplies(); await worker.drain(); await worker.reviewReplies();
+    await worker.drain(); worker.recoverAfterSendReviews(); await worker.drain(); worker.recoverAfterSendReviews();
     expect(journal.view.calls).toBe(calls);
     expect(journal.view.order[0]!.sent).toBe(1);
     expect(journal.view.order[0]!.checked).toBeDefined();
@@ -676,7 +768,7 @@ async function recoverReview(results: ReplyCheckResult[], subscriptionReserved =
   } finally { journal.close(); }
 }
 
-it.each(['pass', 'violation', 'unavailable'] as const)('recovers a durable terminal %s without replacing it or spending again', async verdict => {
+it.each(['pass', 'violation', 'unavailable'] as const)('legacy history: recovers a durable terminal %s without replacing it or spending again', async verdict => {
   const result: ReplyCheckResult = { verdict, ruleIds: verdict === 'violation' ? ['self_state_claim'] : [],
     path: 'subscription', confidence: 1, latencyMs: 1, reason: 'The answer claims completed work without evidence.' };
   const recovered = await recoverReview([result]);
@@ -689,7 +781,7 @@ it.each(['pass', 'violation', 'unavailable'] as const)('recovers a durable termi
   if (verdict === 'violation') expect(recovered.packet).toContain('self_state_claim');
 });
 
-it('a Jev pass is terminal unless a contextual review was reserved and lost', async () => {
+it('legacy history: a Jev pass is terminal unless a contextual review was reserved and lost', async () => {
   const result: ReplyCheckResult = { verdict: 'pass', ruleIds: [], path: 'jev', confidence: 1, latencyMs: 1 };
   expect((await recoverReview([result])).checks).toEqual([result]);
   const interrupted = await recoverReview([result], true);
@@ -700,7 +792,7 @@ it('a Jev pass is terminal unless a contextual review was reserved and lost', as
   expect(audienceReviewMissing.packet).toContain('retrospective review interrupted');
 });
 
-it('retains a terminal holding result instead of adding another interruption', async () => {
+it('legacy history: retains a terminal holding result instead of adding another interruption', async () => {
   const result: ReplyCheckResult = { verdict: 'unavailable', ruleIds: ['defers_work'], path: 'holding',
     confidence: null, latencyMs: 0, reason: 'review cap refused' };
   expect((await recoverReview([result])).checks).toEqual([result]);
@@ -708,7 +800,7 @@ it('retains a terminal holding result instead of adding another interruption', a
 
 const reviewArchive = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json',
   import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
-it.each(reviewArchive.otherShapes)('recovery preserves recorded $kind ($id) at the review boundary', async row => {
+it.each(reviewArchive.otherShapes)('legacy history: recovery preserves recorded $kind ($id) at the review boundary', async row => {
   if (row.kind === 'jev-unsure') {
     const result = JSON.parse(row.raw) as ReplyCheckResult;
     const recovered = await recoverReview([result], true);
@@ -737,44 +829,46 @@ it.each(reviewArchive.otherShapes)('recovery preserves recorded $kind ($id) at t
   if (row.kind === 'reply-review') expect(recovered.packet).toContain('breaks_preference');
 });
 
-it.each(reviewArchive.otherShapes)('runs the asynchronous consumer on recorded $kind ($id) without holding sends', async row => {
-  let release!: () => void;
-  const delayed = new Promise<void>(resolve => { release = resolve; });
-  let calls = 0;
-  const f = fixture(true, true, 200, { replyReviewTiming: 'after-send', replyCheck: {
-    elapsedMs: () => 0, jev: async () => { await delayed; return { value: JSON.parse(row.raw), latencyMs: 1 }; },
-    escalate: async () => {
-      calls++;
-      const read = readAnswer(row.raw, { wrapped: 'refuse', object: true });
-      return { ...parseReplyReviewVerdict(read.ok ? read.value : row.raw,
-        ['defers_work', 'self_state_claim', 'breaks_preference']), confidence: 1, latencyMs: 1 };
-    } } });
+it.each(reviewArchive.otherShapes)('reviews recorded $kind ($id) before the send through the real parser; the shipped host callback starts no review', async row => {
+  // Recorded bytes are untrusted data: they reach only the Jev interpreter and the verdict parser, never an instruction.
+  let calls = 0, jevs = 0;
+  let atSend: number | undefined;
+  const f = fixture(true, true, 200, { ...hostTimingPorts,
+    send: async input => { atSend = f.journal.view.order[0]!.replyChecks?.length; f.sent.push(input.expectedText); return f.sent.length; },
+    replyCheck: { elapsedMs: () => 0,
+      jev: async () => { jevs++; return { value: JSON.parse(row.raw), latencyMs: 1 }; },
+      escalate: async () => {
+        calls++;
+        const read = readAnswer(row.raw, { wrapped: 'refuse', object: true });
+        return { ...parseReplyReviewVerdict(read.ok ? read.value : row.raw,
+          ['defers_work', 'self_state_claim', 'breaks_preference']), confidence: 1, latencyMs: 1 };
+      } } });
   try {
     f.worker.intake([update(1, 'First question')]); await f.worker.drain();
-    // Execute the shipped host's callback; it must launch review without returning its promise
-    // to the ordinary lane, and re-entry must leave the one pass in charge.
+    const turn = f.journal.view.order[0]!;
+    const verdict = row.kind === 'reply-review' ? 'violation' : 'unavailable';
+    expect(f.sent).toHaveLength(1); expect(turn.sent).toBe(1);
+    // A verdict the parser refuses gets the existing one format re-ask (plan #491), never a third call.
+    expect(calls).toBe(row.kind === 'reply-review' ? 1 : 2); expect(atSend).toBe(turn.replyChecks?.length);
+    expect(turn.afterSendReview).toBeUndefined();
+    expect(turn.replyChecks?.at(-1)?.verdict).toBe(verdict);
+    expect(turn.release?.review).toBe(verdict);
+    if (row.kind === 'reply-review') expect(turn.release?.objections).toContain('breaks_preference');
+    // The shipped host's after-send callback projects coherence and recovers legacy history only: no review starts here.
     const body = host.split('    const summarizeLater = () => {')[1]!.split('\n    // A reached cap')[0]!;
-    const callback = Function('worker', `let replyReviewJob = null, summaryJob = null;
+    const callback = Function('worker', `let summaryJob = null;
       const checkStepsLater = () => {}, retrospectLater = () => {};
       const summarizeLater = () => {${body}
-      return { run: summarizeLater, settle: () => replyReviewJob };` )({ ...f.worker, summarizeIfNeeded: async () => {} }) as
-      { run(): void; settle(): Promise<void> };
-    expect(callback.run()).toBeUndefined(); callback.run();
-    f.worker.intake([update(2, 'Second question')]); await f.worker.drain();
-    expect(f.sent).toHaveLength(2);
-    expect(f.journal.view.order.every(turn => turn.checked === undefined)).toBe(true);
-    release(); await callback.settle();
-    expect(calls).toBe(2);
-    for (const turn of f.journal.view.order) {
-      expect(turn.afterSendReview).toBe(true);
-      expect(turn.replyChecks?.at(-1)?.verdict).toBe(row.kind === 'reply-review' ? 'violation' : 'unavailable');
-      expect(turn.checked).toBeDefined();
-    }
-    if (row.kind === 'reply-review') expect(JSON.stringify(f.journal.view.order[0]!.checked)).toContain('breaks_preference');
-  } finally { release(); await f.worker.reviewReplies(); await f.close(); }
+      return summarizeLater;`)({ ...f.worker, summarizeIfNeeded: async () => {} }) as () => void;
+    const before = { calls, jevs };
+    expect(callback()).toBeUndefined(); callback();
+    expect({ calls, jevs }).toEqual(before);
+    expect(turn.checked).toBeDefined();
+    if (row.kind === 'reply-review') expect(JSON.stringify(turn.checked)).toContain('breaks_preference');
+  } finally { await f.close(); }
 });
 
-it('keeps a known Jev objection when a later paid review was interrupted', async () => {
+it('legacy history: keeps a known Jev objection when a later paid review was interrupted', async () => {
   const result: ReplyCheckResult = { verdict: 'violation', ruleIds: ['defers_work'], path: 'jev', confidence: 0.99,
     latencyMs: 1, reason: 'The answer promises later work.' };
   const recovered = await recoverReview([result], true);
@@ -802,14 +896,14 @@ it('the journal sends each answer once across a real pool boundary and host/jour
     physical: () => ({ load: () => ({ resumes: {} }) }), project: '/fixture', framework: 'claude-code', admit: async () => {} });
   f.boundary(handoff.prepareTurn);
   try {
-    f.worker.intake([update(1, 'First question')]); await f.worker.drain(); await f.worker.reviewReplies();
+    f.worker.intake([update(1, 'First question')]); await f.worker.drain();
     pressure = true;
-    f.worker.intake([update(2, 'Second question')]); await f.worker.drain(); await f.worker.reviewReplies();
+    f.worker.intake([update(2, 'Second question')]); await f.worker.drain();
     expect(handoff.current().index).toBe(1); expect(pool.state.handoffs).toHaveLength(1);
     expect(poolState).toBeDefined(); expect(f.sent).toHaveLength(2); expect(f.delivered).toHaveLength(2);
     expect(f.counts().launches).toBe(2);
-    await f.restart(); await f.worker.drain(); await f.worker.reviewReplies();
-    f.worker.intake([update(1, 'First question'), update(2, 'Second question')]); await f.worker.drain(); await f.worker.reviewReplies();
+    await f.restart(); await f.worker.drain();
+    f.worker.intake([update(1, 'First question'), update(2, 'Second question')]); await f.worker.drain();
     expect(f.sent).toHaveLength(2); expect(f.delivered).toHaveLength(2);
     expect(pool.state.handoffs).toHaveLength(1); expect(await f.replay()).toBe(1); expect(f.sent).toHaveLength(2);
   } finally { await f.close(); }
