@@ -1,8 +1,8 @@
 # Change review — No Feature May Require a Purchased Service
 
 Subject base: c20b68d1d9b5744a72c243c4dc8a4b69114179d6
-Review state: open
-Reviewed content: none
+Review state: frozen
+Reviewed content: sha256:49ffe7e1e36b0edfbc9c7f86b9d891a1a80f2fc3f12fbc91dbbb731a4c11bae9
 Outcome: Record the operator's approved wording as Rule 122, No Feature May Require a Purchased Service: every feature works fully without the user buying anything from a third party, an outside paid service is at most an optional add-on, a design that blocks or degrades core function without it goes back, and the subscriptions a user already chose to run their agent are outside the rule. A new rule in Needs building, because no check exists yet.
 Affected rules: 118 (scope boundary: 118 answers whether a second AI provider is needed; 122 answers whether any outside purchase is needed; neither replaces the other), 120 (who sets up a free outside account stays there), 121 (its source requirement applies to this change's quotes) and new 122. 119 applies to this change: it names its 1.x counterpart. Purpose unchanged. History preserves prior revisions; Rule 122 stays a coverage gap until its check is built.
 Affected floors: secrets — no custody or revelation changes; spend cap — no provider calls or budget changes; stop — no cancellation changes; no duplicate sends — no dispatch changes; durable intake — no journal or admission changes. The rule gives no permission to remove a floor to avoid a purchase.
