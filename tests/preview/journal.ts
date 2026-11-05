@@ -1640,7 +1640,9 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
   replyCheckPaths: { jev: number; subscription: number; holding: number; 'operator-echo': number }; lastReplyCheck: ReplyCheckResult | null;
   /** Rule 42: definite refusals and unknown dispatches, one per outbound target. */
-  recoveryPressure?: { failures: number[]; suspended: boolean; configuration: string | null; observed: string[]; suspendedAt?: number; resumedBy?: string };
+  recoveryPressure?: { failures: number[]; suspended: boolean; configuration: string | null;
+    observed: { target: string; at: number; accepted: boolean; configuration: string | null }[];
+    resumedAfter?: number; suspendedAt?: number; resumedBy?: string };
   sendEvidence?: Record<string, { subject: OutboundSubject; provenance: OutboundProvenance; configuration?: string | null; message?: number }>;
   sendOutcomes: { target: string; outcome: 'refused' | 'unknown'; reason: string; at: number; recovery?: RecoverySend; cancelled?: true }[];
   /** Rule 89: signed outbound intents by speaker. */
@@ -3338,14 +3340,26 @@ export interface RecoverySend {
  * 1.x DeliveryFailureSentinel: five consecutive failed escalations in the inclusive hour;
  * a successful escalation clears failure history, never an ordinary successful reply. */
 function recordEscalationPressure(view: JournalView, target: string, at: number, accepted: boolean): void {
-  if (!target.startsWith('delivery-notice:') || !view.sendEvidence?.[target]
-    || view.recoveryPressure?.observed.includes(target)) return;
-  const prior = view.recoveryPressure;
-  const failures = accepted ? [] : [...(prior?.failures ?? []).filter(time => time >= at - 3_600_000), at];
-  view.recoveryPressure = { failures, suspended: prior?.suspended === true || failures.length >= 5,
-    configuration: prior?.suspended ? prior.configuration : view.sendEvidence[target]!.configuration ?? null,
-    observed: [...prior?.observed ?? [], target], ...(prior?.resumedBy ? { resumedBy: prior.resumedBy } : {}),
-    ...(failures.length >= 5 ? { suspendedAt: prior?.suspendedAt ?? at } : {}) };
+  const evidence = view.sendEvidence?.[target];
+  if (!target.startsWith('delivery-notice:') || !evidence) return;
+  const prior = view.recoveryPressure, observed = [...prior?.observed ?? []];
+  const index = observed.findIndex(item => item.target === target);
+  if (index !== -1) {
+    if (!accepted || observed[index]!.accepted) return;
+    // Correct the provisional outcome in its original journal order, not at receipt time.
+    observed[index] = { ...observed[index]!, accepted: true };
+  } else observed.push({ target, at, accepted, configuration: evidence.configuration ?? null });
+  let failures: number[] = [], suspended = false, suspendedAt: number | undefined;
+  let configuration = prior?.configuration ?? null;
+  for (const item of observed.slice(prior?.resumedAfter ?? 0)) {
+    failures = item.accepted ? [] : [...failures.filter(time => time >= item.at - 3_600_000), item.at];
+    if (!suspended) configuration = item.configuration;
+    if (failures.length >= 5 && !suspended) { suspended = true; suspendedAt = item.at; }
+  }
+  view.recoveryPressure = { failures, suspended, configuration, observed,
+    ...(prior?.resumedAfter === undefined ? {} : { resumedAfter: prior.resumedAfter }),
+    ...(prior?.resumedBy ? { resumedBy: prior.resumedBy } : {}),
+    ...(suspendedAt === undefined ? {} : { suspendedAt }) };
 }
 /** Only previously signed, started sends may consult an independently persisted receipt. */
 function reconcilableSends(view: JournalView): { target: string; subject: string }[] {
@@ -4091,7 +4105,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
         : prior.configuration === null || row.configuration === prior.configuration))
       throw Error('preview journal: recovery resume authority or current configuration refused');
     view.recoveryPressure = { failures: [], suspended: false, configuration: row.configuration,
-      observed: prior.observed, ...(row.operator ? { resumedBy: row.operator } : {}) }; return;
+      observed: prior.observed, resumedAfter: prior.observed.length, ...(row.operator ? { resumedBy: row.operator } : {}) }; return;
   }
   if (row.kind === 'send-prepared') {
     const target = sendTarget(view, row.target);
@@ -4112,7 +4126,8 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       throw Error('preview journal: reconciliation receipt order');
     const index = view.sendOutcomes.findIndex(item => item.target === row.target);
     if (index !== -1) view.sendOutcomes.splice(index, 1);
-    project(view, recoveryReceipt(row.target, row.message, row.at), system, admission); return;
+    project(view, recoveryReceipt(row.target, row.message, row.at), system, admission);
+    recordEscalationPressure(view, row.target, row.at, true); return;
   }
   if (row.kind === 'send-recovery') {
     const prior = view.sendOutcomes.find(item => item.target === row.target), r = prior?.recovery;

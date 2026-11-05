@@ -15,7 +15,8 @@ import { createSessionProtocolIO } from '../../scripts/session-protocol-io.mjs';
 import threadConfig from './fixtures/codex-thread-config-0.156.1.json' with { type: 'json' };
 import captured from './fixtures/codex-app-server-0.156.1.json' with { type: 'json' };
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
-function fixture(run: { events: readonly { method: string; params: unknown }[] } = captured.runs[0]!) {
+function fixture(run: { events: readonly { method: string; params: unknown }[] } = captured.runs[0]!,
+  configuration: Partial<ProductionSessionConfig> = {}) {
   const terminals = run.events.filter(event => event.method === 'turn/completed').map(event => event.params as { threadId: string; turn: { id: string } });
   let frames: unknown[] = [], live = true, stopped = false, turn = 0, file: string | null = null, cache = true, hold = false;
   let journal: SessionJournal = { sessions: [], deliveries: [], resumes: {} };
@@ -41,6 +42,7 @@ function fixture(run: { events: readonly { method: string; params: unknown }[] }
     continuation: () => ({ text: 'complete prior history', source: 'journal:previous' }),
     io: { exclusive: run => run(), tmux: () => ({ code: 0, stdout: '' }), sleep: () => {}, load: () => journal,
       save: value => { journal = value; }, readInbox: () => [], transcriptExists: () => cache, armDeadline: () => {} },
+    ...configuration,
   };
   const io = { clearResult: () => { file = null; }, readResult: () => file };
   const make = (selectedTransport = transport, resolveDelivery = (operation: string) => deliveries.get(operation)) => createCodexConversationWorker({ configuration: () => config, transport: selectedTransport, io, resumeKey: 'topic:one', resolveDelivery });
@@ -216,6 +218,7 @@ it('preserves recorded proof-room writer, Jev, review and delivered-reply bytes 
     const f = fixture(run), adapter = f.make(), worker = await adapter.launch(f.spec), delivery = f.delivery(worker, example.id);
     await adapter.deliver(delivery);
     const batch = await adapter.observe({ ...worker, delivery, cursor: 0, limit: 16 });
+    expect(batch.acknowledgedAt, example.id).toBe(1);
     if (text.trim()) expect(batch.observations[0], example.id).toMatchObject({ kind: 'reply', text, delivery: example.id });
     else expect(batch.observations, example.id).toEqual([{ kind: 'turn-end', delivery: example.id, state: 'no-reply' }]);
   }
@@ -266,4 +269,72 @@ it('recorded protocol completion permits idle cleanup, while open turns and chan
   const busyAdapter = busy.make(), busyWorker = await busyAdapter.launch(busy.spec);
   await busyAdapter.deliver(busy.delivery(busyWorker));
   expect(await busyAdapter.observeIdle!(busyWorker)).toBeNull();
+});
+
+it.each(['untyped', 'typed', 'missing-response', 'wrong-response'])('Codex ACK custody with delayed completion, %s', async mode => {
+  const typed = mode !== 'untyped';
+  const uncertain = mode === 'missing-response' || mode === 'wrong-response';
+  const createHost = createConversationSessionPort;
+  let clock = 1000, state: ConversationState | null = null, completed = false;
+  const f = fixture(captured.runs[0]!, { now: () => clock, turnDeadlineMs: 1_000_000 }); f.hold = true;
+  const transport: SessionProtocolIO = { close: f.transport.close, async open(spec) {
+    const connection = await f.transport.open(spec);
+    return { ...connection, async request(method, params) {
+      const response = await connection.request(method, params);
+      if (method === 'turn/start' && mode === 'missing-response') throw Error('injected RPC response loss');
+      if (method === 'turn/start' && mode === 'wrong-response') return { turn: { id: null } };
+      return response;
+    }, drain() {
+      const events = [...connection.drain()];
+      if (clock >= 651000 && !completed) {
+        completed = true;
+        events.push(captured.runs[0]!.events.find(event => event.method === 'turn/completed')!);
+      }
+      return events;
+    } };
+  } };
+  const host = value(createHost({
+    conversation: 'ack-parity', allowanceDeadline: 2_000_000, authorized: () => true, currentAuthority: () => 'grant',
+    store: { load: () => state, save: next => { state = next; } },
+    createAdapter: resolve => f.make(transport, resolve),
+    io: { ...f.io, modelCalls: () => 1, wait: async ms => { clock += ms; }, prepareAdmission: () => {}, closeAdmission: () => {},
+      admissionState: () => ({ refused: false, openDelegations: [], uncertainEffects: 0 }) },
+    resources: { admit: async () => ({ attach: async () => {}, release: async () => true }) },
+    context: assemblyRuntimeFixture().c, now: () => clock, stopped: () => false, append: () => {},
+    parent: 'parent', owner: 'machine', placement: 'local', transport: 'protocol', workingScope: '/scope',
+    resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'inc',
+    deadlineMs: 1_000_000, pollMs: 5000, maxCalls: 6, maxSteps: 3, maxResultBytes: 65536,
+  }));
+  const result = await host.run({ operation: 'one', question: 'continue', context: '', authority: 'grant',
+    ...(typed ? { inbox: { type: 'request' as const, priority: 'normal' as const, createdAt: 1000, ttlMs: 1_500_000 } } : {}) });
+  expect(f.calls.filter(call => call.method === 'turn/start')).toHaveLength(1);
+  try {
+    if (uncertain) {
+      expect(result).toMatchObject({ state: 'uncertain' });
+      expect((state as ConversationState | null)!.inputs[0]!.inbox?.acknowledgedAt).toBeUndefined();
+      expect(await host.run({ operation: 'one', question: 'continue', context: '', authority: 'grant',
+        inbox: { type: 'request', priority: 'normal', createdAt: 1000, ttlMs: 1_500_000 } })).toEqual(result);
+      expect(f.calls.filter(call => call.method === 'turn/start')).toHaveLength(1);
+      return;
+    }
+    expect(result, JSON.stringify({ clock, result })).toMatchObject({ state: 'complete', text: 'LOCAL_PROTOCOL_OK' });
+    expect(clock).toBe(651000);
+    expect((state as ConversationState | null)!.inputs[0]!.inbox?.acknowledgedAt).toBe(1000);
+  }
+  finally { await host.close(); }
+});
+
+it('ACK observation binds the submitted operation, digest and worker even while the turn is open', async () => {
+  let clock = 1000;
+  const f = fixture(captured.runs[0]!, { now: () => clock }); f.hold = true;
+  const adapter = f.make(), worker = await adapter.launch(f.spec), delivery = f.delivery(worker);
+  expect(await adapter.observe({ ...worker, delivery: null, cursor: 0, limit: 16 })).not.toHaveProperty('acknowledgedAt');
+  await adapter.deliver(delivery); clock = 651000;
+  const query = { ...worker, delivery, cursor: 0, limit: 16 };
+  expect(await adapter.observe(query)).toMatchObject({ acknowledgedAt: 1000, observations: [] });
+  for (const altered of [{ ...delivery, operation: 'another' }, { ...delivery, digest: hash('wrong') },
+    { ...delivery, incarnation: 'stale' }])
+    await expect(adapter.observe({ ...query, delivery: altered })).rejects.toThrow(/another input|stale/);
+  expect(await adapter.observe({ ...worker, delivery: null, cursor: 0, limit: 16 })).not.toHaveProperty('acknowledgedAt');
+  await adapter.control({ ...worker, action: 'close', authority: 'grant', reason: 'test complete' });
 });
