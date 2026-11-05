@@ -1004,7 +1004,9 @@ it.each(shapes.otherShapes)('carryover 08 collects completed single input after 
     if (row.kind === 'delivered-reply' || row.kind === 'empty-reply-in-recorded-context')
       f.answer(JSON.stringify({ reply: row.raw, memory: [] }));
     f.busy(true); f.worker.intake([update(1, 'Continue the conversation')]); await f.worker.drain();
-    f.busy(false); f.advance(200); await f.port.maintain();
+    f.busy(false); f.advance(29999); await f.port.maintain();
+    expect(f.state().inputs[0]!.state).toBe('queued'); expect(f.delivered).toHaveLength(0);
+    f.advance(1); await f.port.maintain();
     expect(f.state().inputs[0]!.outcome?.state).toBe('complete');
     const packet = f.state().inputs[0]!.request.context;
     expect(packet).toContain(JSON.stringify(row.raw));

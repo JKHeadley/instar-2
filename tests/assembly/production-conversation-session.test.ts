@@ -1386,3 +1386,28 @@ it.each(['timely', 'late', 'wrong-clock', 'gap'] as const)('typed input consumes
   expect(f.state().inputs[0]?.inbox?.acknowledgedAt).toBe(mode === 'timely' ? 11000 : undefined);
   expect(f.delivered).toHaveLength(1); await f.port.close();
 });
+
+it.each([3, 9, 10])('combined typed never-dispatched restart preserves the row07 retry policy after %i attempts', async attempts => {
+  const f = fixture();
+  const request = { ...f.request('typed-restart'), inbox: {
+    type: 'request' as const, priority: 'normal' as const, createdAt: 1000, ttlMs: 1_000_000 } };
+  await f.port.run(request); f.finish(false);
+  f.restore({ ...f.state(), inputs: f.state().inputs.map(row => ({ ...row,
+    state: 'dispatching', attempts, reply: null, cursor: 0, outcome: null })) });
+  let proofs = 0;
+  f.adapter.notDispatched = async input => {
+    expect(f.closed).toContain(input.claim); proofs++; return true;
+  };
+  const next = f.restart(), result = await next.collect(request.operation);
+  if (attempts === 10) {
+    expect(result?.outcome.state).toBe('uncertain'); expect(proofs).toBe(0);
+    expect(f.delivered).toHaveLength(1);
+  } else {
+    expect(result?.outcome.state).toBe('queued'); expect(proofs).toBe(1);
+    f.finish(true); f.advance(29999); await next.maintain(); expect(f.delivered).toHaveLength(1);
+    f.advance(1); await next.maintain(); expect(f.delivered).toHaveLength(2);
+    expect(f.delivered[1]!.text).toBe(f.delivered[0]!.text);
+    expect((await next.collect(request.operation))?.outcome.state).toBe('complete');
+  }
+  await next.close();
+});

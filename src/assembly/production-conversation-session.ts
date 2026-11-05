@@ -336,11 +336,12 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         // PendingInjectStore's boot retry, after confirmed retirement and only
         // with positive adapter evidence that no input crossed dispatch.
         let unsent = false;
-        if (input.state === 'dispatching' && input.delivery && input.attempts < 3 && adapter.notDispatched) {
+        if (input.state === 'dispatching' && input.delivery
+          && input.attempts < (input.request.inbox ? INBOX_MAX_ATTEMPTS : 3) && adapter.notDispatched) {
           try { unsent = await adapter.notDispatched(input.delivery); } catch { /* Unknown remains uncertain. */ }
         }
         if (unsent) update(input.request.operation, { state: 'queued', delivery: null, retryDelivery: input.delivery!, cursor: 0, reply: null,
-          retryAt: config.now() + config.pollMs * 2 ** input.attempts });
+          retryAt: config.now() + (input.request.inbox ? INBOX_RETRY_MS : config.pollMs * 2 ** input.attempts) });
         else settle(input.request.operation, outcome('host restarted with an unresolved turn; no automatic replay'));
       }
       recovered = true;
