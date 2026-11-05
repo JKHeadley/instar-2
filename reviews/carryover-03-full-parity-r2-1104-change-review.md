@@ -23,6 +23,43 @@ Prompt review: The carried continuation prompt, Tier-1 sanity prompt and recover
 Prompt finding: 0725f0150c56 | quoted-evidence | Existing unchanged role briefing and its prologue fixture; this change alters recovery dispatch, not model authority or prompt text. The phrase is not used as a semantic recovery trigger.
 Prompt finding: 27d7720e7977 | protocol-literal | Existing unchanged prologue boundary used to extract the briefing in its test. No new keyword decision or prompt wording is introduced.
 
+Deferral: src/assembly/revival-queue.ts:611 | not-a-deferral=1.x comment naming the coordination guard that keeps deferring to the paused queue; no work is postponed
+Deferral: src/assembly/stall-detector.ts:15 | not-a-deferral=carried 1.x header naming its part identifier; no work is postponed
+Deferral: src/assembly/worker-recovery.ts:102 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:108 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:545 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:549 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:555 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:561 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:562 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:588 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:590 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:591 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:674 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:676 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:677 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:730 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:732 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:733 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:840 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:842 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:843 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:908 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:910 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: src/assembly/worker-recovery.ts:911 | not-a-deferral=the carried 1.x kill-deferral semantics (a recovery deferred while the worker still produces work is a decision outcome, not postponed work)
+Deferral: tests/assembly/revival-queue-paused-claimable.test.ts:76 | not-a-deferral=carried 1.x comment on the guard that keeps deferring to a paused queue; no work is postponed
+Deferral: tests/assembly/worker-recovery.test.ts:144 | not-a-deferral=tests of the carried deferred recovery outcome; no work is postponed
+Deferral: tests/assembly/worker-recovery.test.ts:145 | not-a-deferral=tests of the carried deferred recovery outcome; no work is postponed
+Deferral: tests/assembly/worker-recovery.test.ts:147 | not-a-deferral=tests of the carried deferred recovery outcome; no work is postponed
+Deferral: tests/assembly/worker-recovery.test.ts:151 | not-a-deferral=tests of the carried deferred recovery outcome; no work is postponed
+Deferral: tests/assembly/worker-recovery.test.ts:154 | not-a-deferral=tests of the carried deferred recovery outcome; no work is postponed
+Deferral: tests/assembly/worker-recovery.test.ts:157 | not-a-deferral=tests of the carried deferred recovery outcome; no work is postponed
+Deferral: tests/assembly/worker-recovery.test.ts:162 | not-a-deferral=tests of the carried deferred recovery outcome; no work is postponed
+Deferral: tests/assembly/worker-recovery.test.ts:169 | not-a-deferral=tests of the carried deferred recovery outcome; no work is postponed
+Deferral: tests/assembly/worker-recovery.test.ts:307 | not-a-deferral=tests of the carried deferred recovery outcome; no work is postponed
+Deferral: tests/assembly/worker-recovery.test.ts:316 | not-a-deferral=tests of the carried deferred recovery outcome; no work is postponed
+Deferral: tests/assembly/worker-recovery.test.ts:335 | not-a-deferral=tests of the carried deferred recovery outcome; no work is postponed
+
 Decision: CARRYOVER-03-R2-1104-1 | Commit the raw 1.x copies at their final paths first, then adapt in place, so the carried-versus-adapted count is the diff from that commit rather than an estimate. | reported=/Users/adriana/echo-compute/builders/row03-report.md
 Decision: CARRYOVER-03-R2-1104-2 | Persist the queue and the drainer's brakes, calm streak and notice markers in the conversation's own host record and drive the drainer from the port's maintain tick: no second store, timer, lockfile or owner; the ownership fence is the single writer. | reported=/Users/adriana/echo-compute/builders/row03-report.md
 Decision: CARRYOVER-03-R2-1104-3 | Admit the retry ladder only for a replacement that died within the settling period with exact proof of no effect; invalidate unprovable deaths and settle a launch that threw as uncertain, stricter than the 1.x any-failure retry. | reported=/Users/adriana/echo-compute/builders/row03-report.md
