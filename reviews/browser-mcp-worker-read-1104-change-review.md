@@ -1,8 +1,8 @@
 # Change review — worker reads connector launch configuration
 
 Subject base: bcbe1def1642146c18f1e0d569ab84016fa6454e
-Review state: frozen
-Reviewed content: sha256:41339ecebaa3eebf3d3a09bcb98108b0bdb289e724fb0bd3514a7e0c7431d0cc
+Review state: open
+Reviewed content: none
 Outcome: Grant the worker read access to the generated MCP launch configuration before its continuing session starts and expose the owner browser tool with an Anthropic-compatible input schema. Keep the configuration owned by the operator and read-only to the worker. Regenerate the source-pinned register against the committed repair.
 Affected rules: 31, 63, 74, 78, 95, 101, 103, 111, 113, 116
 Affected floors: secrets — only the already redacted launch file is readable, not credential custody; spend cap — unchanged; stop — unchanged; no duplicate sends — no new effect path; durable intake — unchanged.
@@ -31,3 +31,5 @@ Decision: MCP-SCHEMA-1104-3 | Remove top-level oneOf from the client-advertised 
 simplestRobustRoute: Use the existing harness ACL helper on the one generated file before a continuing session launches.
 80/20: The worker can load the connector without changing owner profile custody. Real signed-in page reads still need copy proof before live release.
 VERDICT: author submission; this record asserts no independent verdict.
+
+Integration review: train-168 explicitly reopens this round because its combined register changes the covered generated files. The previous frozen content and verdict remain in git history. reviews/train-168-change-review.md covers the merged candidate, whose desk review is still required.
