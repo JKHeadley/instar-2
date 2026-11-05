@@ -1,8 +1,8 @@
 # Change review — Repair correction persistence budgets, evidence and class-review admission
 
 Subject base: 3b9ad197a2a02b6cfe2856049eeb361c27e0504a
-Review state: open
-Reviewed content: none
+Review state: frozen
+Reviewed content: sha256:f4f7e1787c1060601e5661aacc5e41fc5ca960cfbbe5155b5b7648bb5bc61411
 Outcome: Repair all five row-32 review findings: ordinary review work and correction candidates share existing budgets and drain; context diversity uses recorded grounding; effectiveness requires whole delivered behavior and independent lesson-linked outcome evidence; two-question class judgments persist independently of feedback and precede linked repair admission; real model outputs and proof-room shapes replay through the shipped worker.
 Affected rules: 2, 4, 7, 8, 9, 11, 13, 24, 25, 26, 32, 35, 36, 37, 42, 46, 49, 55, 58, 60, 70, 74, 85, 95, 101, 102, 108, 111, 113, 116
 Affected floors: secrets — existing redaction on candidate and lesson text; spend cap — unchanged stop/cap/interval admission and shared bounded packet/answer budgets; stop — no new worker or retry service; no duplicate sends — no outbound path added; durable intake — all review and delivery evidence remains in the existing journal.
