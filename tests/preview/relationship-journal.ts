@@ -17,9 +17,16 @@
  * (topic) is kept per interaction, not in the identity surface, so a mention in a new
  * topic never splits the person. Corrected or forgotten mentions are projected out exactly
  * as the journal's own packet does (Rules 32, 49): the audit row stays, the record forgets.
+ *
+ * Imported channel items (`--agent-state-dir`, `channel-item` frames) count as interactions of a
+ * person the operator already named, by the journal's own rule for them: the item's asserted
+ * sender is that person, or its text names the person exactly. They never create a record and
+ * never add a name channel, because a sender label from stored metadata is an asserted identity,
+ * not a verified principal (1.x channel uids were platform-verified; these are not). They are
+ * visible in the private root only: the group carry refuses a source journal that holds imports.
  */
 import { redact } from '../../src/recall/redact.js';
-import { activePersonMerges, operatorWriter, probeTurn, retractedTurn, type JournalView, type PersonNote } from './journal.js';
+import { activePersonMerges, operatorWriter, probeTurn, retractedTurn, type ChannelItem, type JournalView, type PersonNote } from './journal.js';
 import { RelationshipManager, normalizeRelationshipName, relationshipSignificance, type RelationshipRecord,
   type RelationshipStorePort, type UserChannel } from './relationship-manager.js';
 
@@ -40,6 +47,28 @@ const own = (view: JournalView, note: PersonNote) => {
   const turn = view.turns.get(note.source);
   return turn !== undefined && turn.accepted && operatorWriter(view, turn, true) && !probeTurn(view, turn) && !affected(view, note);
 };
+
+/** The journal's `channelMemoryId` for an imported item: the id its memory changes name. */
+export const importedItemId = (item: ChannelItem) => `channel:${JSON.stringify([item.source, item.account, item.id])}`;
+/** The journal's sender reading of an imported item: display part before `<`, local part before `@`, separators to spaces. */
+export const importedSenderName = (item: ChannelItem) => item.from.split('<')[0]!.trim().split('@')[0]!.replace(/[._-]+/gu, ' ');
+const words = (text: string) => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+/** Exact mention: every word of the name in sequence (a single-word name as a whole word). */
+const namesExactly = (text: string, name: string) => {
+  const nameWords = words(name), textWords = words(text);
+  return nameWords.length > 0 && textWords.some((word, index) => word === nameWords[0] && nameWords.every((part, offset) => textWords[index + offset] === part));
+};
+const importedChannel = (item: ChannelItem) =>
+  `import:${item.source}/${redact(item.conversation ?? 'unknown conversation').text.replace(/\s+/gu, ' ').slice(0, 40)}`;
+/** Imported items that are interactions of a known person (sender is the person, or the text names them exactly),
+ *  minus any the operator corrected or forgot by the item's own memory id. */
+export function importedInteractions(view: JournalView, aliases: readonly string[], names: readonly string[]): ChannelItem[] {
+  if (view.channelItems.size === 0) return [];
+  const aliasSet = new Set(aliases);
+  return [...view.channelItems.values()].filter(item => (item.source as string) === 'conversation'
+    && (aliasSet.has(normalizeRelationshipName(importedSenderName(item))) || names.some(name => namesExactly(item.text, name)))
+    && !affected(view, { source: importedItemId(item), quote: item.text.trim() }));
+}
 
 const topicChannel = (view: JournalView, source: string) => {
   const turn = view.turns.get(source);
@@ -82,21 +111,27 @@ export function journalRelationships(view: JournalView, now: number, maxRecent =
     const latest = new Map<string, string>();
     for (const item of [...current].sort((a, b) => time(a.source) - time(b.source))) latest.set(item.attribute, redact(item.value).text);
     const first = ordered[0]!, last = ordered.at(-1)!;
+    // Imported items join the interaction history (count, span, recent list) but never the identity surface.
+    const interactions = [
+      ...ordered.map(({ note }) => ({ at: time(note.source), channel: topicChannel(view, note.source), summary: note.quote, source: note.source })),
+      ...importedInteractions(view, aliases, [...names]).map(item => ({ at: item.at, channel: importedChannel(item), summary: item.text.trim(), source: importedItemId(item) })),
+    ].sort((a, b) => a.at - b.at);
     const record: RelationshipRecord = {
       id: `person:${root}`,
       name: redact(name).text,
       channels,
-      firstInteraction: new Date(time(first.note.source)).toISOString(),
-      lastInteraction: new Date(time(last.note.source)).toISOString(),
-      interactionCount: ordered.length,
+      firstInteraction: new Date(Math.min(time(first.note.source), interactions[0]!.at)).toISOString(),
+      lastInteraction: new Date(Math.max(time(last.note.source), interactions.at(-1)!.at)).toISOString(),
+      interactionCount: interactions.length,
       themes: [...latest.keys()],
       notes: [...latest.entries()].map(([attribute, value]) => `${attribute}: ${value}`).join('; '),
       significance: 1,
-      recentInteractions: ordered.slice(-maxRecent).map(({ note }) => ({
-        timestamp: new Date(time(note.source)).toISOString(), channel: topicChannel(view, note.source), summary: redact(note.quote).text })),
+      recentInteractions: interactions.slice(-maxRecent).map(item => ({
+        timestamp: new Date(item.at).toISOString(), channel: item.channel, summary: redact(item.summary).text })),
     };
     record.significance = relationshipSignificance(record, now);
-    out.push({ record, sources: ordered.map(({ note }) => note.source), latestSource: last.note.source, at: time(last.note.source) });
+    // latestSource stays an operator turn the destination can trace; `at` is the latest interaction of any kind.
+    out.push({ record, sources: interactions.map(item => item.source), latestSource: last.note.source, at: interactions.at(-1)!.at });
   }
   return out.sort((a, b) => a.at - b.at);
 }

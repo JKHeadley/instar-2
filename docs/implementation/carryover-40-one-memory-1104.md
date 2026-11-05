@@ -24,7 +24,7 @@ step-2 diff added. Counts from `git diff --numstat 8e7df7f5 87a8efec`.
 |---|---|---|---|---|
 | relationship-store.ts | 735 | 1232 | 666 | 566 |
 | relationship-manager.ts | 1010 | 839 | 606 | 233 |
-| relationship-journal.ts | 0 | 116 | 0 | 116 |
+| relationship-journal.ts | 0 | 151 | 0 | 151 |
 | relationship-carry-fixture.ts | 0 | 40 | 0 | 40 |
 | group-carry.ts (edit) | 186 | 226 | 182 | 44 |
 | relationship-manager.test.ts | 719 | 582 | 491 | 91 |
@@ -34,8 +34,9 @@ step-2 diff added. Counts from `git diff --numstat 8e7df7f5 87a8efec`.
 | relationship-union-read.test.ts | 139 | 112 | 59 | 53 |
 | relationship-cross-machine.test.ts | 180 | 100 | 7 | 93 |
 | relationship-carry.test.ts | 0 | 165 | 0 | 165 |
+| relationship-journal.test.ts | 0 | 76 | 0 | 76 |
 
-Source: 1,454 carried / 999 adapted. Tests: 1,233 carried / 534 adapted. Fifteen further 1.x files
+Source: 1,454 carried / 1,034 adapted. Tests: 1,233 carried / 610 adapted. Fifteen further 1.x files
 (8,635-line `types.ts` included) are kept verbatim under `legacy-1x/relationships/` and are not compiled.
 
 ## Omitted 1.x behavior, with the 2.0 evidence
@@ -72,4 +73,8 @@ Not demonstrated, so row 40 stays OPEN:
   union read runs over carried records inside one journal, not over two machines' independent stores;
 - people recorded after the carry are not refreshed into the group (the carry is a one-time snapshot, as the
   existing README states);
-- channel-import senders (`--agent-state-dir` items) are not projected into relationship records.
+- channel-import senders (`--agent-state-dir` items) are not records of their own: an imported item is an
+  interaction of a person the operator already named (sender or exact mention, by the journal's rule), visible in
+  the private root's view only. The carry refuses a source journal that holds imports, so 1.x's cross-channel
+  identity surface (platform-verified uids) has no verified 2.0 counterpart; an asserted sender label never joins
+  an identity (`relationship-journal.test.ts`).
