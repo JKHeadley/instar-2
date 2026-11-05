@@ -1,12 +1,13 @@
 /** Row 01's send slice: the host's ports on the worker's real outbound boundary and real effect policy, inside the real
  * ordinary lane's job. Only the Telegram transport and the model are stand-ins. Each case can fail on the behaviour it names. */
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { createJournalWorker, openPreviewJournal } from '../preview/journal-test-worker.js';
 import { commitmentStoreReport, createBoundCommitmentHost, CHECK_IN_PASS_MS, type CommitmentHostPorts } from '../preview/commitment-host.js';
 import { commitmentSendTarget, COMMITMENT_STORE_GENERATION } from '../preview/commitment-record.js';
+import { sentinelReport } from '../preview/live-sentinels.js';
 import type { CommitmentNoticeContract, CommitmentNoticeProducer } from '../preview/commitment-notice-contract.js';
 // @ts-expect-error The effect doorway remains JavaScript.
 import { admitCommitmentSend, anyCommitmentSendGrant, decodeEffectPolicy, DEFAULT_EFFECT_POLICY, UNAVAILABLE_EFFECT_POLICY } from '../preview/effect-doorway.mjs';
@@ -92,6 +93,7 @@ it('a due date and exact generic grant stay pull-visible with no send or spent a
       expect(w.host.report().checkIns).toMatchObject({ ran: true, due: 1, sent: 0 });
       expect(w.host.tracker().get(c.id)).toMatchObject({ status: 'pending' });
       expect(w.host.tracker().get(c.id)?.checkInReminderAttempts ?? 0).toBe(0);
+      expect(sentinelReport(w.journal.view).commitments?.datedCheckIns).toEqual([{ id: c.id, at: c.checkInAt, status: 'pending', settledAt: null }]);
       w.reopen();
     }
     expect(commitmentSends(w)).toEqual([]);
@@ -110,6 +112,7 @@ it('the carried beacon observes at its tuned cadence but never pushes observatio
     expect(first.lastHeartbeatAt).toBe(new Date(w.clock.now).toISOString());
     w.clock.now += 61_000; w.host.tick(); await w.host.settle();
     expect((w.journal.view.commitmentStore?.hot[c.id] as { lastHeartbeatAt?: string }).lastHeartbeatAt).toBe(new Date(w.clock.now).toISOString());
+    expect(sentinelReport(w.journal.view).commitments?.observations).toMatchObject([{ id: c.id, lastObservedAt: new Date(w.clock.now).toISOString() }]);
     expect(commitmentSends(w)).toEqual([]); expect(w.host.tracker().get(c.id)?.status).toBe('pending');
   } finally { w.close(); }
 });
@@ -257,5 +260,23 @@ it('a producer withdrawal between durable intent and dispatch is rechecked befor
     expect(w.journal.view.commitmentStore?.sends).toHaveLength(1);
     expect(commitmentSends(w)).toEqual([]);
     expect(w.journal.view.sendOutcomes).toMatchObject([{ target: commitmentSendTarget(0), outcome: 'refused' }]);
+  } finally { w.close(); }
+});
+
+it('recorded summary, uncertain/undecided review and delivered/empty reply bytes cannot mint a notice contract', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
+    otherShapes: { kind: string; id: string; raw: string }[] };
+  expect(recorded.otherShapes.map(row => row.id)).toEqual(['summary:715672480', '715672483', '715672482', '969389570',
+    '969389923', 'telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
+  const w = world({ policy: policyFor(ALERTS) });
+  try {
+    await openRoutes(w);
+    const doorway = w.worker.commitmentDoorway(() => ({ admitted: true, grant: 'g' }));
+    for (const row of recorded.otherShapes) {
+      expect(await doorway.send(ALERTS, row.raw, { logicalSendId: row.id }), row.kind)
+        .toMatchObject({ reason: 'no-delivery-contract', definite: true });
+    }
+    expect(commitmentSends(w)).toEqual([]);
+    expect(w.journal.view.commitmentStore?.sends ?? []).toEqual([]);
   } finally { w.close(); }
 });
