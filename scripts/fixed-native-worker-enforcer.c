@@ -89,18 +89,18 @@
 #define CLIENT_TIMEOUT_MS 1000
 #define LAPSE_MS 250                 /* mirrors WORKER_CHANNEL_LIMITS.lapseMs */
 #define HEARTBEAT_MS 50
-/* The stated owner bound: from the owner's last successful authority check to the
- * guard's termination of the worker. The supervisor stops beating after LAPSE_MS and
- * the guard ends the worker LAPSE_MS after its last beat, with the beat slack on top:
- * two serial 250 ms timers are 500 ms, not 250. */
+/* Normal guard timing budget from the owner's last successful authority check:
+ * the supervisor stops beating after LAPSE_MS and the guard ends the worker
+ * LAPSE_MS after its last beat, plus beat slack. This is not a hard termination
+ * bound: scheduling and termination latency apply. */
 #define OWNER_TERMINATION_MS (2 * LAPSE_MS + 2 * HEARTBEAT_MS)
-/* The supervisor's own kill of its guard (and so, through the kernel, the traced
- * worker), DEADLINE_BACKSTOP_MS past the bound the guard enforces, on both arms: past
- * the immutable deadline, and past the owner bound once an owner has attached. A guard
- * that ended the worker at its bound still has to reap it and report, and a loaded
- * scheduler holds it longer than a heartbeat or two (a 150 ms stall lost the race at
- * the bare owner bound, and the lapse was then recorded as guard-lost: unknown). A guard
- * that has not reported by the grace is lost, and the slot's terminal stays unknown. */
+/* The supervisor's owner-loss backstop threshold is 850 ms (600 + 250), with
+ * enforcement requested only beyond it. The extra interval allows reap/report
+ * progress but also extends enforcement when the guard stalls BEFORE killing:
+ * guard_backstop has no evidence that the worker has ended. Scheduling and
+ * termination latency apply after the threshold too. The deadline arm gets the
+ * same 250 ms interval; a stopped guard is handled immediately on observation.
+ * Without a guard report the slot's terminal stays unknown. */
 #define DEADLINE_BACKSTOP_MS LAPSE_MS
 #define OWNER_BACKSTOP_MS (OWNER_TERMINATION_MS + DEADLINE_BACKSTOP_MS)
 #define RESTART_CAP 5                /* consecutive unstable supervisor starts before terminal failure */
@@ -976,8 +976,9 @@ static int feasibility(const char *which, const char *profile, const char *scrat
              && guard_backstop(0, t, d, 1, 10001 + OWNER_BACKSTOP_MS, 10000) == BACKSTOP_OWNER
              && guard_backstop(0, t, d, 0, 99999, 0) == BACKSTOP_NONE;
     failures += report("guard-backstop", VERDICT(table),
-      "supervisor kills its own guard when stopped, %dms past the deadline, or %dms after the last owner "
-      "authority check once attached (the %dms owner bound plus the same %dms report grace); not before",
+      "supervisor requests its own guard kill when stopped, %dms past the deadline, or beyond %dms after the last owner "
+      "authority check once attached (%dms normal guard budget plus %dms; also extends enforcement before worker termination); "
+      "scheduling and termination latency apply",
       DEADLINE_BACKSTOP_MS, OWNER_BACKSTOP_MS, OWNER_TERMINATION_MS, DEADLINE_BACKSTOP_MS);
   }
   if (all || !strcmp(which, "nowrite")) {
