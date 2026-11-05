@@ -65,7 +65,7 @@ export function createCodexConversationWorker(input: Readonly<{
         args: via ? [...via.slice(1, -1), '--stdio', via.at(-1)!, config.executable, ...args] : args,
         env: { PATH: '/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin', HOME: config.home, CODEX_HOME: config.configHome },
         cwd: config.cwd, deadline: Math.min(config.now() + config.turnDeadlineMs, spec.restore?.deadline ?? Infinity), maxProcesses: config.maxSessions,
-        requestTimeoutMs: config.readyTimeoutMs });
+        requestTimeoutMs: config.readyTimeoutMs ?? 30_000 });
       try {
         await send(requests.initialize()); guard(); const ready = requests.initialized(); connection.notify(ready.method, ready.params);
         const saved = config.io.load().resumes[claim] ?? config.io.load().resumes[input.resumeKey ?? claim];

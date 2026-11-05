@@ -261,6 +261,12 @@ backpressure at 64 pending inputs, 4096 retained inputs and 1 MiB per input, pre
 all already accepted records. A queued input remains queued after a proved non-dispatch;
 a dispatched but unresolved input becomes uncertain on restart and is never replayed.
 A repeated exact input returns its recorded outcome; conflicting bytes refuse.
+Terminal startup preserves the 1.x 90-second fresh and 120-second resume waits.
+A resumed process that dies before input gets one fresh start with complete agent-owned
+context through the existing continuation path. Live menus, uncertain retirement, stop,
+missing context and failure of that fresh start refuse; restoration still uses the
+original admission and model allowance. Explicit readiness overrides remain bounded
+by the host admission lifetime; structured protocol RPC keeps its own request timeout.
 Waiting messages use the largest arrival-order prefix whose serialized delivery fits
 1 MiB; the suffix stays queued and a lone message uses its ordinary prompt. On restart,
 a completed single input or batch may be recovered from its correlated adapter receipt

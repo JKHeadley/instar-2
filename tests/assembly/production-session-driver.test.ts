@@ -1680,3 +1680,74 @@ it.each(['complete', 'no-result', 'no-hook', 'late-hook', 'stopped'] as const)(
     const result = value(f.driver.observe({ operation: 'deliver', processIdentity: identity, resultAvailable: mode !== 'no-result' }));
     expect(result.phase).toBe(mode === 'complete' ? 'output-observed' : 'exit-observed');
   });
+
+it.each(['dead-resume', 'fresh-fails', 'live-menu', 'stop', 'missing-context'] as const)(
+  'carryover 08 fresh-start fallback preserves the question boundary for %s', mode => {
+    const f = fixture();
+    f.config.io.save({ ...f.journal, resumes: { topic: '12345678-1234-1234-1234-123456789abc' } });
+    const tmux = f.config.io.tmux;
+    let launches = 0;
+    f.config.io.tmux = args => {
+      const result = tmux(args);
+      if (args[0] === 'new-session') {
+        launches++;
+        if (mode === 'live-menu') f.changePane('❯ 1. Yes\n  2. No');
+        else if (launches === 1 || mode === 'fresh-fails') {
+          tmux(['kill-session', '-t', `=${args[args.indexOf('-s') + 1]}:`]);
+          if (mode === 'stop') f.stop();
+        }
+      }
+      return result;
+    };
+    if (mode === 'missing-context') f.config.continuation = () => { throw Error('context unavailable'); };
+    const result = f.driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work', handles: [] });
+    if (mode === 'dead-resume') {
+      const identity = value(result);
+      expect(launches).toBe(2);
+      expect(f.calls.filter(args => args[0] === 'new-session')[1]).not.toContain('--resume');
+      expect(f.journal.sessions.at(-1)?.continuation?.text).toContain('Agent-owned prior exchange');
+      f.hook(1001); f.time(1001);
+      expect(value(f.driver.continuationReady(identity))).toBe(true);
+      expect(value(f.deliver(identity))).toBe('tmux-input:deliver');
+      expect(f.journal.deliveries[0]?.text).toBe('hello');
+    } else {
+      expect(result.kind).toBe('Refused');
+      expect(launches).toBe(mode === 'fresh-fails' ? 2 : 1);
+      expect(f.sends).toBe(0);
+    }
+  });
+
+it.each([false, true].flatMap(resume => [-100, 0].map(offset => ({ resume, offset }))))(
+  'carryover 08 keeps the tuned readiness boundary resume=$resume offset=$offset', ({ resume, offset }) => {
+    const f = fixture();
+    if (resume) f.config.io.save({ ...f.journal, resumes: { topic: '12345678-1234-1234-1234-123456789abc' } });
+    const { readyTimeoutMs: _override, ...config } = f.config;
+    const allowance = resume ? 120_000 : 90_000;
+    let elapsed = 0; f.changePane('Starting harness');
+    config.io.sleep = ms => { elapsed += ms; f.time(1000 + elapsed); if (elapsed >= allowance + offset) f.changePane('❯ '); };
+    const driver = createProductionSessionDriver(config);
+    const result = driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work', handles: [] });
+    expect(result.kind).toBe(offset < 0 ? 'Success' : 'Refused');
+    expect(elapsed).toBe(allowance + offset);
+    expect(f.calls.filter(args => args[0] === 'new-session')).toHaveLength(1);
+    expect(f.sends).toBe(0);
+  });
+
+it.each((JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] }).otherShapes)('carryover 08 fresh resume fallback retains recorded $kind ($id) grounding', sample => {
+  const f = fixture();
+  f.config.io.save({ ...f.journal, resumes: { topic: '12345678-1234-1234-1234-123456789abc' } });
+  f.config.continuation = () => ({ text: `Recorded context: ${sample.raw}`, source: `journal:${sample.id}` });
+  const tmux = f.config.io.tmux; let launches = 0;
+  f.config.io.tmux = args => {
+    const result = tmux(args);
+    if (args[0] === 'new-session' && ++launches === 1)
+      tmux(['kill-session', '-t', `=${args[args.indexOf('-s') + 1]}:`]);
+    return result;
+  };
+  const identity = f.launch();
+  expect(launches).toBe(2);
+  expect(f.journal.sessions.at(-1)?.continuation?.text).toBe(`Recorded context: ${sample.raw}`);
+  expect(value(f.driver.continuationReady(identity))).toBe(true);
+  value(f.deliver(identity));
+  expect(f.journal.deliveries[0]?.text).toBe('hello');
+});

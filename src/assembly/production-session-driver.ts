@@ -73,7 +73,7 @@ export interface ProductionSessionConfig {
   readonly scratchDir?: string;
   readonly context: AssemblyDecodeContext; readonly io: SessionIO; readonly now: () => number;
   readonly stopped: () => boolean; readonly resolveIntake: (id: string, digest: string) => string;
-  readonly maxSessions: number; readonly turnDeadlineMs: number; readonly readyTimeoutMs: number;
+  readonly maxSessions: number; readonly turnDeadlineMs: number; readonly readyTimeoutMs?: number;
   readonly protectedSessions: readonly string[]; readonly hookScript?: string;
   /** Advisory activity for registered work; a changed pane is activity, never proof of completion.
    * The owner records it in its existing work observation cycle. No terminal bytes leave this port. */
@@ -444,7 +444,8 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const session = config.io.load().sessions.find(row => row.name === name);
     ensure(session, 'spawned session identity missing');
     const identity = session.identity;
-    const until = config.now() + config.readyTimeoutMs;
+    // Carryover 08: retain the proven startup allowance; explicit test/host bounds still win.
+    const until = config.now() + (config.readyTimeoutMs ?? (resumeId ? 120_000 : 90_000));
     while (config.now() < until) {
       checkStop(); verifyLive(session);
       const state = classifyPaneReadiness(capture(name));
@@ -589,9 +590,24 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           const continuation = input.restore
             ? requireContinuation(input.restore.operation, input.claim, input.incarnation, 'context-wall', input.restore) : needsContinuation
             ? requireContinuation(input.operation, input.claim, input.incarnation, 'cache-miss') : undefined;
-          const identity = spawn(input.operation, input.claim, input.incarnation, input.workingScope,
-            hit && !input.restore ? resumeId : null, input.restore ? 1 : 0, continuation);
-          if (continuation) submitContinuation(identity);
+          let identity: string;
+          let grounding = continuation;
+          try {
+            identity = spawn(input.operation, input.claim, input.incarnation, input.workingScope,
+              hit && !input.restore ? resumeId : null, input.restore ? 1 : 0, grounding);
+          } catch (error) {
+            // 1.x handleReadyAndInject: one fresh fallback for a dead resume,
+            // before any input. A live menu, unknown identity or stop never qualifies.
+            if (!hit || input.restore) throw error;
+            checkStop(); reconcileReservations();
+            const current = config.io.load();
+            const failed = current.sessions.filter(row => row.operation === input.operation && row.incarnation === input.incarnation);
+            ensure(failed.every(row => !alive(row.name)) && !(current.reservations ?? []).some(row =>
+              row.operation === input.operation && row.incarnation === input.incarnation), 'resume startup retirement unconfirmed');
+            grounding = requireContinuation(input.operation, input.claim, input.incarnation, 'cache-miss');
+            identity = spawn(input.operation, input.claim, input.incarnation, input.workingScope, null, 1, grounding);
+          }
+          if (grounding) submitContinuation(identity);
           return identity;
         });
         return identity;
