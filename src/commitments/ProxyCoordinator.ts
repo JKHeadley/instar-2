@@ -14,6 +14,8 @@
 export type ProxyHolder = 'presence-proxy' | 'promise-beacon' | 'autonomous-heartbeat';
 
 export class ProxyCoordinator {
+  constructor(private readonly now: () => number) {}
+
   private held: Map<number, { holder: ProxyHolder; acquiredAt: number }> = new Map();
   /**
    * Last /build heartbeat timestamp per topic. Per BUILD-STALL-VISIBILITY-SPEC
@@ -34,7 +36,7 @@ export class ProxyCoordinator {
     if (current && current.holder !== holder) {
       return false;
     }
-    this.held.set(topicId, { holder, acquiredAt: Date.now() });
+    this.held.set(topicId, { holder, acquiredAt: this.now() });
     return true;
   }
 
@@ -53,7 +55,7 @@ export class ProxyCoordinator {
 
   /** Diagnostics. */
   allHeld(): Array<{ topicId: number; holder: ProxyHolder; ageMs: number }> {
-    const now = Date.now();
+    const now = this.now();
     return [...this.held.entries()].map(([topicId, v]) => ({
       topicId,
       holder: v.holder,
@@ -67,7 +69,7 @@ export class ProxyCoordinator {
    * reads via `hasRecentBuildHeartbeat` to decide whether to suppress its
    * own tier message.
    */
-  recordBuildHeartbeat(topicId: number, atMs: number = Date.now()): void {
+  recordBuildHeartbeat(topicId: number, atMs: number = this.now()): void {
     this.lastBuildHeartbeatAt.set(topicId, atMs);
   }
 
@@ -82,7 +84,7 @@ export class ProxyCoordinator {
   hasRecentBuildHeartbeat(topicId: number, windowMs: number = 6 * 60_000): boolean {
     const last = this.lastBuildHeartbeatAt.get(topicId);
     if (last === undefined) return false;
-    return Date.now() - last < windowMs;
+    return this.now() - last < windowMs;
   }
 
   /**

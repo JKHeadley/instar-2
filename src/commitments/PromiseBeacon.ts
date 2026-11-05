@@ -29,45 +29,20 @@
  *  - `sendMessage(topicId, text, { source: 'promise-beacon', isProxy: true })`
  *    is what PresenceProxy's `isSystemOrProxyMessage` filters out.
  */
-import { TelegramOriginHoldError } from '../messaging/telegram-origin/types.js';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as crypto from 'crypto';
-import { EventEmitter } from 'node:events';
+import { randomUUID, createHash } from 'node:crypto';
 import { OriginAuthorCall, composeAutomationAuthors, deterministicAutomationAuthor, unknownAutomationAuthor,
-  type OriginAutomationAuthor } from '../messaging/telegram-origin/OriginAutomationAuthor.js';
+  type OriginAutomationAuthor } from './OriginAutomationAuthor.js';
 import type { CommitmentTracker, Commitment } from './CommitmentTracker.js';
 import type { LlmQueue } from './LlmQueue.js';
 import { LlmAbortedError } from './LlmQueue.js';
 import type { ProxyCoordinator } from './ProxyCoordinator.js';
-import { sanitizeTmuxOutput, guardProxyOutput } from './PresenceProxy.js';
-import { detectInternalIdLeak } from '../core/internal-id-leak.js';
-import { governor, consumeAdmissionToken } from './selfaction/governor.js';
-import type { DerivedTarget } from './selfaction/types.js';
-import { DegradationReporter } from './DegradationReporter.js';
-
-/* @self-action-controller: promise-beacon-notify */
-/* @self-action-controller: liveness-heartbeat */
-/* @self-action-controller: promise-beacon-internal-cadence */
-// Unified self-action backpressure (Increment B, OBSERVE-ONLY): this file
-// hosts TWO controllers (the registry's multi-marker precedent) — the progress
-// heartbeat (promise-beacon-notify) and the sparse liveness line
-// (liveness-heartbeat, a declared eternal sentinel rate-floored per FD7).
-// Handles are minted ONCE at module scope; observe mode records would-verdicts
-// and always allows — none of the shipped suppression brakes is removed.
-const beaconNotifyGov = governor.for('promise-beacon-notify');
-const livenessHeartbeatGov = governor.for('liveness-heartbeat');
-
-/** Canonical target derivation for BOTH beacon controllers: the conversation
- *  (topic) is the recurrence identity — stable across sessions/respawns. */
-export function deriveTargetKey(ctx: { topicId: number | null | undefined }): DerivedTarget {
-  return { key: `topic:${ctx.topicId ?? 'none'}`, classId: 'topic', keyIsVolatile: false };
-}
+import { sanitizeTmuxOutput, guardProxyOutput } from './proxy-guard.js';
+import { CommitmentEmitter, type BeaconPorts, type DeliveryOutcome, TelegramOriginHoldError } from './ports.js';
 
 // ─── Config & types ─────────────────────────────────────────────────────────
 
 export interface PromiseBeaconConfig {
-  stateDir: string;
+  ports: BeaconPorts;
   commitmentTracker: CommitmentTracker;
   llmQueue: LlmQueue;
   proxyCoordinator: ProxyCoordinator;
@@ -108,7 +83,7 @@ export interface PromiseBeaconConfig {
       originAuthor?: OriginAutomationAuthor;
       boundTuple?: { platform: 'slack'; channelId: string; threadTs: string | null };
     },
-  ) => Promise<import('../core/deliverToConversation.js').DeliveryOutcome>;
+  ) => Promise<DeliveryOutcome>;
   /** §5.0(a): journal `op:"send-retire"` for a delivered/delivered-equivalent
    *  logical send — called AFTER the sendSeq persist (the R5-M3 pinned order). */
   retireSend?: (conversationId: number, logicalSendId: string) => void;
@@ -162,15 +137,13 @@ export interface PromiseBeaconConfig {
    * failing toward speech via lease-holder/tiebreak so unknown ownership never
    * silences the pool. Absent → the legacy static gate applies unchanged.
    */
-  speakerElection?: import('./SpeakerElection.js').SpeakerElection;
+  speakerElection?: { decide(topicId: number, owner: string | null): { speak: boolean } };
   /** Floor for heartbeat cadence (ms). Default 60_000. */
   minCadenceMs?: number;
   /** Ceiling for heartbeat cadence (ms). Default 21_600_000 (6h). */
   maxCadenceMs?: number;
   /** Dev-only timer multiplier for tests. */
   __dev_timerMultiplier?: number;
-  /** Injectable clock for tests. */
-  now?: () => number;
   /**
    * Max active beacons per agent (boot-cap). When more beacon-enabled pending
    * commitments exist at `start()`, the overflow is marked `beaconSuppressed`
@@ -438,7 +411,7 @@ function normalizeForHash(raw: string): string {
 }
 
 function sha256(s: string): string {
-  return crypto.createHash('sha256').update(s).digest('hex');
+  return createHash('sha256').update(s).digest('hex');
 }
 
 /**
@@ -527,17 +500,17 @@ function capOutput(raw: string, maxBytes = 4096, maxLines = 200): string {
 
 // ─── Main class ─────────────────────────────────────────────────────────────
 
-export class PromiseBeacon extends EventEmitter {
+export class PromiseBeacon extends CommitmentEmitter {
   private config: PromiseBeaconConfig;
   private started = false;
-  private stateDir: string;
-  private timers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private readonly ports: BeaconPorts;
+  private timers: Map<string, { cancel(): void }> = new Map();
   /** One delayed aggregate flush per topic; commitment timers remain independent. */
-  private aggregateTimers: Map<number, ReturnType<typeof setTimeout>> = new Map();
+  private aggregateTimers: Map<number, { cancel(): void }> = new Map();
   /** Serializes enqueue + flush so an in-flight send cannot clear a newer item. */
   private aggregateOps: Map<number, Promise<void>> = new Map();
   /** C1+C2 §4.4 — the periodic external-block staleness governor sweep timer. */
-  private externalBlockSweepTimer?: ReturnType<typeof setInterval>;
+  private externalBlockSweepTimer?: { cancel(): void } | undefined;
   private prefix: string;
   private minCadenceMs: number;
   private maxCadenceMs: number;
@@ -568,11 +541,10 @@ export class PromiseBeacon extends EventEmitter {
     this.minCadenceMs = config.minCadenceMs ?? 60_000;
     this.maxCadenceMs = config.maxCadenceMs ?? 21_600_000;
     this.timerMult = config.__dev_timerMultiplier ?? 1.0;
-    this.now = config.now ?? (() => Date.now());
+    this.ports = config.ports;
+    this.now = () => this.ports.clock.now();
     this.maxActiveBeacons = config.maxActiveBeacons ?? 20;
     this.defaultAutoPauseAfterUnchanged = config.defaultAutoPauseAfterUnchanged ?? 4;
-    this.stateDir = path.join(config.stateDir, 'state', 'promise-beacon');
-    try { fs.mkdirSync(this.stateDir, { recursive: true }); } catch { /* ok */ }
 
     const e = config.escalation;
     this.esc = (e && e.enabled) ? {
@@ -616,14 +588,14 @@ export class PromiseBeacon extends EventEmitter {
     // newest-first is kept; overflow is marked `beaconSuppressed` with reason
     // `boot-cap-exceeded`. Non-terminal — status stays `pending`.
     const sorted = [...active].sort((a, b) => {
-      const ta = new Date(a.createdAt).getTime();
-      const tb = new Date(b.createdAt).getTime();
+      const ta = this.ports.clock.parse(a.createdAt);
+      const tb = this.ports.clock.parse(b.createdAt);
       return tb - ta; // newest first
     });
     const keep = sorted.slice(0, this.maxActiveBeacons);
     const overflow = sorted.slice(this.maxActiveBeacons);
     if (overflow.length > 0) {
-      console.log(`[PromiseBeacon] Boot-cap exceeded: ${overflow.length} commitment(s) suppressed (cap=${this.maxActiveBeacons})`);
+      this.ports.log(`[PromiseBeacon] Boot-cap exceeded: ${overflow.length} commitment(s) suppressed (cap=${this.maxActiveBeacons})`);
       for (const c of overflow) {
         // Fire-and-forget — the mutate surface handles CAS retries.
         this.config.commitmentTracker
@@ -632,7 +604,7 @@ export class PromiseBeacon extends EventEmitter {
             beaconSuppressed: true,
             beaconSuppressionReason: 'boot-cap-exceeded',
           }))
-          .catch(err => console.warn(`[PromiseBeacon] boot-cap suppress failed for ${c.id}:`, (err as Error).message));
+          .catch(err => this.ports.log(`[PromiseBeacon] boot-cap suppress failed for ${c.id}:`, (err as Error).message));
       }
       this.emit('boot-cap.exceeded', { cap: this.maxActiveBeacons, suppressed: overflow.map(c => c.id) });
     }
@@ -669,7 +641,7 @@ export class PromiseBeacon extends EventEmitter {
     // sweep, off the per-commitment timer path). No-op each tick when the
     // feature is off; cheap O(active) scan otherwise.
     const sweepMs = this.config.externalBlockSweepMs ?? 60 * 60_000;
-    this.externalBlockSweepTimer = setInterval(() => {
+    this.externalBlockSweepTimer = this.ports.timers.every(sweepMs * this.timerMult, () => {
       // §5 R3-M16: the stand-down ownership recheck rides THIS sweep
       // (R4-minor-4 — one O(active-stood-down) pass, no new timer). It is
       // machine-LOCAL (ownership of a conversation, not pool state), so it
@@ -677,39 +649,38 @@ export class PromiseBeacon extends EventEmitter {
       try {
         this.recheckStandDowns();
       } catch (err) {
-        console.warn('[PromiseBeacon] stand-down recheck error:', (err as Error).message);
+        this.ports.log('[PromiseBeacon] stand-down recheck error:', (err as Error).message);
       }
       // Lease-gated (§4.5): only the lease-holder runs the mutating sweep.
       if (this.config.holdsLease && !this.config.holdsLease()) return;
       this.sweepExternalBlocks()
         .then(() => this.maybeReconcileGraveyard())
         .catch(err =>
-          console.warn('[PromiseBeacon] external-block sweep error:', (err as Error).message),
+          this.ports.log('[PromiseBeacon] external-block sweep error:', (err as Error).message),
         );
-    }, sweepMs * this.timerMult);
-    if (typeof this.externalBlockSweepTimer.unref === 'function') this.externalBlockSweepTimer.unref();
-    console.log(`[PromiseBeacon] Started (${this.prefix})`);
+    });
+    this.ports.log(`[PromiseBeacon] Started (${this.prefix})`);
   }
 
   stop(): void {
     if (!this.started) return;
     this.started = false;
-    for (const t of this.timers.values()) clearTimeout(t);
+    for (const t of this.timers.values()) t.cancel();
     this.timers.clear();
-    for (const t of this.aggregateTimers.values()) clearTimeout(t);
+    for (const t of this.aggregateTimers.values()) t.cancel();
     this.aggregateTimers.clear();
     if (this.externalBlockSweepTimer) {
-      clearInterval(this.externalBlockSweepTimer);
+      this.externalBlockSweepTimer.cancel();
       this.externalBlockSweepTimer = undefined;
     }
-    console.log('[PromiseBeacon] Stopped');
+    this.ports.log('[PromiseBeacon] Stopped');
   }
 
   /** Public for tests + delivery race: cancel the timer for one commitment. */
   stopFor(id: string): void {
     const t = this.timers.get(id);
     if (t) {
-      clearTimeout(t);
+      t.cancel();
       this.timers.delete(id);
     }
   }
@@ -732,20 +703,19 @@ export class PromiseBeacon extends EventEmitter {
       this.stoodDown.add(c.id);
       return;
     }
-    const last = hot.lastHeartbeatAt ? new Date(hot.lastHeartbeatAt).getTime() : new Date(c.createdAt).getTime();
+    const last = hot.lastHeartbeatAt ? this.ports.clock.parse(hot.lastHeartbeatAt) : this.ports.clock.parse(c.createdAt);
     const dueAt = last + cadence;
     const delay = Math.max(1_000, dueAt - this.now());
 
     const existing = this.timers.get(c.id);
-    if (existing) clearTimeout(existing);
+    if (existing) existing.cancel();
 
-    const timer = setTimeout(() => {
+    const timer = this.ports.timers.after(delay, () => {
       this.timers.delete(c.id);
       this.fire(c.id).catch(err => {
-        console.error(`[PromiseBeacon] fire() error for ${c.id}:`, (err as Error).message);
+        this.ports.log(`[PromiseBeacon] fire() error for ${c.id}:`, (err as Error).message);
       });
-    }, delay);
-    timer.unref?.();
+    });
     this.timers.set(c.id, timer);
   }
 
@@ -831,7 +801,7 @@ export class PromiseBeacon extends EventEmitter {
     // proxy voice, or enqueue a human-facing aggregate. Advance the internal
     // cadence anchor so this does not collapse into a one-second retry loop.
     if (!this.userOutputEnabled()) {
-      const checkedAt = new Date(this.now()).toISOString();
+      const checkedAt = this.ports.clock.iso(this.now());
       this.updateHotState(c.id, (h) => { h.lastHeartbeatAt = checkedAt; });
       try {
         await this.config.commitmentTracker.mutate(c.id, prev => ({
@@ -865,7 +835,7 @@ export class PromiseBeacon extends EventEmitter {
       const hash = snapshot ? sha256(normalizeForHash(snapshot)) : 'empty';
       const hot = this.loadHotState(c.id);
       const unchanged = hash === hot.lastSnapshotHash;
-      const nowIso = new Date(this.now()).toISOString();
+      const nowIso = this.ports.clock.iso(this.now());
 
       const excerpt = promiseExcerpt(c);
       const suffix = excerpt ? ` — re: ${excerpt}` : '';
@@ -909,7 +879,7 @@ export class PromiseBeacon extends EventEmitter {
         // ── Genuine new output → real LLM-summarized progress line ──
         hot.consecutiveUnchanged = 0;
         try {
-          const authorCall = new OriginAuthorCall();
+          const authorCall = new OriginAuthorCall(this.now);
           const line = await this.config.llmQueue.enqueue(
             'background',
             (signal) => {
@@ -986,32 +956,14 @@ export class PromiseBeacon extends EventEmitter {
       }
 
       // ── Send (only if there is something true to say — B1) ──
-      let sent = text != null;
+      const sent = text != null;
       let sendResult: BeaconSendResult = 'skipped';
       if (sent) {
-        // Self-action backpressure admission (observe-only: always allows).
-        // Liveness lines ride the eternal-sentinel controller (rate-floored);
-        // progress heartbeats ride the notify controller. An enforce-mode
-        // non-allow COALESCES the line (the P17 fold) — this tick stays quiet.
-        const notifyTarget = deriveTargetKey({ topicId: c.topicId });
-        const notifyAdmission = livenessFired
-          ? livenessHeartbeatGov.admitSync(notifyTarget, { lane: 'interactive' })
-          : beaconNotifyGov.admitSync(notifyTarget, { lane: 'interactive' });
-        // The sink pins its expected controller identity MODULE-SIDE as a
-        // LITERAL per branch (never a caller-substitutable variable — FD6).
-        const notifySink =
-          notifyAdmission.outcome === 'allow'
-            ? livenessFired
-              ? consumeAdmissionToken(notifyAdmission.token, 'liveness-heartbeat', { targetKey: notifyTarget.key })
-              : consumeAdmissionToken(notifyAdmission.token, 'promise-beacon-notify', { targetKey: notifyTarget.key })
-            : null;
-        if (notifyAdmission.outcome === 'allow' && notifySink?.proceed) {
-          sendResult = await this.emitBeaconMessage(c, text!, 'heartbeat', livenessFired, originAuthor);
-          if (livenessFired && sendResult === 'sent') hot.lastLivenessAt = nowIso;
-          if (sendResult === 'sent') hot.heartbeatCount += 1;
-        } else {
-          sent = false; // enforce-mode fold: coalesced, never a silent drop (audited)
-        }
+        // The 1.x self-action governor ran observe-only here and always allowed.
+        // The cadence clamp and the per-topic aggregate are the bound (Rule 61).
+        sendResult = await this.emitBeaconMessage(c, text!, 'heartbeat', livenessFired, originAuthor);
+        if (livenessFired && sendResult === 'sent') hot.lastLivenessAt = nowIso;
+        if (sendResult === 'sent') hot.heartbeatCount += 1;
       }
       // §5 stand-down / §5.1 permanent dead-letter already persisted their
       // markers + stopped the timer inside applyDeliveryOutcome.
@@ -1093,14 +1045,14 @@ export class PromiseBeacon extends EventEmitter {
     try {
       await this.emitBeaconMessage(c, finalText, 'closeOut');
     } catch (err) {
-      console.warn(`[PromiseBeacon] auto-pause send failed for ${c.id}:`, (err as Error).message);
+      this.ports.log(`[PromiseBeacon] auto-pause send failed for ${c.id}:`, (err as Error).message);
     }
     const hot = this.loadHotState(c.id);
     await this.config.commitmentTracker.mutate(c.id, prev => ({
       ...prev,
       beaconPaused: true,
       beaconPausedReason: 'auto-paused-no-progress',
-      beaconPausedAt: new Date(this.now()).toISOString(),
+      beaconPausedAt: this.ports.clock.iso(this.now()),
       // Snapshot the streak length that triggered the pause — written ONLY
       // at the pause boundary, not on every heartbeat (review feedback).
       consecutiveUnchanged: hot.consecutiveUnchanged,
@@ -1117,7 +1069,7 @@ export class PromiseBeacon extends EventEmitter {
    */
   private deadlinePressureLine(c: Commitment, suffix: string): string | null {
     if (!c.hardDeadlineAt) return null;
-    const deadline = Date.parse(c.hardDeadlineAt);
+    const deadline = this.ports.clock.parse(c.hardDeadlineAt);
     if (Number.isNaN(deadline)) return null;
     const remaining = deadline - this.now();
     if (remaining <= 0) return null; // past the deadline — expiry is handled elsewhere
@@ -1142,11 +1094,11 @@ export class PromiseBeacon extends EventEmitter {
     if (!sessionName) return null;
     const interval = this.config.beaconLivenessIntervalMs ?? 60 * 60_000;
     const anchor = hot.lastLivenessAt
-      ? Date.parse(hot.lastLivenessAt)
-      : Date.parse(c.createdAt);
+      ? this.ports.clock.parse(hot.lastLivenessAt)
+      : this.ports.clock.parse(c.createdAt);
     if (Number.isNaN(anchor)) return null;
     if (this.now() - anchor < interval) return null;
-    const createdAt = Date.parse(c.createdAt);
+    const createdAt = this.ports.clock.parse(c.createdAt);
     const minIn = Number.isNaN(createdAt)
       ? 0
       : Math.max(1, Math.round((this.now() - createdAt) / 60_000));
@@ -1167,13 +1119,13 @@ export class PromiseBeacon extends EventEmitter {
     try {
       await this.emitBeaconMessage(c, finalText, 'closeOut');
     } catch (err) {
-      console.warn(`[PromiseBeacon] turn-finished close-out send failed for ${c.id}:`, (err as Error).message);
+      this.ports.log(`[PromiseBeacon] turn-finished close-out send failed for ${c.id}:`, (err as Error).message);
     }
     await this.config.commitmentTracker.mutate(c.id, prev => ({
       ...prev,
       beaconPaused: true,
       beaconPausedReason: 'turn-finished',
-      beaconPausedAt: new Date(this.now()).toISOString(),
+      beaconPausedAt: this.ports.clock.iso(this.now()),
     }));
     this.stopFor(c.id);
     this.emit('auto-paused', { id: c.id, topicId: c.topicId, reason: 'turn-finished' });
@@ -1190,15 +1142,14 @@ export class PromiseBeacon extends EventEmitter {
     this.emit('heartbeat.skipped', { id: c.id, reason });
     // Re-arm for re-evaluation: 10min window for quiet-hours, 1h for cap.
     const reArmDelay = reason === 'quiet-hours' ? 10 * 60_000 : 60 * 60_000;
-    const timer = setTimeout(() => {
+    const timer = this.ports.timers.after(reArmDelay * this.timerMult, () => {
       this.timers.delete(c.id);
       // Clear suppression flag on re-evaluation attempt.
       this.config.commitmentTracker
         .mutate(c.id, prev => ({ ...prev, beaconSuppressed: false, beaconSuppressionReason: undefined }))
         .then(updated => this.schedule(updated))
         .catch(() => { /* ok — commitment may be terminal */ });
-    }, reArmDelay * this.timerMult);
-    timer.unref?.();
+    });
     this.timers.set(c.id, timer);
   }
 
@@ -1246,7 +1197,7 @@ export class PromiseBeacon extends EventEmitter {
     }
 
     // Backoff floor (I1): not yet time for the next attempt → re-arm, no-op.
-    const lastAt = c.lastEscalationAt ? Date.parse(c.lastEscalationAt) : 0;
+    const lastAt = c.lastEscalationAt ? this.ports.clock.parse(c.lastEscalationAt) : 0;
     if (lastAt && this.now() - lastAt < this.escBackoffMs(attempts)) {
       this.auditEsc(c, 'backoff-hold');
       return; // caller re-arms
@@ -1280,8 +1231,8 @@ export class PromiseBeacon extends EventEmitter {
 
     // Rung 1 commit: increment BEFORE the spawn (I1), set in-flight + idempotency
     // key + revivalMode, all via one CAS mutate (server-written-only, I11).
-    const attemptId = crypto.randomUUID();
-    const nowIso = new Date(this.now()).toISOString();
+    const attemptId = randomUUID();
+    const nowIso = this.ports.clock.iso(this.now());
     await this.config.commitmentTracker.mutate(c.id, prev => ({
       ...prev,
       escalationAttempts: (prev.escalationAttempts ?? 0) + 1,
@@ -1348,7 +1299,7 @@ export class PromiseBeacon extends EventEmitter {
     liveEpoch: string | null,
   ): Promise<'confirmed' | 'failed' | 'pending'> {
     const esc = this.esc!;
-    const lastAt = c.lastEscalationAt ? Date.parse(c.lastEscalationAt) : 0;
+    const lastAt = c.lastEscalationAt ? this.ports.clock.parse(c.lastEscalationAt) : 0;
     const age = this.now() - lastAt;
 
     // ── Double-spawn detection (§6) ──
@@ -1413,7 +1364,7 @@ export class PromiseBeacon extends EventEmitter {
       return;
     }
     // Per-commitment floor.
-    const lastRung2 = c.lastRung2At ? Date.parse(c.lastRung2At) : 0;
+    const lastRung2 = c.lastRung2At ? this.ports.clock.parse(c.lastRung2At) : 0;
     if (lastRung2 && this.now() - lastRung2 < esc.rung2MinIntervalMs) {
       this.auditEsc(c, 'rung2-floor-hold', { state });
       return;
@@ -1434,7 +1385,7 @@ export class PromiseBeacon extends EventEmitter {
           auditEvent = 'rung2-suppressed-user-output';
         }
       } catch (err) {
-        console.warn(`[PromiseBeacon] rung2 send failed for ${c.id}:`, (err as Error).message);
+        this.ports.log(`[PromiseBeacon] rung2 send failed for ${c.id}:`, (err as Error).message);
         this.auditEsc(c, 'rung2-send-failed', { state, error: (err as Error).message });
         return;
       }
@@ -1442,7 +1393,7 @@ export class PromiseBeacon extends EventEmitter {
     await this.config.commitmentTracker.mutate(c.id, prev => ({
       ...prev,
       rung2NotificationCount: (prev.rung2NotificationCount ?? 0) + 1,
-      lastRung2At: new Date(this.now()).toISOString(),
+      lastRung2At: this.ports.clock.iso(this.now()),
       currentRung: '2',
       atRisk: true,
     }));
@@ -1455,7 +1406,7 @@ export class PromiseBeacon extends EventEmitter {
     await this.config.commitmentTracker.mutate(c.id, prev => ({
       ...prev,
       status: 'violated',
-      resolvedAt: new Date(this.now()).toISOString(),
+      resolvedAt: this.ports.clock.iso(this.now()),
       resolution: 'session-lost-unrecovered',
       currentRung: '3',
       escalationInFlight: false,
@@ -1520,7 +1471,7 @@ export class PromiseBeacon extends EventEmitter {
         existing.text = text;
         existing.originAuthor = structuredClone(originAuthor);
         existing.liveness ||= liveness;
-        existing.qualifiedAt = new Date(this.now()).toISOString();
+        existing.qualifiedAt = this.ports.clock.iso(this.now());
         existing.cadenceMs = Math.min(existing.cadenceMs, itemCadence);
         existing.occurrences += 1;
       } else {
@@ -1529,7 +1480,7 @@ export class PromiseBeacon extends EventEmitter {
           text,
           kind,
           liveness,
-          qualifiedAt: new Date(this.now()).toISOString(),
+          qualifiedAt: this.ports.clock.iso(this.now()),
           cadenceMs: itemCadence,
           occurrences: 1,
           originAuthor: structuredClone(originAuthor),
@@ -1638,7 +1589,7 @@ export class PromiseBeacon extends EventEmitter {
       state.retryingCount = attemptedCount;
       state.retryingText = aggregateText;
       state.retryingRepresentativeId = representative.id;
-      state.nextAttemptAt = new Date(this.now() + state.cadenceMs).toISOString();
+      state.nextAttemptAt = this.ports.clock.iso(this.now() + state.cadenceMs);
       this.saveTopicAggregateState(topicId, state);
       this.armAggregateTimer(topicId, state);
       throw err;
@@ -1646,7 +1597,7 @@ export class PromiseBeacon extends EventEmitter {
 
     if (outcome === 'sent' || outcome === 'suppressed-delivered-equivalent') {
       state.pending = state.pending.slice(attemptedCount);
-      state.lastSentAt = new Date(this.now()).toISOString();
+      state.lastSentAt = this.ports.clock.iso(this.now());
       delete state.nextAttemptAt;
       delete state.retryingCount;
       delete state.retryingText;
@@ -1697,7 +1648,7 @@ export class PromiseBeacon extends EventEmitter {
     state.retryingCount = attemptedCount;
     state.retryingText = aggregateText;
     state.retryingRepresentativeId = representative.id;
-    state.nextAttemptAt = new Date(this.now() + state.cadenceMs).toISOString();
+    state.nextAttemptAt = this.ports.clock.iso(this.now() + state.cadenceMs);
     this.saveTopicAggregateState(topicId, state);
     this.armAggregateTimer(topicId, state);
     return outcome;
@@ -1776,16 +1727,16 @@ export class PromiseBeacon extends EventEmitter {
   }
 
   private aggregateDueAt(state: TopicAggregateState): number {
-    const sent = state.lastSentAt ? Date.parse(state.lastSentAt) : Number.NaN;
+    const sent = state.lastSentAt ? this.ports.clock.parse(state.lastSentAt) : Number.NaN;
     const cadenceDue = Number.isFinite(sent) ? sent + state.cadenceMs : this.now();
-    const retry = state.nextAttemptAt ? Date.parse(state.nextAttemptAt) : Number.NaN;
+    const retry = state.nextAttemptAt ? this.ports.clock.parse(state.nextAttemptAt) : Number.NaN;
     return Number.isFinite(retry) ? Math.max(cadenceDue, retry) : cadenceDue;
   }
 
   private armAggregateTimer(topicId: number, state: TopicAggregateState): void {
     this.clearAggregateTimer(topicId);
     const delay = Math.max(1, this.aggregateDueAt(state) - this.now());
-    const timer = setTimeout(() => {
+    const timer = this.ports.timers.after(delay, () => {
       this.aggregateTimers.delete(topicId);
       this.flushTopicAggregate(topicId).catch(err => {
         this.reportAggregateDegradation(
@@ -1794,22 +1745,21 @@ export class PromiseBeacon extends EventEmitter {
           (err as Error).message,
         );
       });
-    }, delay);
-    timer.unref?.();
+    });
     this.aggregateTimers.set(topicId, timer);
   }
 
   private clearAggregateTimer(topicId: number): void {
     const timer = this.aggregateTimers.get(topicId);
-    if (timer) clearTimeout(timer);
+    if (timer) timer.cancel();
     this.aggregateTimers.delete(topicId);
   }
 
   private restoreAggregateTimers(): void {
     if (this.config.aggregateByTopic === false) return;
-    let names: string[];
+    let topics: readonly number[];
     try {
-      names = fs.readdirSync(this.stateDir);
+      topics = this.ports.state.aggregateTopics();
     } catch (err) {
       this.reportAggregateDegradation(
         'restart recovery of pending topic aggregates',
@@ -1818,29 +1768,21 @@ export class PromiseBeacon extends EventEmitter {
       );
       return;
     }
-    for (const name of names) {
-      const match = /^topic-aggregate-(-?\d+)\.json$/.exec(name);
-      if (!match) continue;
-      const topicId = Number(match[1]);
+    for (const topicId of topics) {
       const state = this.loadTopicAggregateState(topicId);
       if (state.pending.length > 0) this.armAggregateTimer(topicId, state);
     }
   }
 
-  private topicAggregatePath(topicId: number): string {
-    return path.join(this.stateDir, `topic-aggregate-${topicId}.json`);
-  }
-
   private loadTopicAggregateState(topicId: number): TopicAggregateState {
-    const file = this.topicAggregatePath(topicId);
-    if (!fs.existsSync(file)) {
-      return {
-        cadenceMs: this.clampCadence(20 * 60_000) * this.timerMult,
-        pending: [],
-      };
-    }
     try {
-      const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as TopicAggregateState;
+      const parsed = this.ports.state.loadAggregate(topicId) as TopicAggregateState | null;
+      if (parsed === null) {
+        return {
+          cadenceMs: this.clampCadence(20 * 60_000) * this.timerMult,
+          pending: [],
+        };
+      }
       if (!Array.isArray(parsed.pending) || !Number.isFinite(parsed.cadenceMs)) {
         throw new Error('aggregate state shape is invalid');
       }
@@ -1849,23 +1791,20 @@ export class PromiseBeacon extends EventEmitter {
       this.reportAggregateDegradation(
         'durable topic aggregate state',
         'stop this aggregate rather than overwrite and lose qualifying notices',
-        `${file}: ${(err as Error).message}`,
+        `topic ${topicId}: ${(err as Error).message}`,
       );
       throw err;
     }
   }
 
   private saveTopicAggregateState(topicId: number, state: TopicAggregateState): void {
-    const file = this.topicAggregatePath(topicId);
-    const tmp = `${file}.tmp`;
     try {
-      fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
-      fs.renameSync(tmp, file);
+      this.ports.state.saveAggregate(topicId, state);
     } catch (err) {
       this.reportAggregateDegradation(
         'durable topic aggregate persistence',
         'refuse the send so a qualifying notice is never acknowledged before it is durable',
-        `${file}: ${(err as Error).message}`,
+        `topic ${topicId}: ${(err as Error).message}`,
       );
       throw err;
     }
@@ -1885,7 +1824,7 @@ export class PromiseBeacon extends EventEmitter {
     for (const [id, items] of byCommitment) {
       // An immediate fire's existing accounting path handles its own row.
       if (id === triggeringHeartbeatId) continue;
-      const nowIso = new Date(this.now()).toISOString();
+      const nowIso = this.ports.clock.iso(this.now());
       try {
         this.updateHotState(id, hot => {
           hot.heartbeatCount += 1;
@@ -1926,7 +1865,7 @@ export class PromiseBeacon extends EventEmitter {
   }
 
   private reportAggregateDegradation(primary: string, fallback: string, reason: string): void {
-    DegradationReporter.getInstance().report({
+    this.ports.degraded({
       feature: 'PromiseBeaconTopicAggregation',
       primary,
       fallback,
@@ -1990,14 +1929,6 @@ export class PromiseBeacon extends EventEmitter {
     }
     const sendNormally = async (): Promise<BeaconSendResult> => {
       if (c.topicId == null) return 'skipped';
-      // Beacon-local B-IDLEAK pass (C1+C2 §4.3): beacon sends are isProxy:true and
-      // bypass MessagingToneGate, so B20 can't run on them. Signal-only
-      // observability — emit when beacon text leaks internal plumbing (never
-      // blocks/scrubs; secret/path redaction stays with guardProxyOutput).
-      try {
-        const leak = detectInternalIdLeak(text);
-        if (leak.leaked) this.emit('aoft.beacon-id-leak', { id: c.id, terms: leak.terms });
-      } catch { /* non-fatal */ }
       // ── durable-conversation-identity §6.1 step 2: the funnel swap ──
       // When deliverToConversation is wired, EVERY beacon send rides it (the
       // id>0 arm is today's Telegram path unchanged; the id<0 arm delivers
@@ -2105,7 +2036,7 @@ export class PromiseBeacon extends EventEmitter {
    */
   private async applyDeliveryOutcome(
     c: Commitment,
-    outcome: import('../core/deliverToConversation.js').DeliveryOutcome,
+    outcome: DeliveryOutcome,
     seq: number,
     logicalSendId: string,
     content?: { text: string; kind: string; originAuthor: OriginAutomationAuthor },
@@ -2134,7 +2065,7 @@ export class PromiseBeacon extends EventEmitter {
 
     if (outcome.standDown) {
       this.updateHotState(c.id, (h) => {
-        h.standDownAt = new Date(this.now()).toISOString();
+        h.standDownAt = this.ports.clock.iso(this.now());
       });
       this.stoodDown.add(c.id);
       this.stopFor(c.id);
@@ -2144,7 +2075,7 @@ export class PromiseBeacon extends EventEmitter {
 
     if (outcome.permanent) {
       this.updateHotState(c.id, (h) => {
-        if (!h.deliveryDeadLetteredAt) h.deliveryDeadLetteredAt = new Date(this.now()).toISOString();
+        if (!h.deliveryDeadLetteredAt) h.deliveryDeadLetteredAt = this.ports.clock.iso(this.now());
       });
       this.raiseUserAttention(
         c.id,
@@ -2167,7 +2098,7 @@ export class PromiseBeacon extends EventEmitter {
     const hot = this.updateHotState(c.id, (h) => {
       h.consecutiveDeliveryFailures = (h.consecutiveDeliveryFailures ?? 0) + 1;
       if ((h.consecutiveDeliveryFailures ?? 0) >= threshold && !h.deliveryDeadLetteredAt) {
-        h.deliveryDeadLetteredAt = new Date(this.now()).toISOString();
+        h.deliveryDeadLetteredAt = this.ports.clock.iso(this.now());
         deadLetterNow = true;
       }
     });
@@ -2236,8 +2167,8 @@ export class PromiseBeacon extends EventEmitter {
     for (const c of this.config.commitmentTracker.getActive()) {
       if (c.owner !== 'agent' || c.blockedOn !== 'external' || c.status !== 'pending') continue;
       if (c.externalBlockDeadLetteredAt) continue; // already surfaced this episode
-      const createdMs = Date.parse(c.createdAt);
-      const lastTouchMs = c.lastProbe?.at ? Date.parse(c.lastProbe.at) : createdMs;
+      const createdMs = this.ports.clock.parse(c.createdAt);
+      const lastTouchMs = c.lastProbe?.at ? this.ports.clock.parse(c.lastProbe.at) : createdMs;
       const windowStale = Number.isFinite(lastTouchMs) && now - lastTouchMs > windowMs;
       const ceilingHit = Number.isFinite(createdMs) && now - createdMs > ceilingMs;
       if (!windowStale && !ceilingHit) continue;
@@ -2255,7 +2186,7 @@ export class PromiseBeacon extends EventEmitter {
       if (surfaced) {
         await this.config.commitmentTracker.mutate(c.id, prev => ({
           ...prev,
-          externalBlockDeadLetteredAt: new Date(now).toISOString(),
+          externalBlockDeadLetteredAt: this.ports.clock.iso(now),
         }));
         this.emit('aoft.deadlettered-external', { id: c.id, reason });
       } else {
@@ -2284,7 +2215,7 @@ export class PromiseBeacon extends EventEmitter {
         });
       }
     } catch (err) {
-      console.warn('[PromiseBeacon] graveyard reconcile error:', (err as Error).message);
+      this.ports.log('[PromiseBeacon] graveyard reconcile error:', (err as Error).message);
     }
   }
 
@@ -2292,7 +2223,7 @@ export class PromiseBeacon extends EventEmitter {
     await this.config.commitmentTracker.mutate(c.id, prev => ({
       ...prev,
       status: 'violated',
-      resolvedAt: new Date().toISOString(),
+      resolvedAt: this.ports.clock.iso(this.now()),
       resolution: reason,
     }));
     // Route through the owner-gated chokepoint as a TERMINAL kind: under
@@ -2332,10 +2263,9 @@ export class PromiseBeacon extends EventEmitter {
   private inQuietHours(): boolean {
     const qh = this.config.quietHours;
     if (!qh) return false;
-    const [sH, sM] = (qh.start || '22:00').split(':').map(Number);
-    const [eH, eM] = (qh.end || '08:00').split(':').map(Number);
-    const d = new Date(this.now());
-    const mins = d.getHours() * 60 + d.getMinutes();
+    const [sH = 22, sM = 0] = (qh.start || '22:00').split(':').map(Number);
+    const [eH = 8, eM = 0] = (qh.end || '08:00').split(':').map(Number);
+    const mins = this.ports.clock.minutesOfDay(this.now());
     const startMin = sH * 60 + sM;
     const endMin = eH * 60 + eM;
     if (startMin < endMin) {
@@ -2350,41 +2280,25 @@ export class PromiseBeacon extends EventEmitter {
   }
 
   private loadHotState(id: string): HotState {
-    const p = path.join(this.stateDir, `${id}.json`);
+    const blank = { heartbeatCount: 0, consecutiveUnchanged: 0, templatedVariantCursor: 0 };
     try {
-      const raw = fs.readFileSync(p, 'utf-8');
-      const parsed = JSON.parse(raw);
-      return {
-        heartbeatCount: 0,
-        consecutiveUnchanged: 0,
-        templatedVariantCursor: 0,
-        ...parsed,
-      };
+      return { ...blank, ...(this.ports.state.loadHot(id) as Partial<HotState> | null) };
     } catch {
-      return {
-        heartbeatCount: 0,
-        consecutiveUnchanged: 0,
-        templatedVariantCursor: 0,
-      };
+      return blank;
     }
   }
 
   private saveHotState(id: string, hot: HotState): void {
-    const p = path.join(this.stateDir, `${id}.json`);
     try {
-      // R4-minor-1: ATOMIC tmp→rename (the house pattern) — the seq-bearing
-      // file must never tear: a crash mid-write that yielded a parseable file
-      // with a reset seq would re-collide against the now-DURABLE E1 entry and
-      // silently suppress a legitimate post-restart heartbeat.
-      const tmp = `${p}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(hot, null, 2));
-      fs.renameSync(tmp, p);
+      // The seq-bearing record must never tear: a reset seq would re-collide
+      // against a durable delivery guard and suppress a legitimate heartbeat.
+      this.ports.state.saveHot(id, hot);
     } catch (err) {
-      console.error(`[PromiseBeacon] persist failed for ${id}:`, (err as Error).message);
+      this.ports.log(`[PromiseBeacon] persist failed for ${id}:`, (err as Error).message);
     }
   }
 
-  /** Read-modify-write over the on-disk hot state — the delivery path and the
+  /** Read-modify-write over the durable hot state — the delivery path and the
    *  heartbeat path both write it, and neither may clobber the other's fields. */
   private updateHotState(id: string, fn: (hot: HotState) => void): HotState {
     const hot = this.loadHotState(id);

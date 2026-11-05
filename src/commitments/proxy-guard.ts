@@ -1,3 +1,5 @@
+/** The output guards PromiseBeacon uses on session frames and its own status lines, carried from
+ * 1.x PresenceProxy. These are guards, not a reading of meaning: a hit degrades to neutral wording. */
 
 // ANSI escape codes
 const ANSI_REGEX = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
@@ -48,7 +50,7 @@ const TEMPLATE_TOKEN = /\{[a-z_-]+\}|@filename\b/i;
 function isInputBoxGhostLine(line: string): boolean {
   const m = INPUT_BOX_LINE.exec(line);
   if (!m) return false;
-  const content = m[1].trim();
+  const content = m[1]!.trim();
   return TEMPLATE_TOKEN.test(content) || KNOWN_INPUT_BOX_GHOSTS.has(content.toLowerCase());
 }
 
@@ -82,8 +84,6 @@ export function sanitizeTmuxOutput(raw: string, extraPatterns?: string[]): strin
   return output.trim();
 }
 
-// ─── LLM Output Guard ──────────────────────────────────────────────────────
-
 const URL_REGEX = /https?:\/\/\S+/i;
 const IMPERATIVE_COMMANDS = /\b(sudo|rm\s|git\s+push|curl\s|wget\s|chmod|chown|kill\s|pkill)\b/i;
 const INPUT_REQUESTS = /\b(enter your|type your|provide your|what is your|password|credential|api.?key|token)\b/i;
@@ -98,3 +98,5 @@ export function guardProxyOutput(text: string): { safe: boolean; reason?: string
   if (INPUT_REQUESTS.test(text)) {
     return { safe: false, reason: 'Requests user input/credentials' };
   }
+  return { safe: true };
+}

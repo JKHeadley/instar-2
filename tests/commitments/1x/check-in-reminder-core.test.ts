@@ -16,7 +16,7 @@ import {
   formatCheckInDate,
   OPEN_COMMITMENT_STATUSES,
   CHECK_IN_TEXT_MAX,
-} from '../../../src/commitments/checkInReminderCore.js';
+} from './host.js';
 import type { CommitmentStatus } from './host.js';
 
 const NOW = Date.parse('2026-07-25T12:00:00.000Z');

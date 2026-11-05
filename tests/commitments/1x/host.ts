@@ -4,10 +4,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { CommitmentTracker as Core, type CommitmentTrackerConfig } from '../../../src/commitments/CommitmentTracker.js';
-import type { CommitmentTrackerPorts, ConfigWatchPort } from '../../../src/commitments/ports.js';
+import type { BeaconPorts, CommitmentTrackerPorts, ConfigWatchPort } from '../../../src/commitments/ports.js';
+import { PromiseBeacon as BeaconCore, type PromiseBeaconConfig } from '../../../src/commitments/PromiseBeacon.js';
+import { CheckInReminderReconciler as ReconcilerCore, type CheckInReminderConfig, type CheckInReminderDeps } from '../../../src/commitments/CheckInReminderReconciler.js';
+import { LlmQueue as LlmQueueCore, type LlmQueueOptions } from '../../../src/commitments/LlmQueue.js';
+import { ProxyCoordinator as CoordinatorCore } from '../../../src/commitments/ProxyCoordinator.js';
+import * as checkInCore from '../../../src/commitments/checkInReminderCore.js';
+export { LlmAbortedError } from '../../../src/commitments/LlmQueue.js';
+export { TelegramOriginHoldError } from '../../../src/commitments/ports.js';
 export * from '../../../src/commitments/CommitmentTracker.js';
 
 export const hostClock = { now: () => Date.now(), iso: (ms: number) => new Date(ms).toISOString(), parse: (iso: string) => Date.parse(iso) };
+export const hostTime = { ...hostClock,
+  minutesOfDay: (ms: number) => { const d = new Date(ms); return d.getHours() * 60 + d.getMinutes(); },
+  formatWhen: (ms: number) => { const d = new Date(ms);
+    return `${d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} at ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`; } };
 export const hostTimers = {
   after(ms: number, run: () => void) { const t = setTimeout(run, ms); t.unref?.(); return { cancel: () => clearTimeout(t) }; },
   every(ms: number, run: () => void) { const t = setInterval(run, ms); t.unref?.(); return { cancel: () => clearInterval(t) }; },
@@ -49,6 +60,52 @@ export class CommitmentTracker extends Core {
   override sweepAutoExpiry(now?: Date | number) { return super.sweepAutoExpiry(now === undefined ? undefined : typeof now === 'number' ? now : now.getTime()); }
   static override isTopicScopedConfigPath(configPath: string | undefined) { return Core.isTopicScopedConfigPath(configPath); }
 }
+export function beaconPorts(stateDir: string, now?: () => number): BeaconPorts {
+  const dir = path.join(stateDir, 'state', 'promise-beacon');
+  fs.mkdirSync(dir, { recursive: true });
+  const write = (file: string, value: unknown) => { const tmp = `${file}.tmp`; fs.writeFileSync(tmp, JSON.stringify(value, null, 2)); fs.renameSync(tmp, file); };
+  const aggregate = (topic: number) => path.join(dir, `topic-aggregate-${topic}.json`);
+  return {
+    clock: { ...hostTime, now: now ?? hostTime.now }, timers: hostTimers,
+    state: {
+      loadHot(id) { try { return JSON.parse(fs.readFileSync(path.join(dir, `${id}.json`), 'utf-8')); } catch { return null; } },
+      saveHot(id, hot) { write(path.join(dir, `${id}.json`), hot); },
+      loadAggregate(topic) { const file = aggregate(topic); return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null; },
+      saveAggregate(topic, state) { write(aggregate(topic), state); },
+      aggregateTopics() { return fs.readdirSync(dir).flatMap(name => { const m = /^topic-aggregate-(-?\d+)\.json$/.exec(name); return m ? [Number(m[1])] : []; }); },
+    },
+    log(...parts) { console.log(...parts); },
+    degraded(event) { degradations.push(event); },
+  };
+}
+export const degradations: unknown[] = [];
+export class PromiseBeacon extends BeaconCore {
+  constructor(config: Omit<PromiseBeaconConfig, 'ports'> & { stateDir: string; now?: () => number }) {
+    const { stateDir, now, ...rest } = config;
+    super({ ...rest, ports: beaconPorts(stateDir, now) });
+  }
+}
+export class LlmQueue extends LlmQueueCore {
+  constructor(opts: Omit<LlmQueueOptions, 'clock' | 'timers'> & { now?: () => number } = {}) {
+    const { now, ...rest } = opts;
+    super({ ...rest, clock: { ...hostClock, now: now ?? hostClock.now }, timers: hostTimers });
+  }
+}
+export class ProxyCoordinator extends CoordinatorCore { constructor() { super(() => Date.now()); } }
+export class CheckInReminderReconciler extends ReconcilerCore {
+  constructor(deps: Omit<CheckInReminderDeps, 'time'> & { now?: () => number }, config: CheckInReminderConfig) {
+    const { now, ...rest } = deps;
+    super({ ...rest, time: { ...hostTime, now: now ?? hostTime.now } }, config);
+  }
+}
+export const { CHECK_IN_MAX_ATTEMPTS, OPEN_COMMITMENT_STATUSES, CHECK_IN_TEXT_MAX } = checkInCore;
+export const selectDueCommitments = <T extends Parameters<typeof checkInCore.isCheckInReminderDue>[0]['commitment'] & { id: string }>(rows: readonly T[], nowMs: number) =>
+  checkInCore.selectDueCommitments(rows, nowMs, hostClock.parse);
+export const isCheckInReminderDue = (input: { commitment: Parameters<typeof checkInCore.isCheckInReminderDue>[0]['commitment']; nowMs: number }) =>
+  checkInCore.isCheckInReminderDue({ ...input, parse: hostClock.parse });
+export const formatCheckInDate = (iso: string) => checkInCore.formatCheckInDate(iso, hostTime);
+export const buildCheckInReminderText = (opts: { userRequest: string; checkInAt: string }) =>
+  checkInCore.buildCheckInReminderText({ userRequest: opts.userRequest, when: formatCheckInDate(opts.checkInAt) });
 /** 1.x's LiveConfig surface over the same config.json the suites write. */
 export class LiveConfig implements ConfigWatchPort {
   private readonly file: string;
@@ -78,3 +135,4 @@ export const SafeFsExecutor = {
   safeRmSync: (target: string, opts?: fs.RmOptions & { operation?: string }) => fs.rmSync(target, { recursive: opts?.recursive ?? false, force: opts?.force ?? false }),
   safeUnlinkSync: (target: string) => fs.unlinkSync(target),
 };
+export type { DeliveryOutcome } from '../../../src/commitments/ports.js';

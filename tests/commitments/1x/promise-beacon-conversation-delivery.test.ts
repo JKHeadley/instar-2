@@ -19,12 +19,12 @@ import path from 'node:path';
 import os from 'node:os';
 import { CommitmentTracker, type Commitment } from './host.js';
 import { LiveConfig } from './host.js';
-import { LlmQueue } from '../../src/monitoring/LlmQueue.js';
-import { ProxyCoordinator } from '../../src/monitoring/ProxyCoordinator.js';
-import { PromiseBeacon, type BeaconSendResult } from '../../src/monitoring/PromiseBeacon.js';
-import type { DeliveryOutcome } from '../../src/core/deliverToConversation.js';
+import { LlmQueue } from './host.js';
+import { ProxyCoordinator } from './host.js';
+import { PromiseBeacon, type BeaconSendResult } from './host.js';
+import type { DeliveryOutcome } from './host.js';
 import { SafeFsExecutor } from './host.js';
-import { TelegramOriginHoldError } from '../../src/messaging/telegram-origin/types.js';
+import { TelegramOriginHoldError } from './host.js';
 
 function commitment(over: Partial<Commitment>): Commitment {
   return {

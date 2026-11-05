@@ -33,6 +33,36 @@ export interface CommitmentTrackerPorts {
   log(...parts: unknown[]): void;
   degraded(event: DegradationEvent): void;
 }
+/** PromiseBeacon's durable bookkeeping; rows go in the owner journal in production. */
+export interface BeaconStatePort {
+  loadHot(id: string): unknown;
+  saveHot(id: string, hot: unknown): void;
+  loadAggregate(topicId: number): unknown;
+  saveAggregate(topicId: number, state: unknown): void;
+  aggregateTopics(): readonly number[];
+}
+export interface BeaconPorts {
+  clock: CommitmentClock & { minutesOfDay(ms: number): number };
+  timers: CommitmentTimers;
+  state: BeaconStatePort;
+  log(...parts: unknown[]): void;
+  degraded(event: DegradationEvent): void;
+}
+/** A delivery attempt's typed result. An ambiguous outcome keeps its logical send id. */
+export type DeliveryOutcome =
+  | { delivered: true; outcome: 'delivered' }
+  | { delivered: false; outcome: 'already-delivered-recently' }
+  | { delivered: false; outcome: 'not-delivered'; reason: string; detail?: string;
+    originHold?: { operationId: string | null; outcome: string; reason: string; logicalReplaySafe?: boolean };
+    permanent?: boolean; standDown?: boolean };
+/** A send that the transport holds under its original operation. Not a failure, not a delivery. */
+export class TelegramOriginHoldError extends Error {
+  readonly terminalForCallerRetry = true;
+  constructor(readonly reason: string, readonly operationId: string | null = null, readonly outcome: string = 'held') {
+    super(`Telegram message held: ${reason}`);
+    this.name = 'TelegramOriginHoldError';
+  }
+}
 export interface ConfigWatchPort { get(path: string, fallback: unknown): unknown; set(path: string, value: unknown): void }
 export interface ComponentHealth { status: 'healthy' | 'degraded' | 'unhealthy'; message: string; lastCheck: string }
 

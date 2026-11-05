@@ -8,18 +8,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { getMigrationDefaults, applyDefaults } from '../../src/config/ConfigDefaults.js';
 import { LiveConfig } from './host.js';
 import { SafeFsExecutor } from './host.js';
 import { CommitmentTracker, type Commitment } from './host.js';
-import { LlmQueue } from '../../src/monitoring/LlmQueue.js';
+import { LlmQueue } from './host.js';
 import {
   PromiseBeacon,
   type BeaconSendResult,
   type EscalationConfig,
   type ReviveResult,
-} from '../../src/monitoring/PromiseBeacon.js';
-import { ProxyCoordinator } from '../../src/monitoring/ProxyCoordinator.js';
+} from './host.js';
+import { ProxyCoordinator } from './host.js';
 
 describe('PromiseBeacon user output authority', () => {
   let dir: string;

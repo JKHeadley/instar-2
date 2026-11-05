@@ -38,8 +38,9 @@ export interface LlmQueueOptions {
    * Default 0 = OFF (today's greedy drain, zero behavior change for existing callers).
    */
   backgroundDispatchMinGapMs?: number;
-  /** Provide `Date.now()` — injectable for tests. */
-  now?: () => number;
+  /** The host's clock and bounded timers (no ambient time in the core). */
+  clock: { now(): number; iso(ms: number): string };
+  timers: { after(ms: number, run: () => void): { cancel(): void } };
 }
 
 export interface LlmMeteredRequest {
@@ -72,6 +73,8 @@ export class LlmQueue {
   private maxDailyCents: number;
   private backgroundDispatchMinGapMs: number;
   private now: () => number;
+  private readonly iso: (ms: number) => string;
+  private readonly timers: LlmQueueOptions['timers'];
 
   private inFlight: Set<InFlight> = new Set();
   private waiters: Waiter[] = [];
@@ -79,7 +82,7 @@ export class LlmQueue {
   /** Wall-clock (via `now`) of the last BACKGROUND-lane dispatch — herd-pacing window anchor. */
   private lastBackgroundStartAt = 0;
   /** At most one pending paced re-drain timer; null when none scheduled. */
-  private pacingTimer: ReturnType<typeof setTimeout> | null = null;
+  private pacingTimer: { cancel(): void } | null = null;
 
   /** Daily spend ledger: { dateKey: 'YYYY-MM-DD', cents: number, interactive: number } */
   private dailySpendCents = 0;
@@ -87,12 +90,14 @@ export class LlmQueue {
   private dailyDateKey = '';
   private readonly metered = new Map<string, Array<{ at: number; topic?: string; inputTokens: number; outputTokens: number; costCents: number }>>();
 
-  constructor(opts: LlmQueueOptions = {}) {
+  constructor(opts: LlmQueueOptions) {
     this.maxConcurrent = opts.maxConcurrent ?? 3;
     this.interactiveReservePct = opts.interactiveReservePct ?? 0.4;
     this.maxDailyCents = opts.maxDailyCents ?? 100;
     this.backgroundDispatchMinGapMs = opts.backgroundDispatchMinGapMs ?? 0;
-    this.now = opts.now ?? (() => Date.now());
+    this.now = () => opts.clock.now();
+    this.iso = ms => opts.clock.iso(ms);
+    this.timers = opts.timers;
   }
 
   /**
@@ -232,11 +237,10 @@ export class LlmQueue {
    */
   private schedulePacedDrain(delayMs: number): void {
     if (this.pacingTimer) return;
-    this.pacingTimer = setTimeout(() => {
+    this.pacingTimer = this.timers.after(Math.max(1, delayMs), () => {
       this.pacingTimer = null;
       this.drain();
-    }, Math.max(1, delayMs));
-    this.pacingTimer.unref?.();
+    });
   }
 
   private start(w: Waiter): void {
@@ -266,7 +270,7 @@ export class LlmQueue {
   }
 
   private rollDateIfNeeded(): void {
-    const today = new Date(this.now()).toISOString().slice(0, 10);
+    const today = this.iso(this.now()).slice(0, 10);
     if (today !== this.dailyDateKey) {
       this.dailyDateKey = today;
       this.dailySpendCents = 0;

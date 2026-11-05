@@ -4,13 +4,12 @@
  *
  * The pure due-predicate is covered in check-in-reminder-core.test.ts. What is
  * tested HERE is everything that can go wrong once real state and a real
- * transport are involved: exactly-once under repetition, the stamp-before-send
- * ordering, what happens when the send fails, and the bounded blast radius.
+ * transport are involved: exactly-once under repetition, the durable start before the send, what happens when the send fails, and the bounded blast radius.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { CheckInReminderReconciler } from '../../src/monitoring/CheckInReminderReconciler.js';
+import { CheckInReminderReconciler } from './host.js';
 import type { Commitment } from './host.js';
-import { CHECK_IN_MAX_ATTEMPTS } from '../../../src/commitments/checkInReminderCore.js';
+import { CHECK_IN_MAX_ATTEMPTS } from './host.js';
 
 const NOW = Date.parse('2026-07-25T12:00:00.000Z');
 const PAST = '2026-07-25T11:00:00.000Z';
@@ -100,30 +99,57 @@ describe('exactly once — the property the whole feature rests on', () => {
     expect(rep.sent).toBe(0);
   });
 
-  it('a crash between send and stamp re-sends, and the relay absorbs the duplicate', async () => {
-    // The cost of send-then-stamp, stated honestly: the reminder can be sent
-    // twice if the process dies before stamping. That is ACCEPTED here because
-    // the relay's content dedup drops an identical message to the same topic
-    // inside its window — the platform already solves it. What must NOT happen
-    // is the reverse trade: a failed send marked as delivered.
-    const { r, tracker, send } = make([commitment()]);
-    // First pass: send succeeds, stamping fails (the crash window).
-    tracker.mutate
-      .mockImplementationOnce(async (id: string, fn: any) => {
-        const cur = tracker._rows.get(id)!;
-        const next = fn({ ...cur });
-        tracker._rows.set(id, next);
-        return next;
-      }) // attempts++
-      .mockImplementationOnce(async () => {
+  // 2.0: a crash between send and stamp is settled by its receipt. 1.x re-sent and
+  // relied on a relay's content dedup; the floor here is that nothing sends twice.
+  it('a crash between send and stamp never re-sends; its receipt settles it', async () => {
+    const send = vi.fn(async () => undefined);
+    const tracker = fakeTracker([commitment()]);
+    let failStamp = true;
+    const realMutate = tracker.mutate.getMockImplementation()!;
+    tracker.mutate.mockImplementation(async (id: string, fn: (c: Commitment) => Commitment) => {
+      const applied = fn({ ...tracker._rows.get(id)! });
+      if (failStamp && applied.checkInReminderSentAt) {
+        failStamp = false;
         throw new Error('died before stamping');
-      });
+      }
+      return realMutate(id, fn);
+    });
+    let receipt: boolean | undefined = undefined;
+    const r = new CheckInReminderReconciler(
+      { tracker: tracker as any, send, now: () => NOW, log: () => {}, resolveDelivery: async () => receipt },
+      { enabled: true, dryRun: false },
+    );
     const first = await r.runPass();
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(first.sent).toBe(1);
     expect(first.errors.some((e) => e.error.includes('sent-but-unstamped'))).toBe(true);
+    expect(send).toHaveBeenCalledTimes(1);
 
-    // Second pass re-sends because no stamp exists — correct, and deduped downstream.
+    // No receipt yet: held, not repeated.
+    const second = await r.runPass();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(second.skippedByReason['send-unsettled']).toBe(1);
+
+    // The receipt arrives: stamped from evidence, still one send.
+    receipt = true;
+    const third = await r.runPass();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(third.sent).toBe(1);
+    expect(tracker._rows.get('CMT-1')?.checkInReminderSentAt).toBeTruthy();
+    expect(tracker._rows.get('CMT-1')?.checkInReminderSendStartedAt).toBeUndefined();
+  });
+
+  it('an unknown send outcome is held, and a receipt saying it never went allows a bounded retry', async () => {
+    const send = vi.fn(async () => 'unknown');
+    const tracker = fakeTracker([commitment()]);
+    let receipt: boolean | undefined = undefined;
+    const r = new CheckInReminderReconciler(
+      { tracker: tracker as any, send, now: () => NOW, log: () => {}, resolveDelivery: async () => receipt },
+      { enabled: true, dryRun: false },
+    );
+    expect((await r.runPass()).unknown).toBe(1);
+    await r.runPass();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(tracker._rows.get('CMT-1')?.checkInReminderSentAt).toBeUndefined();
+    receipt = false;
     await r.runPass();
     expect(send).toHaveBeenCalledTimes(2);
   });

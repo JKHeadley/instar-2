@@ -18,6 +18,7 @@
  */
 import {
   selectDueCommitments,
+  formatCheckInDate,
   buildCheckInReminderText,
   CHECK_IN_MAX_ATTEMPTS,
   type NotDueReason,
@@ -35,8 +36,10 @@ export interface CheckInReminderDeps {
    * for a tone gate to judge — the safety the gate provides is not being
    * bypassed, it is not applicable.
    */
-  send: (topicId: number, text: string, identity: { commitmentId: string; checkInAt: string }) => Promise<unknown>;
-  now?: () => number;
+  send: (topicId: number, text: string, identity: { commitmentId: string; checkInAt: string; logicalSendId: string }) => Promise<unknown>;
+  /** The original send's receipt: true delivered, false definitely not, undefined unknown. */
+  resolveDelivery?: (logicalSendId: string) => Promise<boolean | undefined>;
+  time: { now(): number; iso(ms: number): string; parse(iso: string): number; formatWhen(ms: number): string };
   log?: (line: string) => void;
 }
 
@@ -59,6 +62,8 @@ export interface CheckInReminderPassReport {
   capped: number;
   /** Retries exhausted this pass — genuinely undelivered reminders. */
   gaveUp: number;
+  /** Sends whose result is unknown this pass: held under their send id, never repeated. */
+  unknown: number;
   skippedByReason: Partial<Record<NotDueReason, number>>;
   errors: Array<{ id: string; error: string }>;
 }
@@ -76,11 +81,15 @@ function emptyReport(over: Partial<CheckInReminderPassReport> = {}): CheckInRemi
     wouldSend: 0,
     capped: 0,
     gaveUp: 0,
+    unknown: 0,
     skippedByReason: {},
     errors: [],
     ...over,
   };
 }
+
+/** The stable identity of a commitment's one check-in send. */
+export const checkInSendId = (id: string): string => `${id}:check-in`;
 
 export class CheckInReminderReconciler {
   constructor(
@@ -95,9 +104,10 @@ export class CheckInReminderReconciler {
   async runPass(): Promise<CheckInReminderPassReport> {
     if (!this.config.enabled) return emptyReport({ dryRun: this.config.dryRun });
 
-    const now = (this.deps.now ?? Date.now)();
+    const now = this.deps.time.now();
     const all = this.deps.tracker.getAll();
-    const { due, skipped } = selectDueCommitments(all as Array<Commitment & { id: string }>, now);
+    const settled = await this.settleUnsettled(all);
+    const { due, skipped } = selectDueCommitments(all as Array<Commitment & { id: string }>, now, this.deps.time.parse);
 
     const skippedByReason: Partial<Record<NotDueReason, number>> = {};
     for (const s of skipped) skippedByReason[s.reason] = (skippedByReason[s.reason] ?? 0) + 1;
@@ -119,6 +129,7 @@ export class CheckInReminderReconciler {
       capped,
       skippedByReason,
     });
+    report.sent += settled;
 
     for (const commitment of batch) {
       if (this.config.dryRun) {
@@ -134,25 +145,30 @@ export class CheckInReminderReconciler {
   }
 
   /**
-   * SEND FIRST, then stamp — and the reverse is a trap worth naming.
-   *
-   * The earlier draft stamped before sending, reasoning that a duplicate cannot
-   * be recalled while a miss is recoverable. That reasoning was wrong in a
-   * specific and familiar way: it made ZERO deliveries a *designed* outcome. A
-   * failed send left the commitment marked `checkInReminderSentAt` — a field
-   * asserting a delivery that never happened — and permanently ineligible. The
-   * feature whose purpose is that promises are not silently dropped would have
-   * silently dropped them. (External review, 2026-07-25.)
-   *
-   * Sending first restores at-least-once. The duplicate it risks — a crash
-   * between send and stamp — is absorbed by the relay's existing content dedup
-   * (identical text to the same topic inside its window), so the platform
-   * already solves the problem the wrong ordering was invented to solve.
-   *
-   * Attempts are counted and bounded: a transient failure gets another pass, a
-   * permanently broken transport is given up on LOUDLY via
-   * `checkInReminderFailedAt` rather than retried forever.
+   * Durable start, then send, then settle. 1.x sent first and let a relay's
+   * content dedup absorb a crash before the stamp; 2.0's floor forbids relying on
+   * that: an uncertain send is never repeated. So the attempt and the send's start
+   * are on record before the send, a definite failure clears the start for a bounded
+   * retry, and an unknown one stays held under its logical send id until a receipt
+   * settles it. The field never claims a delivery that did not happen (the original
+   * reason 1.x refused to stamp first).
    */
+  private async settleUnsettled(all: readonly Commitment[]): Promise<number> {
+    let delivered = 0;
+    for (const c of all) {
+      if (!c.checkInReminderSendStartedAt || c.checkInReminderSentAt || c.status !== 'pending') continue;
+      const receipt = await this.deps.resolveDelivery?.(checkInSendId(c.id));
+      if (receipt === true) {
+        await this.deps.tracker.mutate(c.id, prev => ({ ...prev, checkInReminderSendStartedAt: undefined,
+          checkInReminderSentAt: this.deps.time.iso(this.deps.time.now()) }));
+        delivered++;
+      } else if (receipt === false) {
+        await this.deps.tracker.mutate(c.id, prev => ({ ...prev, checkInReminderSendStartedAt: undefined }));
+      }
+    }
+    return delivered;
+  }
+
   private async remindOne(
     commitment: Commitment,
     now: number,
@@ -163,7 +179,7 @@ export class CheckInReminderReconciler {
 
     const text = buildCheckInReminderText({
       userRequest: commitment.userRequest ?? '',
-      checkInAt: commitment.checkInAt ?? '',
+      when: formatCheckInDate(commitment.checkInAt ?? '', this.deps.time),
     });
 
     // Count the attempt BEFORE trying. If the process dies mid-send, the
@@ -172,6 +188,7 @@ export class CheckInReminderReconciler {
       await this.deps.tracker.mutate(commitment.id, (c) => ({
         ...c,
         checkInReminderAttempts: (c.checkInReminderAttempts ?? 0) + 1,
+        checkInReminderSendStartedAt: this.deps.time.iso(now),
       }));
     } catch (err) {
       report.errors.push({ id: commitment.id, error: String(err) });
@@ -179,7 +196,13 @@ export class CheckInReminderReconciler {
     }
 
     try {
-      await this.deps.send(topicId, text, { commitmentId: commitment.id, checkInAt: commitment.checkInAt! });
+      const outcome = await this.deps.send(topicId, text, { commitmentId: commitment.id, checkInAt: commitment.checkInAt!,
+        logicalSendId: checkInSendId(commitment.id) });
+      if (outcome === 'unknown') {
+        // It may have reached the person. Held under its send id, never repeated.
+        report.unknown++;
+        return false;
+      }
     } catch (err) {
       report.failed++;
       report.errors.push({ id: commitment.id, error: String(err) });
@@ -189,7 +212,8 @@ export class CheckInReminderReconciler {
         try {
           await this.deps.tracker.mutate(commitment.id, (c) => ({
             ...c,
-            checkInReminderFailedAt: new Date(now).toISOString(),
+            checkInReminderFailedAt: this.deps.time.iso(now),
+            checkInReminderSendStartedAt: undefined,
           }));
         } catch {
           // @silent-fallback-ok — the failure is already in the pass report;
@@ -199,6 +223,13 @@ export class CheckInReminderReconciler {
           `[check-in-reminder] GIVING UP on ${commitment.id} after ${attempts} attempts — reminder UNDELIVERED`,
         );
         report.gaveUp++;
+      } else {
+        // A definite failure sent nothing: clear the start for a bounded retry.
+        try {
+          await this.deps.tracker.mutate(commitment.id, (c) => ({ ...c, checkInReminderSendStartedAt: undefined }));
+        } catch {
+          // @silent-fallback-ok — a retained start only holds this reminder for settlement.
+        }
       }
       return false;
     }
@@ -207,17 +238,18 @@ export class CheckInReminderReconciler {
     try {
       await this.deps.tracker.mutate(commitment.id, (c) => ({
         ...c,
-        checkInReminderSentAt: new Date(now).toISOString(),
+        checkInReminderSentAt: this.deps.time.iso(now),
+        checkInReminderSendStartedAt: undefined,
       }));
     } catch (err) {
-      // The user HAS the reminder; only the bookkeeping failed. Report it, and
-      // let the next pass re-send — the relay's content dedup absorbs that.
+      // The user HAS the reminder; only the bookkeeping failed. Report it. The
+      // durable start holds it for receipt settlement, so nothing sends twice.
       report.errors.push({ id: commitment.id, error: `sent-but-unstamped: ${err}` });
     }
     return true;
   }
 
   private log(line: string): void {
-    (this.deps.log ?? console.log)(line);
+    this.deps.log?.(line);
   }
 }

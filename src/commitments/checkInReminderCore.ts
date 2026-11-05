@@ -31,6 +31,7 @@ export type NotDueReason =
   | 'not-yet-due'
   | 'already-reminded'
   | 'retries-exhausted'
+  | 'send-unsettled'
   | 'not-open'
   | 'no-topic';
 
@@ -53,9 +54,12 @@ export interface DuePredicateInput {
     | 'checkInAt'
     | 'checkInReminderSentAt'
     | 'checkInReminderAttempts'
+    | 'checkInReminderSendStartedAt'
     | 'topicId'
   >;
   nowMs: number;
+  /** The host's ISO parse (no ambient clock in the core). */
+  parse: (iso: string) => number;
 }
 
 /**
@@ -91,7 +95,11 @@ export function isCheckInReminderDue(input: DuePredicateInput): DueVerdict {
     return { due: false, reason: 'retries-exhausted' };
   }
 
-  const at = Date.parse(c.checkInAt);
+  // A started send with no settlement may have reached the person. It is
+  // settled against its receipt, never sent again on a guess (Rules 26/42).
+  if (c.checkInReminderSendStartedAt) return { due: false, reason: 'send-unsettled' };
+
+  const at = input.parse(c.checkInAt);
   // An unparseable date fails CLOSED (no reminder) rather than being coerced to
   // 0 and treated as infinitely overdue — which would fire immediately, the
   // exact shape of the boot-time bug this feature had to fix in the scheduler.
@@ -106,11 +114,12 @@ export function isCheckInReminderDue(input: DuePredicateInput): DueVerdict {
 export function selectDueCommitments<T extends DuePredicateInput['commitment'] & { id: string }>(
   commitments: readonly T[],
   nowMs: number,
+  parse: (iso: string) => number,
 ): { due: T[]; skipped: Array<{ id: string; reason: NotDueReason }> } {
   const due: T[] = [];
   const skipped: Array<{ id: string; reason: NotDueReason }> = [];
   for (const c of commitments) {
-    const v = isCheckInReminderDue({ commitment: c, nowMs });
+    const v = isCheckInReminderDue({ commitment: c, nowMs, parse });
     if (v.due) due.push(c);
     else skipped.push({ id: c.id, reason: v.reason });
   }
@@ -132,10 +141,11 @@ export const CHECK_IN_TEXT_MAX = 400;
 
 export function buildCheckInReminderText(opts: {
   userRequest: string;
-  checkInAt: string;
+  /** The check-in moment already rendered for the person, or '' when unparseable. */
+  when: string;
 }): string {
   const promise = (opts.userRequest ?? '').trim().replace(/\s+/g, ' ').slice(0, CHECK_IN_TEXT_MAX);
-  const when = formatCheckInDate(opts.checkInAt);
+  const when = opts.when;
   return (
     `Check-in I promised you${when ? ` for ${when}` : ''}:\n\n` +
     `“${promise}”\n\n` +
@@ -145,11 +155,8 @@ export function buildCheckInReminderText(opts: {
 }
 
 /** Human date, or '' when unparseable — never throws, never invents. */
-export function formatCheckInDate(iso: string): string {
-  const ms = Date.parse(iso);
+export function formatCheckInDate(iso: string, time: { parse(iso: string): number; formatWhen(ms: number): string }): string {
+  const ms = time.parse(iso);
   if (Number.isNaN(ms)) return '';
-  const d = new Date(ms);
-  const day = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  return `${day} at ${time}`;
+  return time.formatWhen(ms);
 }

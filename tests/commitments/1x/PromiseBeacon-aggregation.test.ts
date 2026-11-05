@@ -12,10 +12,10 @@ import path from 'node:path';
 import { LiveConfig } from './host.js';
 import { SafeFsExecutor } from './host.js';
 import { CommitmentTracker, type Commitment } from './host.js';
-import { LlmQueue } from '../../src/monitoring/LlmQueue.js';
-import { PromiseBeacon } from '../../src/monitoring/PromiseBeacon.js';
-import { ProxyCoordinator } from '../../src/monitoring/ProxyCoordinator.js';
-import type { DeliveryOutcome } from '../../src/core/deliverToConversation.js';
+import { LlmQueue } from './host.js';
+import { PromiseBeacon } from './host.js';
+import { ProxyCoordinator } from './host.js';
+import type { DeliveryOutcome } from './host.js';
 
 function tmpState() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'promise-beacon-aggregate-'));

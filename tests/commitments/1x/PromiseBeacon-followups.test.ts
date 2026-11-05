@@ -15,9 +15,9 @@ import path from 'node:path';
 import os from 'node:os';
 import { CommitmentTracker } from './host.js';
 import { LiveConfig } from './host.js';
-import { LlmQueue } from '../../src/monitoring/LlmQueue.js';
-import { ProxyCoordinator } from '../../src/monitoring/ProxyCoordinator.js';
-import { PromiseBeacon } from '../../src/monitoring/PromiseBeacon.js';
+import { LlmQueue } from './host.js';
+import { ProxyCoordinator } from './host.js';
+import { PromiseBeacon } from './host.js';
 import { SafeFsExecutor } from './host.js';
 
 function tmpState() {

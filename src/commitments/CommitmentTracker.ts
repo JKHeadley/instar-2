@@ -267,6 +267,12 @@ export interface Commitment {
    */
   checkInReminderAttempts?: number | undefined;
   /**
+   * 2.0: set durably BEFORE the send and cleared by its settlement. Replaces the
+   * 1.x reliance on a relay's content dedup for a crash between send and stamp:
+   * an unsettled start is looked up by its logical send id, never sent again.
+   */
+  checkInReminderSendStartedAt?: string | undefined;
+  /**
    * Set when retries were EXHAUSTED without delivery. A loud give-up: the
    * reminder is genuinely undelivered and this is the record that says so,
    * rather than a "sent" stamp that quietly lies.

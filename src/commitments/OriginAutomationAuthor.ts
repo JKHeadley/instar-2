@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { IntelligenceOptions } from '../../core/types.js';
-import type { OriginEvidence } from './types.js';
+export interface OriginEvidence {
+  value: string | null; status: 'observed' | 'configured' | 'unknown' | 'not-applicable';
+  sourceEventRef: string | null; observedAt: number | null; reason: string;
+}
+interface IntelligenceOptions { onModel?: (info: { model?: string; framework?: string }) => void }
 
 export interface OriginAutomationAuthor {
   model: OriginEvidence; harness: OriginEvidence;
@@ -12,7 +15,7 @@ export interface OriginAutomationAuthor {
  * explicit; the last caller never becomes the author of the whole batch. */
 export function composeAutomationAuthors(authors: OriginAutomationAuthor[]): OriginAutomationAuthor {
   if (!authors.length) return unknownAutomationAuthor('aggregate-author-evidence-missing');
-  if (authors.length === 1) return structuredClone(authors[0]);
+  if (authors.length === 1) return structuredClone(authors[0]!);
   const all = authors.flatMap(author => author.authorContributors ?? [{ model: author.model, harness: author.harness }]);
   const distinct = [...new Map(all.map(author => [JSON.stringify(author), author])).values()];
   const omitted = Math.max(0, distinct.length - 128) + authors.reduce((n, author) => n + (author.omittedAuthorContributors ?? 0), 0);
@@ -21,8 +24,8 @@ export function composeAutomationAuthors(authors: OriginAutomationAuthor[]): Ori
   const merge = (field: 'model' | 'harness'): OriginEvidence => {
     const values = all.map(author => author[field]);
     if (!omitted && values.every(value => value.status === 'not-applicable')) return deterministicAutomationAuthor()[field];
-    if (!omitted && values.every(value => value.value != null && value.value === values[0].value && ['observed', 'configured'].includes(value.status))) {
-      return { value: values[0].value, status: values.every(value => value.status === 'observed') ? 'observed' : 'configured',
+    if (!omitted && values.every(value => value.value != null && value.value === values[0]!.value && ['observed', 'configured'].includes(value.status))) {
+      return { value: values[0]!.value, status: values.every(value => value.status === 'observed') ? 'observed' : 'configured',
         sourceEventRef, observedAt: Math.max(...values.map(value => value.observedAt ?? 0)) || null, reason: 'composed-author-evidence' };
     }
     return { ...unknownAutomationAuthor(omitted ? 'aggregate-author-bound-exceeded' : 'multiple-or-unknown-author-calls')[field], sourceEventRef };
@@ -47,9 +50,10 @@ export function deterministicAutomationAuthor(): OriginAutomationAuthor {
 export class OriginAuthorCall {
   readonly callId = `author-call:${randomUUID()}`;
   private author = unknownAutomationAuthor('author-provider-model-unavailable');
+  constructor(private readonly now: () => number) {}
   options(input: IntelligenceOptions): IntelligenceOptions {
     return { ...input, onModel: info => {
-      const at = Date.now();
+      const at = this.now();
       const valid = (value: unknown): value is string => typeof value === 'string' && value.length > 0 &&
         value.length <= 128 && !/[\x00-\x1f\x7f]/.test(value);
       // The interactive pool reports its lane, not the actual model.
