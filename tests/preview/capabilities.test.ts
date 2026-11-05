@@ -168,6 +168,20 @@ describe('a live proof binds the capability to its own actual outcome in the lau
     expect(proof('preview.reply-review', 1, v)).toMatchObject({ ok: false });
     expect(proof('preview.held-reply-notice', 1, v)).toMatchObject({ ok: false });
   });
+  it('a reviewed reply needs the exact passed candidate and actual phase, including a revision', () => {
+    const revised = turn(1, { sent: 11, sentAt: NOW, intentAt: NOW - 1, checkDoneAt: NOW - 2,
+      revisionReviewReserved: true, revision: { state: 'complete', text: 'PREVIEW — Here.' },
+      revisionReview: { verdict: 'pass', ruleIds: [] } });
+    expect(proof('preview.reply-review', 1, view([revised]))).toMatchObject({ ok: true });
+    revised.intent = 'a different candidate';
+    expect(proof('preview.reply-review', 1, view([revised]))).toMatchObject({ ok: false });
+    revised.intent = revised.revision!.text!;
+    revised.checkDoneAt = NOW + 1;
+    expect(proof('preview.reply-review', 1, view([revised]))).toMatchObject({ ok: false });
+    revised.checkDoneAt = NOW - 2;
+    revised.revisionReview!.verdict = 'unavailable';
+    expect(proof('preview.reply-review', 1, view([revised]))).toMatchObject({ ok: false });
+  });
   it('refuses a capability the executing launch had off, and a semantic capability without the desk’s observation', () => {
     expect(proof('preview.channel-memory', 1, view([question]), { deskObservation: 'arrival checked' })).toMatchObject({ ok: false, reason: expect.stringMatching(/had preview\.channel-memory off/u) });
     expect(proof('preview.channel-memory', 1, view([question]), { deskObservation: 'arrival checked', startups: [startup(NOW - 20, { agentState: true })] }))
