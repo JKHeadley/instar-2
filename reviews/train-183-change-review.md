@@ -2,7 +2,7 @@
 
 Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
 Review state: frozen
-Reviewed content: sha256:d4dece1f63b36dabc6868ed25ab9416c56467e9c8786e533e4e2310780d5e9f0
+Reviewed content: sha256:9f7d8e486f84a9b34f8ee2166bb4322487bc00ed14e851b4e5ef4eb9dd4b690f
 Outcome: Combine exact main c20b68d1d9b5744a72c243c4dc8a4b69114179d6 and reviewed row-40 head 3a89ebe1ba56c3290e6af25f46b739d9bf3cf648 on live b5806d1e015dc650cdc1dee2e0accab05a849d4b. Preserve browser behavior, relationship baselines and lineage, and main constitution text. Row 40 remains OPEN for installed/live/two-runner acceptance.
 Affected rules: 31, 32, 34, 37, 49, 70, 74, 90, 95, 101, 102, 111, 113, 116, 117, 119, 121.
 Affected floors: secrets — sealed grants and encrypted journals unchanged; spend cap — no added model call or budget; stop — existing admission and append checks unchanged; no duplicate sends — existing effect ownership and emit witnesses preserved; durable intake — both accepted journal baselines retained.
@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Integration includes the live journal, replication, constitution and register; use the inherited critical tier.
-Side effects: Generated artifacts bind the combined graph, including the live bootstrap shape and main rule hashes. The approvedConversion literal is recomputed from that combined anchor; no authority is granted by replay. Product edits merge without conflicting hunks. The combined capability briefing exceeded the summary floor and dropped governing context in the tool turn; five concise README summaries recover 131 bytes while preserving every capability and full description. Frozen inherited reviews whose subjects changed are reopened, retaining historical evidence and dispositions. No live root or runner is touched.
+Side effects: Generated artifacts bind the combined graph, including the live bootstrap shape and main rule hashes. The approvedConversion literal is recomputed from that combined anchor; no authority is granted by replay. Product edits merge without conflicting hunks. The combined capability briefing exceeded the summary floor and dropped governing context in the tool turn; five concise README summaries recover 131 bytes while preserving every capability and full description. The durable-memory line retains explicit encrypted-journal and restart wording at the same byte length. Exact-wording expectations in journal-awareness and live-failure-regressions follow the concise text; all behavior assertions remain. Frozen inherited reviews whose subjects changed are reopened, retaining historical evidence and dispositions. No live root or runner is touched.
 Undo and recovery: Keep the prior live build active until the independent gate and rollout. If rejected, retain this branch for repair; do not erase journal bytes or move either reviewed branch. Revert the integration as a new change if needed.
 Multi-machine posture: Retain the member implementation: source emits and receiver refreshes through replicated encrypted journals under writer leases, source disclosure grants and verified audience. No new transport or machine-local product state. WSL evidence is local; Studio owns installed/live/two-runner acceptance.
 Layer below: Inspected the pinned member report, initial-carry regression review, bootstrap anchor, build-register conversion check, owner-reference manifests and direct journal consumers. Both reviewed heads and live base remain ancestors. See the 1.x comparison below.
