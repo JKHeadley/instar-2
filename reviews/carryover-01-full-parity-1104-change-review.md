@@ -20,6 +20,10 @@ Bug evidence: reproducer=tests/preview/live-sentinels.test.ts
 Hook bypass: none
 Convergence: none
 Prompt review: No model prompt, provider parser, review verdict or acceptance threshold changed. Observation consumes already-admitted structured work results. The admission repair schedules already-model-declared promises; recorded final-reply bytes from update 715676157/message 7234 exercise the new path before and after journal replay. The declaration envelope is constructed, not claimed as captured metadata. Constructed boundary tests add no inference about free text.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged action-claim guidance requires evidence of an attempted avenue; the fixture verifies that instruction. Snapshot normalization adds no instruction or phrase-based model verdict.
+Prompt finding: 85544c20941f | protocol-literal | Unchanged durable-intake status reply tells the user retained messages need not be resent; admission and snapshot projection add no phrase-trigger decision.
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged recall provenance instruction requires source labels and disclosure of unknown sources; the new work defaults do not change that instruction.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged deterministic empty-memory status text is asserted by its consumer test; no prompt answer is supplied by this change.
 Decision: CARRYOVER-01-ADMIT-UNDATED | A model-admitted undated promise owns internal preparation on the existing cadence; an explicit dependency refines the default and a send still requires its own grant. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-01-full-parity-1104-PROGRESS.md
 Decision: CARRYOVER-01-OBSERVE-SLOTS | Reuse the owner's schedule for undated and recurring observation; keep dependency waits distinct from progress and never derive closure from a missing due instant. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-01-full-parity-1104-PROGRESS.md
 
