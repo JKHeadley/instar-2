@@ -24,6 +24,8 @@ Deferral: generated/register.json:1 | not-a-deferral=generated register repeats 
 
 1.x comparison: Inherited original train comparison at JKHeadley/instar main cc11e45f92e2590dd1bbd3c3facb5b849532f0fc; rechecked actual origin/main ab256f684cda141db19abe8bba5300b980e1025b, src/monitoring/AgentWorktreeReaper.ts, src/monitoring/agentWorktreeGit.ts, docs/specs/agent-worktree-reaper.md and history ff8344b4b / 6fb1db837. Preserve bounded passes, KEEP on ambiguous evidence, ignored-file protection and non-forced removal unchanged. Searched main src/, docs/specs/ and their git history for approvedConversion, conversion pin and build-register: no matching 1.x mechanism in the inspected scope; the derived conversion pin is 2.0-specific. Read ONEX-LESSONS.md section 6, including untracked blindspot and squash-merge blindness: use actual merge evidence and preserve unique bytes. No new 1.x implementation is needed for this artifact-only repair.
 
+Review-state repair: The first complete change-review check found exactly one Rule 109 failure: the original reviews/train-177-change-review.md was frozen to the pre-merge subject. Reopened it using the supported checker command, voiding that stale round while preserving its record. This submission requires fresh independent review of the merged content.
+
 Verification: npm run build and npm run typecheck; targeted register lifecycle and four constitutional consumer files; npm run lint, npm run register:check, node scripts/check-change-review.mjs check, and diff whitespace checks. Exact outcomes are recorded in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-177-repair-PROGRESS.md. Full-suite execution remains with the Studio pipeline as directed; no fabricated full-run report.
 
 ## Closing block

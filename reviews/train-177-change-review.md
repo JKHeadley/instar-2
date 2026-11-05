@@ -1,8 +1,8 @@
 # Change review — train-177 pinned integration
 
 Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
-Review state: frozen
-Reviewed content: sha256:1514705ea2501a53eea52f9454edb558b501d04d754cb1d497236c126e6618c4
+Review state: open
+Reviewed content: none
 Outcome: Combine pinned main ef4a964232b7baf17d8fc4cf1b8a248a95b6d513 and reviewed reaper d4e992e57e514ef88508480a45213483306350e9 on the exact live browser-worker build, retaining both behaviors. Reaper remains port-only; no production activation or completed carryover-row claim.
 Affected rules: 26, 34, 37, 49, 74, 90, 95, 101, 102, 111, 113, 116, 119, 120.
 Affected floors: secrets — no custody change; spend cap — no new model call; stop — existing checkpoints preserved; no duplicate sends — no send path changed; durable intake — unchanged.
