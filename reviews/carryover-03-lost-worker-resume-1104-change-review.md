@@ -1,8 +1,8 @@
 # Change review — recorded work revalidation before worker revival
 
 Subject base: bcbe1def1642146c18f1e0d569ab84016fa6454e
-Review state: frozen
-Reviewed content: sha256:360f011fd6ec4f9f705928ea68f4211cfa02bd155ed6572c336e9a24c6ea815d
+Review state: open
+Reviewed content: none
 Outcome: Carryover row 03 in lanes/carryover-1028.md: a repeated session-work operation returns its recorded result without launching another worker or clearing the result. Uncertain, foreign-owned, unclosed, duplicate-close and changed-result records retain uncertainty. A proven no-child failure keeps its identity while the existing schedule may issue a distinct bounded step. This is the smallest complete recovery slice, not proof of the complete live worker-loss-to-delivered-result bundle; row 03 remains OPEN.
 Affected rules: 1, 4, 26, 34, 37, 49, 60, 61, 63, 68, 70, 74, 101, 102, 111, 113, 114, 116
 Affected floors: secrets — no new input, output or credential surface; spend cap — reconciliation dispatches no calls and new work retains existing reservations; stop — checked before reconciliation and existing launch/poll checks remain; no duplicate sends — a recorded operation never re-enters dispatch, including uncertain effects; durable intake — the existing journal edges and result bytes remain intact, with no new store.

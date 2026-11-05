@@ -1,8 +1,8 @@
 # Change review — durable revival after capacity refusal
 
 Subject base: 14aaecc7d23d192add125c447d49120d9aa9a95e
-Review state: frozen
-Reviewed content: sha256:6a3f7f5f6cf6a1e32359f05d3e0aeaab53c3ed47855f8237aa5ceffe989faee8
+Review state: open
+Reviewed content: none
 Outcome: Carryover row 03 retains a proven-safe lost-worker revival when replacement capacity is unavailable. The original delivery, deadline and allowance survive host restart. The behavior inventory explicitly separates this implemented repair from the complete 1.x parity assessment; no full parity or live claim.
 Affected rules: 1, 4, 26, 28, 29, 34, 36, 37, 46, 49, 55, 60, 61, 63, 68, 70, 74, 101, 102, 111, 112, 113, 114, 116
 Affected floors: secrets — no new credential surface; spend cap — cumulative liability and original deadline survive replacement; stop — checked before replacement and every observation; no duplicate sends — unknown effects and interrupted launch remain uncertain; durable intake — original request and delivery retained in existing host-owned custody.

@@ -27,7 +27,7 @@ Prompt finding: 849db3a6296a | quoted-evidence | Existing unchanged prompt or pr
 Prompt finding: 85544c20941f | quoted-evidence | Existing unchanged prompt or protocol text; no new phrase decision is introduced — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-conversation-session.test.ts: "your messages are kept and i'll answer them then; you don't need to resend them."
 Prompt finding: e8708c7fea24 | quoted-evidence | Existing unchanged prompt or protocol text; no new phrase decision is introduced — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 
-Subject paths (including shared recovery fixture and loss-origin tests): scripts/host-worktree-recovery.mjs, src/assembly/production-conversation-session.ts, src/assembly/worktree-recovery.ts, tests/preview/host-worktree-recovery.test.ts, tests/preview/intake-principal.ts, tests/preview/journal-agent.mjs, tests/preview/journal.ts, tests/preview/worktree-recovery-intake.ts
+Subject: physical host observer, core recovery intake type and retirement callback, journal principal/intake/projection and reply authority, shipped host binding, shared recovery test fixture, origin tests, carryover inventory, and the reopened prior row-03 review records.
 
 Decision: c03-origin | Observe the installed harness UID and exact live worker ancestry; no command-name ownership. Unknown processes, lineage or watch coverage refuse recovery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-worktree-origin-r2-1104-PROGRESS.md
 
@@ -38,6 +38,8 @@ Decision: c03-dedupe | Persist source/checkout duplicate suppression in the jour
 Decision: c03-authority | Apply the existing runner-turn authority restriction to reconciliation replies; no operator memory or directive authority follows from a recovery request. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-worktree-origin-r2-1104-PROGRESS.md
 
 Decision: c03-proof | Share the existing recovery fixture and execute shipped host construction, tick and retirement bindings with real Git/process observation; retain native-host limitations explicitly. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-worktree-origin-r2-1104-PROGRESS.md
+
+Decision: c03-review | Reopen four inherited row-03 frozen reviews because this continuation changes their reviewed subject; preserve their prior judgment as history without claiming it covers these new bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-worktree-origin-r2-1104-PROGRESS.md
 
 ## Closing block
 
