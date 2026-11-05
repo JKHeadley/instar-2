@@ -20,6 +20,10 @@ Hook bypass: none; plain git commits
 Convergence: none
 Decision: AQ88-capture-publication | Register the existing Attention fixture under the required preview namespace and regenerate from committed source; preserve all gate semantics. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-hub-capture-1105-PROGRESS.md
 
+## Publication evidence
+
+The existing generator resolved all fixture references from committed source 06ec5baa1a93afa726a15f2e82673fc9c37162d6 and emitted generation sha256:429f4d7c60c91cfdbecbbc0078e1c137112df87fddd7bf5c1c62f1b315364f3e. The publication now includes the inherited Attention declaration as dark; it does not promote its status or close row 88. Final gate logs and commit receipts are recorded in the linked PROGRESS record.
+
 ## Closing block
 
 simplestRobustRoute: Repair the missing manifest reference and use the existing source register generator; no new mechanism or relaxed validation.
