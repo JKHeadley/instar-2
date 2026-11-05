@@ -21,7 +21,7 @@ export function createCodexConversationWorker(input: Readonly<{
 }>): HarnessAdapterPort<2> {
   let connection: SessionProtocolConnection | null = null, config: ProductionSessionConfig | null = null;
   let claim = '', incarnation = '', thread = '', operation = '', grounding = '';
-  let accepted = false;
+  let accepted = false, acknowledgedAt: number | undefined;
   let reader: ReturnType<typeof createCodexTurnReader> | null = null;
   const send = (request: ReturnType<typeof requests.initialize>) => connection!.request(request.method, request.params);
   const guard = () => { ensure(config && !config.stopped(), 'conversation stopped'); };
@@ -81,7 +81,7 @@ export function createCodexConversationWorker(input: Readonly<{
         thread = idOf(object(object(response).thread).id);
         if (hit) ensure(thread === saved, 'resumed thread differs from checkpoint');
         const journal = config.io.load(); config.io.save({ ...journal, resumes: { ...journal.resumes, [claim]: thread, [input.resumeKey ?? claim]: thread } });
-        reader = null; operation = ''; accepted = false;
+        reader = null; operation = ''; accepted = false; acknowledgedAt = undefined;
         input.afterLaunch?.();
         const worker = { launch: connection.identity, claim, incarnation };
         if (pending) ensure((await api.deliver({ ...pending, ...worker })).state === 'accepted', 'restored input was not accepted');
@@ -101,7 +101,7 @@ export function createCodexConversationWorker(input: Readonly<{
       ensure(operation !== delivery.operation, 'input already submitted; no automatic replay');
       input.io.clearResult(delivery.resultPath);
       ensure(input.io.readResult(delivery.resultPath, delivery.maxBytes) === null, 'stale conversation result remains');
-      operation = delivery.operation; reader = null; idleDirty = false; accepted = false;
+      operation = delivery.operation; reader = null; idleDirty = false; accepted = false; acknowledgedAt = undefined;
       // Host persists dispatch intent before calling this method. An RPC failure is uncertain.
       const submission = grounding ? `${grounding}\n\n${delivery.text}` : delivery.text;
       const journal = config!.io.load();
@@ -115,6 +115,8 @@ export function createCodexConversationWorker(input: Readonly<{
       const turn = object(object(response).turn);
       reader = createCodexTurnReader(thread, idOf(turn.id), delivery.maxBytes);
       feed(); guard(); grounding = ''; accepted = true;
+      // The transport correlates the turn/start response to this exact submitted input.
+      acknowledgedAt = config!.now();
       return { state: 'accepted', evidence: `${connection!.identity}:${thread}:${turn.id}` };
     },
     async notDispatched(delivery) {
@@ -171,6 +173,14 @@ export function createCodexConversationWorker(input: Readonly<{
       verify(query); guard(); feed();
       ensure(Number.isSafeInteger(query.cursor) && query.cursor >= 0 && query.cursor <= 2
         && Number.isSafeInteger(query.limit) && query.limit >= 1 && query.limit <= 64, 'bounded observation required');
+      if (query.delivery) {
+        verify(query.delivery);
+        const admitted = input.resolveDelivery(query.delivery.operation);
+        ensure(query.delivery.operation === operation && admitted && admitted.digest === query.delivery.digest
+          && admitted.text === query.delivery.text && hash(query.delivery.text) === query.delivery.digest,
+        'turn belongs to another input');
+      }
+      const acknowledgement = query.delivery && acknowledgedAt !== undefined ? { acknowledgedAt } : {};
       const events: HarnessNormalizedObservation[] = [];
       const result = reader?.snapshot();
       if (!connection!.alive()) events.push({ kind: 'exit', evidence: connection!.identity });
@@ -185,9 +195,9 @@ export function createCodexConversationWorker(input: Readonly<{
             state: result.status === 'completed' && text?.trim() ? 'completed' : 'no-reply' });
         }
       }
-      if (events[0]?.kind === 'exit' || events[0]?.kind === 'paused') return { observations: events, cursor: query.cursor, complete: true };
+      if (events[0]?.kind === 'exit' || events[0]?.kind === 'paused') return { observations: events, cursor: query.cursor, complete: true, ...acknowledgement };
       const batch = events.slice(query.cursor, query.cursor + query.limit);
-      return { observations: batch, cursor: query.cursor + batch.length, complete: true };
+      return { observations: batch, cursor: query.cursor + batch.length, complete: true, ...acknowledgement };
     },
     async observeIdle(target) { return idleFingerprint(target); },
     async control(target) {

@@ -56,8 +56,11 @@ export function createSessionConversationAdapter(config: Readonly<{
       }
       // Lifecycle observations are independent of the last turn's cursor.
       if (events[0]?.kind === 'exit' || events[0]?.kind === 'paused') return { observations: events, cursor: input.cursor, complete: true };
+      const acknowledgedAt = input.delivery && driver.acknowledgement
+        ? take(driver.acknowledgement({ operation: input.delivery.operation, processIdentity: input.launch })) : null;
       const batch = events.slice(input.cursor, input.cursor + input.limit);
-      return { observations: batch, cursor: input.cursor + batch.length, complete: true };
+      return { observations: batch, cursor: input.cursor + batch.length, complete: true,
+        ...(acknowledgedAt === null ? {} : { acknowledgedAt }) };
     },
     observeIdle: async input => driver.observeIdle ? take(driver.observeIdle(input.launch)) : null,
     control: async input => {

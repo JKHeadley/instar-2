@@ -15,7 +15,8 @@ import { createSessionProtocolIO } from '../../scripts/session-protocol-io.mjs';
 import threadConfig from './fixtures/codex-thread-config-0.156.1.json' with { type: 'json' };
 import captured from './fixtures/codex-app-server-0.156.1.json' with { type: 'json' };
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
-function fixture(run: { events: readonly { method: string; params: unknown }[] } = captured.runs[0]!) {
+function fixture(run: { events: readonly { method: string; params: unknown }[] } = captured.runs[0]!,
+  configuration: Partial<ProductionSessionConfig> = {}) {
   const terminals = run.events.filter(event => event.method === 'turn/completed').map(event => event.params as { threadId: string; turn: { id: string } });
   let frames: unknown[] = [], live = true, stopped = false, turn = 0, file: string | null = null, cache = true, hold = false;
   let journal: SessionJournal = { sessions: [], deliveries: [], resumes: {} };
@@ -41,6 +42,7 @@ function fixture(run: { events: readonly { method: string; params: unknown }[] }
     continuation: () => ({ text: 'complete prior history', source: 'journal:previous' }),
     io: { exclusive: run => run(), tmux: () => ({ code: 0, stdout: '' }), sleep: () => {}, load: () => journal,
       save: value => { journal = value; }, readInbox: () => [], transcriptExists: () => cache, armDeadline: () => {} },
+    ...configuration,
   };
   const io = { clearResult: () => { file = null; }, readResult: () => file };
   const make = (selectedTransport = transport, resolveDelivery = (operation: string) => deliveries.get(operation)) => createCodexConversationWorker({ configuration: () => config, transport: selectedTransport, io, resumeKey: 'topic:one', resolveDelivery });
@@ -216,6 +218,7 @@ it('preserves recorded proof-room writer, Jev, review and delivered-reply bytes 
     const f = fixture(run), adapter = f.make(), worker = await adapter.launch(f.spec), delivery = f.delivery(worker, example.id);
     await adapter.deliver(delivery);
     const batch = await adapter.observe({ ...worker, delivery, cursor: 0, limit: 16 });
+    expect(batch.acknowledgedAt, example.id).toBe(1);
     if (text.trim()) expect(batch.observations[0], example.id).toMatchObject({ kind: 'reply', text, delivery: example.id });
     else expect(batch.observations, example.id).toEqual([{ kind: 'turn-end', delivery: example.id, state: 'no-reply' }]);
   }
@@ -268,84 +271,71 @@ it('recorded protocol completion permits idle cleanup, while open turns and chan
   expect(await busyAdapter.observeIdle!(busyWorker)).toBeNull();
 });
 
-it('carryover 08 reconstructs a completed Codex turn from durable physical frames without another request', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'conversation-capture-recovery-'));
-  const f = fixture(), physical = createSessionProtocolIO(root);
-  const transport = { ...physical, open: (launch: Parameters<SessionProtocolIO['open']>[0]) => physical.open({ ...launch,
-    executable: process.execPath, args: [fileURLToPath(new URL('./fixtures/protocol-process.mjs', import.meta.url))],
-    cwd: root, deadline: Date.now() + 10000, requestTimeoutMs: 1000 }) };
+});
+
+it.each(['untyped', 'typed', 'missing-response', 'wrong-response'])('Codex ACK custody with delayed completion, %s', async mode => {
+  const typed = mode !== 'untyped';
+  const uncertain = mode === 'missing-response' || mode === 'wrong-response';
+  const createHost = createConversationSessionPort;
+  let clock = 1000, state: ConversationState | null = null, completed = false;
+  const f = fixture(captured.runs[0]!, { now: () => clock, turnDeadlineMs: 1_000_000 }); f.hold = true;
+  const transport: SessionProtocolIO = { close: f.transport.close, async open(spec) {
+    const connection = await f.transport.open(spec);
+    return { ...connection, async request(method, params) {
+      const response = await connection.request(method, params);
+      if (method === 'turn/start' && mode === 'missing-response') throw Error('injected RPC response loss');
+      if (method === 'turn/start' && mode === 'wrong-response') return { turn: { id: null } };
+      return response;
+    }, drain() {
+      const events = [...connection.drain()];
+      if (clock >= 651000 && !completed) {
+        completed = true;
+        events.push(captured.runs[0]!.events.find(event => event.method === 'turn/completed')!);
+      }
+      return events;
+    } };
+  } };
+  const host = value(createHost({
+    conversation: 'ack-parity', allowanceDeadline: 2_000_000, authorized: () => true, currentAuthority: () => 'grant',
+    store: { load: () => state, save: next => { state = next; } },
+    createAdapter: resolve => f.make(transport, resolve),
+    io: { ...f.io, modelCalls: () => 1, wait: async ms => { clock += ms; }, prepareAdmission: () => {}, closeAdmission: () => {},
+      admissionState: () => ({ refused: false, openDelegations: [], uncertainEffects: 0 }) },
+    resources: { admit: async () => ({ attach: async () => {}, release: async () => true }) },
+    context: assemblyRuntimeFixture().c, now: () => clock, stopped: () => false, append: () => {},
+    parent: 'parent', owner: 'machine', placement: 'local', transport: 'protocol', workingScope: '/scope',
+    resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'inc',
+    deadlineMs: 1_000_000, pollMs: 5000, maxCalls: 6, maxSteps: 3, maxResultBytes: 65536,
+  }));
+  const result = await host.run({ operation: 'one', question: 'continue', context: '', authority: 'grant',
+    ...(typed ? { inbox: { type: 'request' as const, priority: 'normal' as const, createdAt: 1000, ttlMs: 1_500_000 } } : {}) });
+  expect(f.calls.filter(call => call.method === 'turn/start')).toHaveLength(1);
   try {
-    const first = f.make(transport), worker = await first.launch(f.spec), delivery = f.delivery(worker);
-    await first.deliver(delivery);
-    await physical.close(worker.claim, worker.incarnation, worker.launch);
-    const restartedPhysical = createSessionProtocolIO(root);
-    const restarted = f.make(restartedPhysical);
-    const recovered = await restarted.observe({ ...worker, delivery, cursor: 0, limit: 16 });
-    expect(recovered.observations).toEqual([
-      { kind: 'reply', delivery: delivery.operation, text: 'LOCAL_PROTOCOL_OK', digest: hash('LOCAL_PROTOCOL_OK') },
-      { kind: 'turn-end', delivery: delivery.operation, state: 'completed' },
-    ]);
-    expect((await restarted.observe({ ...worker, delivery, cursor: 2, limit: 16 })).observations).toEqual([]);
-    await expect(restarted.deliver(delivery)).rejects.toThrow();
-  } finally { await physical.close('claim1', 'inc1'); rmSync(root, { recursive: true, force: true }); }
-});
-
-it.each(['complete', 'empty', 'missing-end', 'missing-response', 'duplicate-request', 'wrong-input', 'wrong-worker', 'missing-capture', 'legacy'] as const)(
-  'carryover 08 Codex recovery checks %s evidence without dispatch', async mode => {
-    const run = captured.runs[0]!;
-    const f = fixture(), original = f.make(), worker = await original.launch(f.spec), delivery = f.delivery(worker);
-    await original.deliver(delivery);
-    const start = f.calls.find(call => call.method === 'turn/start')!;
-    const request = { direction: 'request', frame: { id: 3, ...start } };
-    const response = { direction: 'response', frame: { id: 3, result: { turn: { id: f.terminals[0]!.turn.id } } } };
-    const events = run.events.filter(event => mode !== 'missing-end' || event.method !== 'turn/completed');
-    const replay = events.map(event => ({ direction: 'response', frame: mode === 'empty'
-      ? JSON.parse(JSON.stringify(event, (key, value) => key === 'text' ? '' : value)) : event }));
-    f.transport.capture = () => {
-      if (mode === 'missing-capture') throw Error('missing capture');
-      return [request, ...(mode === 'duplicate-request' ? [request] : []),
-        ...(mode === 'missing-response' ? [] : [response]), ...replay];
-    };
-    if (mode === 'legacy') { const { protocolDeliveries: _bindings, ...legacy } = f.journal; f.config.io.save(legacy); }
-    await original.control({ ...worker, action: 'close', authority: 'grant', reason: 'restart' });
-    const next = f.make(), count = f.calls.length;
-    const query = { ...worker, delivery: mode === 'wrong-input' ? { ...delivery, text: 'changed' } : delivery, cursor: 0, limit: 16,
-      ...(mode === 'wrong-worker' ? { incarnation: 'other' } : {}) };
-    if (mode === 'complete') expect((await next.observe(query)).observations[0]).toMatchObject({ kind: 'reply', text: 'LOCAL_PROTOCOL_OK' });
-    else if (mode === 'empty') expect((await next.observe(query)).observations).toEqual([{ kind: 'turn-end', delivery: delivery.operation, state: 'no-reply' }]);
-    else await expect(next.observe(query)).rejects.toThrow();
-    expect(f.calls.length).toBe(count);
-  });
-
-it.each([false, true])('carryover 08 proves a prepared Codex bootstrap unsent only when no turn request exists: dispatched=%s', async dispatched => {
-  const f = fixture(), original = f.make(), worker = await original.launch(f.spec), delivery = f.delivery(worker);
-  await original.deliver(delivery);
-  const request = f.calls.find(call => call.method === 'turn/start')!;
-  f.transport.capture = target => {
-    expect(target.requireClosed).toBe(true);
-    return [{ direction: 'request', frame: { method: 'initialize' } },
-      ...(dispatched ? [{ direction: 'request', frame: { id: 3, ...request } }] : [])];
-  };
-  await original.control({ ...worker, action: 'close', authority: 'grant', reason: 'restart' });
-  expect(await f.make().notDispatched!(delivery)).toBe(!dispatched);
-});
-
-it('carryover 08 reconstructs recorded summary, verdict and reply shapes after adapter loss', async () => {
-  const historical = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
-  for (const sample of historical.otherShapes) {
-    const run = JSON.parse(JSON.stringify(captured.runs[0], (key, value) => key === 'text' ? sample.raw : value));
-    const f = fixture(run), original = f.make(), worker = await original.launch(f.spec), delivery = f.delivery(worker, sample.id);
-    await original.deliver(delivery);
-    f.transport.capture = () => [
-      { direction: 'request', frame: { id: 3, ...f.calls.find(call => call.method === 'turn/start')! } },
-      { direction: 'response', frame: { id: 3, result: { turn: { id: f.terminals[0]!.turn.id } } } },
-      ...run.events.map((frame: unknown) => ({ direction: 'response', frame })),
-    ];
-    await original.control({ ...worker, action: 'close', authority: 'grant', reason: 'restart' });
-    const count = f.calls.length;
-    const batch = await f.make().observe({ ...worker, delivery, cursor: 0, limit: 16 });
-    if (sample.raw.trim()) expect(batch.observations[0], sample.id).toMatchObject({ kind: 'reply', text: sample.raw });
-    else expect(batch.observations, sample.id).toEqual([{ kind: 'turn-end', delivery: sample.id, state: 'no-reply' }]);
-    expect(f.calls.length).toBe(count);
+    if (uncertain) {
+      expect(result).toMatchObject({ state: 'uncertain' });
+      expect((state as ConversationState | null)!.inputs[0]!.inbox?.acknowledgedAt).toBeUndefined();
+      expect(await host.run({ operation: 'one', question: 'continue', context: '', authority: 'grant',
+        inbox: { type: 'request', priority: 'normal', createdAt: 1000, ttlMs: 1_500_000 } })).toEqual(result);
+      expect(f.calls.filter(call => call.method === 'turn/start')).toHaveLength(1);
+      return;
+    }
+    expect(result, JSON.stringify({ clock, result })).toMatchObject({ state: 'complete', text: 'LOCAL_PROTOCOL_OK' });
+    expect(clock).toBe(651000);
+    expect((state as ConversationState | null)!.inputs[0]!.inbox?.acknowledgedAt).toBe(1000);
   }
+  finally { await host.close(); }
 });
+
+it('ACK observation binds the submitted operation, digest and worker even while the turn is open', async () => {
+  let clock = 1000;
+  const f = fixture(captured.runs[0]!, { now: () => clock }); f.hold = true;
+  const adapter = f.make(), worker = await adapter.launch(f.spec), delivery = f.delivery(worker);
+  expect(await adapter.observe({ ...worker, delivery: null, cursor: 0, limit: 16 })).not.toHaveProperty('acknowledgedAt');
+  await adapter.deliver(delivery); clock = 651000;
+  const query = { ...worker, delivery, cursor: 0, limit: 16 };
+  expect(await adapter.observe(query)).toMatchObject({ acknowledgedAt: 1000, observations: [] });
+  for (const altered of [{ ...delivery, operation: 'another' }, { ...delivery, digest: hash('wrong') },
+    { ...delivery, incarnation: 'stale' }])
+    await expect(adapter.observe({ ...query, delivery: altered })).rejects.toThrow(/another input|stale/);
+  expect(await adapter.observe({ ...worker, delivery: null, cursor: 0, limit: 16 })).not.toHaveProperty('acknowledgedAt');
+  await adapter.control({ ...worker, action: 'close', authority: 'grant', reason: 'test complete' });

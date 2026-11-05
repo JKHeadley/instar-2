@@ -53,7 +53,7 @@ export interface SessionIO {
   sleep(ms: number): void;
   load(): SessionJournal;
   save(journal: SessionJournal): void;
-  readInbox(name: string): readonly Readonly<{ kind: 'turn-closed' | 'compact'; sessionId: string; at: number; receiptId?: string }>[];
+  readInbox(name: string): readonly Readonly<{ kind: 'turn-closed' | 'compact' | 'input-acknowledged'; sessionId: string; at: number; receiptId?: string }>[];
   /** Physical bridge terminal metadata; absent until a worker actually exits. */
   readTerminal?(name: string): Readonly<{ code: number | null; signal: string | null;
     workerExitClaim: Readonly<{ workerPid: number; code: number | null; signal: string | null }> | null }> | null;
@@ -377,7 +377,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
       rateRecovery: null, promptWait: null,
       connectionRetry: null,
       turnBaseline: digestOf(capture(session.name)),
-      turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
+      turnReceiptIds: config.io.readInbox(session.name)
         .flatMap(row => row.receiptId ? [row.receiptId] : []) };
     config.io.save(replaceSession(config.io.load(), armed));
     config.io.armDeadline(session.name, session.identity, deadline);
@@ -418,7 +418,8 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
       ? [resumeId ? '--resume' : '--session-id', transcriptId!, ...sessionLaunchFlags('claude-code', admitted), ...model]
       : [ ...(resumeId ? ['resume', resumeId] : []), ...sessionLaunchFlags('codex-cli', admitted), ...model];
     const lifecycleHooks = config.hookScript && config.framework === 'claude-code'
-      ? { Stop: [{ hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)}` }] }],
+      ? { UserPromptSubmit: [{ hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)} ack` }] }],
+        Stop: [{ hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)}` }] }],
         ...(config.compactGroundingFile ? { SessionStart: [{ matcher: 'compact', hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)} compact` }] }] } : {}) }
       : null;
     // One settings object carries every Claude hook: the admission hook and, when configured, the lifecycle hooks.
@@ -660,6 +661,19 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         return delivery.evidence;
       });
     },
+    acknowledgement(input: { operation: string; processIdentity: string }) {
+      return boundary('ProductionSessionAcknowledgement', null, config.context, () => {
+        const session = loadSession(input.processIdentity);
+        const delivery = config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1);
+        if (!delivery || delivery.operation !== input.operation || delivery.identity !== session.identity
+          || delivery.state !== 'accepted' || session.turnStartedAt === null) return null;
+        const ack = config.io.readInbox(session.name).filter(row => row.kind === 'input-acknowledged'
+          && row.sessionId === session.resumeId && typeof row.receiptId === 'string'
+          && !session.turnReceiptIds?.includes(row.receiptId) && Number.isSafeInteger(row.at)
+          && row.at >= session.turnStartedAt! && row.at <= config.now()).at(-1);
+        return ack?.at ?? null;
+      });
+    },
     observe(input: { operation: string; processIdentity: string; resultAvailable?: boolean }): Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string; safetyDeadline?: number }>> {
       return lockedBoundary('ProductionSessionObserve', input, () => {
         const session = loadSession(input.processIdentity);
@@ -753,7 +767,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           if (!rate && config.now() + 30_000 < session.turnDeadline) {
             config.io.save(replaceSession(config.io.load(), { ...session,
               rateRecovery: { dueAt: config.now() + 30_000, state: 'waiting', fingerprint: digestOf(pane) },
-              turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
+              turnReceiptIds: config.io.readInbox(session.name)
                 .flatMap(row => row.receiptId ? [row.receiptId] : []), turnStartedAt: config.now() }));
             return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit recovery waiting' };
           }
@@ -775,7 +789,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
             // Durable before touching the terminal. Capture old Stop receipts so none can
             // close the continued turn; the driver still requires its normal completion evidence.
             const sending = { ...session, rateRecovery: { ...rate, state: 'sending' as const, submittedAt: config.now() },
-              turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
+              turnReceiptIds: config.io.readInbox(session.name)
                 .flatMap(row => row.receiptId ? [row.receiptId] : []), turnStartedAt: config.now(),
               turnBaseline: digestOf(pane) };
             config.io.save(replaceSession(config.io.load(), sending));

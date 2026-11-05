@@ -11,7 +11,11 @@ prepared connector launch references. No account credential is copied by this wo
 implements bounded, correlated JSON-line RPC over private process pipes. Requests and
 notifications are captured in the host directory before projection. No RPC is retried.
 The common host records dispatch intent before delivery and retains uncertain inputs
-through restart. The transport closes only the recorded PID with the matching start
+through restart. A correlated `turn/start` response with a valid turn identity records the
+consumer acceptance time. Observations expose that time only for the matching submitted
+input and worker; the host retains it in its existing inbox custody. An open accepted turn
+can use its admitted lifetime without expiring the typed-input ACK deadline. Missing or
+malformed RPC acceptance supplies no ACK and never permits automatic replay. The transport closes only the recorded PID with the matching start
 stamp, and a reconstructed transport can retire the previous incarnation. Process
 inspection that cannot establish identity retains uncertainty and capacity; only observed
 absence or a different start stamp retires a reconstructed identity without signaling. Process
