@@ -14,4 +14,6 @@ Removed from 1.x on purpose, each with a test on the other side:
 
 `tests/preview/commitment-send.ts` binds the send, receipt and status ports to the worker's outbound boundary and the launcher's model boundary. A send needs the operator's effect-policy grant naming exactly that topic (`commitment-send:<topic>`), read at each decision. With none, beacon output is off (Rule 87), a due check-in waits with no attempt spent, and a direct send is a definite refusal before any intent. Each attempt is a signed journal intent, then the boundary, then its exact receipt. An unknown result holds under its operation, is never repeated and closes nothing.
 
+Open before any grant is issued: `docs/18-sentinel-holders/06-presence-promises-and-crash-loops.md` keeps a due date pull-visible unless a distinct owner-approved delivery contract exists, and does not retain the 1.x observational heartbeat as a push. The `commitment` outbound kind is provisional until that is decided.
+
 The status line is 2.0's own wording: 1.x never wired its hook. It is a reserved call recorded at the model boundary, and it only runs where a session frame exists to read, which the one-shot runner does not provide yet.

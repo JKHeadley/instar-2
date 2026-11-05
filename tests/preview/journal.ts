@@ -610,7 +610,7 @@ export const GROUP_DISCLOSURE_HOLD_NOTICE = 'PREVIEW — I\'m holding a reply un
 export type OutboundDisposition = 'result' | 'action-needed' | 'status';
 export type OutboundKind = 'reply' | 'held-notice' | 'reminder' | 'limited-answer' | 'incident' | 'approval' | 'request-result' | 'commitment';
 export const OUTBOUND_DISPOSITIONS: Readonly<Record<OutboundKind, OutboundDisposition>> = Object.freeze({ reply: 'result', 'request-result': 'result',
-  // A check-in the person asked for, or a slow bounded line on work still owed to them under an exact grant (Rule 87).
+  // Provisional, and unreachable without an exact grant: part 18 section 6 decides whether a heartbeat or a date alone may push (Rule 87).
   commitment: 'result',
   // An unchanged held status is pull-only (Rule 87): it stays in `status`, never a push.
   'held-notice': 'status', reminder: 'result', 'limited-answer': 'action-needed', incident: 'action-needed', approval: 'action-needed' });
