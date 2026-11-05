@@ -1,0 +1,234 @@
+{
+  "revision": "4f88880a45f0a119aae3cfd2ccaf9ace26d405b9",
+  "method": "exact line SequenceMatcher without autojunk; differences are new adaptation, not proof of semantic equivalence",
+  "pairs": [
+    {
+      "source": "src/core/CartographerTree.ts",
+      "adapted": "src/recall/cartographer/contracts.ts",
+      "sourceLines": 949,
+      "adaptedLines": 74,
+      "byteIdenticalLineBlocks": [
+        {
+          "sourceStart": 27,
+          "adaptedStart": 2,
+          "lines": 64
+        },
+        {
+          "sourceStart": 111,
+          "adaptedStart": 74,
+          "lines": 1
+        }
+      ],
+      "identicalLines": 65
+    },
+    {
+      "source": "src/core/CartographerNavigator.ts",
+      "adapted": "src/recall/cartographer/navigator.ts",
+      "sourceLines": 474,
+      "adaptedLines": 516,
+      "byteIdenticalLineBlocks": [
+        {
+          "sourceStart": 1,
+          "adaptedStart": 1,
+          "lines": 32
+        },
+        {
+          "sourceStart": 34,
+          "adaptedStart": 34,
+          "lines": 4
+        },
+        {
+          "sourceStart": 39,
+          "adaptedStart": 39,
+          "lines": 34
+        },
+        {
+          "sourceStart": 73,
+          "adaptedStart": 75,
+          "lines": 165
+        },
+        {
+          "sourceStart": 239,
+          "adaptedStart": 241,
+          "lines": 12
+        },
+        {
+          "sourceStart": 251,
+          "adaptedStart": 260,
+          "lines": 2
+        },
+        {
+          "sourceStart": 254,
+          "adaptedStart": 263,
+          "lines": 2
+        },
+        {
+          "sourceStart": 256,
+          "adaptedStart": 301,
+          "lines": 2
+        },
+        {
+          "sourceStart": 259,
+          "adaptedStart": 304,
+          "lines": 6
+        },
+        {
+          "sourceStart": 266,
+          "adaptedStart": 311,
+          "lines": 11
+        },
+        {
+          "sourceStart": 278,
+          "adaptedStart": 323,
+          "lines": 54
+        },
+        {
+          "sourceStart": 337,
+          "adaptedStart": 378,
+          "lines": 2
+        },
+        {
+          "sourceStart": 339,
+          "adaptedStart": 381,
+          "lines": 34
+        },
+        {
+          "sourceStart": 374,
+          "adaptedStart": 416,
+          "lines": 81
+        },
+        {
+          "sourceStart": 456,
+          "adaptedStart": 498,
+          "lines": 1
+        },
+        {
+          "sourceStart": 458,
+          "adaptedStart": 500,
+          "lines": 2
+        },
+        {
+          "sourceStart": 461,
+          "adaptedStart": 503,
+          "lines": 12
+        },
+        {
+          "sourceStart": 474,
+          "adaptedStart": 516,
+          "lines": 1
+        }
+      ],
+      "identicalLines": 457
+    },
+    {
+      "source": "src/core/cartographerSummary.ts",
+      "adapted": "src/recall/cartographer/summary.ts",
+      "sourceLines": 182,
+      "adaptedLines": 181,
+      "byteIdenticalLineBlocks": [
+        {
+          "sourceStart": 1,
+          "adaptedStart": 1,
+          "lines": 2
+        },
+        {
+          "sourceStart": 4,
+          "adaptedStart": 4,
+          "lines": 2
+        },
+        {
+          "sourceStart": 7,
+          "adaptedStart": 7,
+          "lines": 10
+        },
+        {
+          "sourceStart": 19,
+          "adaptedStart": 18,
+          "lines": 31
+        },
+        {
+          "sourceStart": 51,
+          "adaptedStart": 50,
+          "lines": 33
+        },
+        {
+          "sourceStart": 85,
+          "adaptedStart": 84,
+          "lines": 84
+        },
+        {
+          "sourceStart": 172,
+          "adaptedStart": 170,
+          "lines": 8
+        },
+        {
+          "sourceStart": 181,
+          "adaptedStart": 180,
+          "lines": 2
+        }
+      ],
+      "identicalLines": 172
+    },
+    {
+      "source": "tests/unit/cartographer-navigator.test.ts",
+      "adapted": "tests/recall/cartographer/navigator.test.ts",
+      "sourceLines": 298,
+      "adaptedLines": 299,
+      "byteIdenticalLineBlocks": [
+        {
+          "sourceStart": 1,
+          "adaptedStart": 1,
+          "lines": 14
+        },
+        {
+          "sourceStart": 16,
+          "adaptedStart": 16,
+          "lines": 4
+        },
+        {
+          "sourceStart": 21,
+          "adaptedStart": 21,
+          "lines": 125
+        },
+        {
+          "sourceStart": 147,
+          "adaptedStart": 148,
+          "lines": 152
+        }
+      ],
+      "identicalLines": 295
+    },
+    {
+      "source": "tests/unit/cartographer-summary.test.ts",
+      "adapted": "tests/recall/cartographer/summary.test.ts",
+      "sourceLines": 102,
+      "adaptedLines": 104,
+      "byteIdenticalLineBlocks": [
+        {
+          "sourceStart": 1,
+          "adaptedStart": 1,
+          "lines": 12
+        },
+        {
+          "sourceStart": 14,
+          "adaptedStart": 14,
+          "lines": 1
+        },
+        {
+          "sourceStart": 16,
+          "adaptedStart": 18,
+          "lines": 87
+        }
+      ],
+      "identicalLines": 100
+    }
+  ],
+  "newAdaptation": [
+    "src/recall/cartographer/tree.ts",
+    "src/recall/cartographer/service.ts",
+    "tests/recall/cartographer/bounds.test.ts",
+    "tests/recall/cartographer/service.test.ts",
+    "tests/recall/cartographer/git-fixture.ts"
+  ],
+  "incompleteBehavior": "docs/defects/carryover-95-owner-composition.md"
+}

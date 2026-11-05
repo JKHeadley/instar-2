@@ -1,0 +1,189 @@
+    // Cartographer doc-tree — hierarchical semantic map with git-hash staleness
+    // (cartographer-doc-tree-schema spec #1). Ships dark behind cartographer.enabled;
+    // null → /cartographer/* routes return 503.
+    const cartographerEnabled = resolveDevAgentGate(
+      (config as { cartographer?: { enabled?: boolean } }).cartographer?.enabled,
+      config,
+    );
+    const fsCfg = (config as { cartographer?: { freshnessSweep?: Record<string, unknown> } }).cartographer?.freshnessSweep;
+    const cartographerNum = (v: unknown, d: number): number => (
+      typeof v === 'number' && Number.isFinite(v) ? v : d
+    );
+    const cartographerRoots = cartographerEnabled
+      ? new CartographerRootRegistry({
+          agentType: config.agentType === 'standalone' ? 'standalone' : 'project-bound',
+          agentHome: config.projectDir,
+          agentName: config.projectName,
+          stateDir: config.stateDir,
+          ...(config.agentType === 'standalone'
+            ? {}
+            : {
+                serverProject: {
+                  projectDir: config.projectDir,
+                  projectName: config.projectName,
+                },
+              }),
+          // ScopeVerifier owns the live map; this accessor avoids synchronous
+          // disk reads while still following route-driven binding updates.
+          topicBindings: () => scopeVerifier.currentTopicBindings(),
+          population: {
+            config: {
+              scaffoldChunkNodes: cartographerNum(fsCfg?.scaffoldChunkNodes, 500),
+              detectTimeoutMs: cartographerNum(fsCfg?.detectTimeoutMs, 120000),
+              detectWorkerHeapMb: cartographerNum(fsCfg?.detectWorkerHeapMb, 1536),
+              maxIndexBytes: cartographerNum(fsCfg?.maxIndexBytes, 200 * 1024 * 1024),
+              snapshotSampleMax: cartographerNum(fsCfg?.snapshotSampleMax, 500),
+              gitMaxBuffer: cartographerNum(fsCfg?.gitMaxBuffer, 64 * 1024 * 1024),
+              graceMs: cartographerNum(fsCfg?.cadenceMs, 600000) * 2,
+            },
+          },
+          log: (message) => console.log(pc.yellow(`  ${message}`)),
+        })
+      : null;
+    if (cartographerRoots) console.log(pc.green('  Cartographer verified-root registry enabled'));
+
+    // Zero-cost structural population is independent of the optional summary
+    // author sweep. Refresh at every boot so newly-added/removed paths join the
+    // hierarchy, then run aggregate-only detect in a worker and publish the
+    // snapshot that /tree?format=compact + /health serve. No router, LLM, egress,
+    // or freshnessSweep.enabled mutation occurs on this path.
+    const cartographerPopulationReady: Promise<void> | null = cartographerRoots
+      ? cartographerRoots.populateOnBoot()
+          .then((results) => {
+            for (const result of results) {
+              if (result.refused) {
+                console.log(pc.yellow(`  Cartographer population snapshot refused (${result.detectStatus}); retries next boot`));
+              } else {
+                console.log(pc.gray(`  Cartographer hierarchy populated (${result.nodeCount} nodes, ${result.rootAuthority.verificationState})`));
+              }
+            }
+          })
+          .catch((err: unknown) => {
+            // @silent-fallback-ok — scaffold is atomic and boot remains available;
+            // prior snapshot/index stay readable and the next boot retries.
+            console.log(pc.yellow(`  Cartographer population incomplete (retries next boot): ${err instanceof Error ? err.message : String(err)}`));
+          })
+      : null;
+
+    // Cartographer doc-freshness sweep (spec #2). In-process poller that authors
+    // stale/never-authored node summaries on a LIGHT model routed OFF Claude.
+    // Ships dark behind freshnessSweep.enabled ONLY — the redundant egressAcknowledged
+    // second gate was removed (DEV-AGENT-DARK-GATE-ENFORCEMENT Slice A3): one honest
+    // opt-in flag, not two. This is the one cost-bearing cartographer surface and stays
+    // an explicit opt-in EVEN on a dev agent (it bills a third-party account every pass),
+    // so it is in DARK_GATE_EXCLUSIONS (cost-bearing), NOT dev-gated. The off-Claude
+    // guarantee still needs the IntelligenceRouter (router.for + defaultFramework); if
+    // routing is an unrouted provider the sweep refuses to start (it could not enforce
+    // off-Claude) — that cost-protecting probe is UNCHANGED.
+    let cartographerSweepPoller: import('../monitoring/CartographerSweepPoller.js').CartographerSweepPoller | null = null;
+    if (cartographerRoots) {
+      const paidFsCfg = (config as {
+        cartographer?: { freshnessSweep?: Record<string, unknown> & { enabled?: boolean; egressAcknowledged?: boolean } };
+      }).cartographer?.freshnessSweep;
+      const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+      if (paidFsCfg?.enabled && sharedLlmQueue) {
+        const backgroundResolution = cartographerRoots.resolve();
+        if (!backgroundResolution.ok) {
+          console.log(pc.yellow(`  Cartographer sweep: NOT started (root authority ${backgroundResolution.reason})`));
+        } else {
+          const cartographer = backgroundResolution.root.tree;
+          const fsCfg = paidFsCfg;
+          const routerLike =
+          sharedIntelligence &&
+          typeof (sharedIntelligence as { for?: unknown }).for === 'function' &&
+          typeof (sharedIntelligence as { defaultFramework?: unknown }).defaultFramework === 'string'
+            ? (sharedIntelligence as unknown as import('../core/CartographerSweepEngine.js').SweepRouterLike)
+            : null;
+        if (!routerLike) {
+          console.log(pc.yellow('  Cartographer sweep: NOT started (off-Claude routing requires the IntelligenceRouter)'));
+        } else {
+          const { CartographerSweepEngine } = await import('../core/CartographerSweepEngine.js');
+          const { CartographerSweepPoller } = await import('../monitoring/CartographerSweepPoller.js');
+          const { sampleHostPressure: _sampleHostPressure } = await import('../monitoring/HostPressureSampler.js');
+          const rcfg = config.monitoring?.sessionReaper;
+
+          // Slice 3 (fix instar#1069): honor cartographer.freshnessSweep.framework as
+          // the sweep's routing so BOTH the routing PROBE and the actual author call
+          // resolve consistently (the router reads config.sessions.componentFrameworks
+          // live). EXPLICIT-SET-ONLY: a pre-existing overrides.CartographerSweep OR an
+          // explicitly-configured categories.job is never overridden (migration safety);
+          // otherwise freshnessSweep.framework becomes the sweep's effective override.
+          {
+            type CF = { overrides?: Record<string, string>; categories?: Record<string, string> };
+            const { resolveSweepFrameworkRouting } = await import('../core/CartographerSweepEngine.js');
+            const cf: CF = (config as { sessions?: { componentFrameworks?: CF } }).sessions?.componentFrameworks ?? {};
+            const sweepFw = typeof fsCfg.framework === 'string' ? fsCfg.framework : undefined;
+            const routed = resolveSweepFrameworkRouting(cf, sweepFw);
+            if (routed.injectOverride && routed.framework) {
+              // Inject so BOTH probeRouting and evaluate resolve consistently (router
+              // reads config.sessions.componentFrameworks live). Explicit-set-only.
+              const s = ((config as { sessions?: { componentFrameworks?: CF } }).sessions ??= {} as { componentFrameworks?: CF });
+              const c = (s.componentFrameworks ??= {});
+              (c.overrides ??= {}).CartographerSweep = routed.framework;
+            }
+            console.log(pc.gray(`  Cartographer sweep routing: ${routed.framework ?? '(default)'} (source: ${routed.source})`));
+          }
+          const engine = new CartographerSweepEngine({
+            tree: cartographer,
+            router: routerLike,
+            llmQueue: sharedLlmQueue,
+            pressure: () => _sampleHostPressure({
+              cpuModerateLoadPerCore: rcfg?.cpuModerateLoadPerCore ?? 1.0,
+              cpuCriticalLoadPerCore: rcfg?.cpuCriticalLoadPerCore ?? 1.5,
+              cpuSignal: rcfg?.cpuSignal,
+              cpuModerateBusyPct: rcfg?.cpuModerateBusyPct,
+              cpuCriticalBusyPct: rcfg?.cpuCriticalBusyPct,
+            }),
+            // Author ONLY on the lease holder (multi-machine N× burn fix); single-machine ⇒ always holder.
+            holdsLease: () => (leaseCoordinatorRef ? leaseCoordinatorRef.holdsLease() : true),
+            authorizePaidAuthoring: () => {
+              const decision = cartographerRoots.authorizePaidAuthoring(backgroundResolution.root);
+              return decision.ok
+                ? { ok: true as const }
+                : { ok: false as const, reason: decision.reason };
+            },
+            config: {
+              maxNodesPerPass: num(fsCfg.maxNodesPerPass, 25),
+              maxCentsPerPass: num(fsCfg.maxCentsPerPass, 25),
+              estCentsPerAuthor: num(fsCfg.estCentsPerAuthor, 1),
+              maxLeafBytes: num(fsCfg.maxLeafBytes, 24576),
+              minSummaryChars: num(fsCfg.minSummaryChars, 24),
+              maxSummaryChars: num(fsCfg.maxSummaryChars, 600),
+              allowClaudeFallback: fsCfg.allowClaudeFallback === true,
+              nodeFailQuarantineThreshold: num(fsCfg.nodeFailQuarantineThreshold, 3),
+              maxDeferredPasses: num(fsCfg.maxDeferredPasses, 5),
+              revalidateSamplePerPass: num(fsCfg.revalidateSamplePerPass, 2),
+              minNodesUnderPressure: num(fsCfg.minNodesUnderPressure, 3),
+              // fix instar#1069: off-event-loop detect knobs (worker by default).
+              detectInWorker: fsCfg.detectInWorker !== false,
+              detectTimeoutMs: num(fsCfg.detectTimeoutMs, 120000),
+              detectWorkerHeapMb: num(fsCfg.detectWorkerHeapMb, 1536),
+              maxIndexBytes: num(fsCfg.maxIndexBytes, 200 * 1024 * 1024),
+              snapshotSampleMax: num(fsCfg.snapshotSampleMax, 500),
+              gitMaxBuffer: num(fsCfg.gitMaxBuffer, 64 * 1024 * 1024),
+              detectCandidateHeadroom: num(fsCfg.detectCandidateHeadroom, 4),
+              detectGraceMs: num(fsCfg.cadenceMs, 600000) * 2,
+            },
+            stateDir: config.stateDir,
+            log: (m) => console.log(pc.gray(m)),
+          });
+          cartographerSweepPoller = new CartographerSweepPoller({
+            engine,
+            cadenceMs: num(fsCfg.cadenceMs, 600000),
+            idleCadenceMs: num(fsCfg.idleCadenceMs, 1800000),
+            zeroProgressTicksToBreak: num(fsCfg.zeroProgressTicksToBreak, 3),
+            breakerReescalateHours: num(fsCfg.breakerReescalateHours, 6),
+            log: (m) => console.log(pc.gray(m)),
+            reportDegradation: (d) => { try { DegradationReporter.getInstance().report(d); } catch { /* never break boot on a report */ } },
+          });
+          // Structural refresh owns the index first; only then may the optional
+          // author loop mutate it. This closes the boot scaffold/sweep write race.
+          void (cartographerPopulationReady ?? Promise.resolve()).then(() => {
+            cartographerSweepPoller?.start();
+            console.log(pc.green('  Cartographer doc-freshness sweep enabled (off-Claude, lease-gated)'));
+          });
+        }
+        }
+      }
+    }
+    void cartographerSweepPoller;

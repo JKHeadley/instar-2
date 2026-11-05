@@ -1,0 +1,19 @@
+{
+  "revision": "4f88880a45f0a119aae3cfd2ccaf9ace26d405b9",
+  "excerpts": [
+    {
+      "source": "src/commands/server.ts",
+      "firstLine": 17327,
+      "lastLine": 17515,
+      "copy": "reference/carryover-95/wiring/src-commands-server.ts.txt",
+      "sha256": "ea02c789264917dbbb4ef18c433bf31ca5e4c59e32abb41022a8eaf7fb5fa6c8"
+    },
+    {
+      "source": "src/server/routes.ts",
+      "firstLine": 8984,
+      "lastLine": 9333,
+      "copy": "reference/carryover-95/wiring/src-server-routes.ts.txt",
+      "sha256": "65c3daf3a70661229a5ce9877e331b51552bb9e9c217923fd91a943f42856b57"
+    }
+  ]
+}

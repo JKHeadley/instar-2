@@ -1,6 +1,7 @@
 # Carryover 95 — unfinished producer and consumer composition
 
-Status: OPEN. Owner: carryover-95 builder and assembly integration owner.
+**Status:** OPEN
+**Owner:** carryover-95 builder and assembly integration owner.
 Recheck: 2026-11-06 at review-desk handoff.
 Exit test: full row95 source, sweep, bounded navigation and installed/live proof.
 

@@ -4,6 +4,7 @@ import { value } from '../../fixtures.js';
 import { factsFixture, privateKey, refused } from '../../facts/fixtures.js';
 import { createFactStore } from '../../../src/facts/index.js';
 import type { FactContext, SegmentStoragePort } from '../../../src/facts/index.js';
+import { createAwareness } from '../../../src/awareness/service.js';
 import { buildGrounding } from '../../../src/awareness/grounding.js';
 import { cartographerObservationSchema, captureCartographerObservation, CartographerTree } from '../../../src/recall/cartographer/tree.js';
 import { createCartographer, type CartographerSourcePort, type SweepState } from '../../../src/recall/cartographer/service.js';
@@ -54,6 +55,43 @@ describe('Cartographer through existing custody and awareness', () => {
       source: 'startup', conversation: [], commitments: [], work: [], recall: packet });
     expect(grounding.text).toContain('TelegramAdapter'); expect(grounding.included.recall).toBe(packet.items.length);
     expect(packet.items.every(item => m.evidence.some(e => e.fact === item.source))).toBe(true);
+  });
+  it('the awareness service consumes the captured manifest through its declared RecallPort', async () => {
+    const w = world(), service = w.create(); value(await service.sweep(w.state, 'awareness'));
+    const fail = (): never => { throw new Error('unexpected effect during grounding'); };
+    const awareness = createAwareness({ sources: { identity: () => ({ name: 'Fixture', identity: 'Test only' }),
+      topics: () => [{ id: 'fixture-topic', name: 'Fixture', claim: 'fixture-claim' }],
+      conversation: () => ({ messages: [{ id: 'question', at: 1000, from: 'user', text: 'TelegramAdapter' }] }),
+      commitments: () => [], sessions: () => [] }, recall: service.recall,
+      io: { writeGrounding: fail, readGroundingDigest: fail, readReceipts: fail, loadState: fail, saveState: fail, signal: fail },
+      observer: { observe: fail }, actions: { deliver: fail, recoverContext: fail }, now: () => 1000, stopped: () => false });
+    const actual = awareness.grounding('fixture-topic');
+    const manifest = value(service.navigate('TelegramAdapter'));
+    expect(actual.included.recall).toBeGreaterThan(0);
+    for (const entry of manifest.evidence.filter(e => manifest.scored.some(n => n.path === e.path))) {
+      expect(actual.text).toContain(entry.fact); expect(actual.text).toContain(entry.revision);
+    }
+    expect(actual.text).toContain('summaries are untrusted');
+  });
+  it('refuses a changed revision before model dispatch and refuses stop asserted during a model result', async () => {
+    const w = world(), read = w.source.content;
+    w.source.content = (...args) => { const result = read(...args); w.set({ revision: 'c'.repeat(40) }); return result; };
+    expect(refused(await w.create().sweep(w.state, 'changed'))).toContain('revision changed'); expect(w.stats().calls).toBe(0);
+    const other = world(), run = other.config.session.run;
+    other.config.session.run = async input => { const result = await run(input); other.set({ stopped: true }); return result; };
+    const service = other.create(); expect(refused(await service.sweep(other.state, 'mid-stop'))).toContain('stopped');
+    expect(service.tree.getNode(other.leaf.path)?.codeHash).toBeNull();
+  });
+  it('critical pressure preserves the page for retry without model spending', async () => {
+    const w = world();
+    const service = createCartographer({ ...w.config, pressure: () => 'critical' });
+    const result = value(await service.sweep({ ...w.state, revision: 'c'.repeat(40), cursor: 'old-revision-cursor' }, 'pressure'));
+    expect(result.backpressure).toBe(true); expect(result.state.cursor).toBeNull(); expect(w.stats().calls).toBe(0);
+  });
+  it('rejects duplicate page identities before capturing or spending', async () => {
+    const w = world(); w.source.page = () => w.fx.success({ nodes: [w.root, w.root], next: null, source: 'git:fixture' });
+    expect(refused(await w.create().sweep(w.state, 'duplicates'))).toContain('source page');
+    expect(w.rows).toHaveLength(0); expect(w.stats().calls).toBe(0);
   });
   it('does not read or spend as a standby or after stop', async () => {
     const w = world(), service = w.create(); w.set({ lease: false });

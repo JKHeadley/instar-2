@@ -22,6 +22,15 @@ describe('actual read accounting', () => {
     expect(navigate(reader, 'Telegram', { maxNodesVisited: 0 }).nodesVisited).toBe(0); expect(reads).toEqual([]);
     expect(navigate(reader, 'Telegram', { maxDepth: 1 }).nodesVisited).toBe(2); expect(reads).toEqual(['', 'src']);
   });
+  it('charges missing nodes and still reaches later siblings without inventing truncation', () => {
+    const reads: string[] = [];
+    const reader: CartographerReader = { getNode: p => { reads.push(p); return p === '' ? node('', ['gone.ts', 'TelegramAdapter.ts'])
+      : p === 'gone.ts' ? null : node(p); }, getChildren: () => [], currentOidMap: () => new Map() };
+    const result = navigate(reader, 'TelegramAdapter', { maxNodesVisited: 3 });
+    expect(reads).toEqual(['', 'gone.ts', 'TelegramAdapter.ts']); expect(result.nodesVisited).toBe(3);
+    expect(result.scored.map(n => n.path)).toContain('TelegramAdapter.ts');
+    expect(result.nodesTruncated).toBe(0); expect(result.truncated).toBe(false);
+  });
   it.each([NaN, Infinity, -1, 1.5])('refuses invalid read bound %s before I/O', maxNodesVisited => {
     const reader: CartographerReader = { getNode: () => { throw new Error('I/O occurred'); }, getChildren: () => [], currentOidMap: () => new Map() };
     expect(() => navigate(reader, 'Telegram', { maxNodesVisited })).toThrow(RangeError);

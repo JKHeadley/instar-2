@@ -266,16 +266,15 @@ export function navigate(
   // no additional I/O. Unlike 1.x this bounds the work, not merely returned records.
   let reads = 0;
   let omitted = 0;
-  const cache = new Map<string, CartographerNode>();
+  const cache = new Map<string, CartographerNode | null>();
   const omittedEdges = new Set<string>();
   const tree = {
     getNode(path: string): CartographerNode | null {
-      const known = cache.get(path);
-      if (known) return known;
+      if (cache.has(path)) return cache.get(path) ?? null;
       if (reads >= o.maxNodesVisited) return null;
       reads += 1;
       const node = source.getNode(path);
-      if (node) cache.set(path, node);
+      cache.set(path, node);
       return node;
     },
     getChildren(path: string): CartographerNode[] {
@@ -285,15 +284,15 @@ export function navigate(
       // Never fetch/score a wide sibling population ahead of the read budget.
       for (let i = 0; i < parent.children.length; i += 1) {
         const p = parent.children[i]!;
-        const child = this.getNode(p);
-        if (child) children.push(child);
-        else {
+        if (!cache.has(p) && reads >= o.maxNodesVisited) {
           if (!omittedEdges.has(path)) {
             omitted += parent.children.length - i;
             omittedEdges.add(path);
           }
           break;
         }
+        const child = this.getNode(p);
+        if (child) children.push(child);
       }
       return children;
     },
