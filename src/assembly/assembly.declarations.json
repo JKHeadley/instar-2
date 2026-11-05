@@ -57,7 +57,7 @@
         "process-control.installed-composition.unproven"
       ],
       "gate": {
-        "test": "P8-NF-49",
+        "test": "P10-PROCESS-CONTROL-PARTIAL",
         "deadline": 1794528000000
       }
     },

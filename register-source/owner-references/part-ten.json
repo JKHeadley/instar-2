@@ -41,6 +41,14 @@
         "path": "tests/e2e/fixed-installation-reply.test.ts",
         "hash": "sha256:5765acacbe9588d6fb6847ae98b17e56a2d0a34e5fca55dd8684f9ebf28d4448"
       }
+    },
+    {
+      "id": "P10-PROCESS-CONTROL-PARTIAL",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/assembly/production-conversation-session.test.ts",
+        "hash": "sha256:69e9d9aa654a56af7332525b5730a21d31e8f748ee8937d1f844d44d8cfe5e66"
+      }
     }
   ],
   "probes": [],

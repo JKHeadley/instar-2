@@ -12,6 +12,8 @@ const owned = (namespace, names) => Object.fromEntries(names.map(id => [id, { mo
 const closureOwned = Object.fromEntries(['decodeExhaustionRecord', 'decodeUnreachableRunExit']
   .map(id => [id, { module: 'src/rungraph/index.ts', artifact: 'src/rungraph/closure-records.ts' }]));
 const partTenFixturePaths = {
+  // Partial owned-process proof only; not installed or whole P8-NF-49 graduation.
+  'P10-PROCESS-CONTROL-PARTIAL': ['tests/assembly/production-conversation-session.test.ts'],
   'P10-SI-01': ['tests/assembly/fixed-installation-contract.test.ts'],
   'P10-SI-02': ['tests/assembly/fixed-installation-contract.test.ts'],
   'P10-SI-03': ['tests/assembly/fixed-installation-contract.test.ts'],
