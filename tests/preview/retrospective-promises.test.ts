@@ -24,6 +24,10 @@ const review = (cases: readonly RetroCase[], proposals: Record<string, unknown[]
   eff: 'Review the existing recorded replies once.', findings: [],
   feedback: cases.filter(item => item.meta?.correction !== undefined).map(item => ({ case: item.id,
     classification: 'Recorded correction', disposition: 'declined-with-reason', reason: 'Already reflected in the delivered correction.' })),
+  // The correction owner now requires its independent two-question review even in this promise replay.
+  classReviews: cases.filter(item => item.meta?.correction !== undefined).map(item => ({ case: item.id,
+    standardReview: { verdict: 'covered', standardRef: 'Rule 85', isPolicyRelaxation: false },
+    processReview: { verdict: 'covered' }, rationale: 'The recorded correction is already reflected in the answer.', confidence: 'medium' })),
   closures: [], comparisons: [],
   authorizations: cases.filter(item => item.category === 'authorization').map(item => ({ case: item.id, candidate: false, recurrences: [] })),
   grades: cases.filter(item => item.category === 'decision' || item.category === 'verdict').map(item => ({
