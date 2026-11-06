@@ -21,10 +21,11 @@ Convergence: none
 Prompt review: no model-facing prompt, output parser or accept/escalate/refuse logic changes; real model-output replay is inapplicable.
 Decision: svi-1105-model-evidence | Renew only the exact existing model and estimated subsidy from the current provider-fetched catalog and subscription login, using the catalog time and retaining both freshness windows; do not change volume behavior or claim generation proof. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-volume-isolated-1105-repair-204405-PROGRESS.md
 
+
+Verification: current-clock original register replay refused model map stale for preview-subscription-codex; tests/preview/doorway-map.test.ts passed 12/12; direct modelEntryFresh checks reject the original model/subsidy, accept both renewed facts, and reject one millisecond after the unchanged window. scripts/build-register.mjs --replay generated the register from 4c562e19d89d2052f87ef05d11bbd004ea396989 with 295 entries and no change to runtime semantics. Generated artifacts are replay/shape evidence, not live installation acceptance.
+
 ## Closing block
 
 simplestRobustRoute: renew evidence at its existing owning declaration and regenerate through the existing tooling; this is that route. No new watcher, store, probe framework or policy is needed for this scoped repair. Start guard is the stale verdict, end guard is current-clock register acceptance, and the unchanged expiry window remains the limit guard.
 80/20: one expired-evidence finding; retain the source-unit review's native/live limits and submit only the evidence renewal for review.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Verification: current-clock original register replay refused model map stale for preview-subscription-codex; tests/preview/doorway-map.test.ts passed 12/12; direct modelEntryFresh checks reject the original model/subsidy, accept both renewed facts, and reject one millisecond after the unchanged window. scripts/build-register.mjs --replay generated the register from 4c562e19d89d2052f87ef05d11bbd004ea396989 with 295 entries and no change to runtime semantics. Generated artifacts are replay/shape evidence, not live installation acceptance.
