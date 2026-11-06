@@ -1,6 +1,8 @@
 # Change review — train-173 pipeline notice assertion repair
 
-Subject base: 9cf2e24c3aa9d0929915327ed28fbb5ddc3d159c
+Subject base: d39609b1f166db219044206202b3f0cf7b550edd
+Original owning base: 9cf2e24c3aa9d0929915327ed28fbb5ddc3d159c
+Integration attribution: echo-deepseek-harness, e7f0d6de54c3731784cd8740318e372c385339f5; historical evidence and validation below belong to that owner run, not this integration head. Only the review base and report destination are adapted to this branch.
 Review state: open
 Reviewed content: none
 Outcome: Both launcher test readers recognize the shipped activation-expiry notice while preserving exact answers and refusing unrelated appended text.
@@ -19,8 +21,8 @@ Bug evidence: reproducer=tests/preview/journal-agent.test.ts
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample hooks only.
 Convergence: none
 Prompt review: No model-facing text or model-output parser changed. Literal reminder text is captured test evidence from the supplied Studio gate; the negative examples test the assertion helper only and are never submitted to a model.
-Decision: notice-assertion | Replace the stale credential-label expectation with the actual activation notice and exact renewal action, preserving the separate model-route branch. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-173-repair-PROGRESS.md
-Decision: runner-evidence | Preserve the existing open runner defect and report the two unattributed RPC errors without inventing a starving file, increasing timeouts or changing global scheduling. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-173-repair-PROGRESS.md
+Decision: notice-assertion | Replace the stale credential-label expectation with the actual activation notice and exact renewal action, preserving the separate model-route branch. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-95-cartographer-1105-repair-2257-PROGRESS.md
+Decision: runner-evidence | Preserve the existing open runner defect and report the two unattributed RPC errors without inventing a starving file, increasing timeouts or changing global scheduling. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-95-cartographer-1105-repair-2257-PROGRESS.md
 
 1.x comparison: Searched actual JKHeadley/instar main 4e38b9fdaae43b62940a6a43e1e69094d1b91bd1 src/ and docs/specs/ for activation expiry, credential reminders and worker RPC symptoms. Inspected src/monitoring/MissingLoginSessionDetector.ts, src/core/hostTestRunnerSemaphore.ts, docs/specs/scrape-fixture-realness.md and docs/specs/test-runner-concurrency-bound.md, plus history ff8344b4b, ab26b7ca3, 618560b3e7c25cc0868577c1a0f1a9b1cbac83a2, c91b8780e1a6981fa7f21fb9dc1dcfc16d3cddaa and 1f90fa1a997713327ed61a6b36b586afdaf52a8f. ONEX-LESSONS.md sections 4 and 6 cover captured fixture realness and bounded test concurrency. These offer missing-login signals and host suite admission, not a matching 2.0 activation-notice assertion; no code transplant fits. Reused the captured-byte verification discipline and bounded targeted execution; retained 2.0's existing credential rendering unchanged.
 
