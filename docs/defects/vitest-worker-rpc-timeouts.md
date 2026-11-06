@@ -92,6 +92,8 @@ not establish that it caused the unattributed error.
 `async-child.ts` helper throughout, preserving the 30-second child bounds. Each
 independent append cut and the uninterrupted control has its own test; all nine
 cuts, refusal checks, concurrent-reader checks and the twelve poison cases
-remain. No worker concurrency, product behavior or timeout value is increased.
-The targeted run establishes the repaired file's behavior, not full-suite closure.
+remain. The torn-state reconstructions and twelve poison combinations also have
+separate case bounds after the first targeted run exposed their aggregate deadlines.
+No child deadline, worker concurrency or product behavior is changed.
+Targeted verification covers the repaired file, not full-suite closure.
 The defect remains open pending the pipeline's full run with zero runner errors.
