@@ -28,10 +28,10 @@ Decision: t181g-bound | pass the enclosing case timeout to asynchronous children
 
 Evidence: the retained READY run reports 118 passed, two failed, one RPC error over eight files in 797.73s. An isolated unchanged run passed in 114.41s (82.391s defaults, 30.560s bridge); that is timing evidence, not Rule 37 exoneration. The defect record distinguishes the concrete remaining synchronous path from attribution of the untraced RPC error. Final validation is in the committed report and absolute lanes progress record.
 
+Integration note: train-186 imports owning repair 99db9a0967837d7d10527c457263b50383464952 via 5eefd6fd921cb93fb3f241a152bd71b76302b9a2. The test file is byte-identical; this review base is rebound. The release-evidence report describes the owner's historical run, not train-186 validation. The defect merge appends only the owner's READY-gate section. Current metadata renewal and verification are described in reviews/train-186-register-gate-repair.md.
+
 ## Closing block
 
 simplestRobustRoute: complete the existing asynchronous child conversion and separate independent assertion groups without changing the production checker or weakening its comparisons.
 80/20: one test file, existing helper, fresh bounded fixtures, all prior positive and negative assertions retained, and two actual-child progress controls.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Integration note: train-187 imports owning repair 99db9a0967837d7d10527c457263b50383464952. Its test file is byte-identical; only this review base is rebound. The release-evidence report describes the owner's historical run, not train-187 validation. The defect merge preserves train-171 history and adds only the owner commit's READY-gate section; its unrelated parent peer repair is not imported. Current metadata renewal and verification are described in reviews/train-187-register-gate-repair.md.
