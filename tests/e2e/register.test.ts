@@ -323,7 +323,8 @@ describe('compiled register build adapter lifecycle', () => {
   // case bound; fresh independent groups now contain at most nine CLI builds.
   // This is a fixture execution budget, not an owner/runtime latency requirement.
   }, 300_000);
-  it('P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring', async () => {
+  it.each(['owner graph', 'decoder wiring', 'store context'] as const)(
+    'P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring (%s)', async group => {
     const root = mkdtempSync(join(tmpdir(), 'instar-intake-cli-'));
     try {
       for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
@@ -335,31 +336,34 @@ describe('compiled register build adapter lifecycle', () => {
         git('add', '.'); git('commit', '-qm', 'intake owner source');
         return runNode([script, '--replay', '--now', '100', '--commit', git('rev-parse', 'HEAD'), '--out', join(root, 'out')], root);
       };
-      const good = await run(); expect(good.status, good.stderr).toBe(0);
-      const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
-      expect(source.authority).toBe('shape-only'); expect(source.authorityPrerequisites).toHaveLength(10);
-      expect(source.authorityPrerequisites.filter((p: { record: string }) => p.record === 'intake.contract')).toHaveLength(5);
+      if (group === 'owner graph') {
+        const good = await run(); expect(good.status, good.stderr).toBe(0);
+        const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
+        expect(source.authority).toBe('shape-only'); expect(source.authorityPrerequisites).toHaveLength(10);
+        expect(source.authorityPrerequisites.filter((p: { record: string }) => p.record === 'intake.contract')).toHaveLength(5);
+        const manifestPath = join(root, 'register-source/owner-references/part-four.json');
+        const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')); manifest.owner = 'part-five'; writeFileSync(manifestPath, JSON.stringify(manifest));
+        const wrongOwner = await run(); expect(wrongOwner.status).not.toBe(0); expect(wrongOwner.stderr).toContain('owner');
+        return;
+      }
       const path = join(root, 'src/intake/port.ts'), original = readFileSync(path, 'utf8');
-      for (const [from, to] of [
+      const mutations = [
         ["readEnforcedRecord('intake.dedup', 'intake.contract', 'readProjection', register, ctx);", ''],
         ["'intake.contract', 'readProjection'", "'intake.contract', 'authorAndAppend'"],
         ['prepareSnapshot(read(), ctx)', 'prepareSnapshot([], ctx)'],
         ['ownedBodies: [work]', 'ownedBodies: []'],
         ['export function dedup()', 'read = () => [];\nexport function dedup()'],
         ['export function admission()', 'context = () => ({ ...base, ownedBodies: [] });\nexport function admission()'],
-      ]) {
+      ];
+      for (const [from, to] of mutations.slice(group === 'decoder wiring' ? 0 : 2, group === 'decoder wiring' ? 2 : undefined)) {
+        expect(original.replace(from!, to!)).not.toBe(original);
         writeFileSync(path, original.replace(from!, to!)); const bad = await run();
         expect(bad.status).not.toBe(0); expect(bad.stderr).toContain('P3-NF-26');
       }
-      writeFileSync(path, original);
-      const manifestPath = join(root, 'register-source/owner-references/part-four.json');
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')); manifest.owner = 'part-five'; writeFileSync(manifestPath, JSON.stringify(manifest));
-      const wrongOwner = await run(); expect(wrongOwner.status).not.toBe(0); expect(wrongOwner.stderr).toContain('owner');
     } finally { rmSync(root, { recursive: true, force: true }); }
-  // Eight repository-building CLI runs took 56.6s isolated on WSL and hit the old 60s
-  // execution budget beside another serial test runner. This is a fixture hang bound,
-  // not a product latency assertion; retain every acceptance/refusal check.
-  // Evidence: docs/defects/register-intake-cli-wsl-budget.md.
+  // Apply the owning repair's fresh-group pattern to the remaining eight-build
+  // intake matrix named by train-175's gate: at most four calls, unchanged 120s.
+  // Every original owner/prerequisite/consumer assertion remains.
   }, 120_000);
   // Fresh repositories keep these independent groups isolated. At most four CLI
   // builds share the unchanged 120s case bound, instead of ten.
