@@ -32,6 +32,8 @@ Decision: train180-publish | Regenerate owner pins and register using delegated 
 
 Desk source files, never committed: absolute lanes/answer-check-forum.sh and lanes/pipeline/test-answer-check-fault-1105.py, each backed up with suffix .train-180-before.bak. Hashes and verification are in the reported progress record. These changes supplement the committed provider source fix.
 
+Verification: Typecheck/build exit 0. Affected files pass 122/122 tests. Exact unchanged test-profile read matches both enrolled digests and hooksDisabled=false. Native guarded renewal passed 10/10 after the expected stale-certificate-only pre-run. Desk regression failed on absent raw reply before repair and passed afterward, 8/8 tests; bash syntax passes. Owner rehash/chain repin passed with zero changes. Register replay from source 109b70b6c27a1418f78b0fb18cade3ded01488b6 produced generation 18eccde1db7d9e107ec02900b5ff91c8be23d4afed96e41ee039c08f9fb77032, 298 entries/121 rules/34 terms. Final-commit cheap-gate outcomes and pushed status are retained in the progress record. Full-suite and new live-answer evidence are not claimed.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the owning cache inspector repair and pass the existing normalized observation to the existing fault classifier. No retry mechanism, authority, capability limit or new verifier is added. Start guards still inspect identity, restrictive policy and hooks; end guards preserve honest outcomes; cap, stop, secret, intake and effect checkpoints remain. The pipeline supplies the new unattended answer proof; this author claims no live answer from a read-only inspection.
