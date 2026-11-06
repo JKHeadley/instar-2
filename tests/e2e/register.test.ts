@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { setImmediate as yieldImmediate } from 'node:timers';
@@ -14,7 +14,7 @@ import { setup, value, json, hash, withoutBasis } from '../register/fixtures.js'
 import { installOwnerFixture } from '../register/owner-fixture.js';
 import { installIntakeOwnerFixture } from '../register/intake-owner-fixture.js';
 import { runChild } from './async-child.js';
-const runNode = (args: readonly string[], cwd?: string) => runChild(process.execPath, args, { cwd });
+const runNode = (args: readonly string[], cwd?: string, timeout = 60_000) => runChild(process.execPath, args, { cwd, timeout });
 // The fixture world runs at t=100. A real declared model doorway carries its real
 // verification time, which that clock correctly refuses as not-yet-verified. Shift those
 // declared times into the fixture world; the real build keeps checking them at real time.
@@ -52,9 +52,8 @@ function expectOwnerPrerequisites(root: string, actual: readonly { site: string;
 }
 
 describe('compiled register build adapter lifecycle', () => {
-  // Separate synchronous CLI batches with an actual event-loop turn. On x64 CI
-  // consecutive passing tests can otherwise starve Vitest's 60s reporting RPC.
-  // The long multi-case test also yields between cases; no assertion is relaxed.
+  // The in-process workflow still yields between synchronous phases. CLI scenarios
+  // await the existing child helper so runner IPC stays live during each build.
   afterEach(() => new Promise<void>(done => setImmediate(done)));
   it('P3-NF-21 P3-NF-22 P3-NF-23 P3-NF-24 P3-NF-26 P3-NF-27 R1 normal extract and completion workflows invoke the provider and full graph ladder', async () => {
     // Yield only between completed fixture/build phases; owner calls remain synchronous.
@@ -208,7 +207,15 @@ describe('compiled register build adapter lifecycle', () => {
   // the full Mama PC suite (2026-09-29, cb7-r90), past the old 120s. This is a fixture execution budget, not an
   // owner/runtime latency requirement (docs/defects/full-suite-load-timeouts.md).
   }, 300_000);
-  it('P3-NF-09 P3-NF-13 P3-NF-19 P3-NF-24 P3-NF-26 R1/R3/R5 shipped CLI rejects invalid holders, deadlines, rungs and unbound shape changes', async () => {
+  // Each independent full-tree CLI scenario gets its own runner turn and existing budget.
+  // A growing shipped graph must not pack nineteen builds into one timed body.
+  it.each([
+    'missing rule', 'unknown part', 'valid deferred holder', 'overdue rule', 'live rule',
+    'overdue graduation', 'live graduation', 'empty rungs', 'mixed rungs',
+    'colocated cap', 'other-file cap', 'missing cap', 'ambiguous cap', 'removed invariant', 'invented growth',
+  ].map((name, index) => ({ name, index })))(
+    'P3-NF-09 P3-NF-13 P3-NF-19 P3-NF-24 P3-NF-26 R1/R3/R5 shipped CLI: $name', async ({ index }) => {
+    expect.hasAssertions();
     const root = mkdtempSync(join(tmpdir(), 'instar-register-repair-e2e-'));
     const script = resolve('scripts/build-register.mjs');
     try {
@@ -250,14 +257,14 @@ describe('compiled register build adapter lifecycle', () => {
       // A live alone-deciding site must be bound to its checkpoint (P3-NF-19), so each blocking-site case carries a
       // literal-id binding and reaches the check it tests; the other cases carry none (a binding needs a live site).
       const binding = join(root, 'src/repair-binding.ts');
-      for (const [d, error] of cases) {
+      for (const [d, error] of cases.slice(index, index + 1)) {
         writeFileSync(join(root, 'src/README.md'), (d as { kind: string }).kind === 'features'
           ? `${readme}\n## Capabilities\n\n- \`fixture-feature\`: a test-only feature for the deadline cases.\n` : readme);
         if ((d as { kind: string }).kind === 'blocking sites') writeFileSync(binding, "import { bindBlockingSite } from './register/governance.js';\n"
           + "export const repairBinding = (declarations: Parameters<typeof bindBlockingSite>[0]) => bindBlockingSite(declarations, 'fixture-holder', []);\n");
         else rmSync(binding, { force: true });
         writeFileSync(join(root, 'src/repair.declarations.json'), JSON.stringify([d])); const revision = commit();
-        const result = spawnSync(process.execPath, [script, '--replay', '--checks', 'register-source/checks.json', '--now', '100', '--commit', revision, '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
+        const result = await runNode([script, '--replay', '--checks', 'register-source/checks.json', '--now', '100', '--commit', revision, '--out', join(root, 'out')], root);
         if (error) { expect(result.status, result.stderr).not.toBe(0); expect(result.stderr).toContain(error); }
         else { expect(result.status, result.stderr).toBe(0); expect(JSON.parse(result.stdout).prerequisites).toBeGreaterThan(0); }
         await new Promise<void>(done => setImmediate(done));
@@ -267,29 +274,31 @@ describe('compiled register build adapter lifecycle', () => {
       // bound through the shipped CLI. Missing, other-file and ambiguous sites
       // do not become valid simply because they repeat its id.
       const s = setup();
-      writeFileSync(join(root, 'register-source/checks.json'), JSON.stringify({ mode: 'replay', references: [{ provider: 'probe', id: 'probe' }],
-        catalog: { fixtures: [], probes: [{ id: 'probe', cadence: 100, artifact: { path: 'src/register/workflow.ts', hash: hash(readFileSync(join(root, 'src/register/workflow.ts'), 'utf8')) } }], sentinels: [], semanticReviews: [] } }));
-      writeFileSync(join(root, 'src/repair.declarations.json'), JSON.stringify([s.bound, { ...s.declaration(), profile: s.f.profileInput() }]));
-      const cap = "import { constructGoverned } from '@instar/constitutional-types/register'; export function cap() { return constructGoverned('critical outcomes', 'bound', register, context); }";
-      for (const [body, other, error] of [[cap, '', null], ['', cap, 'no paired construct'], ['', '', 'no paired construct'],
-        [cap + "export function wrong() { return constructGoverned('critical outcomes', 'bound', register, context); }", '', 'ambiguous colocated']] as const) {
-        writeFileSync(join(root, 'src/repair.ts'), body); writeFileSync(join(root, 'src/elsewhere.ts'), other); const revision = commit();
-        const result = spawnSync(process.execPath, [script, '--replay', '--checks', 'register-source/checks.json', '--now', '100', '--commit', revision, '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
-        if (error) { expect(result.status).not.toBe(0); expect(result.stderr).toContain(error); }
-        else {
-          expect(result.status, result.stderr).toBe(0);
-          const generated = JSON.parse(readFileSync(join(root, 'out/register.json'), 'utf8'));
-          expect(generated.entries.find((e: { declaration: { id: string } }) => e.declaration.id === 'bound').declaration.declaredBy).toMatchObject({ path: 'src/repair.ts', symbol: 'cap' });
-          expect(JSON.parse(readFileSync(join(root, 'out/conversion.json'), 'utf8')).sources.some((s: { path: string }) => s.path === 'src/repair.ts')).toBe(false);
+      if (index >= 9 && index < 13) {
+        writeFileSync(join(root, 'register-source/checks.json'), JSON.stringify({ mode: 'replay', references: [{ provider: 'probe', id: 'probe' }],
+          catalog: { fixtures: [], probes: [{ id: 'probe', cadence: 100, artifact: { path: 'src/register/workflow.ts', hash: hash(readFileSync(join(root, 'src/register/workflow.ts'), 'utf8')) } }], sentinels: [], semanticReviews: [] } }));
+        writeFileSync(join(root, 'src/repair.declarations.json'), JSON.stringify([s.bound, { ...s.declaration(), profile: s.f.profileInput() }]));
+        const cap = "import { constructGoverned } from '@instar/constitutional-types/register'; export function cap() { return constructGoverned('critical outcomes', 'bound', register, context); }";
+        for (const [body, other, error] of ([[cap, '', null], ['', cap, 'no paired construct'], ['', '', 'no paired construct'],
+          [cap + "export function wrong() { return constructGoverned('critical outcomes', 'bound', register, context); }", '', 'ambiguous colocated']] as const).slice(index - 9, index - 8)) {
+          writeFileSync(join(root, 'src/repair.ts'), body); writeFileSync(join(root, 'src/elsewhere.ts'), other); const revision = commit();
+          const result = await runNode([script, '--replay', '--checks', 'register-source/checks.json', '--now', '100', '--commit', revision, '--out', join(root, 'out')], root);
+          if (error) { expect(result.status).not.toBe(0); expect(result.stderr).toContain(error); }
+          else {
+            expect(result.status, result.stderr).toBe(0);
+            const generated = JSON.parse(readFileSync(join(root, 'out/register.json'), 'utf8'));
+            expect(generated.entries.find((e: { declaration: { id: string } }) => e.declaration.id === 'bound').declaration.declaredBy).toMatchObject({ path: 'src/repair.ts', symbol: 'cap' });
+            expect(JSON.parse(readFileSync(join(root, 'out/conversion.json'), 'utf8')).sources.some((s: { path: string }) => s.path === 'src/repair.ts')).toBe(false);
+          }
+          await new Promise<void>(done => setImmediate(done));
         }
-        await new Promise<void>(done => setImmediate(done));
       }
       const shapePath = join(root, 'register-source/bootstrap-shape.json');
       const shape = JSON.parse(readFileSync(shapePath, 'utf8')) as { kinds: { name: string; invariants: string[]; fields: { name: string; values: string[] }[] }[] };
       const stores = shape.kinds.find(k => k.name === 'stores')!;
-      for (const mutation of [() => { stores.invariants = []; }, () => { stores.fields.find(f => f.name === 'growth')!.values.push('invented'); }]) {
+      for (const mutation of [() => { stores.invariants = []; }, () => { stores.fields.find(f => f.name === 'growth')!.values.push('invented'); }].slice(index - 13, index - 12).filter(() => index >= 13)) {
         mutation(); writeFileSync(shapePath, JSON.stringify(shape)); const revision = commit();
-        const result = spawnSync(process.execPath, [script, '--replay', '--commit', revision, '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
+        const result = await runNode([script, '--replay', '--commit', revision, '--out', join(root, 'out')], root);
         expect(result.status).not.toBe(0); expect(result.stderr).toContain('P3-NF-09');
         // R5.1 exact desk counterexample: mutate the purported anchor too. The
         // immutable checker pin must refuse even though candidate hashes agree.
@@ -299,20 +308,18 @@ describe('compiled register build adapter lifecycle', () => {
         writeFileSync(join(root, 'src/repair.declarations.json'), JSON.stringify([s.declaration('illegal-memory', 'stores', { growth: 'deletes', holdsAgentMemory: 'yes', machineScope: { kind: 'shared' }, agreesWith: [] })]));
         const changed = commit();
         for (const flag of ['--bootstrap', '--replay']) {
-          const tampered = spawnSync(process.execPath, [script, flag, '--commit', changed, '--out', join(root, 'tampered-' + flag.slice(2))], { cwd: root, encoding: 'utf8' });
+          const tampered = await runNode([script, flag, '--commit', changed, '--out', join(root, 'tampered-' + flag.slice(2))], root);
           expect(tampered.status).not.toBe(0); expect(tampered.stderr).toContain('P3-NF-09');
         }
         await new Promise<void>(done => setImmediate(done));
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
-  // Same execution-budget class as the workflow case above: this case copies the whole tree and
-  // runs the shipped CLI nineteen times. Measured on the Mama PC (WSL2, 2026-10-03, w4-ugaps):
-  // 134s isolated, and past 120s on cint-L45 itself before this change (137s), so the budget was
-  // the limit, not the tree.
-  // A fixture execution budget, not an owner/runtime latency requirement
-  // (docs/defects/full-suite-load-timeouts.md).
+  // Retain the original fixture budget; every assertion now belongs to a named scenario.
   }, 300_000);
-  it('P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring', async () => {
+  it.each(['valid owners', 'missing read', 'wrong decoder', 'empty snapshot', 'empty owned bodies', 'reassigned read',
+    'reassigned context', 'wrong owner'].map((name, index) => ({ name, index })))(
+    'P3-P4-P5 shipped CLI owner wiring: $name', async ({ index }) => {
+    expect.hasAssertions();
     const root = mkdtempSync(join(tmpdir(), 'instar-intake-cli-'));
     try {
       for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
@@ -324,10 +331,12 @@ describe('compiled register build adapter lifecycle', () => {
         git('add', '.'); git('commit', '-qm', 'intake owner source');
         return runNode([script, '--replay', '--now', '100', '--commit', git('rev-parse', 'HEAD'), '--out', join(root, 'out')], root);
       };
-      const good = await run(); expect(good.status, good.stderr).toBe(0);
-      const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
-      expect(source.authority).toBe('shape-only'); expect(source.authorityPrerequisites).toHaveLength(10);
-      expect(source.authorityPrerequisites.filter((p: { record: string }) => p.record === 'intake.contract')).toHaveLength(5);
+      if (index === 0) {
+        const good = await run(); expect(good.status, good.stderr).toBe(0);
+        const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
+        expect(source.authority).toBe('shape-only'); expect(source.authorityPrerequisites).toHaveLength(10);
+        expect(source.authorityPrerequisites.filter((p: { record: string }) => p.record === 'intake.contract')).toHaveLength(5);
+      }
       const path = join(root, 'src/intake/port.ts'), original = readFileSync(path, 'utf8');
       for (const [from, to] of [
         ["readEnforcedRecord('intake.dedup', 'intake.contract', 'readProjection', register, ctx);", ''],
@@ -336,21 +345,22 @@ describe('compiled register build adapter lifecycle', () => {
         ['ownedBodies: [work]', 'ownedBodies: []'],
         ['export function dedup()', 'read = () => [];\nexport function dedup()'],
         ['export function admission()', 'context = () => ({ ...base, ownedBodies: [] });\nexport function admission()'],
-      ]) {
+      ].slice(index - 1, index).filter(() => index > 0 && index < 7)) {
         writeFileSync(path, original.replace(from!, to!)); const bad = await run();
         expect(bad.status).not.toBe(0); expect(bad.stderr).toContain('P3-NF-26');
       }
       writeFileSync(path, original);
-      const manifestPath = join(root, 'register-source/owner-references/part-four.json');
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')); manifest.owner = 'part-five'; writeFileSync(manifestPath, JSON.stringify(manifest));
-      const wrongOwner = await run(); expect(wrongOwner.status).not.toBe(0); expect(wrongOwner.stderr).toContain('owner');
+      if (index === 7) {
+        const manifestPath = join(root, 'register-source/owner-references/part-four.json');
+        const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')); manifest.owner = 'part-five'; writeFileSync(manifestPath, JSON.stringify(manifest));
+        const wrongOwner = await run(); expect(wrongOwner.status).not.toBe(0); expect(wrongOwner.stderr).toContain('owner');
+      }
     } finally { rmSync(root, { recursive: true, force: true }); }
-  // Eight repository-building CLI runs took 56.6s isolated on WSL and hit the old 60s
-  // execution budget beside another serial test runner. This is a fixture hang bound,
-  // not a product latency assertion; retain every acceptance/refusal check.
-  // Evidence: docs/defects/register-intake-cli-wsl-budget.md.
+  // Preserve the fixture hang bound while separating all eight acceptance/refusal neighbors.
   }, 120_000);
-  it('P3-P5 shipped CLI defaults resolve committed owner bindings, but never spoofed calls or stale artifacts', async () => {
+  it.each(['valid', 'changed documentation', 'removed documentation', 'restored documentation', 'spoofed call',
+    'immutable namespace', 'mutable namespace', 'mutable namespace alias', 'stale artifact', 'ambient test'] as const)(
+    'P3-P5 shipped CLI defaults resolve committed owner bindings: %s', async scenario => {
     const root = mkdtempSync(join(tmpdir(), 'instar-owner-cli-'));
     try {
       for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
@@ -360,50 +370,48 @@ describe('compiled register build adapter lifecycle', () => {
       const commit = () => { git('add', '.'); git('commit', '-qm', 'owner CLI source'); return git('rev-parse', 'HEAD'); };
       const script = resolve('scripts/build-register.mjs');
       const run = (revision: string) => runNode([script, '--replay', '--now', '100', '--commit', revision, '--out', join(root, 'out')], root);
-      const revision = commit(); const good = await run(revision);
-      expect(good.status, good.stderr).toBe(0);
-      const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
-      expect(source.authority).toBe('shape-only'); expectOwnerPrerequisites(root, source.authorityPrerequisites);
-      // The consumed documentation is pinned: a changed or removed module README requires regeneration.
-      const readme = join(root, 'tests/preview/README.md'); const documented = readFileSync(readme, 'utf8');
-      writeFileSync(readme, documented.replace('- `preview-conversation`: ', '- `preview-conversation`: stale text '));
-      const changedDoc = await run(revision); expect(changedDoc.status).not.toBe(0); expect(changedDoc.stderr).toContain('source pin trails tests/preview/README.md');
-      rmSync(readme);
-      const removedDoc = await run(revision); expect(removedDoc.status).not.toBe(0); expect(removedDoc.stderr).toContain('source pin trails tests/preview/README.md');
-      writeFileSync(readme, documented); expect((await run(revision)).status).toBe(0);
-      const declared = JSON.parse(readFileSync(join(root, 'out/register.json'), 'utf8'));
-      expect(declared.entries.find((e: { declaration: { id: string } }) => e.declaration.id === 'rungraph-core').declaration).toMatchObject({ status: 'dark', profile: { reach: 'user', consequence: 'control', reversibility: 'costly', surface: 'chat' } });
-      const path = join(root, 'src/rungraph/rungraph.ts'); const original = readFileSync(path, 'utf8');
-      // Preserve the real import and the same-name local call, but remove the
-      // actual owner invocation. An identifier-only scanner would accept this.
-      const spoof = original.replace(/decodeRun\(([^;]+)\);/, '((decodeRun) => decodeRun($1))((v) => v);');
-      expect(spoof).not.toBe(original); writeFileSync(path, spoof);
-      const wrongCall = await run(commit()); expect(wrongCall.status).not.toBe(0); expect(wrongCall.stderr).toContain('does not read');
-      // R1: retain the real construction/read and every valid owner artifact pin.
-      // Only the decoder receiver changes. Immutable namespace chains work;
-      // a reassigned receiver and a const alias of that receiver do not.
-      for (const [receiver, accepted] of [
-        ['const ns = owner; const next = ns; next.decodeRun($1);', true],
-        ["let ns = owner; ns = { ...owner, decodeRun: (_v: unknown) => 'impostor' }; ns.decodeRun($1);", false],
-        ["let ns = owner; ns = { ...owner, decodeRun: (_v: unknown) => 'impostor' }; const next = ns; next.decodeRun($1);", false],
-      ] as const) {
+      const revision = commit();
+      if (scenario === 'valid') {
+        const good = await run(revision); expect(good.status, good.stderr).toBe(0);
+        const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
+        expect(source.authority).toBe('shape-only'); expectOwnerPrerequisites(root, source.authorityPrerequisites);
+        const declared = JSON.parse(readFileSync(join(root, 'out/register.json'), 'utf8'));
+        expect(declared.entries.find((e: { declaration: { id: string } }) => e.declaration.id === 'rungraph-core').declaration).toMatchObject({ status: 'dark', profile: { reach: 'user', consequence: 'control', reversibility: 'costly', surface: 'chat' } });
+      } else if (scenario === 'changed documentation' || scenario === 'removed documentation' || scenario === 'restored documentation') {
+        const readme = join(root, 'tests/preview/README.md'); const documented = readFileSync(readme, 'utf8');
+        if (scenario === 'changed documentation') writeFileSync(readme, documented.replace('- `preview-conversation`: ', '- `preview-conversation`: stale text '));
+        else rmSync(readme);
+        if (scenario === 'restored documentation') writeFileSync(readme, documented);
+        const result = await run(revision);
+        if (scenario === 'restored documentation') expect(result.status, result.stderr).toBe(0);
+        else { expect(result.status).not.toBe(0); expect(result.stderr).toContain('source pin trails tests/preview/README.md'); }
+      } else if (scenario === 'stale artifact') {
+        const manifestPath = join(root, 'register-source/owner-references.json'); const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+        manifest.decoders[0].artifact.hash = hash('not the committed owner source'); writeFileSync(manifestPath, JSON.stringify(manifest));
+        const stale = await run(commit()); expect(stale.status).not.toBe(0); expect(stale.stderr).toContain('artifact hash differs');
+      } else if (scenario === 'ambient test') {
+        const testPath = join(root, 'tests/rungraph/governance.test.ts'); writeFileSync(testPath, readFileSync(testPath, 'utf8') + '\n// ambient edit\n');
+        const ambient = await run(revision); expect(ambient.status).not.toBe(0); expect(ambient.stderr).toContain('source pin trails');
+      } else {
+        const path = join(root, 'src/rungraph/rungraph.ts'); const original = readFileSync(path, 'utf8');
+        const receiver = {
+          'spoofed call': '((decodeRun) => decodeRun($1))((v) => v);',
+          'immutable namespace': 'const ns = owner; const next = ns; next.decodeRun($1);',
+          'mutable namespace': "let ns = owner; ns = { ...owner, decodeRun: (_v: unknown) => 'impostor' }; ns.decodeRun($1);",
+          'mutable namespace alias': "let ns = owner; ns = { ...owner, decodeRun: (_v: unknown) => 'impostor' }; const next = ns; next.decodeRun($1);",
+        }[scenario];
         const body = original.replace(/decodeRun\(([^;]+)\);/, receiver);
         expect(body).not.toBe(original);
-        writeFileSync(path, "import * as owner from './index.js';\n" + body);
+        writeFileSync(path, (scenario === 'spoofed call' ? '' : "import * as owner from './index.js';\n") + body);
         const result = await run(commit());
-        if (accepted) expect(result.status, result.stderr).toBe(0);
-        else { expect(result.status).not.toBe(0); expect(result.stderr).toContain('does not read enforced record and invoke named decoder'); }
+        if (scenario === 'immutable namespace') expect(result.status, result.stderr).toBe(0);
+        else { expect(result.status).not.toBe(0); expect(result.stderr).toContain(scenario === 'spoofed call'
+          ? 'does not read' : 'does not read enforced record and invoke named decoder'); }
       }
-      writeFileSync(path, original);
-      const manifestPath = join(root, 'register-source/owner-references.json'); const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-      manifest.decoders[0].artifact.hash = hash('not the committed owner source'); writeFileSync(manifestPath, JSON.stringify(manifest));
-      const stale = await run(commit()); expect(stale.status).not.toBe(0); expect(stale.stderr).toContain('artifact hash differs');
-      // Pin validation includes CI artifacts, not just production .ts files.
-      const testPath = join(root, 'tests/rungraph/governance.test.ts'); writeFileSync(testPath, readFileSync(testPath, 'utf8') + '\n// ambient edit\n');
-      const ambient = await run(revision); expect(ambient.status).not.toBe(0); expect(ambient.stderr).toContain('source pin trails');
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 120_000);
-  it('P3-P5 R2 same pinned commit refuses with and without an ambient bridge, and resolves a committed bridge', async () => {
+  it.each(['absent ambient', 'absent clean', 'committed equivalence', 'wiring valid', 'wiring untracked'] as const)(
+    'P3-P5 R2 same pinned commit and bridge: %s', async scenario => {
     const directory = mkdtempSync(join(tmpdir(), 'instar-owner-graph-cli-'));
     const root = join(directory, 'working'); const clean = join(directory, 'clean'); const committed = join(directory, 'committed');
     try {
@@ -421,32 +429,42 @@ describe('compiled register build adapter lifecycle', () => {
       writeFileSync(manifestPath, JSON.stringify(manifest));
       git(root, 'init'); git(root, 'add', ...inputs); git(root, 'commit', '-qm', 'pinned public index, absent bridge');
       const revision = git(root, 'rev-parse', 'HEAD');
-      git(directory, 'clone', '--quiet', '--no-hardlinks', root, clean);
-      expect(git(clean, 'rev-parse', 'HEAD')).toBe(revision);
+      if (scenario === 'absent clean') {
+        git(directory, 'clone', '--quiet', '--no-hardlinks', root, clean);
+        expect(git(clean, 'rev-parse', 'HEAD')).toBe(revision);
+      }
       writeFileSync(join(root, 'src/rungraph/owner-bridge.ts'), "export * from './records.js';");
       expect(git(root, 'ls-tree', '-r', '--name-only', revision)).not.toContain('owner-bridge.ts');
       expect(git(root, 'status', '--porcelain')).toContain('?? src/rungraph/owner-bridge.ts');
       const script = resolve('scripts/build-register.mjs');
-      const run = (cwd: string, pin: string) => spawnSync(process.execPath, [script, '--replay', '--now', '100', '--commit', pin, '--out', join(cwd, 'out')], { cwd, encoding: 'utf8' });
-      for (const cwd of [root, clean]) {
-        const result = run(cwd, revision);
+      const run = (cwd: string, pin: string) => runNode([script, '--replay', '--now', '100', '--commit', pin, '--out', join(cwd, 'out')], cwd);
+      if (scenario === 'absent ambient' || scenario === 'absent clean') {
+        const result = await run(scenario === 'absent ambient' ? root : clean, revision);
         // The committed shipped-module walk refuses the absent bridge first; an ambient file never satisfies it.
         expect(result.status).not.toBe(0); expect(result.stderr).toContain('R5: shipped import ./owner-bridge.js from src/rungraph/index.ts does not resolve');
+        return;
       }
       git(root, 'add', 'src/rungraph/owner-bridge.ts'); git(root, 'commit', '-qm', 'include bridge in committed source graph');
       const pinned = git(root, 'rev-parse', 'HEAD');
-      git(directory, 'clone', '--quiet', '--no-hardlinks', root, committed);
-      expect(git(committed, 'rev-parse', 'HEAD')).toBe(pinned);
-      for (const cwd of [root, committed]) { const result = run(cwd, pinned); expect(result.status, result.stderr).toBe(0); }
-      for (const path of ['register.json', 'source.json'])
-        expect(readFileSync(join(root, 'out', path), 'utf8')).toBe(readFileSync(join(committed, 'out', path), 'utf8'));
+      if (scenario === 'committed equivalence') {
+        git(directory, 'clone', '--quiet', '--no-hardlinks', root, committed);
+        expect(git(committed, 'rev-parse', 'HEAD')).toBe(pinned);
+      }
+      for (const cwd of scenario === 'committed equivalence' ? [root, committed] : [root]) { const result = await run(cwd, pinned); expect(result.status, result.stderr).toBe(0); }
+      if (scenario === 'committed equivalence') {
+        for (const path of ['register.json', 'source.json'])
+          expect(readFileSync(join(root, 'out', path), 'utf8')).toBe(readFileSync(join(committed, 'out', path), 'utf8'));
+        return;
+      }
       // The separately shipped wiring command also scans the pin, never an
       // expanded live-file graph. Its valid control must work before perturbing it.
       cpSync(join(root, 'out'), join(root, 'generated'), { recursive: true });
-      const wiring = () => spawnSync(process.execPath, [resolve('scripts/check-register-wiring.mjs')], { cwd: root, encoding: 'utf8' });
-      const checked = wiring(); expect(checked.status, checked.stderr).toBe(0);
+      const wiring = () => runNode([resolve('scripts/check-register-wiring.mjs')], root);
+      if (scenario === 'wiring valid') {
+        const checked = await wiring(); expect(checked.status, checked.stderr).toBe(0); return;
+      }
       writeFileSync(join(root, 'src/rungraph/ambient.ts'), "export * from './records.js';");
-      const untracked = wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
+      const untracked = await wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }, 60_000);
   it('P3-NF-01 P3-NF-07 P3-NF-09 actual CLI reproduces committed outputs and rejects edited output', async () => {
