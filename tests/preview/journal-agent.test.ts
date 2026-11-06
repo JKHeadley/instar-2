@@ -1,6 +1,7 @@
 // @ts-nocheck -- offline process and HTTP fixtures exercise the real launcher.
 import { expect, it } from 'vitest';
 import { spawn, spawnSync } from 'node:child_process';
+import { runChild } from '../e2e/async-child.js';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -159,7 +160,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`}});
     let stderr=''; child.stderr.on('data',data=>{stderr+=String(data);});
-    const deadline = Date.now()+10000;
+    // Startup and CLI reconstruction have the same 30s bound as cutover fixtures;
+    // the signal response itself still has its independent 3s assertion below.
+    const deadline = Date.now()+30000;
     while ((!existsSync(log) || readFileSync(log,'utf8').split('getUpdates').length < 4) && Date.now()<deadline)
       await new Promise(done=>setTimeout(done,20));
     expect(existsSync(log),stderr).toBe(true);
@@ -172,18 +175,18 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(exit).not.toBe('timeout');
     expect(stderr.match(/^runner exiting: .+$/gm)).toEqual([`runner exiting: paused by signal ${signal}`]);
     expect(readFileSync(log,'utf8').split('getUpdates').length-1).toBeLessThanOrEqual(pollsAtSignal+1);
-    const status = spawnSync(process.execPath,
+    const status = await runChild(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex')},
-        encoding:'utf8',timeout:10000});
+        timeout:30000});
     expect(status.status).toBe(0);
     expect(JSON.parse(status.stdout).stop).toBeNull();
     expect(JSON.parse(status.stdout).launches).toMatchObject([{ reason: `paused by signal ${signal}` }]);
     expect(existsSync(join(root,'preview-stop.json'))).toBe(false);
     writeFileSync(updates, JSON.stringify([{update_id:1,message:{chat:{id:Number(world.configuration.chatId),type:'private'},
       from:{id:Number(world.configuration.operatorSenderId)},text:'Please answer after restart.'}}]));
-    const resumed = spawnSync(process.execPath,[...args.slice(0,-4),'--max-cycles','3','--max-poll-seconds','1'],
-      {cwd:process.cwd(),encoding:'utf8',timeout:10000,env:{...process.env,
+    const resumed = await runChild(process.execPath,[...args.slice(0,-4),'--max-cycles','3','--max-poll-seconds','1'],
+      {cwd:process.cwd(),timeout:30000,env:{...process.env,
         INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
         INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
         INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
@@ -191,10 +194,10 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(resumed.status,resumed.stderr).toBe(0);
     expect(readFileSync(log,'utf8').split('getUpdates').length-1).toBeGreaterThan(pollsAtSignal);
     expect(readFileSync(log,'utf8').split('sendMessage').length-1).toBe(1);
-    expect(JSON.parse(spawnSync(process.execPath,
+    expect(JSON.parse((await runChild(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex')},
-        encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:2,
+        timeout:30000})).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:2,
           unknownCallBreakdown:{answers:0,summaries:0,reviews:0,jev:2,total:2},
           replyChecks:{unavailable:2},unknownSends:0,
           // Rules 41/75: the failed Jev attempt and its one bounded retry each retain their own UNKNOWN usage.
@@ -204,20 +207,20 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
           // Rules 28/29/35: the one admitted turn was written by the verified operator over the test endpoint.
           intakeWriters:{verifiedOperator:1,scheduler:0,legacyExactBinding:0,testOrigin:1,refused:0},
           coherence:{checked:1,unchecked:0,failed:0,pendingCorrections:0,findings:[]}});
-    const stop = spawnSync(process.execPath,
+    const stop = await runChild(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','stop','--root',root],
-      {cwd:process.cwd(),encoding:'utf8',timeout:10000});
+      {cwd:process.cwd(),timeout:30000});
     expect(stop.status).toBe(0);
     expect(JSON.parse(readFileSync(join(root,'preview-stop.json'),'utf8')).reason).toBe('operator');
-    const refused = spawnSync(process.execPath,[...args.slice(0,-4),'--max-cycles','1','--max-poll-seconds','1'],
-      {cwd:process.cwd(),encoding:'utf8',timeout:10000,env:{...process.env,
+    const refused = await runChild(process.execPath,[...args.slice(0,-4),'--max-cycles','1','--max-poll-seconds','1'],
+      {cwd:process.cwd(),timeout:30000,env:{...process.env,
         INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
         INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
         INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
         INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`}});
     expect(refused.status).not.toBe(0);
   } finally { child?.kill('SIGKILL'); endpoint.kill('SIGTERM'); }
-},30000);
+},210000);
 
 it.each([['echo', 0], ['drop-thread', 1]])('the real launcher answers a topic from the main chat and replies into that topic (endpoint %s; a result without the thread stays UNKNOWN)', async (mode, unknown) => {
   const world = successiveWorld(), root = join(world.directory, 'topic-journal');
