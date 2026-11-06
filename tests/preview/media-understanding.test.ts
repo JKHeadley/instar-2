@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createSecretCustody, secretRef } from './secret-custody.js';
@@ -76,7 +76,9 @@ it('enforces output, timeout and stop through the existing resource owner', asyn
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
 
-it('admits a real local decode with Six allocation and refuses capacity before any decoder can spawn', { timeout: 30000 }, async () => {
+// Enclose both production decoder bounds (30 s + 90 s), plus admission and
+// verified cleanup (60 s); this watchdog is not a transcription latency assertion.
+it('admits a real local decode with Six allocation and refuses capacity before any decoder can spawn', { timeout: 180000 }, async () => {
   const root = mkdtempSync(join(tmpdir(), 'media-allocation-'));
   try {
     const resources = createResourceOwner();
@@ -97,6 +99,34 @@ it('admits a real local decode with Six allocation and refuses capacity before a
     expect(refused.snapshot().counters.admitted).toBe(0);
     expect(refused.snapshot().allocation.lastRefusal).toBe('fixture capacity exhausted');
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each([false, true])('settles recognition beyond 30 seconds without losing cleanup (stopped=%s)', async stop => {
+  const root = mkdtempSync(join(tmpdir(), 'media-slow-recognition-'));
+  const model = join(root, 'model'); writeFileSync(model, 'fixture');
+  vi.useFakeTimers();
+  let stopped = false, settled = false;
+  const commands: { command: string; timeout: number }[] = [];
+  try {
+    const transcribe = createLocalTranscriber({ model, temporary: root, stopped: () => stopped,
+      run: async (command: string, _args: string[], options: { timeout: number }) => {
+        commands.push({ command, timeout: options.timeout });
+        if (command === 'ffmpeg') return Buffer.alloc(32000);
+        await new Promise(done => setTimeout(done, 31000));
+        return Buffer.from('Tuesday at nine');
+      } });
+    const outcome = transcribe(fixture('meeting.ogg')).then(
+      (text: string) => { settled = true; return { text }; },
+      (error: Error) => { settled = true; return { error: error.message }; });
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(settled).toBe(false);
+    expect(readdirSync(root)).toHaveLength(2); // model and still-owned decoding directory
+    stopped = stop;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await outcome).toEqual(stop ? { error: 'local transcription empty' } : { text: 'Tuesday at nine' });
+    expect(commands).toEqual([{ command: 'ffmpeg', timeout: 30000 }, { command: 'whisper-cli', timeout: 90000 }]);
+    expect(readdirSync(root)).toEqual(['model']);
+  } finally { vi.useRealTimers(); rmSync(root, { recursive: true, force: true }); }
 });
 
 it.each([false, true])('protects the actual admitted Read boundary before model consumption (credential document=%s)', async secret => {

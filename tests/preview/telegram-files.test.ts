@@ -21,7 +21,12 @@ const cases = [
   ['animation', 'clip.gif'], ['sticker', 'sticker.webp'], ['document', 'unknown.custom'],
 ];
 
-it.each(cases)('files sent in Telegram reach the agent: %s / %s', { timeout: 30000 }, async (kind, name) => {
+for (const [kind, name] of cases) {
+// Audio uses sequential 30 s decode and 90 s recognition bounds; allow another
+// 60 s for admission/verified cleanup before the test removes its temporary root.
+it(`files sent in Telegram reach the agent: ${kind} / ${name}`, {
+  timeout: kind === 'voice' || kind === 'audio' ? 180000 : 30000,
+}, async () => {
   const bytes = ['shapes.jpg', 'synthetic-brief.pdf', 'meeting.ogg'].includes(name!) ? fixture(name!) : Buffer.from('synthetic opaque file');
   const root = mkdtempSync(join(tmpdir(), 'telegram-files-'));
   try {
@@ -79,6 +84,7 @@ it.each(cases)('files sent in Telegram reach the agent: %s / %s', { timeout: 300
     expect(transcriptions).toBe(kind === 'voice' || kind === 'audio' ? 1 : 0);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+}
 
 it('the shipped transcription callback protects held secrets before transcript persistence and refuses unknown custody', async () => {
   const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
