@@ -57,8 +57,14 @@ it.each(['stale', 'tainted', 'withdrawn', 'differently-bound', 'changed observat
   'MODEL-PROVIDER-PATH integration %s assessment input refuses without settlement or release', async label => {
     const http = await localProvider();
     try {
+      // This matrix tests assessment identity, not transport expiry. Inject a slow
+      // response beyond the old 100ms fixture budget without loading the host.
+      http.delay(150);
       const f = providerFixture({ ...http, invocationTimeoutMs: 10000 }), { request } = f.prepare();
       const observation = value(await f.api.dispatch(request, f.fence));
+      const receipt = JSON.parse(value(f.captures.read(observation.capture as Parameters<typeof f.captures.read>[0])));
+      expect(receipt.state).toBe('complete');
+      expect(http.requests).toHaveLength(1);
       const source = f.evidence(observation.operation, request.digest, 'operation-occurred');
       f.evidence(observation.operation, request.digest, 'charge-settled', 3);
       const a = value(f.api.assess(observation.operation)), bound = input(f, observation.operation);
