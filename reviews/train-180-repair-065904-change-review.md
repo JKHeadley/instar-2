@@ -25,6 +25,10 @@ Decision: train180-derived-publication | Recompute owner pins and replay the com
 
 1.x comparison: Inherit train-180-repair-0101 captured-shape and train-180-repair-130006 actual-byte hashing comparisons. Independently fetched JKHeadley/instar main d1de939e575e9489970af8e287274a07d0ff7207 and searched src/, docs/specs/ and history. Inspected src/core/CapabilityMapper.ts hashContent, src/monitoring/MissingLoginSessionDetector.ts, docs/specs/scrape-fixture-realness.md, docs/specs/CAPABILITY-MAP-SPEC.md; history ff8344b4b and 2aaac4288. Reuse captured-byte regression and hash derivation discipline; those sources do not implement 2.0 governed merge/register publication, so retain its existing mechanisms. Fresh authenticated ONEX-LESSONS sections 4 and 6 (download succeeded on bounded retry attempt 5) reinforce captured bytes and evidence matching actual workflow.
 
+Validation: Build and initial typecheck passed. Both captured activation notice controls and two refusal-state controls passed. The remaining 20 launcher cases refused before assertions with the WSL harness-identity/P-08 prerequisite absent; targeted.log retains all failures for Studio qualification. No full suite was run. Owner rehash refreshed one preview pin; chain repin changed zero. Register replay uses 7ef26d69b438cf94a1299ee1fc02554717e92baa, generation sha256:fb196b4362566659aebb29f480f497d25454f88a227070c27940d54bc3e5bc76.
+
+Deferral: generated/register.json:1 | not-a-deferral=Generated existing governing wording, not new deferred work.
+
 simplestRobustRoute: This is the simplest robust route: merge existing histories, resolve only semantic conflicts, retain real captured controls and derive pins through existing tools. Entry is the assigned base and live commit, exit is a pushed repair with scoped checks and honest Studio handoff; no new machinery or unattended-live success is claimed.
 80/20: Run the two conflicted test files and cheap integrity checks, preserving host-dependent failure evidence for the Studio gate rather than running a broad WSL suite.
 VERDICT: author submission; no independent convergence claimed
