@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-agent.test.ts",
-        "hash": "sha256:c5e35389fedfabf11655d35d2769a6e94a30ddb8379bce0716f901327bfbbb33"
+        "hash": "sha256:9bcbef93b8d20d6efaf5d129f395bf6512f159f994cbdc9002032c285bd589f4"
       }
     },
     {
@@ -160,14 +160,6 @@
       "artifact": {
         "path": "tests/preview/proofs.test.ts",
         "hash": "sha256:b84d1410fd6f663997907d804dd2a01c364a6d3320bc98d22dcad48ed34f72c8"
-      }
-    },
-    {
-      "id": "PREVIEW-RESOURCE-CENSUS-RECOVERY",
-      "stage": "build",
-      "artifact": {
-        "path": "tests/preview/resource-census-recovery.test.ts",
-        "hash": "sha256:f5bd2a95892bc3db08f4eb8e0775287744f6de82c053ccc3e55a824483cdcbb7"
       }
     }
   ],

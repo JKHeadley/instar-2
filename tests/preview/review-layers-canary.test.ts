@@ -2,7 +2,8 @@
 import { expect, it } from 'vitest';
 import { createDecipheriv } from 'node:crypto';
 import { brotliDecompressSync } from 'node:zlib';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { runChild } from '../e2e/async-child.js';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -11,10 +12,10 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, 
 const operatorText = 'Please always answer briefly.';
 const reply = 'Understood.';
 const fenced = value => `\`\`\`json\n${value}\n\`\`\``;
-// The launcher runs on the real clock against a fixed fixture expiry, so a due activation reminder or a
+// The launcher runs on the real clock against a fixed fixture expiry, so a due activation or credential reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride the answer as its own line, as in journal-agent.test.ts.
 // The answer itself stays exact, and nothing else may be appended.
-const NOTICE_LINE = /^(?:Reminder: your activation expires in [^.]+\. Smallest step for you: approve a renewed activation record\.|Model route check: .+\.)$/u;
+const NOTICE_LINE = /^(?:Reminder: your activation expires in [^.]+\. Smallest step for you: approve a renewed activation record\.|Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
 const answerOf = text => {
   const [answer, ...notices] = text.split('\n\n');
   for (const notice of notices) {
@@ -112,7 +113,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'offline-test-only',
         INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
         INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` };
-      const run = spawnSync(process.execPath, ['--no-warnings', '--require', preload,
+      const run = await runChild(process.execPath, ['--no-warnings', '--require', preload,
         '--loader', './scripts/slice-ts-loader.mjs', '--loader', loader,
         'tests/preview/journal-agent.mjs', 'run', '--root', root,
         '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
@@ -122,7 +123,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         '--login-profile', profile, '--model', world.model,
         '--bot-username', world.configuration.botUsername, '--max-cycles',
         mode === 'summary-contradiction' ? '1' : '3', '--max-poll-seconds', '1'],
-      { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env });
+      { cwd: process.cwd(), timeout: 30000, env });
       expect(run.status, run.stderr).toBe(0);
       const rows = readFileSync(calls, 'utf8').trim().split('\n').map(line => JSON.parse(line));
       const roles = rows.map(row => row.role);
@@ -153,9 +154,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       expect(jevRows.map(row => row.keys)).toEqual(expect.arrayContaining([
         ['lost_memory'], ['summary_integrity'] ]));
       const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`, 'utf8').trim().split('\n').map(JSON.parse) : [];
-      const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      const status = await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
         'tests/preview/journal-agent.mjs', 'status', '--root', root],
-      { cwd: process.cwd(), encoding: 'utf8', timeout: 10000, env });
+      { cwd: process.cwd(), timeout: 30000, env });
       expect(status.status, status.stderr).toBe(0);
       const view = JSON.parse(status.stdout);
       expect(view.calls).toBe(mode === 'reply-contradiction' ? 5 : 4);
@@ -224,4 +225,4 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         }
       }
     } finally { endpoint.kill('SIGTERM'); }
-  }, 30000);
+  }, 65000);

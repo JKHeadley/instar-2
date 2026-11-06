@@ -123,17 +123,19 @@ it('replays the five live tool turns: hook decisions, trace pairing, and the rec
   expect(live('stop').stopToSettledMs).toBeLessThan(3000);
 });
 
-it('returns earlier real outputs through the tools route exactly as through the text-only route', async () => {
-  const route = routeFixture();
-  const declarations = JSON.parse(readFileSync(join(__dirname, 'fixtures/live-declarations-2026-09-28.json'), 'utf8'));
-  const outputs: string[] = [...declarations.current.answers, ...declarations.fixed.answers, ...declarations.current.reviews, ''];
-  const frameFor = (result: string) => JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result, num_turns: 3,
-    session_id: 'replay', usage: { input_tokens: 5, output_tokens: 400, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } });
-  for (const output of outputs) {
+const declarations = JSON.parse(readFileSync(join(__dirname, 'fixtures/live-declarations-2026-09-28.json'), 'utf8'));
+const outputs: string[] = [...declarations.current.answers, ...declarations.fixed.answers, ...declarations.current.reviews, ''];
+const frameFor = (result: string) => JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result, num_turns: 3,
+  session_id: 'replay', usage: { input_tokens: 5, output_tokens: 400, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } });
+it.each(outputs.map((output, index) => ({ output, index })))(
+  'returns earlier real outputs through the tools route exactly as through the text-only route ($index)', async ({ output }) => {
+    const route = routeFixture();
     const tools = await route.invoke(SUBSCRIPTION_TOOLS_FRAMING, frameFor(output));
     const plain = await route.invoke(SUBSCRIPTION_CONVERSATION_FRAMING, frameFor(output));
     expect([tools.state, tools.bytes, answerOf(tools.bytes)]).toEqual([plain.state, plain.bytes, answerOf(plain.bytes)]);
-  }
+  });
+it('preserves recorded fenced answers, empty replies, cap frames and the first live refusal', async () => {
+  const route = routeFixture();
   // The fenced live answers are tolerated, not refused, and an empty result stays empty (the runner's 'empty' class).
   expect(answerOf((await route.invoke(SUBSCRIPTION_TOOLS_FRAMING, frameFor(declarations.current.answers[0]))).bytes)).toMatch(/^PREVIEW/u);
   expect((await route.invoke(SUBSCRIPTION_TOOLS_FRAMING, frameFor(''))).bytes).toBe('');
@@ -146,4 +148,18 @@ it('returns earlier real outputs through the tools route exactly as through the 
   // The first live refusal frame keeps the outcome the text-only route gives it.
   const refusal = Buffer.from(JSON.parse(readFileSync(join(__dirname, 'fixtures/stage2-first-live-refusal.json'), 'utf8')).rawBase64, 'base64').toString('utf8');
   expect((await route.invoke(SUBSCRIPTION_TOOLS_FRAMING, refusal)).state).toBe((await route.invoke(SUBSCRIPTION_CONVERSATION_FRAMING, refusal)).state);
+});
+
+// Observer #106: retain the real journal shapes through physical CLI/resource ownership,
+// including uncertain/undecided prose and empty replies. These are recorded bytes replayed
+// by a synthetic CLI, not new model judgments or live deliveries.
+const journalShapes = JSON.parse(readFileSync(join(__dirname,
+  'fixtures/retrospective-duty-followup-train-1-2026-10-08.json'), 'utf8')).otherShapes as
+  Array<{ kind: string; id: string; raw: string }>;
+it.each(journalShapes)('preserves recorded $kind ($id) through physical resource cleanup', async row => {
+  const route = routeFixture();
+  for (const framing of [SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_CONVERSATION_FRAMING] as const) {
+    const observed = await route.invoke(framing, frameFor(row.raw));
+    expect(observed).toMatchObject({ state: 'complete', bytes: row.raw });
+  }
 });
