@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:c2721b391014bd092482c45dba75624be93a6075b60c834518fbdc951b78a1db",
-  "commit": "ae8125e347df87166f81c77dca1ab9a3b5089291",
+  "generation": "sha256:3994890edd277f253316cecc4a202a5cf1b737187f8ecb797fb864a13d9f4848",
+  "commit": "9bc1f1b2cf25e21d0ad15d09e8dccc2d23286b22",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -33,7 +33,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "Track items and acknowledge them from the authenticated dashboard; state and pending acknowledgements survive handoff."
+        "text": "Track and acknowledge items on the authenticated dashboard; both survive handoff."
       },
       {
         "id": "preview-collaboration-hub",
@@ -41,7 +41,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "Optional collaboration retains one silent hub, authenticated parent binding and unknown effects in the owner journal."
+        "text": "One silent collaboration hub; authenticated parent links and unknown effects stay in the journal."
       },
       {
         "id": "preview-conversation",
@@ -49,7 +49,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -57,7 +57,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "an encrypted local journal saves messages, summaries, memory; survives restarts; correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -73,7 +73,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -81,7 +81,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -179,7 +179,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "Track items and acknowledge them from the authenticated dashboard; state and pending acknowledgements survive handoff."
+        "text": "Track and acknowledge items on the authenticated dashboard; both survive handoff."
       },
       {
         "id": "preview-collaboration-hub",
@@ -187,7 +187,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "Optional collaboration retains one silent hub, authenticated parent binding and unknown effects in the owner journal."
+        "text": "One silent collaboration hub; authenticated parent links and unknown effects stay in the journal."
       },
       {
         "id": "preview-conversation",
@@ -195,7 +195,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -203,7 +203,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "an encrypted local journal saves messages, summaries, memory; survives restarts; correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -219,7 +219,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -227,7 +227,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -325,7 +325,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "Track items and acknowledge them from the authenticated dashboard; state and pending acknowledgements survive handoff."
+        "text": "Track and acknowledge items on the authenticated dashboard; both survive handoff."
       },
       {
         "id": "preview-collaboration-hub",
@@ -333,7 +333,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "Optional collaboration retains one silent hub, authenticated parent binding and unknown effects in the owner journal."
+        "text": "One silent collaboration hub; authenticated parent links and unknown effects stay in the journal."
       },
       {
         "id": "preview-conversation",
@@ -341,7 +341,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -349,7 +349,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "an encrypted local journal saves messages, summaries, memory; survives restarts; correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -365,7 +365,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -373,7 +373,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -471,7 +471,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "Track items and acknowledge them from the authenticated dashboard; state and pending acknowledgements survive handoff."
+        "text": "Track and acknowledge items on the authenticated dashboard; both survive handoff."
       },
       {
         "id": "preview-collaboration-hub",
@@ -479,7 +479,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "Optional collaboration retains one silent hub, authenticated parent binding and unknown effects in the owner journal."
+        "text": "One silent collaboration hub; authenticated parent links and unknown effects stay in the journal."
       },
       {
         "id": "preview-conversation",
@@ -487,7 +487,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -495,7 +495,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "an encrypted local journal saves messages, summaries, memory; survives restarts; correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -511,7 +511,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -519,7 +519,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -617,7 +617,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "Track items and acknowledge them from the authenticated dashboard; state and pending acknowledgements survive handoff."
+        "text": "Track and acknowledge items on the authenticated dashboard; both survive handoff."
       },
       {
         "id": "preview-collaboration-hub",
@@ -625,7 +625,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "Optional collaboration retains one silent hub, authenticated parent binding and unknown effects in the owner journal."
+        "text": "One silent collaboration hub; authenticated parent links and unknown effects stay in the journal."
       },
       {
         "id": "preview-conversation",
@@ -633,7 +633,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -641,7 +641,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "an encrypted local journal saves messages, summaries, memory; survives restarts; correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -657,7 +657,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -665,7 +665,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
