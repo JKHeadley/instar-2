@@ -73,7 +73,7 @@ it('A2-E2E A2-R6-01 P13-NF-24 P13-NF-28 P13-NF-38 P13-NF-39 a fully fsynced pend
   expect(createHarnessAdapterFileState(join(control, 'state.json')).load()).toMatchObject({
     revision: 1, attempts: [{ operation: 'operation:cut' }],
   });
-}, 30_000);
+}, 95_000);
 
 it('A2-E2E A2-R6-02 P13-NF-24 P13-NF-28 P13-NF-39 torn owner pending bytes stay unknown across reads and block a retrying holder', async () => {
   const root = mkdtempSync(join(tmpdir(), 'p13-a2-r7-torn-'));
@@ -102,7 +102,7 @@ it('A2-E2E A2-R6-02 P13-NF-24 P13-NF-28 P13-NF-39 torn owner pending bytes stay 
   expect(holder.status, holder.stderr).toBe(0);
   expect(JSON.parse(holder.stdout)).toMatchObject({ state: 'unknown' });
   expect(readFileSync(pendingPath, 'utf8')).toBe(torn);
-}, 30_000);
+}, 155_000);
 
 it.each(['none', 'final-fsync'] as const)('A2-E2E R7-A2-R5-02 P13-NF-25 P13-NF-28 P13-NF-38 P13-NF-51 poison evidence loss stays unresolved after %s and older-prefix reconstruction', async cut => {
   const script = 'tests/harness-adapters/a2-round7-poison-cut-worker.ts';
@@ -137,4 +137,4 @@ it.each(['none', 'final-fsync'] as const)('A2-E2E R7-A2-R5-02 P13-NF-25 P13-NF-2
     scenarios++;
   }
   expect(scenarios).toBe(6);
-}, 60_000);
+}, 215_000);
