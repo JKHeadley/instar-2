@@ -29,8 +29,12 @@ jobs:
         run: node scripts/check-governed-docs.mjs docs
       - name: no whitespace errors
         run: git diff --check origin/main...HEAD || git diff --check HEAD~1
-      - name: every change is bound to its review record (rules 74, 109, 90)
-        run: node scripts/check-change-review.mjs check
+      - name: every authored change is bound to its review record (rules 74, 109, 90)
+        env:
+          DOCUMENT_REVIEW_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          git checkout --detach "$DOCUMENT_REVIEW_SOURCE_SHA"
+          node scripts/check-change-review.mjs check
   # Its own job: a failure in another check must not skip this one, and it needs its own name on the pull request.
   constitution-counterpart:
     if: github.event_name == 'pull_request'
