@@ -1,9 +1,10 @@
 #!/usr/bin/env node
+import { prepareStallReview, interpretStallDecision, registeredWorkStale, stallSample } from './stall-review.js';
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
 import { nextObligationAt } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
 import { createClaudePoolQuota } from '../../scripts/claude-pool-quota.mjs';
-import { createWorkingActivities, readWorkingAdmission } from './working-activity.mjs';
+import { createWorkingActivities, readWorkingAdmission, observeSessionDriver } from './working-activity.mjs';
 import { AgentPathRefused, assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
 import { createAudienceTimingObserver, recordPhaseTiming } from './phase-timing.js';
@@ -28,7 +29,7 @@ import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, createSubscriptionVe
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
   TOOLS_DEFAULT_ACTIVATION, createHeldSecrets, custodyHeldSources, heldSpan, heldVerdict } from './tool-turn.mjs';
-import { prepareSessionAdmission, sessionAdmissionCommand, SESSION_ADMISSION_KEPT } from './session-admission.mjs';
+import { prepareSessionAdmission, sessionAdmissionCommand, SESSION_ADMISSION_KEPT, readSessionAdmissionGate } from './session-admission.mjs';
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
 import { admitToolCallEffect } from './tool-admission.mjs';
 import { grantVolume, HARNESS_OFF_REASON, HARNESS_SESSION_BRIDGE, harnessCredentialValues, harnessGate, harnessHookPath, harnessRefusedNotice, harnessSessionAdmission,
@@ -98,7 +99,7 @@ import { createMediaAdmission } from './media-admission.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
 import { reapNotices } from './reap-notices.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
-import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking } from './live-sentinels.js';
+import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking, WORK_FROZEN_INDICATOR_MS, WORK_SILENCE_MS } from './live-sentinels.js';
 import { SENTINEL_FAMILIES } from './sentinel-record.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
@@ -140,7 +141,7 @@ import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
 import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
 import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
-import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
+import { createProductionSessionIO, createSessionControlPlaneObserver } from '../../scripts/production-session-io.mjs';
 import { stepQuestions } from './step-check.js';
 import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, retroAnswerBudget, standingGrantCandidates } from './retrospective.js';
 
@@ -621,7 +622,7 @@ const recordShape = (path, role, layer, outcome, shape) => {
     durablePreviewWrite(path, saved);
   } catch { /* a diagnostics write never changes a model outcome */ }
 };
-const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
+const roleOf = id => id.startsWith('stall-triage:') ? 'stall-triage' : id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
   : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
 /** Rule 95, the fail direction of this consumer: may text around one complete Decision object be
  * discarded? The answer side says yes — the answer, a reply revision and the summary writer, which
@@ -640,12 +641,12 @@ const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';
  * (`summary:index:<n>`, {concepts}) -- and each of their consumers parses the answer as JSON. For them the runner
  * serializes the object, never the model (answer-reading.ts). Every other call's answer is prose or the conversation
  * protocol's own flat fields. Nothing branches on what the text means, only on which consumer asked. */
-const objectAnswerOf = id => /^summary:/u.test(id);
+const objectAnswerOf = id => /^(summary|stall-triage):/u.test(id);
 /** The registered live judgment a subscription call serves (model-call-boundary.ts). A revised
  * reply's held-class review is a reply review; the revision is the agent's own response to the
  * objections, with its own floor. A retrospective pass is its own judgment, and so is its duty follow-up
  * (`retrospective:N:duties`); its benchmark reruns (`retrospective:N:rerun:I`) replay an answer. */
-const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review'
+const judgmentOf = id => id.startsWith('stall-triage:') ? 'stall-triage' : id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review'
   : id.endsWith(':reply-revision') ? 'reply-revision' : /^summary:.*:review$/u.test(id) ? 'summary-review'
   : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
 
@@ -1531,7 +1532,7 @@ async function main() {
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
   let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsResolution = null, toolsOff = null,
-    sessionWork = null, gate = null;
+    sessionWork = null, gate = null, sessionControlPlane = null;
   const workActivity = new Map();
   const conversationSession = conversationSessionOf(options);
   const accountActions = conversationAccountActions(options);
@@ -2107,6 +2108,12 @@ async function main() {
         : 'Past a cap: each kept message gets one limited answer from the reserve.'];
     };
     // The chat "status" answer's host lines; the operator dashboard reads the very same ones (statusAnswer).
+    /** One bounded line per supervised conversation that has a worker, an episode or a non-healthy state (Rule 52). */
+    const stallStatusLines = rows => rows.filter(row => row.worker || row.episode || row.responsiveness.state !== 'healthy').slice(0, 8).map(row =>
+      `Supervision ${row.conversation}: ${row.responsiveness.state}${row.responsiveness.userWaitMs === null ? '' : ` (${Math.round(row.responsiveness.userWaitMs / 60_000)} min unanswered)`}`
+      + (row.episode ? `; ${row.episode.phase} episode on ${row.episode.operation}, ${Math.round(row.episode.silentMs / 60_000)} min quiet`
+        + (row.episode.nudge ? `, nudge ${row.episode.nudge}` : '') + (row.episode.notice ? `; ${row.episode.notice}` : '') : '')
+      + `; nudges ${row.counts.nudges}, reviews ${row.counts.reviews}, redeliveries ${row.counts.reinjections}, restarts ${row.counts.restarts} in 10 min, interventions ${row.counts.interventions}`);
     const statusPullLines = () => [...installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
       installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
       ...toolStatusLines(journal.view, toolsActive(), toolsOff ?? (toolsRecord
@@ -2115,6 +2122,9 @@ async function main() {
       ...(loginPool ? [loginPool.status()] : []),
       ...(sessionLoginObservations.size ? [sessionLoginStatus([...sessionLoginObservations.values()], wallNow())] : []),
       ...(sessionWork?.port.idleCleanupStatus?.() ?? []),
+      // Carryover 02: 1.x SessionMonitor/silence-sentinel population metrics and the DegradedTmuxGuard episode, pull-only.
+      ...stallStatusLines(sessionWork?.port.stallStatus?.() ?? []),
+      ...(sessionControlPlane?.notices() ?? []).map(notice => notice.line),
       ...(harness ? [harnessStatusLine(harness.state)] : identityRefusal !== null ? [harnessStatusLine({ ready: false, reason: identityRefusal })] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options), readOnly = readOnlyDashboardOf(options);
@@ -2215,6 +2225,8 @@ async function main() {
           notices.push({ key: `harness:${turn}`, line: harnessRefusedNotice(identityRefusal) });
         notices.push(...(loginPool?.notices() ?? []));
         notices.push(...sessionLoginNotices([...sessionLoginObservations.values()], now));
+        // Carryover 02: one deduplicated line per unanswered message under supervision and per degraded control-plane episode.
+        notices.push(...(sessionWork?.port.stallStatus?.() ?? []).flatMap(row => row.notices), ...(sessionControlPlane?.notices() ?? []));
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
         try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
         // Reply-only delivery: the historical closure survives relaunch; the journal spends its key once.
@@ -2674,7 +2686,10 @@ async function main() {
         if (attachSessionVolume(root, layout ? { at: layout.mount } : {}) !== project) throw Error('preview: the session volume is not the working scope');
         if (identity) grantVolume(project, identity.user, identity.runner);
       };
-      const physicalFor = () => createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
+      sessionControlPlane = createSessionControlPlaneObserver({ now: wallNow, resourceObservation: () => hostResources.hostObservation() });
+      const physicalFor = () => createProductionSessionIO({ controlPlaneObserver: sessionControlPlane, resourceObservation: () => hostResources.hostObservation(),
+        resourceProgress: identity => hostResources.sessionProgress(identity),
+          retainedExposure: identity => hostResources.retainedSessionExposure(identity), stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
         home: profile.home, configHome: profile.configDirectory, cwd: project,
         ...(conversationSession && layout ? { lifecycleDirectory: join(layout.admission, 'lifecycle') } : {}) });
       let physical = physicalFor();
@@ -2699,6 +2714,8 @@ async function main() {
           connectors: claim => sessionConnectors.get(claim)?.launch(),
           framework, executable: binding.entry().profile.executable, cwd: project, home: binding.entry().profile.home, configHome: binding.entry().profile.configDirectory,
           model: required(options, 'model'), context, io: { ...binding.physical(), transcriptExists: (...args) => (!handoff || handoff.resumeAllowed) && binding.physical().transcriptExists(...args) }, now: wallNow, stopped: binding.stopped, resolveIntake,
+          workKind: () => conversationSession ? 'conversation' : 'job',
+          observeRecovery: observation => workActivity.set(observation.subject, observation),
           observeActivity: observation => {
             workActivity.set(observation.subject, observation);
             // This callback follows exact live process verification. A configured profile,
@@ -2737,6 +2754,19 @@ async function main() {
         return ({
         ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
           contextRecoveryAllowed: () => journal.view.order.every(turn => !turn.intent || turn.sent !== undefined),
+          stallRecovery: {
+            observe: worker => stallSample(workActivity.get(worker.claim), worker),
+            reserve: claim => sessionWork.port.reserveReview(claim),
+            review: async evidence => {
+              const request = prepareStallReview(evidence, {
+              turn: operation => journal.view.turns.get(operation), observation: claim => workActivity.get(claim), now: wallNow,
+              protect: text => redact(concealSecretMaterial(text, heldSecretValues())).text,
+              writer: occurrence => envelopeWriter(journal.systemWriter('stall-triage', occurrence, wallNow())),
+              prepare: modelEnvelope
+              });
+              return request ? interpretStallDecision(await invokeSubscription(request.prepared, request.id, undefined, request.deadline)) : 'unknown';
+            }
+          },
           authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
           workingActivity: (operation, claim, phase) => workingActivities.observe(operation, claim, phase),
           prepareInputFiles: operations => openConversationMedia({ tmp: join(project, '.tmp'), scope: String(topic ?? 'main'), operations,
@@ -2746,21 +2776,20 @@ async function main() {
             String(journal.view.turns.get(operation)?.thread ?? 'main'), timeZoneOf(options))),
           ...(handoff ? { prepareTurn: handoff.prepareTurn } : {}) } : {}),
         createDriver: resolveIntake => {
-          const create = () => createProductionSessionDriver(driverConfiguration(resolveIntake));
+          const create = () => observeSessionDriver(createProductionSessionDriver(driverConfiguration(resolveIntake)), (input, observed) => {
+            if (conversationSession) workingActivities.observeSession(
+              binding.physical().load().sessions.find(row => row.identity === input.processIdentity), observed);
+            // Both observation paths retain existing login accounting; no new retry.
+            return observeHarnessSessionLimit(loginPool, binding.entry(), observed);
+          });
           let driver = create();
           // Each step is fresh and the port permits only one in flight. Rebuild only between steps;
           // the port keeps one shared step/call ceiling across all selected logins.
           return { owner: driver.owner, launch: input => { handoff?.bindClaim(input.claim); driver = create(); const result = driver.launch(input);
               if (result.kind === 'Success') handoff?.launched(); return result; },
             continuationReady: identity => driver.continuationReady(identity),
-            deliver: input => driver.deliver(input), recoverContext: (identity, pending) => driver.recoverContext(identity, pending), observe: input => {
-              const observed = driver.observe(input);
-              if (conversationSession) workingActivities.observeSession(
-                binding.physical().load().sessions.find(row => row.identity === input.processIdentity), observed);
-              // Reuse the session adapter's existing typed rate-limit observation. The step remains
-              // uncertain and is never replayed; a subsequent step/call selects another reviewed login.
-              return observeHarnessSessionLimit(loginPool, binding.entry(), observed);
-            }, stop: target => driver.stop(target) };
+            deliver: input => driver.deliver(input), recoverContext: (identity, pending) => driver.recoverContext(identity, pending), observe: input => driver.observe(input),
+            observeAsync: input => driver.observeAsync(input), stop: target => driver.stop(target) };
         },
         io: { readResult: (path, maxBytes) => binding.physical().readResult(path, maxBytes), clearResult: path => binding.physical().clearResult(path),
           modelCalls: since => binding.physical().modelCalls(framework, project, binding.entry().profile.configDirectory, since), wait: delay,
@@ -2805,7 +2834,24 @@ async function main() {
                 check: heldVerdict(heldSecrets), ownerRead: conversationSession ? (id, input) => gate.observeOwner(claim, id, input) : null }));
             }
             gate.open(claim, { framework, allowance: edge.budget.calls, edge,
-              ...(conversationSession ? { reserveCall: ordinal => sessionWork.port.reserveCall(claim, ordinal) } : {}) }); },
+              // Carryover 02: a one-shot claim's every call records its durable intent ordinal against the reserved edge
+              // before it is forwarded (the journal enforces contiguity and the reservation), so a restart restores the
+              // exact spent liability; a conversation claim keeps its per-call charge.
+              reserveCall: conversationSession ? ordinal => sessionWork.port.reserveCall(claim, ordinal)
+                : ordinal => journal.append({ kind: 'session-work', record: { type: 'SessionWorkCall', schemaVersion: 1, edge: edge.id, ordinal, at: wallNow() }, at: wallNow() }) }); },
+          // Carryover 02 admission continuity: the adopted claim's ORIGINAL endpoint, from its own recorded config through the
+          // trusted reader (authority for nothing), rebound on this host only after the owner's lease; the claim reopens
+          // with its original edge, spent intents, uncertain effects and open delegations. The old step's shell network
+          // checkpoint and connectors are not re-attached: a restored worker's tool traffic fails closed as before.
+          ...(conversationSession ? {} : { restoreAdmission: async (claim, edge, restore) => {
+            const recorded = readSessionAdmissionGate(admissionBase, claim);
+            if (recorded.maxCalls < 1) return false;
+            await gate.restore({ port: recorded.port, secret: recorded.secret });
+            gate.open(claim, { framework, allowance: edge.budget.calls, edge,
+              reserveCall: ordinal => journal.append({ kind: 'session-work', record: { type: 'SessionWorkCall', schemaVersion: 1, edge: edge.id, ordinal, at: wallNow() }, at: wallNow() }),
+              restored: { calls: restore.spent, uncertainEffects: restore.uncertainEffects, delegations: restore.delegations, secret: recorded.secret } });
+            return true;
+          } }),
           admissionState: claim => gate.state(claim),
           closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {});
             const connectors = sessionConnectors.get(claim); sessionConnectors.delete(claim);
@@ -2820,7 +2866,28 @@ async function main() {
         } },
         context, now: wallNow, stopped: conversationSession ? hostStopped : binding.stopped,
         ...(conversationSession ? { callAccounting: 'per-call' } : {}),
-        ...(!conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords() } : {}),
+        ...(!conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), workRecovery: {
+          // Carryover 02: the registered-work watcher (live-sentinels, 60 s / 90 min) supplies the stale signal a
+          // ten-minute step can reach; the driver's own thirty-minute job window stays unchanged beside it.
+          observe: worker => registeredWorkStale(stallSample(workActivity.get(worker.claim), worker),
+            journal.view.sentinels?.work?.[Object.values(journal.view.activeSessionWork ?? {}).find(edge => edge.child === worker.claim)?.id ?? ''],
+            { silenceMs: WORK_SILENCE_MS, frozenActiveMs: WORK_FROZEN_INDICATOR_MS }),
+          allowed: () => !hostStopped() && binding.authorized() && journal.view.order.every(turn => !turn.intent || turn.sent !== undefined),
+          reserve: claim => gate.reserveSupervisor(claim),
+          record: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
+          review: async evidence => {
+            const request = prepareStallReview(evidence, {
+              turn: operation => operation === evidence.operation && journal.sessionWorkRecords().some(record =>
+                record.type === 'SessionWorkEdge' && record.child === evidence.worker.claim
+                  && record.owner === ownerMachine && record.budget.deadline === evidence.deadline)
+                ? { accepted: true, prompt: evidence.delivery.text } : undefined,
+              observation: claim => workActivity.get(claim), now: wallNow,
+              protect: text => redact(concealSecretMaterial(text, heldSecretValues())).text,
+              writer: occurrence => envelopeWriter(journal.systemWriter('stall-triage', occurrence, wallNow())), prepare: modelEnvelope,
+            });
+            return request ? interpretStallDecision(await invokeSubscription(request.prepared, request.id, undefined, request.deadline)) : 'unknown';
+          },
+        } } : {}),
         append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
         parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
         transport: sessionAdapter.transport ?? 'tmux session on this machine', workingScope: project, resultDirectory: project,
@@ -2835,9 +2902,16 @@ async function main() {
       const topicConfigurations = new Map();
       const topicConfiguration = topic => {
         if (topicConfigurations.has(topic)) return topicConfigurations.get(topic);
-        const physicalEntry = entry => createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
+        const physicalEntries = new Map();
+        const physicalEntry = entry => {
+          if (physicalEntries.has(entry.index)) return physicalEntries.get(entry.index);
+          const physical = createProductionSessionIO({ controlPlaneObserver: sessionControlPlane, resourceObservation: () => hostResources.hostObservation(),
+          resourceProgress: identity => hostResources.sessionProgress(identity),
+          retainedExposure: identity => hostResources.retainedSessionExposure(identity), stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
           home: entry.profile.home, configHome: entry.profile.configDirectory, cwd: project,
           ...(layout ? { lifecycleDirectory: join(layout.admission, 'lifecycle') } : {}) });
+          physicalEntries.set(entry.index, physical); return physical;
+        };
         let handoff = null;
         const entry = () => handoff?.current() ?? loginConfiguration.entries[0];
         const runtime = () => loginRuntimes.get(entry().index);
@@ -3082,7 +3156,7 @@ async function main() {
       workActivity: () => {
         const active = new Set(Object.values(journal.view.activeSessionWork ?? {}).map(edge => edge.child));
         for (const subject of workActivity.keys()) if (!active.has(subject)) workActivity.delete(subject);
-        return [...workActivity.values()];
+        return [...workActivity.values()].map(({ terminal, ...publicObservation }) => publicObservation);
       },
       reground: () => sentinelSteps.push(() => worker.drain()),
       recoverContext: () => sentinelSteps.push(() => worker.summarizeIfNeeded(true)),
@@ -3272,11 +3346,12 @@ async function main() {
         sourceEvidence: [selectedActivation.reference], terminalEvidence: selectedActivation.reference,
         strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
         maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
-      const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') || operation.endsWith(':held-notice-review') ? 'review' : 'answer';
+      const work = operation.startsWith('summary:') ? 'maintenance' : operation.startsWith('stall-triage:') || operation.endsWith(':reply-review') || operation.endsWith(':held-notice-review') ? 'review' : 'answer';
       // A tool turn also ends on the journal's latched /stop and on tool-activation withdrawal: the resource
       // owner polls this every 25 ms and SIGKILLs the launch's own process group by its exact pid.
       const launchIO = createSubscriptionProviderIO({ repository: process.cwd(), runAs: runAsOf(selectedHarness),
         stopped: () => workerStop.value || existsSync(stopPath) || !selectedActive()
+          || (operation.startsWith('stall-triage:') && (journal.view.stop !== null || !ownerHeld()))
           || (toolTurn !== undefined && (journal.view.stop !== null || !toolsActive())), work });
       const physicalIO = { ...launchIO, execute: async input => {
         if (typeof input.stdin === 'string' && input.stdin.length > 0) modelLaunch.started();

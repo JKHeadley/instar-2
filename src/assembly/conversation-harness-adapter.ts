@@ -20,7 +20,8 @@ export function createSessionConversationAdapter(config: Readonly<{
     return input.text;
   });
   return {
-    describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false }),
+    describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false,
+      ...(driver.nudge ? { nudge: true as const } : {}), ...(driver.redeliver ? { redeliver: true as const } : {}) }),
     launch: async input => {
       const launch = take(driver.launch({ ...input, handles: [] }));
       // Pending-turn recovery already contains the accepted input. Ordinary restoration
@@ -42,8 +43,11 @@ export function createSessionConversationAdapter(config: Readonly<{
       const text = input.delivery ? config.io.readResult(input.delivery.resultPath, input.delivery.maxBytes) : null;
       ensure(text === null || input.delivery != null && Buffer.byteLength(text) <= input.delivery.maxBytes,
         'conversation result exceeds byte bound');
-      const observed = take(driver.observe({ operation: input.delivery?.operation ?? input.claim, processIdentity: input.launch,
-        resultAvailable: Boolean(text?.trim()) }));
+      const observationInput = { operation: input.delivery?.operation ?? input.claim, processIdentity: input.launch, resultAvailable: Boolean(text?.trim()) };
+      const observed = take(driver.observeAsync ? await driver.observeAsync(observationInput) : driver.observe(observationInput));
+      // A complete bounded read can honestly contain no worker events. Unknown
+      // liveness is retained by the driver; it is never a pause, exit or turn end.
+      if (observed.observationAvailable === false) return { observations: [], cursor: input.cursor, complete: true };
       let events: ConversationObservation[] = [];
       if (observed.phase === 'exit-observed') events = [{ kind: 'exit', evidence: observed.evidence,
         ...(observed.safetyDeadline === undefined ? {} : { safetyDeadline: observed.safetyDeadline }) }];
@@ -59,6 +63,18 @@ export function createSessionConversationAdapter(config: Readonly<{
     },
     observeIdle: async input => driver.observeIdle ? take(driver.observeIdle(input.launch)) : null,
     control: async input => {
+      // Neutral nudge and exact redelivery are the physical driver's bounded primitives; an
+      // adapter without them refuses, so no host ever falls through to a stop here.
+      if (input.action === 'nudge') {
+        if (!driver.nudge) return { state: 'refused', evidence: 'driver has no neutral nudge' };
+        return take(driver.nudge({ processIdentity: input.launch, claim: input.claim, incarnation: input.incarnation, reason: input.reason }));
+      }
+      if (input.action === 'redeliver') {
+        if (!driver.redeliver || !input.delivery || input.delivery.launch !== input.launch)
+          return { state: 'refused', evidence: 'redelivery requires the driver primitive and the exact accepted delivery of this worker' };
+        return take(driver.redeliver({ operation: input.delivery.operation, processIdentity: input.launch, intake: input.delivery.operation,
+          digest: input.delivery.digest, incarnation: input.incarnation }));
+      }
       if (input.action === 'compact') {
         if (!driver.recoverContext || !input.delivery || input.deadline === undefined)
           return { state: 'refused', evidence: 'context recovery requires the exact accepted delivery and deadline' };

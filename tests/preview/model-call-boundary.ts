@@ -25,6 +25,7 @@ export const USAGE_EXCEPTIONS: Readonly<Partial<Record<LiveModelRoute, string>>>
  * floors its consumer still enforces whatever the model answers. Each `invalid` states what the
  * consumer actually does, per consumer (Rule 95). */
 export const LIVE_JUDGMENTS = Object.freeze({
+  'stall-triage': { route: 'preview-subscription', actions: ['recover', 'wait', 'unknown'], default: 'unknown', authority: 'signal', invalid: 'no intervention; original intake remains owed; stop, custody, spend, helper and uncertain-effect fences remain mandatory' },
   answer: { route: 'preview-subscription', actions: ['work'], default: 'work', authority: 'signal', invalid: 'fixed failure reply (MODEL_FAILURE_REPLY); memory, reminders and grants still pass their source/grant checks' },
   'reply-review': { route: 'preview-subscription', actions: ['object', 'clear'], default: 'clear', authority: 'signal',
     mandatory: 'an objection naming credential, defers_work or unrecorded_blocker, a Jev credential flag, or a runner-refused obligation declaration keeps the candidate held until one bounded correction clears it',

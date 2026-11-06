@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import type { HarnessInputDelivery as ConversationDelivery, HarnessAdapterPort, HarnessWorkerHandle as ConversationWorker } from './contracts.js';
-import { canonical, type Result } from '../index.js';
+import type { ProcessControlPayload, EffectSettlement } from '../effects/index.js';
+import { canonical, consumeOutcome, consumeResult, type Result, type Refused } from '../index.js';
 import { sessionWorkPolicy, SESSION_WORK_LIMITS } from './production-session-work.js';
-import type { SessionWorkConfig, SessionWorkEdge, SessionWorkEdgeClose, SessionWorkCall, SessionWorkLease,
+import type { SessionWorkConfig, SessionWorkEdge, SessionWorkEdgeClose, SessionWorkCall, SessionWorkEffect, SessionWorkLease,
   SessionWorkOutcome, SessionWorkRequest } from './production-session-work.js';
 
 /** One conversation, one admission and one reserved allowance. Turns do not replenish it.
@@ -20,10 +21,24 @@ export interface ConversationSessionPort {
   maintain(): Promise<void>;
   /** Called by the existing model checkpoint before forwarding, never by the worker. */
   reserveCall(claim: string, ordinal: number): void;
+  /** Supervisor calls share the allowance without consuming the worker checkpoint ordinal. */
+  reserveReview(claim: string): void;
   /** Pull-only availability consequences; never a claim that durable work ended. */
   idleCleanupStatus?(): readonly string[];
+  /** 1.x SessionMonitor/ActiveWorkSilenceSentinel population metrics, pull-only; never a push or authority. */
+  stallStatus?(): readonly StallStatus[];
   /** Automatic reasons require confirmation and grace; omitted means explicit host lifecycle retirement. */
   retireIdle(reason?: 'pressure' | 'idle'): Promise<boolean>;
+}
+/** One registered conversation's supervision projection (1.x SessionMonitor.getStatus and the
+ * silence sentinel funnel). Read on the pull surface; nothing here authorizes an action. */
+export interface StallStatus {
+  readonly conversation: string; readonly worker: boolean;
+  readonly responsiveness: Readonly<{ state: 'healthy' | 'idle' | 'unresponsive' | 'halted'; userWaitMs: number | null; idleMs: number | null }>;
+  readonly episode: Readonly<{ operation: string; phase: StallEpisode['phase']; silentMs: number; activity: StallObservation['activity'] | null;
+    nudge: string | null; followUpAt: number | null; notice: string | null }> | null;
+  readonly counts: Readonly<{ nudges: number; reviews: number; interventions: number; reinjections: number; restarts: number; history: number }>;
+  readonly notices: readonly Readonly<{ key: string; line: string }>[];
 }
 export type ConversationSessionOutcome = SessionWorkOutcome | Readonly<{
   state: 'queued'; detail: string; edge: string; child: string | null;
@@ -34,10 +49,101 @@ export interface ConversationInput {
   readonly delivery: ConversationDelivery | null; readonly cursor: number;
   readonly reply: string | null; readonly outcome: SessionWorkOutcome | null;
   readonly attempts: number; readonly retryAt: number;
+  /** 1.x SessionMonitor agent-reply time for the per-topic responsiveness projection. */
+  readonly settledAt?: number;
+  /** 1.x TriageOrchestrator reinject_message: at most one exact redelivery per input, intent durable first. */
+  readonly reinjection?: Readonly<{ at: number; state: 'requested' | 'redelivered' | 'refused' | 'uncertain'; evidence: string }>;
   readonly batch?: readonly string[];
   readonly effectsAtDispatch?: number;
   readonly contextRecovery?: 'compacting' | 'restoring' | 'continued';
   readonly workerRecovery?: 'restoring' | 'continued';
+  readonly stall?: StallEpisode | null;
+  readonly stallReviews?: number;
+  /** Current step and prior immutable steps stay in the existing private custody. */
+  readonly processIntervention?: ProcessIntervention;
+  readonly processInterventionHistory?: readonly ProcessIntervention[];
+  /** Written only after exact closure and the post-fence no-effects check. */
+  readonly recoveryQueued?: Readonly<{ closedClaim: string; authority: string; deadline: number }> | null;
+}
+/** Adapted from 1.x ActiveWorkSilenceSentinel: unchanged-frame corroboration,
+ * 30 minute silence / 90 minute working-indicator backstop, unknown reset and
+ * helper suppression. Thresholds only request judgment; they never authorize it. */
+export interface StallObservation {
+  readonly claim: string; readonly incarnation: string; readonly launch: string;
+  readonly at: number; readonly progress: string;
+  readonly activity: 'active' | 'idle' | 'indeterminate' | 'unknown'; readonly waiting: boolean;
+  readonly controlPlane?: Readonly<{ state: 'healthy' | 'degraded' | 'unknown'; episode: number; ewmaMs: number | null;
+    consecutiveSlowCycles: number; ageMs: number; escalations: number }>;
+  readonly stale?: Readonly<{ state: 'progress' | 'stalled' | 'unknown' | 'protected'; lastProgressAt: number; windowMs: number }>;
+  /** 1.x StallTriageNurse typed-but-not-submitted frame for the open accepted turn; a signal only. */
+  readonly typedUnsubmitted?: boolean;
+}
+export interface StallEpisode {
+  readonly progress: string; readonly since: number; readonly lastAt: number;
+  readonly activity?: StallObservation['activity'];
+  readonly phase: 'observing' | 'reviewed' | 'restoring' | 'continued';
+  readonly reviewedAt?: number;
+  /** 1.x ActiveWorkSilenceSentinel: one neutral nudge per episode, intent durable before the
+   * keystroke, verified after the inherited 30 s window. A changed frame is a new episode. */
+  readonly nudge?: Readonly<{ at: number; state: 'requested' | 'sent' | 'refused' | 'uncertain' | 'verified-silent'; evidence: string }>;
+  /** 1.x TriageOrchestrator scheduled follow-up, driven by the existing owner poll; dropped with the episode. */
+  readonly followUpAt?: number | null;
+  /** A suggest-* judgment for the pull surface; never an action. */
+  readonly notice?: string | null;
+}
+/** 1.x StallTriageNurse history row, bounded to the inherited fifty per conversation. */
+export interface TriageRecord {
+  readonly operation: string; readonly at: number;
+  readonly trigger: 'silence' | 'frozen-active' | 'stale' | 'unresponsive' | 'typed-unsubmitted' | 'follow-up' | 'lost-worker';
+  readonly decision: string; readonly action: string; readonly outcome: string;
+}
+export type StallTriageClassification = 'actively-working' | 'stuck-on-tool' | 'stuck-on-thinking' | 'crashed' | 'message-lost' | 'idle';
+export type StallTriageAction = 'none' | 'reinject' | 'suggest-interrupt' | 'suggest-restart' | 'auto-interrupt' | 'auto-restart';
+/** Adapted from 1.x TriageOrchestrator: the typed judgment, validated here against deterministic
+ * predicates before any action (auto-restart needs the confirmed frozen frame and replay fences;
+ * auto-interrupt needs the composed exact process effect; reinject needs an untouched accepted
+ * delivery at a quiet prompt). Anything else is at most a notice and a bounded follow-up. */
+export interface StallTriageDecision {
+  readonly kind: 'triage'; readonly classification: StallTriageClassification; readonly action: StallTriageAction;
+  readonly confidence: number; readonly followUpMs: number | null; readonly reason: string;
+}
+export interface StallReviewEvidence {
+  readonly worker: ConversationWorker; readonly operation: string;
+  readonly progress: string; readonly silentSince: number;
+  readonly observedAt: number; readonly deadline: number;
+  readonly request: SessionWorkRequest; readonly requests?: readonly SessionWorkRequest[]; readonly delivery: ConversationDelivery;
+  readonly observation: StallObservation;
+  readonly previousInterventions?: readonly Pick<ProcessIntervention, 'payload' | 'phase' | 'settlement' | 'refusal'>[];
+}
+export interface ProcessIntervention {
+  readonly payload: ProcessControlPayload; readonly evidence: StallReviewEvidence;
+  readonly phase: 'prepared' | 'settled' | 'refused' | 'uncertain'; readonly at: number;
+  readonly observations: number; readonly nextObservationAt: number;
+  readonly refusal?: Refused; readonly settlement?: EffectSettlement;
+}
+const definitiveIntervention = (entry: ProcessIntervention | undefined): boolean => Boolean(entry?.settlement
+  && entry.settlement.digest === take(canonical(entry.payload)).hash
+  && entry.settlement.delayedExecutionExcluded && consumeOutcome(entry.settlement.outcome, {
+    happened: () => true, 'did-not-happen': () => true, uncertain: () => false,
+  }));
+export type StallReviewDecision = 'recover' | 'wait' | 'unknown' | Readonly<{ kind: 'process-control'; payload: ProcessControlPayload }> | StallTriageDecision;
+/** Inherited 1.x values: sentinel 30 m silence / 90 m frozen indicator / 30 s nudge verification;
+ * SessionMonitor 10 m unresponsive / 15 m idle / 30 m notice cooldown; nurse 180 s cooldown, 3
+ * restarts per 10 m, 50 history rows; orchestrator 6 follow-ups, 5 auto actions per hour. */
+export const STALL_RECOVERY_LIMITS = Object.freeze({ silenceMs: 30 * 60_000,
+  frozenActiveMs: 90 * 60_000, freshnessMs: 5_000, reviews: 3, verificationMs: 10_000, termDelayMs: 15_000, killDelayMs: 10_000, observationAttempts: 3,
+  nudgeVerifyMs: 30_000, unresponsiveMs: 10 * 60_000, idleMs: 15 * 60_000, noticeCooldownMs: 30 * 60_000, cooldownMs: 180_000,
+  restartLoop: 3, restartLoopWindowMs: 600_000, historyLimit: 50, followUps: 6, maxFollowUpMs: 30 * 60_000, autoActionsPerHour: 5, confidenceFloor: 0.8 });
+export function observeStall(previous: StallEpisode | null | undefined, sample: StallObservation | null,
+  worker: ConversationWorker, now: number, waiting: boolean): StallEpisode | null {
+  if (!sample || sample.claim !== worker.claim || sample.incarnation !== worker.incarnation
+    || sample.launch !== worker.launch || !Number.isSafeInteger(sample.at) || sample.at > now
+    || now - sample.at > STALL_RECOVERY_LIMITS.freshnessMs || !sample.progress
+    || sample.activity === 'unknown' || sample.stale?.state === 'unknown' || sample.stale?.state === 'protected' || sample.waiting || waiting) return null;
+  if (!previous || previous.progress !== sample.progress || previous.activity !== sample.activity || sample.at < previous.lastAt
+    || sample.at - previous.lastAt > STALL_RECOVERY_LIMITS.freshnessMs)
+    return { progress: sample.progress, since: sample.at, lastAt: sample.at, activity: sample.activity, phase: 'observing' };
+  return { ...previous, lastAt: sample.at };
 }
 export interface IdleCleanupState {
   readonly candidate: Readonly<{ fingerprint: string; firstAt: number; lastAt: number;
@@ -54,6 +160,11 @@ export interface ConversationState {
   readonly idleCleanup?: IdleCleanupState;
   readonly spent: number; readonly claimCalls: number;
   readonly halt?: Readonly<{ reason: 'deadline' | 'calls'; at: number; limit: number }>;
+  /** 1.x StallTriageNurse/TriageOrchestrator custody: bounded history, restart-loop and auto-action pressure,
+   * and the deduplicated SessionMonitor responsiveness notice. */
+  readonly triageHistory?: readonly TriageRecord[];
+  readonly triagePressure?: Readonly<{ restarts: readonly number[]; autoActions: readonly number[] }>;
+  readonly responsivenessNotice?: Readonly<{ state: StallStatus['responsiveness']['state']; userMessageAt: number; at: number }> | null;
 }
 export interface ConversationSessionStore {
   /** Host-owned, atomic, durable before return; corrupt state must throw, never look empty.
@@ -79,11 +190,24 @@ export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'crea
   readonly batchWaiting?: boolean;
   /** The host refuses continuation while an outward send has no definitive outcome. */
   readonly contextRecoveryAllowed?: () => boolean;
+  /** Existing host observations and model doorway. Reserve must persist a shared
+   * charge before review dispatch; unavailable judgment holds the worker. */
+  readonly stallRecovery?: Readonly<{
+    observe(worker: ConversationWorker): StallObservation | null;
+    reserve(claim: string): void;
+    review(evidence: StallReviewEvidence): Promise<StallReviewDecision>;
+    /** Installed Eight/Six/Ten composition, never raw signal authority. The decoded
+     * payload must bind the exact admitted review and current worker incarnation. */
+    intervention?: Readonly<{ run: string; machine: string;
+      intervene(payload: ProcessControlPayload, evidence: StallReviewEvidence): Promise<Result<EffectSettlement>>;
+      /** Observation/settlement only: never prepares, dispatches or recreates an effect. */
+      reconcile(payload: ProcessControlPayload, evidence: StallReviewEvidence): Promise<Result<EffectSettlement>> }>;
+  }>;
   /** Host observation only: after a live adapter observation, or null when this input ends.
    * No extra model call and no authority is conferred by a status sample. */
   readonly workingActivity?: (operation: string, claim: string | null, phase: 'start' | 'working' | 'end') => void;
   /** Durable host journal evidence; never reopens the former process's admission. */
-  readonly recoveryEdges?: () => readonly (SessionWorkEdge | SessionWorkEdgeClose)[];
+  readonly recoveryEdges?: () => readonly (SessionWorkEdge | SessionWorkEdgeClose | SessionWorkCall | SessionWorkEffect)[];
   /** The already-admitted parent lifetime; replacing a process cannot extend it. */
   readonly allowanceDeadline: number;
   /** A withdrawn grant fences the worker without ending durable conversation custody. */
@@ -237,6 +361,11 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       if (state.spent >= config.maxCalls) halt('calls', config.maxCalls);
       persist({ spent: state.spent + 1, claimCalls: ordinal });
     };
+    const reserveReview = (claim: string) => {
+      guard(); ensure(state.claim === claim, 'supervisor reservation identity differs');
+      if (calls() >= config.maxCalls) halt('calls', config.maxCalls);
+      persist({ spent: state.spent + 1 });
+    };
     const harvestHalt = async () => {
       // Harvest the exact physical cause before any lifecycle path can discard identity.
       if (!state.halt && state.worker) {
@@ -250,8 +379,9 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       }
     };
     const retire = async () => {
-      await harvestHalt();
+      // Fence new tool/model preparation before the first asynchronous observation.
       if (state.claim) config.io.closeAdmission(state.claim);
+      await harvestHalt();
       if (state.claim) {
         ensure(state.incarnation, 'recorded incarnation missing');
         const target = state.worker ?? { launch: '', claim: state.claim, incarnation: state.incarnation };
@@ -261,10 +391,47 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       if (lease) { ensure(await lease.release(), 'resource release unconfirmed'); lease = null; }
       persist({ worker: null, claim: null, incarnation: null, authority: null });
     };
-    const settle = (id: string, result: SessionWorkOutcome) => update(id, { state: 'settled', outcome: result });
+    const settle = (id: string, result: SessionWorkOutcome) => update(id, { state: 'settled', outcome: result, settledAt: config.now() });
+    // 1.x StallTriageNurse history and restart-loop detection, TriageOrchestrator auto-action ceiling:
+    // bounded custody rows, never a second store. Timestamps outside the window are dropped on read.
+    const recordTriage = (record: Omit<TriageRecord, 'at'>) => persist({ triageHistory: [
+      ...(state.triageHistory ?? []).slice(-(STALL_RECOVERY_LIMITS.historyLimit - 1)), { ...record, at: config.now() }] });
+    const pressure = () => {
+      const now = config.now();
+      return { restarts: (state.triagePressure?.restarts ?? []).filter(at => at <= now && now - at < STALL_RECOVERY_LIMITS.restartLoopWindowMs),
+        autoActions: (state.triagePressure?.autoActions ?? []).filter(at => at <= now && now - at < 3_600_000) };
+    };
+    const restartAllowed = () => pressure().restarts.length < STALL_RECOVERY_LIMITS.restartLoop;
+    const autoActionAllowed = () => pressure().autoActions.length < STALL_RECOVERY_LIMITS.autoActionsPerHour;
+    const countRestart = () => { const current = pressure(); persist({ triagePressure: { autoActions: [...current.autoActions, config.now()].slice(-STALL_RECOVERY_LIMITS.autoActionsPerHour),
+      restarts: [...current.restarts, config.now()].slice(-STALL_RECOVERY_LIMITS.restartLoop) } }); };
+    const countAutoAction = () => { const current = pressure(); persist({ triagePressure: { ...current,
+      autoActions: [...current.autoActions, config.now()].slice(-STALL_RECOVERY_LIMITS.autoActionsPerHour) } }); };
+    const reconcileIntervention = async (id: string) => {
+      const entry = row(id).processIntervention, owner = config.stallRecovery?.intervention;
+      if (!entry || !owner || definitiveIntervention(entry) || entry.observations >= STALL_RECOVERY_LIMITS.observationAttempts
+        || config.now() < entry.nextObservationAt) return;
+      const current = { ...entry, observations: entry.observations + 1,
+        nextObservationAt: config.now() + STALL_RECOVERY_LIMITS.verificationMs };
+      const members = row(id).batch ?? [id];
+      const save = (processIntervention: ProcessIntervention) => persist({ inputs: state.inputs.map(input =>
+        members.includes(input.request.operation) ? { ...input, processIntervention } : input) });
+      save(current); // Persist the bounded observation attempt before the external query.
+      try {
+        consumeResult(await owner.reconcile(entry.payload, entry.evidence), {
+          Success: settlement => {
+            ensure(settlement.digest === take(canonical(entry.payload)).hash, 'intervention settlement belongs to another payload');
+            save({ ...current, phase: 'settled', settlement });
+          },
+          Refused: refusal => save({ ...current, phase: 'uncertain', refusal }),
+        });
+      } catch { save({ ...current, phase: 'uncertain' }); }
+    };
     const recover = async () => {
       if (recovered) return;
       await harvestHalt();
+      for (const input of state.inputs) if (input.processIntervention
+        && (!input.batch || input.batch[0] === input.request.operation)) await reconcileIntervention(input.request.operation);
       if (state.halt) {
         await retire();
         for (const input of state.inputs) if (input.state !== 'settled')
@@ -275,8 +442,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       // dispatch boundary are retained as uncertain; completed results and cursors survive.
       // Recover a closed batch from the adapter's durable result before retiring its worker.
       // This closes the result-to-custody crash window without another model turn.
-      for (const input of state.inputs) if (input.batch && input.batch.length > 1
-        && input.batch[0] === input.request.operation && input.state !== 'settled' && input.delivery && state.worker) {
+      for (const input of state.inputs) if ((input.batch && (input.batch.length > 1 || input.processIntervention) && input.batch[0] === input.request.operation
+        || !input.batch && input.processIntervention) && input.state !== 'settled' && input.delivery && state.worker) {
         // An absent gate is normal after restart. A correlated process edge and closed
         // child edges can establish completion; missing evidence retains uncertainty.
         let ready = false;
@@ -303,11 +470,12 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             ensure(reply.delivery === input.request.operation && ended.delivery === input.request.operation
               && digest(reply.text) === reply.digest && Buffer.byteLength(reply.text) <= config.maxResultBytes,
             'recovered batch identity or bytes differ');
-            const results = batchResults(input.batch, { state: 'complete', text: reply.text,
+            const members = input.batch ?? [input.request.operation];
+            const results = batchResults(members, { state: 'complete', text: reply.text,
               detail: 'recovered correlated batch reply', edge: state.edge!.id, child: state.worker.launch });
             persist({ inputs: state.inputs.map(item => {
-              const index = input.batch!.indexOf(item.request.operation);
-              return index < 0 || item.state === 'settled' ? item : { ...item, state: 'settled', reply: reply.text,
+              const index = members.indexOf(item.request.operation);
+              return index < 0 || item.state === 'settled' ? item : { ...item, state: 'settled', settledAt: config.now(), reply: reply.text,
                 cursor: observed.cursor, outcome: results[index]! };
             }) });
           }
@@ -322,7 +490,51 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       recovered = true;
     };
     const replace = async (request: SessionWorkRequest, restore?: { operation: string; digest: string; deadline: number }) => {
+      const formerClaim = state.claim, formerWorker = state.worker;
       await retire(); guard();
+      ensure(request.authority === config.currentAuthority(), 'replacement grant changed during retirement');
+      if (restore) {
+        const input = row(restore.operation), queued = input.recoveryQueued;
+        const members = input.batch ?? [restore.operation];
+        ensure(members[0] === restore.operation && new Set(members).size === members.length
+          && members.every(id => { const member = row(id); return member && member.state !== 'settled'
+            && member.delivery?.digest === restore.digest && member.delivery.operation === restore.operation
+            && JSON.stringify(member.batch ?? [id]) === JSON.stringify(members)
+            && member.effectsAtDispatch === input.effectsAtDispatch; }), 'restoration batch custody differs');
+        const updateRestoration = (patch: Partial<ConversationInput>) => persist({ inputs: state.inputs.map(item =>
+          members.includes(item.request.operation) ? { ...item, ...patch } : item) });
+        const fenced = formerClaim ? config.io.admissionState(formerClaim) : null;
+        const alreadyClosed = !formerClaim && queued && queued.authority === request.authority
+          && queued.deadline === restore.deadline && input.workerRecovery === 'restoring';
+        if (formerWorker && input.delivery && input.stall?.phase === 'restoring'
+          && fenced?.uncertainEffects === 0 && fenced.openDelegations.length === 0) {
+          // A result may arrive while exact closure is in flight. Read the same
+          // correlated receipt/result after closure before replaying the input.
+          const observed = await adapter.observe({ ...formerWorker, delivery: input.delivery, cursor: 0, limit: 16 });
+          ensure(observed.complete, 'retired result observation unavailable');
+          const reply = observed.observations.find(event => event.kind === 'reply');
+          const end = observed.observations.find(event => event.kind === 'turn-end');
+          if (reply?.kind === 'reply' && end?.kind === 'turn-end' && end.state === 'completed') {
+            ensure(reply.delivery === restore.operation && end.delivery === restore.operation
+              && digest(reply.text) === reply.digest && reply.text.trim().length > 0
+              && Buffer.byteLength(reply.text) <= config.maxResultBytes, 'retired result identity or bytes differ');
+            guard(); calls();
+            const results = batchResults(members, { state: 'complete', text: reply.text,
+              detail: 'correlated reply recovered during worker retirement', edge: state.edge!.id, child: formerWorker.launch });
+            persist({ inputs: state.inputs.map(item => { const index = members.indexOf(item.request.operation);
+              return index < 0 ? item : { ...item, state: 'settled', settledAt: config.now(), reply: reply.text, cursor: observed.cursor,
+                recoveryQueued: null, outcome: results[index]! }; }) });
+            return true;
+          }
+        }
+        ensure((alreadyClosed || fenced !== null && fenced.uncertainEffects === 0 && fenced.openDelegations.length === 0
+          && Number.isSafeInteger(input.effectsAtDispatch) && fenced.toolPreparations === input.effectsAtDispatch)
+          && config.contextRecoveryAllowed?.() === true,
+        'effects changed before worker closure; retained input requires reconciliation');
+        ensure(config.now() < restore.deadline, 'queued recovery deadline exhausted');
+        if (!alreadyClosed) updateRestoration({ recoveryQueued: {
+          closedClaim: formerClaim!, authority: request.authority, deadline: restore.deadline } });
+      }
       const used = calls(); if (used >= config.maxCalls) halt('calls', config.maxCalls);
       const now = config.now(), epoch = state.epoch + 1;
       const claim = `conversation-${slug(config.conversation)}-${epoch}`;
@@ -357,9 +569,16 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         budget: { ...edge.budget, deadline: state.deadline, calls: config.maxCalls - calls() } });
       config.append(processEdge);
       await config.io.prepareAdmission(claim, processEdge); guard();
+      // A crash after this boundary is unresolved dispatch, never queued replay.
+      if (restore) {
+        ensure(config.contextRecoveryAllowed?.() === true, 'outward effects changed during replacement admission');
+        const members = row(restore.operation).batch ?? [restore.operation];
+        persist({ inputs: state.inputs.map(item => members.includes(item.request.operation) ? { ...item, state: 'accepted' } : item) });
+      }
       const worker = await adapter.launch({ operation: claim, claim, artifact: config.artifact, incarnation, workingScope: config.workingScope, ...(restore ? { restore } : {}) });
       ensure(worker.claim === claim && worker.incarnation === incarnation && worker.launch, 'launch identity differs from admission');
       persist({ worker }); await lease.attach(worker.launch); guard();
+      if (restore) countRestart();
       persist({ idleCleanup: { candidate: null, ...(state.idleCleanup?.inhibited ? { inhibited: true } : {}) } });
       return true;
     };
@@ -367,6 +586,9 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       let ids = waiting;
       let inputFiles: Awaited<ReturnType<NonNullable<ConversationSessionConfig['prepareInputFiles']>>> | undefined;
       const id = waiting[0]!;
+      // A queued restoration keeps the exact previously admitted batch. New arrivals
+      // cannot join its immutable delivery or be settled by its correlated result.
+      if (row(id).recoveryQueued) ids = row(id).batch ?? [id];
       const updateBatch = (patch: Partial<ConversationInput>) => persist({ inputs: state.inputs.map(input =>
         ids.includes(input.request.operation) ? { ...input, ...patch } : input) });
       const settleBatch = (result: SessionWorkOutcome) => updateBatch({ state: 'settled', outcome: result });
@@ -377,78 +599,298 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         const request = { ...row(id).request, authority: config.currentAuthority() };
         let replaceNeeded = !state.worker || state.turns >= config.maxSteps || config.now() >= state.deadline || state.authority !== request.authority;
         if (state.worker && !replaceNeeded) {
-          const observed = await adapter.observe({ ...state.worker, delivery: null, cursor: 0, limit: 2 });
-          ensure(observed.complete, 'observation gap requires reconciliation');
+          let observed;
+          try { observed = await adapter.observe({ ...state.worker, delivery: null, cursor: 0, limit: 2 }); }
+          catch { return false; }
+          // A control-plane failure is not worker death. Keep this input queued
+          // and leave the current worker in place for the next ordinary tick.
+          if (!observed.complete) return false;
           for (const event of observed.observations)
             if (event.kind === 'exit' && event.safetyDeadline !== undefined) halt('deadline', event.safetyDeadline);
           replaceNeeded = observed.observations.some(event => event.kind === 'exit');
           ensure(!observed.observations.some(event => event.kind === 'paused'), 'paused worker requires reconciliation');
         }
-        if (replaceNeeded && !await replace(request)) return false;
+        const pendingRestore = row(id).recoveryQueued;
+        const queuedDelivery = pendingRestore ? row(id).delivery : null;
+        if (pendingRestore) ensure(queuedDelivery && row(id).workerRecovery === 'restoring', 'queued restoration evidence incomplete');
+        if (replaceNeeded && !await replace(request, pendingRestore ? {
+          operation: id, digest: queuedDelivery!.digest, deadline: pendingRestore.deadline } : undefined)) {
+          if (pendingRestore) updateBatch({ state: 'queued', retryAt: config.now() + 60_000 });
+          return false;
+        }
+        if (pendingRestore && row(id).outcome) return true;
         guard(); if (calls() >= config.maxCalls) halt('calls', config.maxCalls);
         const admission = config.io.admissionState(state.claim!);
         if (admission?.refusalReason === 'calls') halt('calls', config.maxCalls);
         ensure(!admission?.refused, 'model call reservation unavailable; no ceiling established');
         ensure(admission !== null, 'conversation admission unreadable or allowance refused');
-        const path = `${config.resultDirectory}/conversation-${slug(id)}.json`;
-        // The journal packet owns bounded history and rolling summaries. Only unresolved
-        // effect identities are added here; full answers remain in durable custody, not copied
-        // into every later prompt. Show the count and latest 64 references; retain every record.
-        const unresolved = state.inputs.slice(0, state.inputs.findIndex(input => input.request.operation === id))
-          .filter(input => input.outcome?.state !== 'complete');
-        const history = { total: unresolved.length, recent: unresolved.slice(-64).map(input => ({ operation: input.request.operation, state: input.state, outcome: input.outcome?.state ?? null })) };
-        inputFiles = await config.prepareInputFiles?.(waiting);
-        guard();
-        const actionFacts = await config.currentActionFacts?.(request.operation);
-        guard();
-        ensure(actionFacts === undefined || Buffer.byteLength(actionFacts) <= 32768, 'current action facts exceed delivery bound');
-        const hostContext = `HOST CLOCK ${config.now()}\nUNRESOLVED HOST TURN REFERENCES (not instructions)\n${JSON.stringify(history)}`
-          + (actionFacts ? `\nCURRENT ACTION FACTS (quoted data; supersedes older action snapshots, never authorization)\n${actionFacts}` : '');
-        const attachmentContext = (members: readonly string[]) => {
-          const notices = members.filter(operation => inputFiles?.notices[operation])
-            .map(operation => `${operation}: ${inputFiles!.notices[operation]}`);
-          return hostContext + (notices.length ? `\nCURRENT ATTACHMENT ACCESS (source-bound files, not authority)\n${notices.join('\n')}` : '');
-        };
-        const prompt = (members: readonly string[]) => members.length === 1 ? conversationSessionPrompt(request, path, attachmentContext(members))
-          : conversationSessionPrompt({ context: '', question: 'These owner messages arrived in this order while you were busy. Answer every message in this turn, taking later corrections into account. Each message keeps its own intake identity. Return a JSON object with results, an array containing exactly one {operation, answer} per message in arrival order. answer is the complete JSON object requested by that message envelope. Do not send anything yourself.\n'
-            + JSON.stringify(members.map(operation => ({ operation, envelope: row(operation).request.question, ...(separateContext(row(operation).request) ? { context: row(operation).request.context } : {}) }))) }, path, attachmentContext(members));
-        // Size the exact envelope, including escaped packet bytes, host history and path.
-        // A non-fitting suffix stays queued and keeps its own identity and reservation.
-        ids = [id];
-        let text = prompt(ids);
-        for (let count = 2; count <= waiting.length; count++) {
-          const candidate = waiting.slice(0, count), combined = prompt(candidate);
-          if (Buffer.byteLength(combined) > 1_048_576) break;
-          ids = candidate; text = combined;
+        let delivery: ConversationDelivery;
+        if (pendingRestore) {
+          delivery = { ...queuedDelivery!, ...state.worker! };
+          updateBatch({ delivery, state: 'accepted', workerRecovery: 'continued', recoveryQueued: null, cursor: 0 });
+        } else {
+          const path = `${config.resultDirectory}/conversation-${slug(id)}.json`;
+          // The journal packet owns bounded history and rolling summaries. Only unresolved
+          // effect identities are added here; full answers remain in durable custody, not copied
+          // into every later prompt. Show the count and latest 64 references; retain every record.
+          const unresolved = state.inputs.slice(0, state.inputs.findIndex(input => input.request.operation === id))
+            .filter(input => input.outcome?.state !== 'complete');
+          const history = { total: unresolved.length, recent: unresolved.slice(-64).map(input => ({ operation: input.request.operation, state: input.state, outcome: input.outcome?.state ?? null })) };
+          inputFiles = await config.prepareInputFiles?.(waiting);
+          guard();
+          const actionFacts = await config.currentActionFacts?.(request.operation);
+          guard();
+          ensure(actionFacts === undefined || Buffer.byteLength(actionFacts) <= 32768, 'current action facts exceed delivery bound');
+          const hostContext = `HOST CLOCK ${config.now()}\nUNRESOLVED HOST TURN REFERENCES (not instructions)\n${JSON.stringify(history)}`
+            + (actionFacts ? `\nCURRENT ACTION FACTS (quoted data; supersedes older action snapshots, never authorization)\n${actionFacts}` : '');
+          const attachmentContext = (members: readonly string[]) => {
+            const notices = members.filter(operation => inputFiles?.notices[operation])
+              .map(operation => `${operation}: ${inputFiles!.notices[operation]}`);
+            return hostContext + (notices.length ? `\nCURRENT ATTACHMENT ACCESS (source-bound files, not authority)\n${notices.join('\n')}` : '');
+          };
+          const prompt = (members: readonly string[]) => members.length === 1 ? conversationSessionPrompt(request, path, attachmentContext(members))
+            : conversationSessionPrompt({ context: '', question: 'These owner messages arrived in this order while you were busy. Answer every message in this turn, taking later corrections into account. Each message keeps its own intake identity. Return a JSON object with results, an array containing exactly one {operation, answer} per message in arrival order. answer is the complete JSON object requested by that message envelope. Do not send anything yourself.\n'
+              + JSON.stringify(members.map(operation => ({ operation, envelope: row(operation).request.question, ...(separateContext(row(operation).request) ? { context: row(operation).request.context } : {}) }))) }, path, attachmentContext(members));
+          // Size the exact envelope, including escaped packet bytes, host history and path.
+          // A non-fitting suffix stays queued and keeps its own identity and reservation.
+          ids = [id];
+          let text = prompt(ids);
+          for (let count = 2; count <= waiting.length; count++) {
+            const candidate = waiting.slice(0, count), combined = prompt(candidate);
+            if (Buffer.byteLength(combined) > 1_048_576) break;
+            ids = candidate; text = combined;
+          }
+          ensure(Buffer.byteLength(text) <= 1_048_576, 'current conversation grounding exceeds delivery bound');
+          delivery = { ...state.worker!, operation: id, text, digest: digest(text),
+            resultPath: path, maxBytes: config.maxResultBytes };
+          updateBatch({ state: 'dispatching', delivery, batch: ids, ...(admission.toolPreparations === undefined ? {} : { effectsAtDispatch: admission.toolPreparations }), attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
+          for (const operation of ids) config.workingActivity?.(operation, state.claim, 'start');
+          const accepted = await adapter.deliver(delivery);
+          if (accepted.state === 'busy-not-dispatched' || accepted.state === 'refused-not-dispatched') {
+            if (row(id).attempts >= 3) settleBatch({ ...outcome('non-dispatch retry ceiling reached; input retained'), state: 'failed' });
+            else updateBatch({ state: 'queued', delivery: null, retryAt: config.now() + config.pollMs * 2 ** row(id).attempts });
+            return false;
+          }
+          ensure(accepted.state === 'accepted', 'input submission uncertain; no automatic replay');
+          updateBatch({ state: 'accepted' });
         }
-        ensure(Buffer.byteLength(text) <= 1_048_576, 'current conversation grounding exceeds delivery bound');
-        let delivery: ConversationDelivery = { ...state.worker!, operation: id, text, digest: digest(text),
-          resultPath: path, maxBytes: config.maxResultBytes };
-        updateBatch({ state: 'dispatching', delivery, batch: ids, ...(admission.toolPreparations === undefined ? {} : { effectsAtDispatch: admission.toolPreparations }), attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
-        for (const operation of ids) config.workingActivity?.(operation, state.claim, 'start');
-        const accepted = await adapter.deliver(delivery);
-        if (accepted.state === 'busy-not-dispatched' || accepted.state === 'refused-not-dispatched') {
-          if (row(id).attempts >= 3) settleBatch({ ...outcome('non-dispatch retry ceiling reached; input retained'), state: 'failed' });
-          else updateBatch({ state: 'queued', delivery: null, retryAt: config.now() + config.pollMs * 2 ** row(id).attempts });
-          return false;
-        }
-        ensure(accepted.state === 'accepted', 'input submission uncertain; no automatic replay');
-        updateBatch({ state: 'accepted' }); persist({ turns: state.turns + 1 });
+        persist({ turns: state.turns + 1 });
         for (;;) {
           guard(); if (config.now() >= state.deadline) halt('deadline', state.deadline); calls();
           const admission = config.io.admissionState(state.claim!);
           if (admission?.refusalReason === 'calls') halt('calls', config.maxCalls);
           ensure(!admission?.refused, 'model call reservation unavailable; no ceiling established');
           ensure(admission !== null, 'conversation allowance refused or unreadable');
-          const batch = await adapter.observe({ ...state.worker!, delivery, cursor: row(id).cursor, limit: 16 });
-          ensure(batch.complete && batch.cursor >= row(id).cursor, 'observation gap requires reconciliation');
+          let batch;
+          try { batch = await adapter.observe({ ...state.worker!, delivery, cursor: row(id).cursor, limit: 16 }); }
+          catch { updateBatch({ stall: null }); await config.io.wait(config.pollMs); continue; }
+          if (!batch.complete || batch.cursor < row(id).cursor) { updateBatch({ stall: null }); await config.io.wait(config.pollMs); continue; }
+          await reconcileIntervention(id);
+          guard();
+          let nextStall = row(id).stall;
+          // Only the existing owner may turn a silence signal into a bounded
+          // intervention. Completed output always reaches the normal consumer first.
+          if (config.stallRecovery && batch.observations.length === 0
+            && !row(id).workerRecovery && !row(id).contextRecovery
+            && (!row(id).processIntervention || definitiveIntervention(row(id).processIntervention))) {
+            let sample: StallObservation | null = null;
+            try { sample = config.stallRecovery.observe(state.worker!); } catch { /* Unknown resets evidence. */ }
+            const previousEpisode = row(id).stall;
+            const episode = observeStall(previousEpisode, sample, state.worker!, config.now(), admission.openDelegations.length > 0);
+            nextStall = episode;
+            // 1.x nudge verification: a frame that changed after the neutral Enter is the recovery; the episode is new.
+            if (previousEpisode?.nudge?.state === 'sent' && (!episode || episode.since > previousEpisode.nudge.at))
+              recordTriage({ operation: id, trigger: 'silence', decision: 'nudge', action: 'nudge', outcome: 'recovered: frame changed within the verification window' });
+            const threshold = sample?.activity === 'active' ? STALL_RECOVERY_LIMITS.frozenActiveMs : STALL_RECOVERY_LIMITS.silenceMs;
+            const staleSignal = sample?.stale?.state === 'stalled' && Number.isSafeInteger(sample.stale.lastProgressAt)
+              && sample.stale.windowMs > 0 && sample.at - sample.stale.lastProgressAt >= sample.stale.windowMs;
+            // 1.x SessionMonitor: the operator's message unanswered for ten minutes while the frame sits idle or
+            // indeterminate and unchanged for the nurse cooldown. An active frame keeps the ninety-minute backstop.
+            const userWaitMs = episode ? episode.lastAt - row(id).acceptedAt : 0;
+            const quietFor = episode ? episode.lastAt - episode.since : 0;
+            const unresponsive = episode !== null && sample?.activity !== 'active' && userWaitMs >= STALL_RECOVERY_LIMITS.unresponsiveMs
+              && quietFor >= STALL_RECOVERY_LIMITS.cooldownMs;
+            // 1.x StallTriageNurse fast path: the delivery sits typed in the input box, never submitted.
+            const typedUnsubmitted = episode !== null && sample?.typedUnsubmitted === true && sample.activity !== 'active'
+              && quietFor >= STALL_RECOVERY_LIMITS.cooldownMs;
+            const trigger: TriageRecord['trigger'] = typedUnsubmitted ? 'typed-unsubmitted' : staleSignal ? 'stale' : unresponsive ? 'unresponsive'
+              : sample?.activity === 'active' ? 'frozen-active' : 'silence';
+            const due = episode !== null && (quietFor >= threshold || staleSignal || unresponsive || typedUnsubmitted);
+            const replaySafe = () => {
+              const current = config.io.admissionState(state.claim!);
+              return current !== null && !current.refused && current.uncertainEffects === 0
+                && Number.isSafeInteger(row(id).effectsAtDispatch) && current.toolPreparations === row(id).effectsAtDispatch
+                && current.openDelegations.length === 0 && config.contextRecoveryAllowed?.() === true;
+            };
+            const priorIntervention = row(id).processIntervention;
+            const followupDue = definitiveIntervention(priorIntervention) && episode !== null
+              && episode.lastAt - priorIntervention!.at >= (priorIntervention!.payload.signal === 'SIGINT'
+                ? STALL_RECOVERY_LIMITS.termDelayMs : STALL_RECOVERY_LIMITS.killDelayMs);
+            const nudgeable = adapter.describe().nudge === true;
+            let nudgedNow = false;
+            // Inherited order: the neutral nudge precedes any spent judgment. One per episode here, one per
+            // turn in the driver, and the hourly auto-action ceiling across episodes. Intent is durable first.
+            if (episode && due && nudgeable && episode.nudge === undefined && episode.phase === 'observing' && !priorIntervention
+              && config.now() < state.deadline) {
+              nudgedNow = true;
+              if (!autoActionAllowed()) {
+                updateBatch({ stall: { ...episode, nudge: { at: config.now(), state: 'refused', evidence: 'auto-action ceiling reached for this hour' } } });
+                recordTriage({ operation: id, trigger, decision: 'nudge', action: 'none', outcome: 'refused: auto-action ceiling' });
+              } else {
+                const worker = state.worker!, at = config.now();
+                updateBatch({ stall: { ...episode, nudge: { at, state: 'requested', evidence: '' } } });
+                countAutoAction();
+                let nudge: NonNullable<StallEpisode['nudge']> = { at, state: 'uncertain', evidence: 'nudge control ended without a response' };
+                try {
+                  const result = await adapter.control({ ...worker, action: 'nudge', authority: request.authority, reason: `stall-triage:${id}:${trigger}` });
+                  nudge = { at, state: result.state === 'nudged' ? 'sent' : 'refused', evidence: result.evidence };
+                } catch { /* Uncertain: never a second keystroke for this episode. */ }
+                updateBatch({ stall: { ...row(id).stall!, nudge } });
+                recordTriage({ operation: id, trigger, decision: 'nudge', action: 'nudge', outcome: `${nudge.state}: ${nudge.evidence}` });
+              }
+              nextStall = row(id).stall; guard();
+            }
+            // The inherited thirty-second verification window: judgment waits for it; silence past it is recorded.
+            const verifying = episode?.nudge?.state === 'sent' && config.now() - episode.nudge.at < STALL_RECOVERY_LIMITS.nudgeVerifyMs;
+            if (episode?.nudge?.state === 'sent' && !verifying && !nudgedNow) {
+              updateBatch({ stall: { ...episode, nudge: { ...episode.nudge, state: 'verified-silent' } } });
+              recordTriage({ operation: id, trigger, decision: 'nudge', action: 'nudge', outcome: 'verified-silent: frame unchanged after the verification window' });
+              nextStall = row(id).stall;
+            }
+            // The fresh in-memory episode is the judged state; custody holds it only after a nudge or the
+            // existing cursor save, so no extra write per poll.
+            const current: StallEpisode | null = nudgedNow || episode?.nudge?.state === 'sent' && !verifying ? row(id).stall ?? null : episode;
+            const reviewGate = !nudgedNow && !verifying && (!nudgeable || current?.nudge !== undefined && current.nudge.state !== 'requested');
+            const cooled = current?.reviewedAt === undefined || (current.lastAt - current.reviewedAt) >= STALL_RECOVERY_LIMITS.cooldownMs;
+            const followUpReady = current?.phase === 'reviewed' && (followupDue || current.lastAt - (current.reviewedAt ?? current.lastAt) >= STALL_RECOVERY_LIMITS.silenceMs
+              || current.followUpAt != null && current.lastAt >= current.followUpAt && cooled);
+            if (episode && current && reviewGate && (!priorIntervention || followupDue) && (current.phase === 'observing' || followUpReady)
+              && due && (row(id).stallReviews ?? 0) < STALL_RECOVERY_LIMITS.reviews && replaySafe() && calls() < config.maxCalls) {
+              const worker = state.worker!;
+              // Attempt and charge precede the model call. A crash cannot silently retry either.
+              updateBatch({ stall: { ...current, phase: 'reviewed', reviewedAt: config.now(), followUpAt: null, notice: null }, stallReviews: (row(id).stallReviews ?? 0) + 1 });
+              let decision: StallReviewDecision = 'unknown';
+              const evidence: StallReviewEvidence = { worker, operation: id, progress: episode.progress,
+                silentSince: episode.since, observedAt: episode.lastAt, deadline: state.deadline,
+                request: row(id).request, requests: ids.map(operation => row(operation).request), delivery, observation: sample!,
+                previousInterventions: [...row(id).processInterventionHistory ?? [], ...(priorIntervention ? [priorIntervention] : [])]
+                  .map(({ payload, phase, settlement, refusal }) => ({ payload, phase, ...(settlement ? { settlement } : {}), ...(refusal ? { refusal } : {}) })) };
+              try {
+                config.stallRecovery.reserve(worker.claim);
+                decision = await config.stallRecovery.review(evidence);
+              } catch { /* Failed supervision never falls back to heuristic recovery. */ }
+              nextStall = row(id).stall;
+              const triage = typeof decision === 'object' && decision.kind === 'triage' ? decision : null;
+              recordTriage({ operation: id, trigger: current.phase === 'reviewed' ? 'follow-up' : trigger,
+                decision: triage ? triage.classification : typeof decision === 'string' ? decision : 'process-control',
+                action: triage ? triage.action : typeof decision === 'string' ? decision : 'auto-interrupt', outcome: 'reviewed' });
+              guard();
+              // Result/progress and safety may have changed while judgment was running.
+              try { batch = await adapter.observe({ ...worker, delivery, cursor: row(id).cursor, limit: 16 }); }
+              catch { updateBatch({ stall: null }); await config.io.wait(config.pollMs); continue; }
+              if (!batch.complete || batch.cursor < row(id).cursor) { updateBatch({ stall: null }); await config.io.wait(config.pollMs); continue; }
+              let fresh: StallObservation | null = null;
+              try { fresh = config.stallRecovery.observe(worker); } catch { /* Held. */ }
+              const confirmed = observeStall(null, fresh, worker, config.now(), false);
+              if (typeof decision === 'object' && decision.kind === 'process-control' && config.stallRecovery.intervention
+                && (!row(id).processIntervention || definitiveIntervention(row(id).processIntervention)) && batch.observations.length === 0 && confirmed
+                && confirmed.progress === episode.progress && confirmed.activity === episode.activity
+                && replaySafe() && calls() < config.maxCalls && config.now() < state.deadline) {
+                const payload = decision.payload, intervention = config.stallRecovery.intervention;
+                const previous = row(id).processIntervention;
+                const history = [...row(id).processInterventionHistory ?? [], ...(previous ? [previous] : [])];
+                const expectedSignal = (['SIGINT', 'SIGTERM', 'SIGKILL'] as const)[history.length];
+                ensure(payload.type === 'ProcessControlPayload' && payload.purpose === 'process-control'
+                  && payload.run === intervention.run && payload.target.machine === intervention.machine
+                  && payload.target.incarnation === worker.incarnation
+                  && payload.episode === `stall-triage:${id}:${episode.lastAt}`
+                  && payload.deadline <= state.deadline && payload.deadline > config.now()
+                  && payload.signal === expectedSignal
+                  && (!previous || JSON.stringify(previous.payload.target) === JSON.stringify(payload.target)
+                    && previous.payload.id !== payload.id && previous.payload.step !== payload.step),
+                'process intervention differs from the admitted review, worker or lifetime');
+                // Custody records the exact proposal before Eight prepares and consumes its
+                // one-use claim. Neither an exception nor a host restart may resend it.
+                const prepared: ProcessIntervention = { payload, evidence, phase: 'prepared', at: config.now(),
+                  observations: 0, nextObservationAt: config.now() + STALL_RECOVERY_LIMITS.verificationMs };
+                updateBatch({ processIntervention: prepared, processInterventionHistory: history });
+                try {
+                  consumeResult(await intervention.intervene(payload, evidence), {
+                    Success: settlement => {
+                      ensure(settlement.digest === take(canonical(payload)).hash, 'intervention settlement belongs to another payload');
+                      updateBatch({ processIntervention: { ...prepared, phase: 'settled', settlement } });
+                    },
+                    Refused: refusal => updateBatch({ processIntervention: { ...prepared, phase: 'refused', refusal } }),
+                  });
+                } catch { updateBatch({ processIntervention: { ...prepared, phase: 'uncertain' } }); }
+                guard();
+                // Occurrence/quiescence settlement is not the requested work's result.
+                // The existing correlated reply consumer remains the only completion path.
+                continue;
+              }
+              // 1.x validateAction: auto-restart needs the confidence floor, the confirmed frozen frame, the
+              // replay fences and restart-loop headroom; anything less is at most a notice.
+              const recoverDecision = decision === 'recover'
+                || triage !== null && triage.action === 'auto-restart' && triage.confidence >= STALL_RECOVERY_LIMITS.confidenceFloor;
+              if (recoverDecision && !row(id).processIntervention && batch.observations.length === 0 && confirmed
+                && confirmed.progress === episode.progress && confirmed.activity === episode.activity && confirmed.lastAt >= episode.lastAt
+                && replaySafe() && calls() < config.maxCalls && config.now() < state.deadline) {
+                if (!restartAllowed()) {
+                  updateBatch({ stall: { ...row(id).stall!, notice: 'restart loop pressure: three worker replacements within ten minutes; no further automatic restart' } });
+                  recordTriage({ operation: id, trigger, decision: 'recover', action: 'auto-restart', outcome: 'refused: restart loop pressure' });
+                  nextStall = row(id).stall;
+                } else {
+                  updateBatch({ stall: { ...confirmed, phase: 'restoring' }, workerRecovery: 'restoring' });
+                  if (!await replace(request, { operation: id, digest: delivery.digest, deadline: state.deadline })) {
+                    updateBatch({ state: 'queued', retryAt: config.now() + 60_000 });
+                    return false;
+                  }
+                  recordTriage({ operation: id, trigger, decision: 'recover', action: 'auto-restart', outcome: 'replaced: original input restored to a fresh worker' });
+                  if (row(id).outcome) return true;
+                  delivery = { ...delivery, ...state.worker! };
+                  updateBatch({ delivery, workerRecovery: 'continued', recoveryQueued: null, stall: { ...confirmed, phase: 'continued' }, cursor: 0 });
+                  continue;
+                }
+              } else if (triage?.action === 'reinject' && adapter.describe().redeliver === true && !row(id).reinjection
+                && batch.observations.length === 0 && confirmed && confirmed.progress === episode.progress
+                && replaySafe() && config.now() < state.deadline) {
+                // 1.x reinject_message: the exact accepted delivery, at most once, only with no tool
+                // effect or send since dispatch, so a lost message is resent and a handled one never is.
+                if (!autoActionAllowed()) {
+                  recordTriage({ operation: id, trigger, decision: triage.classification, action: 'reinject', outcome: 'refused: auto-action ceiling' });
+                } else {
+                  const at = config.now();
+                  updateBatch({ reinjection: { at, state: 'requested', evidence: '' } });
+                  countAutoAction();
+                  let reinjection: NonNullable<ConversationInput['reinjection']> = { at, state: 'uncertain', evidence: 'redelivery control ended without a response' };
+                  try {
+                    const result = await adapter.control({ ...worker, action: 'redeliver', authority: request.authority, reason: `stall-triage:${id}:reinject`, delivery });
+                    reinjection = { at, state: result.state === 'redelivered' ? 'redelivered' : 'refused', evidence: result.evidence };
+                  } catch { /* Uncertain: the boot sweep owns a sending record; never a second resend. */ }
+                  updateBatch({ reinjection, ...(reinjection.state === 'redelivered' ? { stall: null } : {}) });
+                  recordTriage({ operation: id, trigger, decision: triage.classification, action: 'reinject', outcome: `${reinjection.state}: ${reinjection.evidence}` });
+                  nextStall = row(id).stall;
+                  guard();
+                }
+              }
+              // 1.x scheduled follow-up and suggest-* notices through the existing custody and poll; cancelled with the episode.
+              if (triage && row(id).stall && (triage.followUpMs !== null || triage.action.startsWith('suggest') || triage.action === 'auto-interrupt')) {
+                const followUpAt = triage.followUpMs !== null && Number.isFinite(triage.followUpMs)
+                  ? config.now() + Math.min(Math.max(triage.followUpMs, STALL_RECOVERY_LIMITS.cooldownMs), STALL_RECOVERY_LIMITS.maxFollowUpMs) : null;
+                const notice = triage.action.startsWith('suggest') || triage.action === 'auto-interrupt'
+                  ? `${triage.classification}: ${triage.action === 'auto-interrupt' ? 'suggest-interrupt (no composed process effect)' : triage.action}; ${triage.reason}`.slice(0, 512) : null;
+                updateBatch({ stall: { ...row(id).stall!, followUpAt, notice } });
+                nextStall = row(id).stall;
+              }
+            }
+          }
           const exit = batch.observations.find(event => event.kind === 'exit');
           if (exit?.kind === 'exit') {
             if (exit.safetyDeadline !== undefined) halt('deadline', exit.safetyDeadline);
             guard();
             ensure(config.now() < state.deadline, 'lost worker deadline exhausted; input retained');
-            ensure(!row(id).workerRecovery && !row(id).contextRecovery && ids.length === 1,
-              'lost worker recovery already attempted or batched input requires reconciliation');
+            ensure(!row(id).workerRecovery && !row(id).contextRecovery && !row(id).processIntervention,
+              'lost worker recovery already attempted');
             const recoveryAdmission = config.io.admissionState(state.claim!);
             ensure(recoveryAdmission !== null && !recoveryAdmission.refused, 'lost worker admission unavailable; input retained');
             ensure(config.contextRecoveryAllowed?.() === true, 'lost worker has unknown outward sends; no automatic replay');
@@ -457,14 +899,18 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
               'lost worker prepared tools since dispatch; reconcile their outcomes before continuing');
             ensure(recoveryAdmission.openDelegations.length === 0, 'lost worker has pending child work; no duplicate revival');
             ensure(calls() < config.maxCalls, 'lost worker allowance exhausted; input retained');
+            // 1.x StallTriageNurse restart-loop detection: three replacements within ten minutes end automatic revival.
+            ensure(restartAllowed(), 'restart loop pressure: three worker replacements within ten minutes; input retained, no automatic replay');
             // 1.x ResumeQueue/AutonomousLivenessReconciler: durable intent, fresh limits,
             // one existing respawn funnel. PendingInjectStore custody is preserved;
             // its historical at-least-once replay is not permission for tool effects.
             updateBatch({ workerRecovery: 'restoring' });
             ensure(await replace(request, { operation: id, digest: delivery.digest, deadline: state.deadline }),
               'lost worker replacement admission unavailable; input retained');
+            recordTriage({ operation: id, trigger: 'lost-worker', decision: 'crashed', action: 'auto-restart', outcome: 'replaced: original input restored to a fresh worker' });
+            if (row(id).outcome) return true;
             delivery = { ...delivery, ...state.worker! };
-            updateBatch({ delivery, workerRecovery: 'continued', cursor: 0 });
+            updateBatch({ delivery, workerRecovery: 'continued', recoveryQueued: null, cursor: 0 });
             continue;
           }
           const pause = batch.observations.find(event => event.kind === 'paused');
@@ -472,7 +918,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             guard();
             const recoveryAdmission = config.io.admissionState(state.claim!);
             ensure(recoveryAdmission !== null && !recoveryAdmission.refused, 'context recovery admission unavailable');
-            ensure(!row(id).contextRecovery && !row(id).workerRecovery && ids.length === 1, 'context recovery already attempted or batched input requires reconciliation');
+            ensure(!row(id).contextRecovery && !row(id).workerRecovery && !row(id).processIntervention, 'context recovery already attempted');
             ensure(config.contextRecoveryAllowed?.() === true && recoveryAdmission.uncertainEffects === 0
               && Number.isSafeInteger(row(id).effectsAtDispatch) && recoveryAdmission.toolPreparations === row(id).effectsAtDispatch
               && recoveryAdmission.openDelegations.length === 0 && calls() < config.maxCalls,
@@ -485,9 +931,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             if (compact.state === 'replace-required') {
               updateBatch({ contextRecovery: 'restoring' });
               ensure(await replace(request, { operation: id, digest: delivery.digest, deadline }), 'context replacement admission unavailable');
+              if (row(id).outcome) return true;
               delivery = { ...delivery, ...state.worker! };
             } else ensure(compact.state === 'resumed', compact.evidence);
-            updateBatch({ delivery, contextRecovery: 'continued', cursor: 0 });
+            updateBatch({ delivery, contextRecovery: 'continued', recoveryQueued: null, cursor: 0 });
             continue;
           }
           let reply = row(id).reply, ended = false, completed = false;
@@ -510,11 +957,12 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             const results = batchResults(ids, result);
             persist({ inputs: state.inputs.map(input => {
               const index = ids.indexOf(input.request.operation);
-              return index < 0 ? input : { ...input, reply, cursor: batch.cursor, state: 'settled', outcome: results[index]! };
+              return index < 0 ? input : { ...input, reply, cursor: batch.cursor, state: 'settled', settledAt: config.now(), outcome: results[index]! };
             }) }); return true;
           }
           for (const operation of ids) config.workingActivity?.(operation, state.claim, 'working');
-          updateBatch({ reply, cursor: batch.cursor });
+          // Coalesce corroboration with the existing cursor save; no extra disk write per poll.
+          updateBatch({ reply, cursor: batch.cursor, ...(config.stallRecovery ? { stall: nextStall } : {}) });
           await config.io.wait(config.pollMs);
         }
       } catch (error) {
@@ -535,7 +983,9 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         }
         while (!closing && !config.stopped() && !state.halt) {
           const next = state.inputs.find(input => input.state === 'queued');
-          if (!next || config.now() < next.retryAt || !await work(config.batchWaiting ? state.inputs.filter(input => input.state === 'queued' && config.now() >= input.retryAt).map(input => input.request.operation) : [next.request.operation])) break;
+          if (!next || config.now() < next.retryAt || !await work(next.recoveryQueued ? next.batch ?? [next.request.operation]
+            : config.batchWaiting ? state.inputs.filter(input => input.state === 'queued' && !input.recoveryQueued
+              && config.now() >= input.retryAt).map(input => input.request.operation) : [next.request.operation])) break;
         }
       })().finally(() => { draining = null; });
       return draining;
@@ -585,6 +1035,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       let used: number | null = null;
       try { used = calls(); } catch { problems.push('final call accounting unknown or outside reservation'); }
       if (state.inputs.some(input => input.state !== 'settled' || input.outcome?.state !== 'complete')) problems.push('pending or uncertain inputs retained');
+      if (state.inputs.some(input => input.processIntervention && !definitiveIntervention(input.processIntervention)))
+        problems.push('unsettled process intervention retained for observation');
       const result: SessionWorkEdgeClose = freeze({ type: 'SessionWorkEdgeClose', schemaVersion: 1, id: `${processEdge}:host-close:${state.epoch}`, edge: processEdge,
         child: null, state: problems.length ? 'uncertain' : 'complete', detail: problems.join('; ') || 'conversation closed',
         evidence: state.edge.id, resultBytes: null, closedAt: config.now(), calls: used, reserved: config.maxCalls });
@@ -601,6 +1053,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         if (!config.authorized()) return;
       }
       await drain();
+      for (const input of state.inputs) if (input.processIntervention
+        && (!input.batch || input.batch[0] === input.request.operation)) await reconcileIntervention(input.request.operation);
       if (!draining && state.worker && (config.now() >= state.deadline || state.turns >= config.maxSteps)) await retire();
     };
     // The existing owner tick drives this state; no separate timer, store or reaper.
@@ -617,7 +1071,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       // deliveries establish whether the current worker finished its work.
       const current = state.inputs.filter(input => input.delivery?.claim === state.claim
         && input.delivery.incarnation === state.incarnation);
-      if (!current.length || current.some(input => input.outcome?.state !== 'complete')) return null;
+      if (!current.length || current.some(input => input.outcome?.state !== 'complete'
+        || input.processIntervention && !definitiveIntervention(input.processIntervention))) return null;
       const admission = config.io.admissionState(state.claim);
       // A ready prompt cannot settle an effect with no known outcome.
       // Rules 26/68: keep that work even if its model turn already ended.
@@ -688,7 +1143,45 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       retiring = (async () => { await recover(); await retire(); })().finally(() => { retiring = null; });
       await retiring; return true;
     };
-    return Object.freeze({ owner: 'part-eight' as const, available, run, runBatch, collect, close, maintain, reserveCall, retireIdle,
+    // 1.x SessionMonitor responsiveness and the silence sentinel funnel, as one pull-only projection.
+    // The deduplicated notice record changes only for a newer unanswered message or after the inherited
+    // thirty-minute cooldown; a reply clears it. No send, no authority, no model call.
+    const stallStatus = (): StallStatus => {
+      const now = config.now();
+      const waiting = state.inputs.filter(input => input.state === 'accepted' || input.state === 'dispatching');
+      const lastUserMessageAt = state.inputs.reduce((latest, input) => Math.max(latest, input.acceptedAt), 0);
+      const lastReplyAt = state.inputs.reduce((latest, input) => Math.max(latest, input.settledAt ?? 0), 0);
+      const oldestWait = waiting.length ? Math.min(...waiting.map(input => input.acceptedAt)) : null;
+      const userWaitMs = oldestWait === null ? null : Math.max(0, now - oldestWait);
+      const idleMs = oldestWait !== null || !state.worker ? null : Math.max(0, now - Math.max(lastReplyAt, lastUserMessageAt));
+      const responsiveness: StallStatus['responsiveness']['state'] = state.halt ? 'halted'
+        : userWaitMs !== null && userWaitMs >= STALL_RECOVERY_LIMITS.unresponsiveMs ? 'unresponsive'
+          : idleMs !== null && idleMs >= STALL_RECOVERY_LIMITS.idleMs ? 'idle' : 'healthy';
+      const notices: { key: string; line: string }[] = [];
+      if (responsiveness === 'unresponsive' && oldestWait !== null) {
+        const prior = state.responsivenessNotice;
+        if (!prior || prior.userMessageAt !== oldestWait || now - prior.at >= STALL_RECOVERY_LIMITS.noticeCooldownMs)
+          persist({ responsivenessNotice: { state: responsiveness, userMessageAt: oldestWait, at: now } });
+        const notice = state.responsivenessNotice!;
+        notices.push({ key: `stall:${config.conversation}:${notice.userMessageAt}:${notice.at}`,
+          line: `Conversation ${config.conversation}: a message from ${Math.max(1, Math.round(userWaitMs! / 60_000))} min ago has no reply yet; the owner is supervising its worker.` });
+      } else if (state.responsivenessNotice) persist({ responsivenessNotice: null });
+      const current = waiting.find(input => input.stall) ?? null;
+      const stall = current?.stall ?? null;
+      const history = state.triageHistory ?? [];
+      return freeze({ conversation: config.conversation, worker: state.worker !== null,
+        responsiveness: { state: responsiveness, userWaitMs, idleMs },
+        episode: current && stall ? { operation: current.request.operation, phase: stall.phase, silentMs: Math.max(0, stall.lastAt - stall.since),
+          activity: stall.activity ?? null, nudge: stall.nudge?.state ?? null, followUpAt: stall.followUpAt ?? null, notice: stall.notice ?? null } : null,
+        counts: { nudges: history.filter(record => record.action === 'nudge' && record.outcome.startsWith('sent')).length,
+          reviews: state.inputs.reduce((sum, input) => sum + (input.stallReviews ?? 0), 0),
+          interventions: state.inputs.reduce((sum, input) => sum + (input.processInterventionHistory?.length ?? 0) + (input.processIntervention ? 1 : 0), 0),
+          reinjections: state.inputs.filter(input => input.reinjection?.state === 'redelivered').length,
+          restarts: pressure().restarts.length, history: history.length },
+        notices });
+    };
+    return Object.freeze({ owner: 'part-eight' as const, available, run, runBatch, collect, close, maintain, reserveCall, reserveReview, retireIdle,
+      stallStatus: () => [stallStatus()],
       idleCleanupStatus: () => state.idleCleanup?.inhibited
         ? ['Idle cleanup is paused after an unconfirmed closure; capacity release is uncertain and needs repair.']
         : !state.worker && state.idleCleanup?.lastClosure ? [state.idleCleanup.lastClosure.detail] : [] });

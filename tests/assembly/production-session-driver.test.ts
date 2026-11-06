@@ -17,14 +17,14 @@ import { createSessionConversationAdapter } from '../../src/assembly/conversatio
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value, refused } from '../facts/fixtures.js';
 import { buildLiteralSendArgs, chunkLiteralForTmux, classifyPaneIdle, classifyBlockingMenu, classifyPaneReadiness, classifyStuckSignature,
-  createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
+  advanceSessionStaleObservation, classifyTypedUnsubmitted, createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
 import type { ProductionSessionConfig, SessionIO, SessionJournal } from '../../src/assembly/production-session-driver.js';
 
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const fixtureRoots: string[] = [];
 afterEach(() => { for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Partial<Pick<ProductionSessionConfig,
-  'confinement' | 'toolAdmission' | 'modelGate' | 'turnDeadlineMs' | 'launchVia' | 'requireTurnHook' | 'observeActivity' | 'scratchDir'>> = {}) {
+  'confinement' | 'toolAdmission' | 'modelGate' | 'turnDeadlineMs' | 'launchVia' | 'requireTurnHook' | 'observeActivity' | 'observeRecovery' | 'scratchDir' | 'workKind'>> = {}) {
   const f = assemblyRuntimeFixture(); let now = 1000, stopped = false, pane = '❯ ', sends = 0;
   const root = mkdtempSync(join(tmpdir(), 'instar-session-test-')); fixtureRoots.push(root);
   const homes = { a: join(root, 'login-a'), b: join(root, 'login-b') };
@@ -1001,7 +1001,9 @@ it('a new topic claim with prior history requires continuation even without a na
 it('reports recorded pane activity per owned claim without treating activity or empty captures as completion', () => {
   const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8'));
   const observations: Parameters<NonNullable<ProductionSessionConfig['observeActivity']>>[0][] = [];
-  const f = fixture('claude-code', { requireTurnHook: true, observeActivity: row => observations.push(row) });
+  const privateEvidence: Parameters<NonNullable<ProductionSessionConfig['observeRecovery']>>[0][] = [];
+  const f = fixture('claude-code', { requireTurnHook: true, observeActivity: row => observations.push(row),
+    observeRecovery: row => privateEvidence.push(row) });
   const identity = f.launch(); value(f.deliver(identity));
   for (const row of recorded.captures) {
     f.changePane(row.capture);
@@ -1011,6 +1013,8 @@ it('reports recorded pane activity per owned claim without treating activity or 
   expect(observations[1]).toMatchObject({ subject: 'topic', progress: hash(recorded.captures[1].capture.trim()), wait: null });
   expect(observations[2]?.progress).not.toBe(observations[1]?.progress);
   expect(JSON.stringify(observations)).not.toContain('Hullaballooing');
+  expect(privateEvidence[1]).toMatchObject({ launch: identity, incarnation: observations[1]?.incarnation,
+    subject: 'topic', terminal: recorded.captures[1].capture.trim() });
   expect(f.calls.filter(call => call[0] === 'kill-session')).toHaveLength(0);
 });
 
@@ -1421,7 +1425,9 @@ it('exports active and idle corroboration from recorded frames without claiming 
   const captures = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8')).captures;
   const idle = JSON.parse(readFileSync(new URL('../fixtures/claude-idle-2.1.280.json', import.meta.url), 'utf8')).pane.capture;
   const observations: Parameters<NonNullable<ProductionSessionConfig['observeActivity']>>[0][] = [];
-  const f = fixture('claude-code', { requireTurnHook: true, observeActivity: row => observations.push(row) });
+  const privateEvidence: Parameters<NonNullable<ProductionSessionConfig['observeRecovery']>>[0][] = [];
+  const f = fixture('claude-code', { requireTurnHook: true, observeActivity: row => observations.push(row),
+    observeRecovery: row => privateEvidence.push(row) });
   const id = f.launch(); value(f.deliver(id));
   for (const pane of [captures[0].capture, captures[1].capture, idle]) {
     f.changePane(pane);
@@ -1550,4 +1556,216 @@ it('replays recorded summary, uncertain, Jev, review and empty reply shapes besi
     expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).detail).toContain('harness menu');
     expect(f.sends).toBe(sends);
   }
+});
+
+it.each(['complete', 'missing-result', 'missing-receipt', 'expired-receipt'] as const)(
+  'retirement preserves only the exact closed bounded result: %s', mode => {
+    const f = fixture('claude-code', { requireTurnHook: true });
+    const identity = f.launch(); value(f.deliver(identity));
+    f.time(mode === 'expired-receipt' ? 2100 : 1100);
+    if (mode !== 'missing-receipt') f.hook(mode === 'expired-receipt' ? 2100 : 1100);
+    value(f.driver.stop({ claim: 'topic', incarnation: 'inc', processIdentity: identity }));
+    const observed = value(f.driver.observe({ operation: 'deliver', processIdentity: identity,
+      resultAvailable: mode !== 'missing-result' }));
+    expect(observed.phase).toBe(mode === 'complete' ? 'output-observed' : 'exit-observed');
+    if (mode === 'complete') expect(observed.evidence).toMatch(/^turn-closed:/u);
+  });
+
+
+it('carries stale-session job and conversation windows through the actual activity consumer and retained journal', () => {
+  const observed: import('../../src/assembly/production-session-driver.js').SessionActivityObservation[] = [];
+  const f = fixture('claude-code', { turnDeadlineMs: 14_400_000, requireTurnHook: true,
+    workKind: () => 'job', observeActivity: row => observed.push(row) });
+  const launched = f.launch(); f.deliver(launched);
+  f.changePane('Working on the request');
+  value(f.driver.observe({ operation: 'op', processIdentity: launched }));
+  f.time(1_801_000);
+  value(f.driver.observe({ operation: 'op', processIdentity: launched }));
+  expect(observed.at(-1)?.stale).toMatchObject({ state: 'stalled', episode: 1, windowMs: 1_800_000 });
+  expect(f.journal.sessions[0]?.staleObservation?.episode).toBe(1);
+  // Reconstructing the driver retains the episode; a repeated read is not a new episode or intervention.
+  const restarted = createProductionSessionDriver(f.config);
+  value(restarted.observe({ operation: 'op', processIdentity: launched }));
+  expect(observed.at(-1)?.stale?.episode).toBe(1);
+  expect(f.calls.filter(args => args[0] === 'kill-session')).toHaveLength(0);
+});
+
+it('stale observation preserves tuned progress floors, protection, unknown and long-indeterminate cadence', () => {
+  const empty = { transcriptSize: 1000, transcriptTail: 'first', descendantCpuSeconds: 0, mainProcessActive: false };
+  const input = { at: 0, kind: 'job' as const, protected: false, liveness: 'alive' as const, snapshot: empty, prompt: 'active' };
+  const baseline = advanceSessionStaleObservation(undefined, input);
+  const heartbeat = advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000,
+    snapshot: { ...empty, transcriptSize: 1001, transcriptTail: 'heartbeat' } });
+  expect(heartbeat.state).toBe('stalled');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000,
+    snapshot: { ...empty, transcriptSize: 1512, transcriptTail: 'meaningful' } }).state).toBe('progress');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000,
+    snapshot: { ...empty, transcriptSize: 1512, transcriptTail: 'first' } }).state).toBe('stalled');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000,
+    snapshot: { ...empty, descendantCpuSeconds: 1 } }).state).toBe('stalled');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000,
+    snapshot: { ...empty, descendantCpuSeconds: 1.1 } }).state).toBe('progress');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000, prompt: 'idle' }).state).toBe('progress');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000, protected: true }).state).toBe('protected');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 1_800_000, kind: 'conversation' }).state).toBe('progress');
+  expect(advanceSessionStaleObservation(baseline, { ...input, at: 10_800_000, kind: 'conversation' }).state).toBe('stalled');
+  let unknown = advanceSessionStaleObservation(undefined, { ...input, liveness: 'indeterminate' });
+  for (let count = 1; count < 15; count++) unknown = advanceSessionStaleObservation(unknown,
+    { ...input, at: count * 120_000, liveness: 'indeterminate' });
+  expect(unknown).toMatchObject({ state: 'unknown', longIndeterminate: true, indeterminateStreak: 15 });
+  expect(advanceSessionStaleObservation(unknown, { ...input, at: unknown.sampledAt, liveness: 'indeterminate' }).indeterminateStreak).toBe(15);
+  expect(advanceSessionStaleObservation(unknown, { ...input, at: unknown.sampledAt + 1 }).longIndeterminate).toBe(false);
+});
+
+
+it('async observations preserve per-worker indeterminate accounting, pause it globally and require fresh identity before effects', async () => {
+  const f = fixture('claude-code', { turnDeadlineMs: 14_400_000, requireTurnHook: true });
+  const identity = f.launch(); value(f.deliver(identity));
+  let reachable = true;
+  f.config.io.observeSession = async () => ({ state: 'indeterminate', identity, pane: null, at: f.config.now(), reachable });
+  for (let sample = 0; sample < 15; sample++) {
+    f.time(1000 + sample * 120_000);
+    expect(value(await f.driver.observeAsync({ operation: 'op', processIdentity: identity }))).toMatchObject({ phase: 'uncertain', observationAvailable: false });
+  }
+  expect(f.journal.sessions[0]?.staleObservation).toMatchObject({ longIndeterminate: true, indeterminateStreak: 15 });
+  reachable = false; f.time(2_000_000);
+  expect(value(await f.driver.observeAsync({ operation: 'op', processIdentity: identity }))).toMatchObject({ phase: 'uncertain', observationAvailable: false });
+  expect(f.journal.sessions[0]?.staleObservation?.indeterminateStreak).toBe(15);
+  f.config.io.observeSession = async () => ({ state: 'alive', identity, pane: 'working', at: f.config.now(), reachable: true });
+  f.changeStamp('999:2000'); f.time(14_500_000);
+  expect((await f.driver.observeAsync({ operation: 'op', processIdentity: identity })).kind).toBe('Refused');
+  expect(f.calls.some(args => args[0] === 'kill-session')).toBe(false);
+});
+
+it.each([false, true])('long-indeterminate capacity classification requires retained independent exposure (%s)', retained => {
+  const f = fixture(); const identity = f.launch();
+  f.config.io.save({ ...f.journal, sessions: f.journal.sessions.map(session => ({ ...session,
+    staleObservation: { ...advanceSessionStaleObservation(undefined, { at: 1000, kind: 'job', protected: false,
+      liveness: 'indeterminate', prompt: null, snapshot: { transcriptSize: null, transcriptTail: null,
+        descendantCpuSeconds: null, mainProcessActive: null } }), longIndeterminate: true, indeterminateStreak: 15 } })) });
+  f.config.io.retainedExposure = observed => observed === identity && retained;
+  const second = f.driver.launch({ operation: 'different-work', claim: 'different-claim', artifact: 'sha256:test',
+    incarnation: 'new-incarnation', workingScope: '/work', handles: [] });
+  expect(second.kind).toBe(retained ? 'Success' : 'Refused');
+  expect(f.journal.sessions.find(session => session.identity === identity)).toBeDefined();
+  expect(f.calls.some(args => args[0] === 'kill-session')).toBe(false);
+});
+
+
+it('accumulates subfloor CPU and transcript progress across fast polls without rewarding a slow heartbeat', () => {
+  const input = { at: 0, kind: 'job' as const, protected: false, liveness: 'alive' as const, prompt: 'active',
+    snapshot: { transcriptSize: 1000, transcriptTail: 'initial', descendantCpuSeconds: 0, mainProcessActive: false } };
+  let cpu = advanceSessionStaleObservation(undefined, input), transcript = cpu, heartbeat = cpu;
+  for (let poll = 1; poll <= 1801; poll++) {
+    cpu = advanceSessionStaleObservation(cpu, { ...input, at: poll * 1000,
+      snapshot: { ...input.snapshot, descendantCpuSeconds: poll * .5 } });
+    transcript = advanceSessionStaleObservation(transcript, { ...input, at: poll * 1000,
+      snapshot: { ...input.snapshot, transcriptSize: 1000 + poll * 100, transcriptTail: `tail-${poll}` } });
+    heartbeat = advanceSessionStaleObservation(heartbeat, { ...input, at: poll * 1000,
+      snapshot: { ...input.snapshot, transcriptSize: 1000 + Math.floor(poll / 120), transcriptTail: `heartbeat-${Math.floor(poll / 120)}` } });
+  }
+  expect(cpu.state).toBe('progress'); expect(cpu.lastProgressAt).toBeGreaterThan(1_790_000);
+  expect(transcript.state).toBe('progress'); expect(transcript.lastProgressAt).toBeGreaterThan(1_790_000);
+  expect(heartbeat).toMatchObject({ state: 'stalled', lastProgressAt: 0, episode: 1 });
+});
+
+// Carryover 02 r4: the physical primitives behind the owner's neutral nudge (1.x ActiveWorkSilenceSentinel),
+// exact redelivery (1.x TriageOrchestrator reinject_message), the typed-but-not-submitted signal
+// (1.x StallTriageNurse) and the restart lookup (1.x StaleSessionBackstop/ResumeQueue).
+const typedPane = '⏺ earlier output\n❯ Please summarize the three open items and reply to the operator';
+it('classifies the typed-but-not-submitted frame structurally, never while generating or at a menu', () => {
+  expect(classifyTypedUnsubmitted(typedPane, 'claude-code')).toBe(true);
+  expect(classifyTypedUnsubmitted('❯ short', 'claude-code')).toBe(false);
+  expect(classifyTypedUnsubmitted('❯ ', 'claude-code')).toBe(false);
+  expect(classifyTypedUnsubmitted(`${typedPane}\n✻ Working… (esc to interrupt)`, 'claude-code')).toBe(false);
+  // Scrollback markers above a quiet prompt do not disqualify the frame (adapted from 1.x, whose whole-capture
+  // glyph scan could never fire after any earlier answer); a marker at or below the input line still does.
+  expect(classifyTypedUnsubmitted('⎿ tool result\n❯ Please summarize the three open items now', 'claude-code')).toBe(true);
+  expect(classifyTypedUnsubmitted('❯ Please summarize the three open items now\n⎿ Running…', 'claude-code')).toBe(false);
+  expect(classifyTypedUnsubmitted('› Please summarize the three open items and reply', 'codex-cli')).toBe(true);
+  expect(classifyTypedUnsubmitted('Choose an option\n❯ 1. Yes, proceed with the long option text\n  2. No\nEnter to confirm · Esc to cancel', 'claude-code')).toBe(false);
+  expect(classifyTypedUnsubmitted('', 'claude-code')).toBe(false);
+});
+
+it('the open accepted turn reports the typed-but-not-submitted frame as a signal, never a turn close', () => {
+  const observations: { typedUnsubmitted?: boolean; activity?: string }[] = [];
+  const f = fixture('claude-code', { observeActivity: observation => { observations.push(observation); } });
+  const identity = f.launch(); value(f.deliver(identity));
+  f.changePane(typedPane);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('launched');
+  expect(observations.at(-1)).toMatchObject({ typedUnsubmitted: true, activity: 'indeterminate' });
+  f.changePane('⏺ answered\n❯ ');
+  f.time(1500); f.hook(1400);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('output-observed');
+  expect(observations.at(-1)!.typedUnsubmitted).toBeUndefined();
+});
+
+it('one neutral Enter per open turn: recorded before the keystroke, refused while generating, at a menu, on a wait, or twice', () => {
+  const f = fixture('claude-code'); const identity = f.launch();
+  const nudge = (reason = 'stall-triage:deliver:unresponsive') => value(f.driver.nudge({ processIdentity: identity, claim: 'topic', incarnation: 'inc', reason }));
+  expect(nudge()).toMatchObject({ state: 'refused', evidence: 'no open admitted turn; nothing to nudge' });
+  value(f.deliver(identity)); const sends = f.sends;
+  f.changePane('✻ Working… (esc to interrupt)');
+  expect(nudge()).toMatchObject({ state: 'refused', evidence: 'worker is generating; a nudge would be noise' });
+  f.changePane('Choose\n❯ 1. Yes\n  2. No\nEnter to confirm · Esc to cancel');
+  expect(nudge()).toMatchObject({ state: 'refused', evidence: 'harness menu needs exact authorization; no input sent' });
+  f.changePane("You've hit your usage limit · resets 3pm\n❯ ");
+  expect(nudge().evidence).toContain('wait signature');
+  expect(f.sends).toBe(sends);
+  f.changePane(typedPane);
+  let recordedBeforeKeystroke = false;
+  f.onEnter(() => { recordedBeforeKeystroke = f.journal.sessions[0]!.nudge?.turnStartedAt === f.journal.sessions[0]!.turnStartedAt; });
+  const sent = nudge();
+  expect(sent.state).toBe('nudged'); expect(sent.evidence).toMatch(/^nudge:instar20-[a-f0-9]{24}:sha256:/u);
+  expect(recordedBeforeKeystroke).toBe(true); expect(f.sends).toBe(sends + 1);
+  expect(f.journal.sessions[0]!.nudge).toMatchObject({ reason: 'stall-triage:deliver:unresponsive', at: 1000 });
+  expect(nudge()).toMatchObject({ state: 'refused', evidence: 'one neutral nudge per turn already sent' });
+  expect(f.sends).toBe(sends + 1);
+  expect(() => value(f.driver.nudge({ processIdentity: identity, claim: 'other', incarnation: 'inc', reason: 'x' }))).toThrow();
+  // A new admitted turn clears the record, so the next turn may receive its own single nudge.
+  f.changePane('⏺ answered\n❯ '); f.time(1500); f.hook(1400);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('output-observed');
+  expect(value(f.driver.deliver({ operation: 'second', processIdentity: identity, intake: 'input', digest: hash('hello'), incarnation: 'inc' })).startsWith('tmux-input')).toBe(true);
+  expect(f.journal.sessions[0]!.nudge).toBeNull();
+  f.stop();
+  expect(() => nudge()).toThrow(/stop authority/u);
+});
+
+it('exact redelivery happens at most once, only at a quiet prompt with no receipt, and turns the record sending before any input', () => {
+  const f = fixture('claude-code'); const identity = f.launch(); value(f.deliver(identity));
+  const redeliver = () => value(f.driver.redeliver({ operation: 'deliver', processIdentity: identity, intake: 'input', digest: hash('hello'), incarnation: 'inc' }));
+  f.changePane(typedPane);
+  expect(redeliver()).toMatchObject({ state: 'refused', evidence: expect.stringContaining('neutral nudge is the exact repair') });
+  f.changePane('✻ Working… (esc to interrupt)');
+  expect(redeliver().evidence).toContain('not at a quiet idle prompt');
+  f.changePane('❯ '); f.hook(1200); f.time(1300);
+  expect(redeliver().evidence).toContain('a turn receipt exists');
+  const g = fixture('claude-code'); const second = g.launch(); value(g.deliver(second));
+  const sends = g.sends; g.changePane('❯ ');
+  let sendingBeforeInput = false;
+  g.onPrepared(() => {});
+  g.onEnter(() => { sendingBeforeInput = g.journal.deliveries[0]!.redeliveries === 1; });
+  const result = value(g.driver.redeliver({ operation: 'deliver', processIdentity: second, intake: 'input', digest: hash('hello'), incarnation: 'inc' }));
+  expect(result).toEqual({ state: 'redelivered', evidence: 'tmux-input:deliver:redelivered' });
+  expect(sendingBeforeInput).toBe(true); expect(g.sends).toBeGreaterThan(sends);
+  expect(g.journal.deliveries[0]).toMatchObject({ state: 'accepted', redeliveries: 1, evidence: 'tmux-input:deliver:redelivered' });
+  expect(value(g.driver.redeliver({ operation: 'deliver', processIdentity: second, intake: 'input', digest: hash('hello'), incarnation: 'inc' })))
+    .toMatchObject({ state: 'refused', evidence: 'one redelivery per delivery already used' });
+  expect(() => value(g.driver.redeliver({ operation: 'deliver', processIdentity: second, intake: 'input', digest: hash('other'), incarnation: 'inc' }))).toThrow();
+  expect(value(g.driver.redeliver({ operation: 'never', processIdentity: second, intake: 'input', digest: hash('hello'), incarnation: 'inc' })).evidence).toBe('no recorded delivery to redeliver');
+});
+
+it('the restart lookup returns the one live, identity-verified worker of a claim with its accepted delivery digest, else null', () => {
+  const f = fixture('claude-code'); const identity = f.launch();
+  expect(value(f.driver.recoverWorker({ operation: 'op', claim: 'topic' }))).toEqual({ identity, incarnation: 'inc', deliveryDigest: null });
+  value(f.deliver(identity));
+  expect(value(f.driver.recoverWorker({ operation: 'op', claim: 'topic' }))).toEqual({ identity, incarnation: 'inc', deliveryDigest: null });
+  expect(value(f.driver.recoverWorker({ operation: 'deliver', claim: 'topic' }))).toBeNull();
+  const name = f.journal.sessions[0]!.name;
+  f.config.io.tmux(['kill-session', '-t', `=${name}:`]);
+  expect(value(f.driver.recoverWorker({ operation: 'op', claim: 'topic' }))).toBeNull();
+  const g = fixture('claude-code'); const second = g.launch();
+  g.changeStamp('999:1');
+  expect(() => value(g.driver.recoverWorker({ operation: 'op', claim: 'topic' }))).toThrow(/identity changed/u);
+  expect(second).toMatch(/^instar20-/u);
 });

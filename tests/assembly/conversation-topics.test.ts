@@ -818,7 +818,7 @@ it.each([128, 7500])('renewal uses the real journal budget and survives reopen (
     expect(journal.view.calls).toBe(reserved === 128 ? 256 : 7500);
     journal.close(); journal = open();
     expect(journal.view.calls).toBe(reserved === 128 ? 256 : 7500);
-    expect(journal.sessionWorkRecords().filter(row => row.id === 'operator:allowance:renew')).toHaveLength(1);
+    expect(journal.sessionWorkRecords().filter(row => 'id' in row && row.id === 'operator:allowance:renew')).toHaveLength(1);
     if (reserved === 128) {
       await f.port.close();
       f.config.store.load = () => createConversationHostStore(custodyPath, key).load(); f.restart();
@@ -841,5 +841,32 @@ it('renewal preserves the original parent deadline even when restarted with a la
   expect(f.state().allowanceDeadline).toBe(100000);
   await f.port.close(); f.restart(300000); f.advance(100000);
   expect(f.port.available()).toBe(false);
+  await f.port.close();
+});
+
+
+it('supervision charges the same parent allowance without consuming the worker checkpoint ordinal', async () => {
+  const f = fixture(2, 6, 16, 600000, true);
+  await f.port.run(f.request('7:task')); const claim = f.launches[0]!.worker.claim;
+  f.port.reserveReview(claim);
+  expect(f.state().topics['7']).toMatchObject({ spent: 2, claimCalls: 1 });
+  f.port.reserveCall(claim, 2);
+  expect(f.state().topics['7']).toMatchObject({ spent: 3, claimCalls: 2 });
+  expect(f.calls.map(row => row.ordinal)).toEqual([1, 2, 3]);
+  expect(new Set(f.calls.map(row => row.edge)).size).toBe(1);
+  expect(() => f.port.reserveReview('foreign')).toThrow(/unknown/);
+  f.failSave(); expect(() => f.port.reserveReview(claim)).toThrow('disk');
+  expect(f.calls.map(row => row.ordinal)).toEqual([1, 2, 3]);
+});
+
+// Carryover 02 r4: 1.x SessionMonitor walked every topic session; the registered population answers here
+// through each topic's own owner, pull-only.
+it('reports the supervision status of every recorded topic through its own owner', async () => {
+  const f = fixture();
+  expect(f.port.stallStatus!()).toEqual([]);
+  await f.port.run(f.request('7:a')); await f.port.run(f.request('8:b'));
+  const rows = f.port.stallStatus!();
+  expect(rows.map(row => row.conversation)).toEqual(['operator:7', 'operator:8']);
+  for (const row of rows) expect(row).toMatchObject({ worker: true, responsiveness: { state: 'healthy', userWaitMs: null }, episode: null, notices: [], counts: { nudges: 0, reviews: 0, restarts: 0 } });
   await f.port.close();
 });

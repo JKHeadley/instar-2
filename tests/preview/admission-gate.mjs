@@ -103,6 +103,9 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
 export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', ownerBrowser = null, upstreams = MODEL_UPSTREAMS, request = null }) {
   const secret = randomBytes(16).toString('hex');
   const claims = new Map();
+  // Carryover 02 admission continuity: endpoints restored for adopted claims, each a second loopback listener on the
+  // original port under the original secret. A claim is reachable only under the secret it was opened with.
+  const restoredServers = new Map();
   const reply = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
   const refuseModel = (res, message) => reply(res, 400, { type: 'error', error: { type: 'invalid_request_error', message } });
 
@@ -193,10 +196,12 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     return { decision: 'deny', reason: 'admission: unknown admission kind' };
   };
 
-  const server = http.createServer((req, res) => {
+  const handler = (req, res) => {
     const match = /^\/([0-9a-f]{32})\/([^/]+)(\/.*)?$/u.exec(req.url ?? '');
-    if (!match || match[1] !== secret) { req.resume(); return reply(res, 404, { error: 'not found' }); }
+    if (!match || match[1] !== secret && !restoredServers.has(match[1])) { req.resume(); return reply(res, 404, { error: 'not found' }); }
     const state = claims.get(match[2]), rest = match[3] ?? '/';
+    // The fresh secret serves only claims opened fresh; a restored secret serves only the claim(s) adopted under it.
+    if (state && state.secret !== match[1]) { req.resume(); return reply(res, 404, { error: 'not found' }); }
     if (!state || state.closed || stopped()) {
       req.resume();
       return rest === '/admit' ? reply(res, 200, { decision: 'deny', reason: 'admission: this step is closed or a stop is held; nothing runs' })
@@ -239,7 +244,8 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     forwarded.on('error', () => { if (!res.headersSent) reply(res, 502, { error: 'upstream unavailable' }); else res.destroy(); });
     req.pipe(forwarded);
     return undefined;
-  });
+  };
+  const server = http.createServer(handler);
   // A streaming upgrade would carry calls this server cannot count, so none is accepted: the harness uses HTTP.
   server.on('upgrade', (_req, socket) => socket.destroy());
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
@@ -277,11 +283,52 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     },
     /** The model endpoint and admission root for one claim. */
     base(claim) { if (!claimPattern.test(claim)) throw Error('admission gate: exact claim required'); return `http://127.0.0.1:${port}/${secret}/${claim}`; },
-    /** Opens a claim with its reserved allowance and the edge its delegations hang from; a new open starts from nothing. */
-    open(claim, { framework, allowance, edge, reserveCall }) {
+    /**
+     * Carryover 02 admission continuity: binds the original endpoint of an adopted claim (its recorded loopback port
+     * under its recorded secret) as a second listener. A port that is busy (the old controller still alive, or a
+     * foreign server) refuses by throwing; a successful bind proves nothing by itself, the host's lease, generation
+     * and stop fences still decide. The secret serves only claims later opened with `restored.secret` equal to it.
+     */
+    async restore({ port: restoredPort, secret: restoredSecret }) {
+      if (!Number.isSafeInteger(restoredPort) || restoredPort < 1 || restoredPort > 65535 || !/^[0-9a-f]{32}$/u.test(restoredSecret)
+        || restoredSecret === secret) throw Error('admission gate: exact recorded loopback port and secret required');
+      if (restoredServers.has(restoredSecret)) {
+        if (restoredServers.get(restoredSecret).port === restoredPort) return;
+        throw Error('admission gate: this secret is already restored on another port');
+      }
+      const listener = http.createServer(handler);
+      listener.on('upgrade', (_req, socket) => socket.destroy());
+      await new Promise((resolve, reject) => { listener.once('error', reject); listener.listen(restoredPort, '127.0.0.1', resolve); });
+      restoredServers.set(restoredSecret, { port: restoredPort, server: listener });
+    },
+    /** Opens a claim with its reserved allowance and the edge its delegations hang from; a new open starts from nothing
+     * unless `restored` carries the adopted claim's original state: durably spent calls, effects prepared without an
+     * observation, delegations still open, and the restored secret it is reachable under. */
+    open(claim, { framework, allowance, edge, reserveCall, restored = null }) {
       if (!claimPattern.test(claim) || !upstreams[framework] || !Number.isSafeInteger(allowance) || allowance < 1 || !edge?.id)
         throw Error('admission gate: claim, framework, allowance and edge required');
-      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), ownerReads: new Set(), toolPreparations: 0 });
+      const existing = claims.get(claim);
+      if (existing && !existing.closed) throw Error('admission gate: this claim is already open');
+      if (restored !== null) {
+        if (!restoredServers.has(restored.secret) || !Number.isSafeInteger(restored.calls) || restored.calls < 0 || restored.calls > allowance
+          || !Array.isArray(restored.uncertainEffects) || !Array.isArray(restored.delegations)
+          || restored.delegations.some(row => row?.parent !== edge.id || row.drawsOn !== edge.id || typeof row.id !== 'string'))
+          throw Error('admission gate: restored claim state must name a restored secret, its spent calls, effects and delegations');
+      }
+      claims.set(claim, { framework, allowance, edge, reserveCall, calls: restored?.calls ?? 0, refused: false, refusalReason: null, closed: false,
+        secret: restored ? restored.secret : secret,
+        delegations: new Map((restored?.delegations ?? []).map(row => [row.id, { edge: row, open: true, async: false, handles: [] }])),
+        effects: new Map((restored?.uncertainEffects ?? []).map(row => [String(row.id), { identity: row.id, operation: row.operation, digest: row.digest, restored: true }])),
+        ownerReads: new Set(), toolPreparations: 0 });
+    },
+    /** A host supervisor spends from this same pre-reserved worker allowance. */
+    reserveSupervisor(claim) {
+      const state = claims.get(claim);
+      if (!state || state.closed || stopped() || state.refused || state.calls >= state.allowance)
+        throw Error('admission gate: supervisor allowance unavailable');
+      try { state.reserveCall?.(state.calls + 1); }
+      catch { state.refused = true; state.refusalReason = 'reservation-unavailable'; throw Error('admission gate: supervisor reservation unavailable'); }
+      state.calls += 1;
     },
     /** Closes a claim: no further call or admission passes. Returns its final state. */
     close(claim) { const state = claims.get(claim); if (state) state.closed = true; return this.state(claim); },
@@ -295,8 +342,9 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     /** Marks a still-open child edge settled by its parent (the parent closes it, never this server). */
     settle(claim, edgeId) { const row = [...(claims.get(claim)?.delegations.values() ?? [])].find(entry => entry.edge.id === edgeId); if (row) row.open = false; },
     closeAll() { for (const state of claims.values()) state.closed = true; },
-    /** Stops the server; open keep-alive connections are ended, so a stop never waits on an idle harness. */
+    /** Stops the server and every restored listener; open keep-alive connections are ended, so a stop never waits on an idle harness. */
     stop() { for (const state of claims.values()) state.closed = true; server.closeAllConnections();
-      return new Promise(resolve => server.close(() => resolve())); },
+      const listeners = [server, ...[...restoredServers.values()].map(row => row.server)]; restoredServers.clear();
+      return Promise.all(listeners.map(listener => { listener.closeAllConnections(); return new Promise(resolve => listener.close(() => resolve())); })); },
   });
 }

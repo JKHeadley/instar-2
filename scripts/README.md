@@ -29,3 +29,10 @@ symlink targets and missing descendants. Use the agent home (`~/.instar/agents/<
 instead. Checks run on each Mac host, including existing installations at their next
 boot; Linux is unchanged. The check performs no writes and does not migrate existing
 state. The journal runner keeps status and stop accessible for an existing misplaced root.
+
+`process-control-kernel.mjs` supplies Linux physical exact-process observation and
+signalling to the admitted process-control adapter. It uses the host's isolated
+Python 3 pidfd bindings, a two-second helper bound, no hidden retry and no PID-only
+signal fallback. Start identity includes the boot UUID and kernel start ticks.
+A missing helper or unreadable observation remains unknown. Other platforms
+report unsupported; this adapter is not by itself permission to signal a process.

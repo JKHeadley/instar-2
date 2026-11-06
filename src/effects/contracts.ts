@@ -82,6 +82,25 @@ export interface OutboundMessage extends RecordIdentity {
   readonly context?: Readonly<{ input: Readonly<{ fact: string; reference: string; hash: string }>;
     manifest: readonly Readonly<{ class: string; reference: string; digest: string }>[] }>;
 }
+export interface ProcessControlTarget {
+  readonly machine: string; readonly incarnation: string; readonly pid: number; readonly parentPid: number;
+  readonly startIdentity: string; readonly parentStartIdentity: string;
+  readonly executable: string; readonly argvDigest: string;
+}
+/** Eight-owned process payload. Inventory is evidence, never authority. */
+export interface ProcessControlPayload extends RecordIdentity {
+  readonly type: 'ProcessControlPayload'; readonly purpose: 'process-control';
+  readonly semanticMessage: string; readonly run: string; readonly speaker: string;
+  readonly account: string; readonly conversation: string; readonly sourceResult: string;
+  readonly target: ProcessControlTarget; readonly action: 'interrupt' | 'terminate';
+  readonly signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL'; readonly generation: string;
+  readonly episode: string; readonly step: string; readonly deadline: number;
+}
+export type OperationPayload = OutboundMessage | ProcessControlPayload;
+export interface ProcessControlInvocation {
+  readonly operation: string; readonly claim: string; readonly digest: string;
+  readonly payload: ProcessControlPayload;
+}
 export interface EffectRequest extends RecordIdentity {
   readonly type: 'EffectRequest'; readonly definition: string; readonly message: string;
   readonly semanticMessage: string; readonly run: string; readonly pending: string;
@@ -109,7 +128,7 @@ export interface EffectSettlement extends RecordIdentity {
   readonly finalCharge: number | null; readonly delayedExecutionExcluded: boolean;
   readonly retainedExposure: number; readonly retryEligible: false;
 }
-export type EffectRecord = OperationDefinition | OutboundMessage | EffectRequest | EffectValidation | OperationObservation | EffectSettlement;
+export type EffectRecord = OperationDefinition | OutboundMessage | ProcessControlPayload | EffectRequest | EffectValidation | OperationObservation | EffectSettlement;
 
 // The host is a scoped assembly dependency, never request-supplied policy.
 export interface EffectHost {
@@ -140,9 +159,11 @@ export interface EffectCustodyPort {
 export interface OperationAdapterPort {
   readonly owner: 'part-ten'; readonly id: string;
   describe(): Readonly<{ readonly contract: string; readonly account: string; readonly conversation: string;
-    readonly maxCharge: number; readonly timeout: number; readonly hiddenRetries: 0 }>;
+    readonly maxCharge: number; readonly timeout: number; readonly hiddenRetries: 0; readonly processControl?: true }>;
   invoke(input: { readonly operation: string; readonly claim: string; readonly digest: string;
     readonly message: OutboundMessage }): Result<string>;
+  invokeProcess?(input: ProcessControlInvocation): Result<string>;
+  observeProcess?(input: Readonly<{ operation: string; digest: string; payload: ProcessControlPayload }>): Result<string>;
   // No claim and no create-if-missing input. This is a bounded read-only query.
   observe(input: { readonly operation: string; readonly digest: string; readonly account: string;
     readonly conversation: string }): Result<string>;
@@ -172,14 +193,14 @@ export interface EffectAssessmentPort {
 }
 export interface EffectDoorway {
   readonly owner: 'part-eight';
-  prepare(input: { readonly definition: string; readonly message: OutboundMessage; readonly run: RunReference;
+  prepare(input: { readonly definition: string; readonly message: OperationPayload; readonly run: RunReference;
     readonly pending: string; readonly attempt: string; readonly verificationOwner: string;
     readonly obligation: string; readonly closure: readonly string[]; readonly fence: FenceToken }): Result<EffectRequest>;
   // Adopt an operation ADMITTED AND RESERVED EXTERNALLY (by six, at a caller's request):
   // record eight's own EffectRequest against the caller's admission so the settle path
   // finds it, WITHOUT minting a second six reservation. The admission is the caller's;
   // dispatching against it is the new seam. `dispatch`/`settle` then apply unchanged.
-  adopt(input: { readonly definition: string; readonly message: OutboundMessage; readonly run: RunReference;
+  adopt(input: { readonly definition: string; readonly message: OperationPayload; readonly run: RunReference;
     readonly pending: string; readonly attempt: string; readonly verificationOwner: string;
     readonly obligation: string; readonly closure: readonly string[] }): Result<EffectRequest>;
   dispatch(request: EffectRequest, fence: FenceToken): Result<OperationObservation>;

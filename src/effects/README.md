@@ -4,12 +4,16 @@ Public entry: `@instar/constitutional-types/effects`. This is a **dark reference
 slice**, not live Telegram, a full part-eight implementation, or independent
 convergence. The approved design is `docs/12-the-effect-doorway.md`.
 
-The six stored owner records are OperationDefinition, OutboundMessage,
-EffectRequest, EffectValidation, OperationObservation and EffectSettlement.
-OperationAdapterPort is the seventh owned interface, not a stored fact. P1 owns
+The stored owner records include OperationDefinition, OutboundMessage,
+ProcessControlPayload, EffectRequest, EffectValidation, OperationObservation and
+EffectSettlement. OperationAdapterPort is an owned interface, not a stored fact. P1 owns
 Result, Outcome, principals, scope, approval and evidence; P2 owns signatures,
 fact admission, version chains, status/taint and durability receipts; P6 owns
 reservation, one-use claim, exposure and bounded observation wakes.
+
+## Capabilities
+
+- `process-control`: dark partial support: admitted exact-process signals, durable claims and independent settlement; installed recovery unproven.
 
 ## Composition
 
@@ -145,3 +149,22 @@ host's durable ledger before the send, and returns the recorded outcome for any 
 already dispatched: an unknown outcome stays `uncertain` and is never sent again. It holds
 no process, file or network API; `scripts/host-watch.mjs` (journal mode) supplies the ledger
 and the fixed Telegram bridge after three failed runner restarts.
+
+## Exact process-control payload
+
+`decodeProcessControlPayload` adds the approved process-control class to the same
+request, reservation, one-use claim, durable preparation, observation and settlement
+path. The existing ordinary-reply payload, schema version and request key stay
+unchanged. Process payloads bind the exact machine, worker incarnation, PID, parent
+PID and start identity, executable and ordered arguments, plus the supervised source
+result, episode, step, generation and deadline. Signals are separate immutable
+operations; a signal receipt cannot establish quiescence or complete the original
+work. Unsupported adapters refuse before dispatch.
+
+The confined assembly driver accepts only Eight's current one-use handoff after
+Six consumes the claim. Its trusted owner binding must match the selected target,
+run and source result. The Linux physical adapter pins a kernel pidfd before
+reading identity and signals that handle only. Nine remains the independent
+assessment owner; neither driver output nor an inventory selection settles an
+effect. Whole-feature carryover row 02 remains open for complete installed
+supervisor/population wiring, all-platform physical control and live acceptance.

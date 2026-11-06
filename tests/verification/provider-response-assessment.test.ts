@@ -121,6 +121,7 @@ it('P9-NF-64 P9-NF-65 P9-NF-66 registers only the exact Nine, Seven, and Ten fix
     'src/assembly/production-signer-reference.ts', 'tests/verification/provider-response-assessment.test.ts',
     'tests/rungraph/provider-answer-reply.test.ts', 'tests/e2e/fixed-installation-reply.test.ts',
     'tests/assembly/fixed-installation-contract.test.ts', 'tests/assembly/fixed-installation-bootstrap.test.ts',
+    'tests/assembly/production-conversation-session.test.ts',
     'tests/preview/proofs.test.ts', 'tests/preview/step-check.test.ts', 'tests/preview/proofs-launcher.test.ts'];
   try {
     for (const path of [...manifests, ...artifacts]) {
@@ -137,7 +138,7 @@ it('P9-NF-64 P9-NF-65 P9-NF-66 registers only the exact Nine, Seven, and Ten fix
       sources: Object.fromEntries(manifests.map(path => [path, JSON.stringify(changed[path] ?? originals[path])])) });
     const loaded = load();
     expect(loaded.catalog.fixtures.map(row => row.id).sort()).toEqual([
-      'P10-SI-06', 'P10-SI-09', 'P10-SI-17', 'P10-SI-24', 'P10-SI-37', 'P9-NF-64', 'P9-NF-65', 'P9-NF-66',
+      'P10-PROCESS-CONTROL-PARTIAL', 'P10-SI-06', 'P10-SI-09', 'P10-SI-17', 'P10-SI-24', 'P10-SI-37', 'P9-NF-64', 'P9-NF-65', 'P9-NF-66',
       'P9-PREVIEW-restore-equality', 'P9-PREVIEW-step-check-graduation']);
     expect(loaded.decoders.map(row => row.id).sort()).toEqual([
       'decodeCapturedProviderDecision', 'decodeHistoricalInstallationSelection', 'decodeHistoricalProductionSignerReference',
@@ -153,6 +154,10 @@ it('P9-NF-64 P9-NF-65 P9-NF-66 registers only the exact Nine, Seven, and Ten fix
     expect(loaded.documents).toEqual([]);
 
     const artifact = (path: string) => ({ path, hash: ownerHash(readFileSync(join(root, path), 'utf8')) });
+    const tenWrong = structuredClone(originals[manifests[2]!] as any);
+    tenWrong.fixtures.find((row: { id: string }) => row.id === 'P10-PROCESS-CONTROL-PARTIAL').artifact
+      = artifact('tests/rungraph/provider-answer-reply.test.ts');
+    expect(() => load({ [manifests[2]!]: tenWrong })).toThrow('wrong-owner inspection artifact');
     const nineWrong = structuredClone(originals[manifests[0]!] as any);
     nineWrong.fixtures[0].artifact = artifact('tests/rungraph/provider-answer-reply.test.ts');
     expect(() => load({ [manifests[0]!]: nineWrong })).toThrow('wrong-owner inspection artifact');

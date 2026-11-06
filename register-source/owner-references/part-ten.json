@@ -41,6 +41,14 @@
         "path": "tests/e2e/fixed-installation-reply.test.ts",
         "hash": "sha256:5765acacbe9588d6fb6847ae98b17e56a2d0a34e5fca55dd8684f9ebf28d4448"
       }
+    },
+    {
+      "id": "P10-PROCESS-CONTROL-PARTIAL",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/assembly/production-conversation-session.test.ts",
+        "hash": "sha256:fa80110ed1004e317d57bbd7ecc542cd05a166153a45d258f47e7b43823f5df7"
+      }
     }
   ],
   "probes": [],
@@ -50,7 +58,7 @@
       "id": "decodeInstallationSelectionAtOrigin",
       "module": {
         "path": "src/assembly/index.ts",
-        "hash": "sha256:f08fda556041a53f601464bb980e07f3435b74a152d07632bb2edeaf08417750"
+        "hash": "sha256:88787695206dc4edcf7859a2211063a16b655071d8753ac34f007e17610559f5"
       },
       "artifact": {
         "path": "src/assembly/installation-selection.ts",
@@ -61,7 +69,7 @@
       "id": "decodeHistoricalInstallationSelection",
       "module": {
         "path": "src/assembly/index.ts",
-        "hash": "sha256:f08fda556041a53f601464bb980e07f3435b74a152d07632bb2edeaf08417750"
+        "hash": "sha256:88787695206dc4edcf7859a2211063a16b655071d8753ac34f007e17610559f5"
       },
       "artifact": {
         "path": "src/assembly/installation-selection.ts",
@@ -72,7 +80,7 @@
       "id": "decodeProductionSignerReferenceAtOrigin",
       "module": {
         "path": "src/assembly/index.ts",
-        "hash": "sha256:f08fda556041a53f601464bb980e07f3435b74a152d07632bb2edeaf08417750"
+        "hash": "sha256:88787695206dc4edcf7859a2211063a16b655071d8753ac34f007e17610559f5"
       },
       "artifact": {
         "path": "src/assembly/production-signer-reference.ts",
@@ -83,7 +91,7 @@
       "id": "decodeHistoricalProductionSignerReference",
       "module": {
         "path": "src/assembly/index.ts",
-        "hash": "sha256:f08fda556041a53f601464bb980e07f3435b74a152d07632bb2edeaf08417750"
+        "hash": "sha256:88787695206dc4edcf7859a2211063a16b655071d8753ac34f007e17610559f5"
       },
       "artifact": {
         "path": "src/assembly/production-signer-reference.ts",

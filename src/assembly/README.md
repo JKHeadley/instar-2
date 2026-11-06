@@ -178,6 +178,8 @@ measured bound proposal is in the R5 progress handoff.
 
 ## Capabilities
 
+- `process-control-kernel`: dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery unproven.
+
 - `harness-doorway-parity`: binds each supported harness and model doorway to certified code; the rest are marked unproven.
   Details: binds each supported harness and model doorway to its certified code and runtime; the rest are marked unproven or unsupported.
 
@@ -470,3 +472,111 @@ path and sends one signed infrastructure notice under the original reply identit
 with the existing stop, cap, ownership, audience and unknown-send protections. No
 operator stop is fabricated, no run is declared complete, and no uncertain action is
 retried. The minimal operator responder retains its independent admission.
+
+### Exact process-control driver
+
+`createProcessControlAdapter` delegates an admitted Eight process-control payload
+to the host's kernel identity port only inside the current one-use Six/Eight
+handoff. The trusted binding ties the action to the supervised exact target and
+source result and the complete accepted payload digest (including signal, step and
+deadline). The adapter snapshots this selection; mutating caller data cannot
+retarget an already composed actuator. Read-only observation reports running, exited or unknown; a signal
+receipt is not quiescence, settlement or completion of a user's work.
+
+The Linux host implementation is `scripts/process-control-kernel.mjs`. It opens a
+pidfd before action-time start, parent, executable and ordered-argument checks and
+signals through the pinned handle. It has no numeric-PID kill fallback. Other
+platforms report unsupported pending the corresponding kernel/owned-child
+implementation; whole carryover row 02 therefore remains open.
+
+The existing conversation owner retains every admitted batch member during
+replacement and queued restoration. Unknown observer results keep the original
+input and worker custody. Bounded supervision can use an optional exact-process
+intervention port; durable intent precedes dispatch, and uncertain outcomes are
+observed without replay. The one-shot work owner exposes the same supervised
+port and shares its original call allowance. Its default deadline still precedes
+the inherited stale-job threshold; installed frozen-job recovery is not claimed.
+The production runner's typed review parser (`interpretStallDecision`) returns the
+1.x TriageOrchestrator vocabulary; it still installs no process intervention, so an
+`auto_interrupt` judgment is at most a notice until the Eight/Six/Ten/Nine
+composition names the accepted supervision result, the governed process
+operation definition and version, the current fence/generation/stop, the exact
+registered worker root and target incarnation, and an independent
+occurrence/quiescence/charge observer.
+
+### Carried supervision lifecycle (1.x seven-module carryover, row 02)
+
+The conversation owner (`production-conversation-session.ts`) holds the whole
+ordinary lifecycle in its existing custody, with the inherited tuned values in
+`STALL_RECOVERY_LIMITS`:
+
+- Neutral nudge first (ActiveWorkSilenceSentinel): when an episode is due, one
+  bare Enter goes to the exact live worker through the adapter's `nudge` control
+  (the driver records intent before the keystroke and refuses while the frame
+  generates, shows a menu or a wait signature, and after one per turn). A frame
+  that changes inside the thirty-second verification window is the recovery and
+  spends no judgment; a silent one is recorded `verified-silent` and the bounded
+  review follows. Adapters without the primitive review as before.
+- Responsiveness (SessionMonitor): an operator message unanswered for ten minutes
+  while the frame sits idle or indeterminate and unchanged for the nurse cooldown
+  is a trigger; an active frame keeps the ninety-minute frozen-indicator backstop;
+  fifteen minutes idle after a reply is normal. `stallStatus()` projects the state,
+  the user wait, the episode, the funnel counts and one deduplicated notice per
+  unanswered message (thirty-minute cooldown), pull-only.
+- Typed-but-unsubmitted fast path (StallTriageNurse): the driver's structural
+  `classifyTypedUnsubmitted` signal nudges after the cooldown, before any review.
+- Typed judgment (TriageOrchestrator): six classifications, six actions. The owner
+  validates every action: `auto-restart` needs the confidence floor, the confirmed
+  frozen frame and the replay fences and then runs the existing fenced replacement;
+  `reinject` redelivers the exact accepted delivery once through the driver's
+  `redeliver` (the existing `redeliveries` bound) only with no effect since dispatch;
+  `suggest-*` and an uncomposed `auto-interrupt` are notices; `followUpMinutes`
+  schedules the next review at or above the cooldown, within the three-review
+  ceiling, cancelled with the episode when the turn ends.
+- Pressure (nurse/orchestrator): three worker replacements within ten minutes end
+  automatic restart for supervised and lost workers alike; five auto actions per
+  hour bound nudges, redeliveries and restarts. Fifty history rows per conversation.
+
+The one-shot owner (`production-session-work.ts`) adopts the original live worker
+after a host restart (StaleSessionBackstop/ResumeQueue): the open edge's exact
+intake digest and registered claim are matched through the driver's
+`recoverWorker`; the step resumes under the original edge id, deadline, allowance
+and result destination, with no launch, delivery or replay, and closes once with
+the original identity. Admission continuity (desk source decision 2026-11-05): the
+adopted claim reopens on its ORIGINAL checkpoint endpoint with its ORIGINAL
+liability, in the existing owners and with no new store, service, protocol or grant.
+
+- Durable intent: every one-shot model call records a `SessionWorkCall { edge,
+  ordinal, at }` row through the gate's existing `reserveCall` hook before it is
+  forwarded; the journal enforces contiguity and the edge's reservation and charges
+  nothing twice (the edge reserved the liability). The spent count after a restart
+  is the contiguous high-water ordinal; a gap, duplicate or disorder refuses.
+- Transcript check: the worker's own transcript count since the edge opened may not
+  exceed the intents (surprising, refuses) and may fall short (an intent recorded
+  and never answered keeps its liability; nothing is refunded).
+- Endpoint: the host's `restoreAdmission` reads the claim's own recorded `gate`
+  through `readSessionAdmissionGate` (this user's regular, single-link, 0600 file
+  at the exact claim path, naming this claim on loopback; authority for nothing),
+  binds that port under that secret as a second gate listener only after the
+  owner's lease, and refuses a busy or foreign port. A bind is never owner proof:
+  the existing lease, generation and stop fences decide. The restored secret serves
+  only the claim adopted under it; the host's own claims stay under the fresh secret.
+- State: `open(claim, { restored })` starts at the spent intents, with the edge's
+  effects prepared without an observation and its delegations without a close
+  restored as they are, so the replay fences hold and the delegations settle through
+  the existing close path. The old step's shell network checkpoint and connectors
+  are not re-attached; that traffic fails closed as before.
+- Proof: a real worker process with the endpoint baked at spawn spends 5 of 24
+  through host A's gate, host A retires lawfully, host B restores the endpoint under
+  its lease, and the worker's next 19 calls pass while the 20th is refused by the
+  gate; busy or foreign ports, substituted configs, stale or ambiguous workers,
+  unknown or exceeded liability, stop and deadline refuse without a launch, delivery
+  or replenishment.
+
+The step's 600 000 ms lifetime still ends before the inherited 1 800 000 ms stale
+window by design; the one-shot owner reads the existing registered-work watcher
+(60 s indeterminate silence, 90 min active) as its stale signal instead.
+
+The host session IO's control-plane observer (DegradedTmuxGuard) now also yields
+one deduplicated notice per degraded episode, re-raised at the thirty-minute
+cadence and closed by a clean cycle; it never touches the shared server.

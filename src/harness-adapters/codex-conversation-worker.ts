@@ -136,6 +136,8 @@ export function createCodexConversationWorker(input: Readonly<{
       if (target.idleEvidence !== undefined && idleFingerprint(target) !== target.idleEvidence)
         return { state: 'refused', evidence: 'idle evidence changed; worker kept' };
       if (target.action === 'compact') return { state: 'refused', evidence: 'use grounded replacement' };
+      // The app-server protocol has no pane: a neutral keystroke or redelivery is refused, never a close.
+      if (target.action === 'nudge' || target.action === 'redeliver') return { state: 'refused', evidence: `${target.action} is not a protocol worker primitive` };
       if (connection) {
         verify(target); feed();
         if (reader?.snapshot().status === 'open' && connection.alive()) {

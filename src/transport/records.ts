@@ -410,10 +410,20 @@ export function validateTransition(r: TransportRecord, all: readonly TransportFa
           && (f.body as { record?: { id?: string } }).record?.id ===
             (outbound.body as { record?: { message?: string } }).record?.message);
         const message = outboundMessage?.body as { record?: { run?: string; purpose?: string } } | undefined;
+        const processPayloadFact = outbound && facts.find(f => f.kind === 'effect-ProcessControlPayload'
+          && (f.body as { record?: { id?: string } }).record?.id ===
+            (outbound.body as { record?: { message?: string } }).record?.message);
+        const processPayload = processPayloadFact?.body as { record?: { run?: string; purpose?: string; generation?: string; semanticMessage?: string } } | undefined;
+        const processRequest = outbound?.body as { record?: { run?: string; digest?: string; attempt?: string } } | undefined;
+        const processControl = outbound && r.run === serving.slot && processPayload?.record?.run === r.run
+          && processPayload.record.purpose === 'process-control' && processPayload.record.generation === r.fence.generation
+          && processPayload.record.semanticMessage === r.semanticMessage && encoded(processPayload.record).hash === r.digest
+          && processRequest?.record?.run === r.run && processRequest.record.digest === r.digest
+          && processRequest.record.attempt === r.attempt;
         const contextDelivery = outbound && r.run === serving.slot
           && message?.record?.run === r.run && message.record.purpose === 'context-delivery';
-        ensure(request || contextDelivery || outbound && pair?.reply === r.run,
-          'serving operation requires its provider, context delivery, or exact accepted-answer reply request');
+        ensure(request || contextDelivery || processControl || outbound && pair?.reply === r.run,
+          'serving operation requires its provider, context delivery, exact process control, or exact accepted-answer reply request');
         if (request) ensure(r.run === serving.slot && r.charge <= serving.binding.providerMax,
           'provider operation exceeds serving maximum');
         if (pair?.reply === r.run) ensure(r.charge <= serving.binding.replyMax,

@@ -2579,10 +2579,16 @@ function projectSessionWork(view: JournalView, record: SessionWorkEdge | Session
   if (record.type === 'SessionWorkCall') {
     const edge = view.activeSessionWork?.[record.edge];
     const prior = view.sessionWorkCallOrdinals?.[record.edge] ?? 0;
-    if (edge?.charge !== 'per-call' || edge.drawsOn !== undefined || record.ordinal !== prior + 1
-      || view.calls >= view.limits.maxCalls) throw Error('preview journal: conversation call reserve refused');
+    if (!edge || edge.drawsOn !== undefined || record.ordinal !== prior + 1) throw Error('preview journal: conversation call reserve refused');
+    if (edge.charge === 'per-call') {
+      if (view.calls >= view.limits.maxCalls) throw Error('preview journal: conversation call reserve refused');
+      view.calls += 1;
+    } else if (record.ordinal > edge.budget.calls) {
+      // Carryover 02: a reserved (one-shot) edge records each call's durable intent ordinal against the
+      // liability it already reserved; contiguity is enforced here, so the high-water ordinal is the spent count.
+      throw Error('preview journal: reserved call intent past the edge reservation');
+    }
     view.sessionWorkCallOrdinals = { ...view.sessionWorkCallOrdinals, [record.edge]: record.ordinal };
-    view.calls += 1;
     return;
   }
   // The effect owner's stable identities: one prepared record per identity, so the same send is never prepared twice.
@@ -5709,9 +5715,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       }
       return rows;
     };
-    const sessionWorkRecords = (): readonly (SessionWorkEdge | SessionWorkEdgeClose)[] =>
-      recoveryRecords(row => row.kind === 'session-work').flatMap(row => row.kind === 'session-work'
-        && (row.record.type === 'SessionWorkEdge' || row.record.type === 'SessionWorkEdgeClose') ? [row.record] : []);
+    const sessionWorkRecords = (): readonly (SessionWorkEdge | SessionWorkEdgeClose | SessionWorkCall | SessionWorkEffect)[] =>
+      recoveryRecords(row => row.kind === 'session-work').flatMap(row => row.kind === 'session-work' ? [row.record] : []);
     // The ordinary tool-backed obligation uses the same durable checkpoint as its normal return:
     // recorded model output, verified process allocation return, and settled tool/child results.
     const obligationCheckpoint = (id: string): (SessionWorkOutcome & { usage?: ModelUsage }) | null => {

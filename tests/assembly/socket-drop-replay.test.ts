@@ -8,7 +8,7 @@ import type { ConversationState, ConversationSessionConfig, ConversationSessionP
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 // @ts-expect-error Host-only JavaScript projection used by the shipped launcher.
-import { createWorkingActivities } from '../preview/working-activity.mjs';
+import { createWorkingActivities, observeSessionDriver } from '../preview/working-activity.mjs';
 
 const capture = JSON.parse(readFileSync(new URL('../preview/fixtures/socket-drop-worker-1016101-2026-10-16.json', import.meta.url), 'utf8'));
 const persistent = capture.runs[1];
@@ -74,11 +74,10 @@ function replay(result: string | null, stopAtRetry = false) {
         protectedSessions: [], requireTurnHook: true, hookScript: '/installed/stop.mjs', inboxDirectory: '/inbox',
         toolAdmission: { command: () => '/installed/tool-hook', timeoutSeconds: 2 },
         modelGate: claim => `http://127.0.0.1:1234/${'a'.repeat(32)}/${claim}` });
-        return { ...driver, observe: input => {
-          const observed = driver.observe(input);
+        return observeSessionDriver(driver, (input: Parameters<typeof driver.observe>[0], observed: ReturnType<typeof driver.observe>) => {
           activities.observeSession(journal.sessions.find(row => row.identity === input.processIdentity), observed);
           return observed;
-        } };
+        });
       } }),
   };
   port = value(createConversationSessionPort(config));

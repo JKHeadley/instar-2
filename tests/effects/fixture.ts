@@ -22,7 +22,7 @@ export function effectFixture(directory = mkdtempSync(join(tmpdir(), 'p8-')), in
   const f = factsFixture();
   // Separate agent executor and person approving the exact definition.
   f.grant({ id: 'agent-grant', grantee: f.bob });
-  const register = { ...f.ctx.decode.register, entries: [...f.ctx.decode.register.entries, 'reply', 'telegram-fixture'] };
+  const register = { ...f.ctx.decode.register, entries: [...f.ctx.decode.register.entries, 'reply', 'telegram-fixture', ...[definitionOverrides.feature, definitionOverrides.adapter].filter((v): v is string => typeof v === 'string')] };
   const decodeContext = { ...f.ctx.decode, register };
   const boundary = { ...f.c, register };
   let now = 100, stopped = false;

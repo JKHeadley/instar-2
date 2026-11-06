@@ -9,14 +9,16 @@ import { afterEach, expect, it } from 'vitest';
 import { createSessionWorkPort, nestedSessionWorkEdge, SESSION_WORK_EXIT_TEST, sessionWorkEffect, sessionWorkPrompt } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error physical host is plain JavaScript
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
-import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkIO } from '../../src/assembly/production-session-work.js';
+import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkIO, SessionWorkConfig, SessionWorkEffect, SessionWorkCall } from '../../src/assembly/production-session-work.js';
 import { createProductionSessionDriver, type SessionIO, type SessionJournal } from '../../src/assembly/production-session-driver.js';
 import type { NativeHarnessDriverPort } from '../../src/assembly/harness.js';
 import { openPreviewJournal, validateSessionWorkRow } from '../preview/journal.js';
 import { createLiveSentinels, WORK_SILENCE_MS } from '../preview/live-sentinels.js';
 import type { LiveSentinelPorts } from '../preview/live-sentinels.js';
+import { interpretStallDecision, stallSample as reviewerStallSample } from '../preview/stall-review.js';
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
+import { processControlFixture, startOwnProcessFixture } from '../effects/process-control-fixture.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -32,7 +34,7 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-work-'))); roots.push(root);
   const scope = join(root, 'scope'); mkdirSync(scope, { recursive: true, mode: 0o700 });
   let clock = 1_000_000;
-  const rows: (SessionWorkEdge | SessionWorkEdgeClose)[] = [];
+  const rows: (SessionWorkEdge | SessionWorkEdgeClose | SessionWorkCall | SessionWorkEffect)[] = [];
   const delivered: string[] = [];
   const phases = [...(options.phases ?? ['launched', 'output-observed'])];
   let stopped = false, launches = 0, stops = 0, released = 0, attached: string[] = [];
@@ -68,7 +70,7 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
     },
     stop: () => { stops += 1; return options.stopFails ? { kind: 'Refused' } as never : f.success(['instar20-stopped']); },
   };
-  const port = value(createSessionWorkPort({
+  const config: SessionWorkConfig = {
     createDriver: resolveIntake => { (driver as unknown as { resolve: typeof resolveIntake }).resolve = resolveIntake; return driver; },
     io, context: f.c, now: () => clock, stopped: () => stopped,
     resources: { admit: async () => options.admit === 'refuse' ? null : {
@@ -79,11 +81,12 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
     transport: 'tmux session on this machine', workingScope: scope, resultDirectory: scope,
     artifact: 'doorway:synthetic', incarnation: 'incarnation-1',
     deadlineMs: options.deadlineMs ?? 60_000, pollMs: 500,
-    maxResultBytes: options.maxResultBytes ?? 65536, maxSteps: options.maxSteps ?? 2, maxCalls: options.maxCalls ?? 24 }));
+    maxResultBytes: options.maxResultBytes ?? 65536, maxSteps: options.maxSteps ?? 2, maxCalls: options.maxCalls ?? 24 };
+  const port = value(createSessionWorkPort(config));
   const request = (operation = 'obligation-commitment-1-2') => ({ operation,
     question: 'Do the one due step.', context: '{"obligation":{"kind":"request"}}',
     authority: 'a test-only grant naming one bounded step' });
-  return { port, rows, scope, io, request, driver, prepared, edges, admissionsClosed: () => admissionsClosed,
+  return { port, config, rows, scope, io, request, driver, prepared, edges, admissionsClosed: () => admissionsClosed,
     resultPath: (operation = 'obligation-commitment-1-2') =>
       join(scope, `work-${createHash('sha256').update(operation).digest('hex').slice(0, 32)}.json`),
     /** The child's result, written when its turn closes. `null` means the child wrote nothing. */
@@ -216,17 +219,39 @@ it('closes every path durably: a turn with no result fails, an oversized result 
   expect(refused.counts()).toMatchObject({ stops: 1, released: 1 });
 });
 
-it('clears a leftover result first, so a stale file is never read as this step\'s answer', async () => {
-  const f = fixture();
-  f.answers('{"outcome":"report","report":"from an earlier step"}');
+it('restores the same operation without triage rather than clearing its original result', async () => {
+  const f = fixture(); f.answers(recordedWork.workOutput);
   expect((await f.port.run(f.request())).state).toBe('complete');
-  expect(f.io.readResult(f.resultPath(), 65536)).not.toBe(null);
-  // The next step on the same operation starts with the destination cleared; this child writes
-  // nothing, so the step fails rather than returning the earlier step's answer again.
   f.answers(null);
-  expect(await f.port.run(f.request())).toMatchObject({ state: 'failed' });
-  expect(f.io.readResult(f.resultPath(), 65536)).toBe(null);
+  const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart' }));
+  expect(await restarted.run(f.request())).toMatchObject({ state: 'complete', text: recordedWork.workOutput });
+  expect(f.counts().launches).toBe(1);
+  expect(f.io.readResult(f.resultPath(), 65536)).toBe(recordedWork.workOutput);
+  for (const patch of [{ question: 'changed' }, { context: 'changed' }, { authority: 'revoked-and-replaced' }])
+    await expect(restarted.run({ ...f.request(), ...patch })).rejects.toThrow('request bytes or authority differ');
 });
+
+it('retains an open original operation across restart even when the triage supplier is absent', async () => {
+  const f = fixture(); f.answers(recordedWork.workOutput);
+  await f.port.run(f.request());
+  f.rows.pop(); // Host lost before its durable close: the original effect is UNKNOWN.
+  const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'new-host' }));
+  expect(await restarted.run(f.request())).toMatchObject({ state: 'uncertain' });
+  expect(f.counts().launches).toBe(1);
+  expect(f.rows).toHaveLength(1);
+});
+
+it('a restarted owner retains the original launch step ceiling', async () => {
+  const f = fixture({ maxSteps: 1 }); f.answers(recordedWork.workOutput);
+  await f.port.run(f.request());
+  const restarted = value(createSessionWorkPort(f.config));
+  expect(restarted.stepsUsed()).toBe(1);
+  expect(restarted.available()).toBe(false);
+  expect(await restarted.run(f.request())).toMatchObject({ state: 'complete' });
+  await expect(restarted.run(f.request('another-operation'))).rejects.toThrow('step ceiling');
+  expect(f.counts().launches).toBe(1);
+});
+
 it('a result present before the step is cleared, not read', async () => {
   const f = fixture();
   f.writeNow('{"outcome":"report","report":"planted"}');
@@ -726,3 +751,567 @@ it('a reservation failure stays uncertain without claiming that the allowance wa
   expect(closed.detail).toContain('model call reservation unavailable');
   expect(closed.detail).not.toContain('past the reserved allowance');
 });
+
+it('registered one-shot work spends the same allowance, consumes real process intervention and returns its original recorded result', async () => {
+  const own = await startOwnProcessFixture('incarnation-1');
+  try {
+    const f = fixture({ phases: ['launched', 'launched', 'output-observed'] }); f.advance(-999900);
+    const formal = processControlFixture(own.target, own.kernel, { episode: 'stall-triage:obligation-commitment-1-2:100', signal: 'SIGINT' });
+    const records: SessionWorkEffect[] = [];
+    let reservations = 0, dispatches = 0;
+    f.io.admissionState = () => ({ refused: false, openDelegations: [], uncertainEffects: 0, toolPreparations: 0 });
+    Object.assign(f.config, { workRecovery: {
+      observe: (worker: { claim: string; incarnation: string; launch: string }) => ({ ...worker, at: f.now(),
+        progress: 'frozen', activity: 'idle', waiting: false, stale: { state: 'stalled', lastProgressAt: 1, windowMs: 1 } }),
+      allowed: () => true, reserve: () => { reservations++; },
+      review: async () => ({ kind: 'process-control', payload: formal.payload }),
+      record: (record: SessionWorkEffect) => { validateSessionWorkRow(record); records.push(record); },
+      intervention: { run: formal.run.id, machine: own.target.machine,
+        reconcile: async () => { throw Error('already settled'); },
+        intervene: async () => {
+          dispatches++; expect(records[0]?.state).toBe('prepared');
+          const request = formal.prepare(), observation = value(formal.api.dispatch(request, formal.fence));
+          const [, signal] = await own.exit;
+          formal.recordIndependentEvidence(observation.operation, request.digest, signal);
+          f.answers(recordedWork.workOutput);
+          return formal.api.settle(observation.operation);
+        } }
+    } });
+    const result = await f.port.run(f.request());
+    expect(result).toMatchObject({ state: 'complete', text: recordedWork.workOutput });
+    expect(records.map(record => record.state)).toEqual(['prepared', 'observed']);
+    expect(reservations).toBe(1); expect(dispatches).toBe(1);
+    expect(f.rows.at(-1)).toMatchObject({ calls: 1, reserved: 24, cleanupConfirmed: true });
+    expect(await f.port.run(f.request())).toMatchObject({ state: 'complete', text: recordedWork.workOutput });
+    expect(dispatches).toBe(1); expect(f.counts().launches).toBe(1);
+  } finally { own.close(); }
+}, 60000);
+
+it.each(['protected', 'unknown', 'waiting', 'helper', 'effect', 'changed', 'no-reservation'] as const)(
+  'registered one-shot supervision holds %s without intervention and preserves normal completion', async mode => {
+    const f = fixture(); f.answers(recordedWork.workOutput);
+    let reservations = 0, reviews = 0, interventions = 0;
+    f.io.admissionState = () => ({ refused: false, openDelegations: mode === 'helper' ? [f.edges[0]!] : [],
+      uncertainEffects: mode === 'effect' ? 1 : 0, toolPreparations: 0 });
+    Object.assign(f.config, { workRecovery: {
+      observe: (worker: { claim: string; incarnation: string; launch: string }) => ({ ...worker, at: f.now(),
+        progress: mode === 'changed' && reviews ? 'changed' : 'frozen', activity: mode === 'unknown' ? 'unknown' : 'idle',
+        waiting: mode === 'waiting', stale: { state: mode === 'protected' ? 'protected' : 'stalled', lastProgressAt: 1, windowMs: 1 } }),
+      allowed: () => true, reserve: () => { if (mode === 'no-reservation') throw Error('cap'); reservations++; },
+      review: async () => { reviews++; return 'unknown'; }, record: () => { interventions++; },
+    } });
+    const result = await f.port.run(f.request());
+    expect(interventions).toBe(0); expect(f.counts().launches).toBe(1);
+    if (mode === 'helper') expect(result.state).toBe('uncertain'); else expect(result.state).toBe('complete');
+    if (['protected', 'unknown', 'waiting', 'helper', 'effect', 'no-reservation'].includes(mode)) expect(reservations).toBe(0);
+  });
+
+
+it.each(['protected', 'unknown', 'progress', 'exit', 'unchanged'] as const)(
+  'one-shot process judgment cannot override fresh physical %s evidence', async mode => {
+    const f = fixture({ phases: mode === 'exit' ? ['launched', 'exit-observed'] : ['launched', 'launched', 'output-observed'] });
+    f.advance(-999900); f.answers(recordedWork.workOutput);
+    const target = { ...processControlFixture().payload.target, incarnation: 'incarnation-1' };
+    const formal = processControlFixture(target, undefined, { episode: 'stall-triage:obligation-commitment-1-2:100', signal: 'SIGINT' });
+    let physicalChanged = false, cacheChanged = false, observations = 0, preparations = 0, interventions = 0;
+    const observe = f.driver.observe;
+    f.driver.observe = input => { observations++; if (physicalChanged) cacheChanged = true; return observe(input); };
+    f.io.admissionState = () => ({ refused: false, openDelegations: [], uncertainEffects: 0, toolPreparations: 0 });
+    Object.assign(f.config, { workRecovery: {
+      observe: (worker: { claim: string; incarnation: string; launch: string }) => ({ ...worker, at: f.now(),
+        progress: cacheChanged && mode === 'progress' ? 'advanced' : 'frozen', activity: 'idle', waiting: false,
+        stale: { state: cacheChanged && (mode === 'protected' || mode === 'unknown') ? mode : 'stalled', lastProgressAt: 1, windowMs: 1 } }),
+      allowed: () => true, reserve: () => {}, review: async () => { physicalChanged = true; return { kind: 'process-control', payload: formal.payload }; },
+      record: () => { preparations++; }, intervention: { run: formal.run.id, machine: formal.payload.target.machine,
+        reconcile: async () => { throw Error('not expected'); }, intervene: async () => { interventions++; throw Error('not expected'); } }
+    } });
+    const outcome = await f.port.run(f.request());
+    expect(observations).toBeGreaterThanOrEqual(2); expect(cacheChanged).toBe(true);
+    expect(preparations).toBe(mode === 'unchanged' ? 1 : 0); expect(interventions).toBe(mode === 'unchanged' ? 1 : 0);
+    expect(outcome.state).toBe(mode === 'exit' || mode === 'unchanged' ? 'uncertain' : 'complete');
+    if (mode === 'exit') { expect(outcome.text).toBeUndefined(); expect(outcome.detail).toContain('ended during supervision'); }
+  });
+
+it.each(['wait', 'unknown', 'failure'] as const)('one-shot paused worker survives supervised %s until its original result', async decision => {
+  const f = fixture({ phases: ['pause-observed', 'pause-observed', 'output-observed'] }); f.answers(recordedWork.workOutput);
+  let reviews = 0;
+  const observe = f.driver.observe;
+  f.driver.observe = input => { expect(f.counts().stops).toBe(0); return observe(input); };
+  f.io.admissionState = () => ({ refused: false, openDelegations: [], uncertainEffects: 0, toolPreparations: 0 });
+  Object.assign(f.config, { workRecovery: {
+    observe: (worker: { claim: string; incarnation: string; launch: string }) => ({ ...worker, at: f.now(), progress: 'frozen', activity: 'idle', waiting: false }),
+    allowed: () => true, reserve: () => {}, record: () => { throw Error('unexpected preparation'); },
+    review: async () => { reviews++; if (decision === 'failure') throw Error('supervisor unavailable'); return decision; }
+  } });
+  expect(await f.port.run(f.request())).toMatchObject({ state: 'complete', text: recordedWork.workOutput });
+  expect(reviews).toBe(1); expect(f.counts().stops).toBe(1);
+});
+
+it('one-shot collection binds exact request question, context and authority before returning a recorded result', async () => {
+  const f = fixture(); f.answers(recordedWork.workOutput);
+  Object.assign(f.config, { workRecovery: { observe: () => null, allowed: () => true, reserve: () => {}, record: () => {}, review: async () => 'unknown' } });
+  expect(await f.port.run(f.request())).toMatchObject({ state: 'complete' });
+  expect(await f.port.run(f.request())).toMatchObject({ state: 'complete', text: recordedWork.workOutput });
+  for (const patch of [{ question: 'different task' }, { context: 'different context' }, { authority: 'different authority' }])
+    await expect(f.port.run({ ...f.request(), ...patch })).rejects.toThrow('request bytes or authority differ');
+  expect(f.counts().launches).toBe(1);
+});
+
+// Carryover 02 r4: 1.x StaleSessionBackstop/ResumeQueue restoration of the original open worker after a host
+// restart, the nurse's typed-but-unsubmitted nudge and the orchestrator's typed actions on one-shot work.
+const settle = () => new Promise<void>(resolve => setImmediate(resolve));
+function dyingHost(f: ReturnType<typeof fixture>, polls: number) {
+  const liveWait = f.io.wait; let count = 0;
+  f.io.wait = async ms => { if (++count >= polls) return new Promise<void>(() => {}); return liveWait(ms); };
+  return { restore: () => { f.io.wait = liveWait; }, polled: () => count };
+}
+it('a typed-but-unsubmitted frame requests the driver nudge once per step, and the step still ends on its own deadline', async () => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 5_000 }); const rt = assemblyRuntimeFixture();
+  const nudges: string[] = [];
+  Object.assign(f.driver, { nudge: (input: { reason: string }) => { nudges.push(input.reason); return rt.success({ state: 'nudged', evidence: 'nudge:fixture' }); } });
+  const port = value(createSessionWorkPort({ ...f.config, workRecovery: {
+    observe: worker => ({ ...worker, at: f.now(), progress: 'typed-frame', activity: 'idle', waiting: false, typedUnsubmitted: true }),
+    reserve: () => {}, allowed: () => true, record: () => {}, review: async () => 'unknown' } }));
+  expect(await port.run(f.request())).toMatchObject({ state: 'uncertain', detail: expect.stringContaining('deadline exceeded') });
+  expect(nudges).toEqual(['stall-triage:obligation-commitment-1-2:typed-unsubmitted']);
+  expect(port.status()).toMatchObject({ nudges: 1, reviews: 0 });
+  expect(f.counts()).toMatchObject({ launches: 1, stops: 1 });
+});
+
+it('a message-lost judgment redelivers the exact step intake at most once and schedules the follow-up at or above the nurse cooldown', async () => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 30_000 }); const rt = assemblyRuntimeFixture();
+  // The replay fence needs the checkpoint's effect counts: none uncertain and none prepared since dispatch.
+  f.io.admissionState = () => ({ refused: false, refusalReason: null, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  const redeliveries: string[] = []; let reviews = 0;
+  Object.assign(f.driver, { redeliver: (input: { operation: string; digest: string }) => { redeliveries.push(`${input.operation}:${input.digest}`);
+    return rt.success({ state: 'redelivered', evidence: 'tmux-input:redelivered' }); } });
+  const port = value(createSessionWorkPort({ ...f.config, workRecovery: {
+    observe: worker => ({ ...worker, at: f.now(), progress: 'idle-frame', activity: 'idle', waiting: false, stale: { state: 'stalled', lastProgressAt: 1, windowMs: 1 } }),
+    reserve: () => {}, allowed: () => true, record: () => {},
+    review: async () => { reviews++; return { kind: 'triage', classification: 'message-lost', action: 'reinject', confidence: 0.95, followUpMs: 4 * 60_000, reason: 'prompt idle with the step unsubmitted' }; } } }));
+  expect(await port.run(f.request())).toMatchObject({ state: 'uncertain', detail: expect.stringContaining('deadline exceeded') });
+  expect(redeliveries).toEqual([`obligation-commitment-1-2:${f.delivered[0]}`]);
+  // The four-minute follow-up lies past this step's deadline, so the review ceiling is never spent on it.
+  expect(reviews).toBe(1); expect(port.status()).toMatchObject({ reinjections: 1, reviews: 1 });
+});
+
+it('a suggest judgment on one-shot work is a pull-only notice, never an action', async () => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 5_000 });
+  f.io.admissionState = () => ({ refused: false, refusalReason: null, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  const port = value(createSessionWorkPort({ ...f.config, workRecovery: {
+    observe: worker => ({ ...worker, at: f.now(), progress: 'idle-frame', activity: 'idle', waiting: false, stale: { state: 'stalled', lastProgressAt: 1, windowMs: 1 } }),
+    reserve: () => {}, allowed: () => true, record: () => {},
+    review: async () => ({ kind: 'triage', classification: 'stuck-on-tool', action: 'suggest-restart', confidence: 0.6, followUpMs: null, reason: 'a build produced nothing' }) } }));
+  expect(await port.run(f.request())).toMatchObject({ state: 'uncertain' });
+  expect(port.status()).toMatchObject({ reviews: 1, reinjections: 0, nudges: 0, notice: 'obligation-commitment-1-2: stuck-on-tool: suggest-restart; a build produced nothing' });
+  expect(f.counts()).toMatchObject({ launches: 1, stops: 1 }); expect(f.delivered).toHaveLength(1);
+});
+
+// Carryover 02 r4, admission continuity (desk source decision 2026-11-05): after a lawful host incarnation restart the
+// original live worker is adopted under its ORIGINAL edge, endpoint and liability. The liability is the contiguous
+// high-water ordinal of the edge's durable call-intent rows; the worker's own transcript may not exceed it; effects
+// prepared without an observation and delegations without a close are restored, never cleared.
+type RestoreInput = Parameters<NonNullable<SessionWorkIO['restoreAdmission']>>[2];
+const callRow = (edge: SessionWorkEdge, ordinal: number): SessionWorkCall => ({ type: 'SessionWorkCall', schemaVersion: 1, edge: edge.id, ordinal, at: edge.openedAt + ordinal });
+async function dyingStep(f: ReturnType<typeof fixture>) {
+  const host = dyingHost(f, 2);
+  void f.port.run(f.request());
+  for (let i = 0; i < 50 && host.polled() < 2; i++) await settle();
+  expect(host.polled()).toBe(2); host.restore();
+  const [edge] = f.rows as [SessionWorkEdge]; expect(edge.type).toBe('SessionWorkEdge');
+  return { edge, identity: f.counts().attached[0]! };
+}
+function restorable(f: ReturnType<typeof fixture>, decide: (restore: RestoreInput) => boolean | Promise<boolean> = () => true) {
+  const restores: { claim: string; edge: SessionWorkEdge; restore: RestoreInput }[] = [];
+  let state: RestoreInput | null = null;
+  f.io.restoreAdmission = async (claim, edge, restore) => { restores.push({ claim, edge, restore }); const ok = await decide(restore); if (ok) state = restore; return ok; };
+  f.io.admissionState = () => ({ refused: false, refusalReason: null, uncertainEffects: state?.uncertainEffects.length ?? 0, toolPreparations: 0,
+    openDelegations: state?.delegations ?? [] });
+  return restores;
+}
+
+it.each([{ intents: 5, transcript: 5 }, { intents: 5, transcript: 3 }, { intents: 23, transcript: 23 }])('adopts the live original worker under the original edge with its durable liability (intents $intents, transcript $transcript)', async ({ intents, transcript }) => {
+  const f = fixture({ phases: ['launched'] }); const rt = assemblyRuntimeFixture();
+  const { edge, identity } = await dyingStep(f);
+  for (let ordinal = 1; ordinal <= intents; ordinal++) f.rows.push(callRow(edge, ordinal));
+  f.io.modelCalls = () => transcript;
+  const restores = restorable(f);
+  Object.assign(f.driver, {
+    recoverWorker: (input: { operation: string; claim: string }) => rt.success(input.claim === edge.child && input.operation === 'obligation-commitment-1-2'
+      ? { identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! } : null),
+    observe: () => { f.writeNow(recordedWork.workOutput); return rt.success({ phase: 'output-observed', evidence: 'evidence:restored', detail: 'idle prompt fallback' }); } });
+  const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart' }));
+  expect(restarted.stepsUsed()).toBe(1);
+  const outcome = await restarted.run(f.request());
+  expect(outcome).toMatchObject({ state: 'complete', text: recordedWork.workOutput, edge: edge.id, child: identity });
+  expect(restores).toEqual([{ claim: edge.child, edge, restore: { spent: intents, uncertainEffects: [], delegations: [] } }]);
+  // Nothing prepared afresh, no second edge, the lease taken before the restore and released at the close.
+  expect(f.prepared).toEqual([edge.child]); expect(f.rows.filter(row => row.type === 'SessionWorkEdge')).toHaveLength(1);
+  expect(f.counts()).toMatchObject({ launches: 1, stops: 1, released: 1, attached: [identity, identity] });
+  expect(f.delivered).toHaveLength(1);
+  const close = f.rows.find((row): row is SessionWorkEdgeClose => row.type === 'SessionWorkEdgeClose')!;
+  expect(close).toMatchObject({ edge: edge.id, state: 'complete', child: identity, cleanupConfirmed: true, resultDigest: digestOf(recordedWork.workOutput), reserved: 24, calls: transcript });
+  expect(restarted.status()).toMatchObject({ steps: 1, restored: 1 });
+  expect(restarted.collect('obligation-commitment-1-2')).toMatchObject({ state: 'complete', edge: edge.id });
+  for (const row of f.rows) expect(() => validateSessionWorkRow(row)).not.toThrow();
+});
+
+it.each(['unknown-meter', 'transcript-exceeds-intents', 'exhausted', 'ordinal-gap', 'duplicate-ordinal', 'absent-worker', 'substituted-intake',
+  'deadline-passed', 'stopped', 'no-restore-port', 'restore-refused', 'restore-throws', 'stop-during-restore'])('refuses adoption on %s: the step stays uncertain, nothing launches, delivers, stops or replenishes', async mode => {
+  const f = fixture({ phases: ['launched'] }); const rt = assemblyRuntimeFixture();
+  const { edge, identity } = await dyingStep(f);
+  const ordinals = mode === 'exhausted' ? [...Array(24).keys()].map(n => n + 1) : mode === 'ordinal-gap' ? [1, 2, 4] : mode === 'duplicate-ordinal' ? [1, 2, 2] : [1, 2, 3, 4, 5];
+  for (const ordinal of ordinals) f.rows.push(callRow(edge, ordinal));
+  f.io.modelCalls = () => mode === 'unknown-meter' ? null : mode === 'transcript-exceeds-intents' ? 6 : mode === 'exhausted' ? 24 : Math.min(5, ordinals.length);
+  if (mode === 'deadline-passed') f.advance(60_001);
+  if (mode === 'stopped') f.stop();
+  const restores = mode === 'no-restore-port' ? [] : restorable(f, () => {
+    if (mode === 'restore-throws') throw Error('EADDRINUSE: the original endpoint is busy');
+    if (mode === 'stop-during-restore') { f.stop(); return true; }
+    return mode !== 'restore-refused';
+  });
+  Object.assign(f.driver, { recoverWorker: () => rt.success(mode === 'absent-worker' ? null
+    : { identity, incarnation: 'incarnation-1', deliveryDigest: mode === 'substituted-intake' ? digestOf('other') : f.delivered[0]! }) });
+  const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart' }));
+  expect(await restarted.run(f.request())).toMatchObject({ state: 'uncertain', detail: 'child closure is not established; no automatic replay', edge: edge.id });
+  const restoreTried = ['restore-refused', 'restore-throws', 'stop-during-restore'].includes(mode);
+  expect(restores).toHaveLength(restoreTried ? 1 : 0);
+  // A lease taken before a refused restore is released; no lease is taken before the liability is known.
+  expect(f.counts()).toMatchObject({ launches: 1, stops: 0, released: restoreTried ? 1 : 0 });
+  expect(f.prepared).toEqual([edge.child]); expect(f.rows.filter(row => row.type === 'SessionWorkEdgeClose')).toHaveLength(0);
+  expect(restarted.status().restored).toBe(0);
+});
+
+it('restores an effect prepared without an observation and a delegation without a close: supervision stays fenced, the delegation settles once, the step is never complete over it', async () => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 5_000 }); const rt = assemblyRuntimeFixture();
+  const { edge, identity } = await dyingStep(f);
+  const nested = nestedSessionWorkEdge(edge, { id: 'call-before-restart', tool: 'Task' }, f.now());
+  const effect = sessionWorkEffect({ id: digestOf('effect-before-restart'), edge: edge.id, operation: 'mcp:mail:send', digest: digestOf('input'), state: 'prepared', detail: 'admitted for dispatch', at: f.now() });
+  f.rows.push(callRow(edge, 1), nested, effect); f.io.modelCalls = () => 1;
+  const restores = restorable(f);
+  let reviews = 0;
+  Object.assign(f.driver, { recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }) });
+  const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart', workRecovery: {
+    observe: worker => ({ ...worker, at: f.now(), progress: 'idle-frame', activity: 'idle', waiting: false, stale: { state: 'stalled', lastProgressAt: 1, windowMs: 1 } }),
+    reserve: () => {}, allowed: () => true, record: () => {}, review: async () => { reviews++; return 'unknown'; } } }));
+  const outcome = await restarted.run(f.request());
+  expect(restores[0]!.restore).toEqual({ spent: 1, uncertainEffects: [{ id: effect.id, operation: 'mcp:mail:send', digest: effect.digest }], delegations: [nested] });
+  expect(reviews).toBe(0);
+  expect(outcome).toMatchObject({ state: 'uncertain', edge: edge.id, detail: expect.stringContaining('did not return before the step closed') });
+  const closes = f.rows.filter((row): row is SessionWorkEdgeClose => row.type === 'SessionWorkEdgeClose');
+  expect(closes.map(row => row.edge)).toEqual([nested.id, edge.id]);
+  expect(closes[0]).toMatchObject({ state: 'uncertain', child: nested.child, detail: 'the parent step closed before the delegated agent returned' });
+  for (const row of f.rows) expect(() => validateSessionWorkRow(row)).not.toThrow();
+});
+
+// The desk's physical two-host-incarnation consumer: a REAL worker process keeps the endpoint baked at spawn; it spends
+// 5 of 24 through the shipped gate of host A; host A retires lawfully (its listener closes, the worker lives on); host B
+// restores the ORIGINAL endpoint from the claim's own recorded admission config through the trusted reader, under the
+// owner's lease, and the worker's NEXT calls pass: 19 forwarded, the 20th refused by the gate, no edge re-appended, no
+// replenishment. Local fake ports only; the tmux identity is the fixture driver's, the model calls are real HTTP.
+const WORKER_SCRIPT = `
+const fs = require('node:fs');
+const [gate, commands, results] = [process.env.INSTAR_TEST_GATE, process.env.INSTAR_TEST_COMMANDS, process.env.INSTAR_TEST_RESULTS];
+let done = 0, busy = false;
+setInterval(async () => {
+  if (busy) return; busy = true;
+  try {
+    let lines; try { lines = fs.readFileSync(commands, 'utf8').split('\\n').filter(Boolean); } catch { return; }
+    while (done < lines.length) {
+      const [command, argument, ...rest] = lines[done++].split(' ');
+      if (command === 'call') for (let i = 0; i < Number(argument); i++) {
+        let status, body;
+        try { const response = await fetch(gate + '/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"model":"fake"}' });
+          status = response.status; body = await response.text(); } catch (error) { status = 'error'; body = String(error.cause?.code ?? error.message); }
+        fs.appendFileSync(results, JSON.stringify({ status, body }) + '\\n');
+      }
+      if (command === 'write') fs.writeFileSync(argument, rest.join(' '));
+    }
+  } finally { busy = false; }
+}, 15);
+`;
+async function twoHostWorld(f: ReturnType<typeof fixture>) {
+  // @ts-expect-error physical checkpoint stays outside the pure core
+  const { createAdmissionGate } = await import('../preview/admission-gate.mjs');
+  // @ts-expect-error the admission layout and its trusted reader stay plain JavaScript
+  const { prepareSessionAdmission, readSessionAdmissionGate } = await import('../preview/session-admission.mjs');
+  const { createServer } = await import('node:http');
+  const { spawn } = await import('node:child_process');
+  const { existsSync, mkdirSync, appendFileSync, readFileSync } = await import('node:fs');
+  let forwarded = 0;
+  const upstream = createServer((req, res) => { req.resume(); req.on('end', () => { forwarded++; res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"id":"msg","type":"message"}'); }); });
+  await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', resolve));
+  const upstreams = { 'claude-code': { host: '127.0.0.1', port: (upstream.address() as { port: number }).port, secure: false } };
+  const base = join(f.scope, '..', 'admission'); mkdirSync(base, { recursive: true, mode: 0o700 });
+  const commands = join(f.scope, '..', 'commands.txt'), results = join(f.scope, '..', 'results.jsonl');
+  const gateA = await createAdmissionGate({ append: (row: unknown) => f.rows.push(row as SessionWorkEdge), stopped: () => false, now: f.now, upstreams });
+  let worker: ReturnType<typeof spawn> | null = null, baked = '';
+  const intents = (edge: SessionWorkEdge) => (ordinal: number) => { f.rows.push(callRow(edge, ordinal)); };
+  f.io.prepareAdmission = (claim, edge) => {
+    baked = gateA.base(claim);
+    gateA.open(claim, { framework: 'claude-code', allowance: edge.budget.calls, edge, reserveCall: intents(edge) });
+    prepareSessionAdmission({ base, claim, workspace: f.scope, maxCalls: edge.budget.calls, gate: baked });
+    worker = spawn(process.execPath, ['-e', WORKER_SCRIPT], { stdio: 'ignore', env: { PATH: process.env.PATH ?? '', INSTAR_TEST_GATE: baked, INSTAR_TEST_COMMANDS: commands, INSTAR_TEST_RESULTS: results } });
+  };
+  f.io.admissionState = claim => gateA.state(claim);
+  const resultsNow = () => existsSync(results) ? readFileSync(results, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line) as { status: number | string; body: string }) : [];
+  const command = async (line: string, expected: number) => {
+    appendFileSync(commands, `${line}\n`);
+    for (let i = 0; i < 400 && resultsNow().length < expected; i++) await new Promise(resolve => setTimeout(resolve, 25));
+    expect(resultsNow().length).toBe(expected);
+    return resultsNow();
+  };
+  return { gateA, upstreams, base, commands, results, resultsNow, command, forwarded: () => forwarded, baked: () => baked,
+    readSessionAdmissionGate, createAdmissionGate,
+    close: async () => { if (worker) worker.kill('SIGKILL'); await gateA.stop().catch(() => {}); await new Promise<void>(resolve => upstream.close(() => resolve())); } };
+}
+
+it.each([{ next: 19, outcome: 'complete' }, { next: 20, outcome: 'uncertain' }])('a real worker with the baked endpoint spends 5 of 24 on host A, host B restores the original endpoint under its lease, and its next $next calls → $outcome', async ({ next, outcome }) => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 120_000 }); const rt = assemblyRuntimeFixture();
+  const world = await twoHostWorld(f);
+  try {
+    const { edge, identity } = await dyingStep(f);
+    expect(world.baked()).toMatch(/^http:\/\/127\.0\.0\.1:[0-9]+\/[0-9a-f]{32}\//u);
+    const spent = await world.command('call 5', 5);
+    expect(spent.every(row => row.status === 200)).toBe(true); expect(world.forwarded()).toBe(5);
+    expect(f.rows.filter((row): row is SessionWorkCall => row.type === 'SessionWorkCall').map(row => row.ordinal)).toEqual([1, 2, 3, 4, 5]);
+    // Host A retires lawfully: its listener closes and releases the port; the worker and its baked endpoint live on.
+    await world.gateA.stop();
+    const failed = await world.command('call 1', 6);
+    expect(failed[5]!.status).toBe('error');
+    // Host B: a fresh gate (fresh secret) restores the ORIGINAL endpoint from the claim's own recorded config.
+    const gateB = await world.createAdmissionGate({ append: (row: unknown) => f.rows.push(row as SessionWorkEdge), stopped: () => false, now: f.now, upstreams: world.upstreams });
+    const restores: RestoreInput[] = [];
+    f.io.modelCalls = () => 5;
+    f.io.restoreAdmission = async (claim, restoredEdge, restore) => {
+      const recorded = world.readSessionAdmissionGate(world.base, claim);
+      await gateB.restore({ port: recorded.port, secret: recorded.secret });
+      gateB.open(claim, { framework: 'claude-code', allowance: restoredEdge.budget.calls, edge: restoredEdge,
+        reserveCall: (ordinal: number) => { f.rows.push(callRow(restoredEdge, ordinal)); },
+        restored: { calls: restore.spent, uncertainEffects: restore.uncertainEffects, delegations: restore.delegations, secret: recorded.secret } });
+      restores.push(restore); return true;
+    };
+    f.io.admissionState = claim => gateB.state(claim); f.io.closeAdmission = claim => { gateB.close(claim); };
+    Object.assign(f.driver, {
+      recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }),
+      observeAsync: async () => {
+        const calls = await world.command(`call ${next}`, 6 + next);
+        if (outcome === 'complete') await world.command(`write ${f.resultPath()} ${recordedWork.workOutput}`, 6 + next);
+        for (let i = 0; i < 200 && outcome === 'complete' && f.io.readResult(f.resultPath(), 65536) === null; i++) await new Promise(resolve => setTimeout(resolve, 25));
+        expect(calls.slice(6, 6 + 19).every(row => row.status === 200)).toBe(true);
+        if (next === 20) expect(calls[25]).toMatchObject({ status: 400 });
+        return rt.success({ phase: 'output-observed', evidence: 'evidence:restored', detail: 'idle prompt fallback' });
+      } });
+    try {
+      const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart' }));
+      const result = await restarted.run(f.request());
+      expect(result).toMatchObject({ state: outcome, edge: edge.id, child: identity });
+      expect(restores).toEqual([{ spent: 5, uncertainEffects: [], delegations: [] }]);
+      expect(world.forwarded()).toBe(24);
+      const ordinals = f.rows.filter((row): row is SessionWorkCall => row.type === 'SessionWorkCall').map(row => row.ordinal);
+      expect(ordinals).toEqual([...Array(24).keys()].map(n => n + 1));
+      if (outcome === 'uncertain') {
+        expect(JSON.parse(world.resultsNow()[25]!.body).error.message).toBe("instar: this step's reserved model-call allowance (24) is used; the call was not dispatched");
+        expect(result.detail).toContain('past the reserved allowance (24)');
+      }
+      expect(gateB.state(edge.child)).toMatchObject({ closed: true, calls: 24, refused: outcome === 'uncertain' });
+      expect(f.rows.filter(row => row.type === 'SessionWorkEdge')).toHaveLength(1);
+      expect(f.counts()).toMatchObject({ launches: 1, stops: 1, released: 1 });
+      // The restored secret serves only the adopted claim: another claim under it is refused as closed (never forwarded),
+      // and the adopted claim under this host's fresh secret is not found. The forward count stays at 24.
+      const [, secret] = /\/([0-9a-f]{32})\//u.exec(world.baked())!;
+      const other = await fetch(`${world.baked().replace(edge.child, 'session-work-other')}/v1/messages`, { method: 'POST', body: '{}' });
+      expect(other.status).toBe(400); expect((await other.json() as { error: { message: string } }).error.message).toContain('closed or stopped');
+      expect((await fetch(`${gateB.base(edge.child)}/v1/messages`, { method: 'POST', body: '{}' })).status).toBe(404);
+      expect(gateB.base(edge.child)).not.toContain(secret); expect(world.forwarded()).toBe(24);
+    } finally { await gateB.stop(); }
+  } finally { await world.close(); }
+});
+
+it.each(['old-owner-alive', 'foreign-busy-port'])('%s on the original endpoint refuses adoption before any forward: the lease is released, the worker is untouched', async mode => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 120_000 }); const rt = assemblyRuntimeFixture();
+  const world = await twoHostWorld(f);
+  const { createServer } = await import('node:http');
+  let foreign: ReturnType<typeof createServer> | null = null;
+  try {
+    const { edge, identity } = await dyingStep(f);
+    await world.command('call 5', 5);
+    const recorded = world.readSessionAdmissionGate(world.base, edge.child);
+    if (mode === 'foreign-busy-port') {
+      await world.gateA.stop();
+      foreign = createServer((_req, res) => { res.writeHead(500); res.end(); });
+      await new Promise<void>(resolve => foreign!.listen(recorded.port, '127.0.0.1', resolve));
+    }
+    const gateB = await world.createAdmissionGate({ append: () => {}, stopped: () => false, now: f.now, upstreams: world.upstreams });
+    let attempts = 0;
+    f.io.modelCalls = () => 5;
+    f.io.restoreAdmission = async (claim: string) => { attempts++; await gateB.restore({ port: recorded.port, secret: recorded.secret }); gateB.open(claim, { framework: 'claude-code', allowance: 24, edge, restored: { calls: 5, uncertainEffects: [], delegations: [], secret: recorded.secret } }); return true; };
+    Object.assign(f.driver, { recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }) });
+    try {
+      const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart' }));
+      expect(await restarted.run(f.request())).toMatchObject({ state: 'uncertain', detail: 'child closure is not established; no automatic replay' });
+      expect(attempts).toBe(1); expect(gateB.state(edge.child)).toBeNull();
+      expect(f.counts()).toMatchObject({ launches: 1, stops: 0, released: 1 }); expect(world.forwarded()).toBe(5);
+      if (mode === 'old-owner-alive') { const still = await world.command('call 1', 6); expect(still[5]!.status).toBe(200); expect(world.forwarded()).toBe(6); }
+    } finally { await gateB.stop(); }
+  } finally { if (foreign) await new Promise<void>(resolve => foreign!.close(() => resolve())); await world.close(); }
+});
+
+it('a call whose intent was recorded but never answered keeps its liability: 6 intents over 5 transcript calls leave 18, and the 19th is refused by the restored gate', async () => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 120_000 }); const rt = assemblyRuntimeFixture();
+  const world = await twoHostWorld(f);
+  try {
+    const { edge, identity } = await dyingStep(f);
+    await world.command('call 5', 5);
+    f.rows.push(callRow(edge, 6)); // the crash fell between the durable intent and the forward
+    await world.gateA.stop();
+    const recorded = world.readSessionAdmissionGate(world.base, edge.child);
+    const gateB = await world.createAdmissionGate({ append: () => {}, stopped: () => false, now: f.now, upstreams: world.upstreams });
+    f.io.modelCalls = () => 5;
+    f.io.restoreAdmission = async (claim, restoredEdge, restore) => { await gateB.restore({ port: recorded.port, secret: recorded.secret });
+      gateB.open(claim, { framework: 'claude-code', allowance: 24, edge: restoredEdge, reserveCall: (ordinal: number) => { f.rows.push(callRow(restoredEdge, ordinal)); },
+        restored: { calls: restore.spent, uncertainEffects: [], delegations: [], secret: recorded.secret } }); return true; };
+    f.io.admissionState = claim => gateB.state(claim); f.io.closeAdmission = claim => { gateB.close(claim); };
+    Object.assign(f.driver, {
+      recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }),
+      observeAsync: async () => { const calls = await world.command('call 19', 24);
+        expect(calls.slice(5, 23).every(row => row.status === 200)).toBe(true); expect(calls[23]).toMatchObject({ status: 400 });
+        return rt.success({ phase: 'output-observed', evidence: 'evidence:restored', detail: 'idle prompt fallback' }); } });
+    try {
+      const restarted = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart' }));
+      expect(await restarted.run(f.request())).toMatchObject({ state: 'uncertain', edge: edge.id });
+      expect(world.forwarded()).toBe(23); expect(gateB.state(edge.child)).toMatchObject({ calls: 24, refused: true, refusalReason: 'calls' });
+      expect(f.rows.filter((row): row is SessionWorkCall => row.type === 'SessionWorkCall').map(row => row.ordinal)).toEqual([...Array(24).keys()].map(n => n + 1));
+    } finally { await gateB.stop(); }
+  } finally { await world.close(); }
+});
+
+// The journal owner's side of the durable intent: a reserved edge records each call's ordinal against the liability it
+// already reserved (no second charge), contiguity and the reservation are enforced on append, and a per-call
+// conversation edge keeps its existing charge.
+it('the journal records reserved-edge call intents contiguously within the reservation without charging twice, and keeps the per-call charge', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'intent-journal-'))); roots.push(root);
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(5), { kind: 'genesis', bot: '12345678', chat: '7654321',
+    operator: '7654321', grant: 'grant:intent', configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 40, maxReplies: 20, maxTurns: 20, maxBytes: 8000, cursor: 0 });
+  const edge: SessionWorkEdge = { type: 'SessionWorkEdge', schemaVersion: 1, id: 'session-work-edge:intent:1', parent: 'launch:c', child: 'session-work-intent',
+    scope: root, owner: 'machine', authority: 'grant', budget: { steps: 1, deadline: 700_000, maxResultBytes: 65536, calls: 3, tokens: null },
+    exitTest: 'result file', placement: 'local', transport: 'tmux', resultDestination: join(root, 'work.json'), openedAt: 100_000 };
+  journal.append({ kind: 'session-work', record: edge, at: 100_000 });
+  expect(journal.view.calls).toBe(3);
+  const intent = (ordinal: number) => journal.append({ kind: 'session-work', record: { type: 'SessionWorkCall', schemaVersion: 1, edge: edge.id, ordinal, at: 100_000 + ordinal }, at: 100_000 + ordinal });
+  expect(() => intent(2)).toThrow('call reserve refused');
+  intent(1); intent(2);
+  expect(() => intent(2)).toThrow('call reserve refused');
+  intent(3);
+  expect(() => intent(4)).toThrow('past the edge reservation');
+  expect(journal.view.calls).toBe(3);
+  expect(journal.view.sessionWorkCallOrdinals?.[edge.id]).toBe(3);
+  expect(journal.sessionWorkRecords().filter(row => row.type === 'SessionWorkCall')).toHaveLength(3);
+  expect(() => journal.append({ kind: 'session-work', record: { type: 'SessionWorkCall', schemaVersion: 1, edge: 'session-work-edge:unknown:1', ordinal: 1, at: 1 }, at: 1 })).toThrow('call reserve refused');
+  const perCall: SessionWorkEdge = { ...edge, id: 'operator:allowance', child: 'operator', charge: 'per-call', budget: { ...edge.budget, calls: 10 } };
+  journal.append({ kind: 'session-work', record: perCall, at: 100_010 });
+  journal.append({ kind: 'session-work', record: { type: 'SessionWorkCall', schemaVersion: 1, edge: perCall.id, ordinal: 1, at: 100_011 }, at: 100_011 });
+  expect(journal.view.calls).toBe(4);
+});
+
+it.each(['incarnation-1', 'host-after-restart'])('reviewer: adopted worker keeps its original supervision identity when host is %s', async hostIncarnation => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 5_000 }); const rt = assemblyRuntimeFixture();
+  const { edge, identity } = await dyingStep(f);
+  f.rows.push(callRow(edge, 1)); f.io.modelCalls = () => 1; restorable(f);
+  let nudges = 0;
+  Object.assign(f.driver, {
+    recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }),
+    nudge: (input: { incarnation: string }) => { expect(input.incarnation).toBe('incarnation-1'); nudges++; return rt.success({ state: 'nudged', evidence: 'fixture' }); }
+  });
+  const port = value(createSessionWorkPort({ ...f.config, incarnation: hostIncarnation, workRecovery: {
+    observe: worker => reviewerStallSample({ subject: edge.child, incarnation: 'incarnation-1', launch: identity, at: f.now(),
+      progress: 'typed-frame', activity: 'idle', wait: null, typedUnsubmitted: true }, worker),
+    reserve: () => {}, allowed: () => true, record: () => {}, review: async () => 'unknown'
+  } }));
+  await port.run(f.request());
+  expect(port.status().restored).toBe(1);
+  expect(nudges).toBe(1);
+});
+
+it.each(['same-edge', 'other-edge', 'none'] as const)('reviewer: restored replay preserves durable preparations for %s', async mode => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 5_000 }); const rt = assemblyRuntimeFixture();
+  const { edge, identity } = await dyingStep(f);
+  f.rows.push(callRow(edge, 1)); f.io.modelCalls = () => 1;
+  for (const state of mode === 'none' ? [] : ['prepared', 'observed'] as const) f.rows.push(sessionWorkEffect({ id: digestOf('prior-effect'),
+    edge: mode === 'other-edge' ? 'another-work-edge' : edge.id,
+    operation: 'mcp:mail:send', digest: digestOf('prior-mail'), state, detail: 'recorded effect', at: f.now() }));
+  restorable(f); let reinjections = 0, reviews = 0;
+  Object.assign(f.driver, { recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }),
+    redeliver: (input: { incarnation: string }) => { expect(input.incarnation).toBe('incarnation-1'); reinjections++; return rt.success({ state: 'redelivered', evidence: 'fixture' }); } });
+  const port = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart', workRecovery: {
+    observe: worker => ({ ...worker, at: f.now(), progress: 'idle-frame', activity: 'idle', waiting: false,
+      stale: { state: 'stalled', lastProgressAt: 1, windowMs: 1 } }), reserve: () => {}, allowed: () => true, record: () => {},
+    review: async () => { reviews++; return { kind: 'triage', classification: 'message-lost', action: 'reinject', confidence: 0.95, followUpMs: null, reason: 'idle' }; }
+  } }));
+  await port.run(f.request());
+  expect(port.status().restored).toBe(1); expect(reviews).toBe(1);
+  expect(reinjections).toBe(mode === 'same-edge' ? 0 : 1);
+  expect(f.counts().launches).toBe(1); expect(f.delivered).toHaveLength(1);
+});
+
+it.each(['claim', 'incarnation', 'launch'] as const)('adopted supervision still refuses a substituted %s sample', async field => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 5_000 }); const rt = assemblyRuntimeFixture();
+  const { edge, identity } = await dyingStep(f);
+  f.rows.push(callRow(edge, 1)); f.io.modelCalls = () => 1; restorable(f);
+  let nudges = 0;
+  Object.assign(f.driver, {
+    recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }),
+    nudge: () => { nudges++; return rt.success({ state: 'nudged', evidence: 'fixture' }); }
+  });
+  const port = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart', workRecovery: {
+    observe: worker => ({ ...worker, [field]: 'substituted', at: f.now(), progress: 'typed-frame', activity: 'idle',
+      waiting: false, typedUnsubmitted: true }),
+    reserve: () => {}, allowed: () => true, record: () => {}, review: async () => 'unknown'
+  } }));
+  await port.run(f.request());
+  expect(port.status().restored).toBe(1); expect(nudges).toBe(0);
+});
+
+it.each(['incarnation-1', 'host-after-restart'])('adopted process intervention validates the physical incarnation against %s', async targetIncarnation => {
+  const f = fixture({ phases: ['launched'], deadlineMs: 5_000 }); const rt = assemblyRuntimeFixture();
+  const { edge, identity } = await dyingStep(f);
+  f.rows.push(callRow(edge, 1)); f.io.modelCalls = () => 1; restorable(f);
+  const target = { ...processControlFixture().payload.target, incarnation: targetIncarnation };
+  const formal = processControlFixture(target, undefined, { episode: `stall-triage:${f.request().operation}:${f.now()}`, signal: 'SIGINT', deadline: f.now() + 1_000 });
+  let interventions = 0;
+  Object.assign(f.driver, { recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }) });
+  const port = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart', workRecovery: {
+    observe: worker => ({ ...worker, at: f.now(), progress: 'idle-frame', activity: 'idle', waiting: false,
+      stale: { state: 'stalled', lastProgressAt: 1, windowMs: 1 } }),
+    reserve: () => {}, allowed: () => true, record: row => f.rows.push(row), review: async () => ({ kind: 'process-control', payload: formal.payload }),
+    intervention: { run: formal.run.id, machine: formal.payload.target.machine,
+      reconcile: async () => { throw Error('not expected'); },
+      intervene: async () => { interventions++; throw Error('uncertain fixture actuation'); } }
+  } }));
+  await port.run(f.request());
+  expect(port.status()).toMatchObject({ restored: 1, reviews: 1 });
+  expect(interventions).toBe(targetIncarnation === 'incarnation-1' ? 1 : 0);
+});
+
+it.each(recordedWork.negativeOutputs as { id: string; shape: string; output: string }[])(
+  'adopted supervision replays recorded $shape ($id) through the shipped parser and keeps serving the worker', async sample => {
+    const f = fixture({ phases: ['launched'], deadlineMs: 5_000 }); const rt = assemblyRuntimeFixture();
+    const { edge, identity } = await dyingStep(f);
+    f.rows.push(callRow(edge, 1)); f.io.modelCalls = () => 1; restorable(f);
+    Object.assign(f.driver, { recoverWorker: () => rt.success({ identity, incarnation: 'incarnation-1', deliveryDigest: f.delivered[0]! }) });
+    let reviews = 0;
+    const port = value(createSessionWorkPort({ ...f.config, incarnation: 'host-after-restart', workRecovery: {
+      observe: worker => reviewerStallSample({ subject: edge.child, incarnation: 'incarnation-1', launch: identity, at: f.now(),
+        progress: 'idle-frame', activity: 'idle', wait: null, stale: { state: 'stalled', lastProgressAt: 1, windowMs: 1, episode: 1, indeterminateStreak: 0, longIndeterminate: false } }, worker),
+      reserve: () => {}, allowed: () => true, record: () => {}, review: async () => {
+        reviews++;
+        const decision = interpretStallDecision({ state: 'complete', value: sample.output });
+        expect(decision).toBe('unknown');
+        f.writeNow(recordedWork.workOutput);
+        return decision;
+      }
+    } }));
+    expect(await port.run(f.request())).toMatchObject({ state: 'complete', text: recordedWork.workOutput });
+    expect(port.status()).toMatchObject({ restored: 1, reinjections: 0, reviews: 1 });
+    expect(reviews).toBe(1); expect(f.counts().launches).toBe(1); expect(f.delivered).toHaveLength(1);
+  });

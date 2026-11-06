@@ -3,7 +3,7 @@ import type { Json, Result } from '../index.js';
 import { authorAndAppend, causalCone, registerOwnedBody, walkVersions } from '../facts/index.js';
 import type { FactEnvelope, FactSchema, OwnedBodyContext, OwnedBodyRegistration, OwnedShape } from '../facts/index.js';
 import type { EffectAuthor, EffectHost, EffectRecord, EffectRequest, EffectSpine, NativeLaunchDefinition, NativeLaunchObservation,
-  NativeLaunchRequest, NativeProcessRecord, OperationDefinition, OutboundMessage } from './contracts.js';
+  NativeLaunchRequest, NativeProcessRecord, OperationDefinition, OutboundMessage, ProcessControlPayload, OperationPayload } from './contracts.js';
 import type { FactStorePort } from '../facts/index.js';
 import { boundary, encoded, ensure, freeze, json, take } from './boundary.js';
 import { requireSettlement } from './settlement-authority.js';
@@ -30,6 +30,9 @@ const parameters = { kind: 'object', fields: { mode: text, installation: text, m
 const processIdentity = { kind: 'object', fields: { state: text, machine: text, incarnation: text,
   startIdentity: text, pid: integer, artifactDigest: text, boundaryDigest: text },
   optional: ['machine', 'incarnation', 'startIdentity', 'pid', 'artifactDigest', 'boundaryDigest'] } as const;
+const processControlTargetShape = { kind: 'object', fields: { machine: text, incarnation: text, pid: integer, parentPid: integer,
+  startIdentity: text, parentStartIdentity: text, executable: text,
+  argvDigest: text } } as const;
 const outcome: OwnedShape = { kind: 'object', fields: { type: text, schemaVersion: integer, kind: text, evidence: refs } };
 // The normalized owner settlement uses null. P2's shape supports null but no
 // arbitrary union, so record
@@ -42,6 +45,10 @@ export const effectShapes: Readonly<Record<string, OwnedShape>> = freeze({
     account: text, conversation: text, text: { kind: 'text', maxLength: 4096 }, purpose: text, sourceResult: text,
     context: { kind: 'object', fields: { input: { kind: 'object', fields: { fact: text, reference: text, hash: text } },
       manifest: { kind: 'array', maxLength: 64, items: { kind: 'object', fields: { class: text, reference: text, digest: text } } } } } }, optional: ['context'] },
+  ProcessControlPayload: { kind: 'object', fields: { ...common, purpose: text, semanticMessage: text,
+    run: text, speaker: text, account: text, conversation: text, sourceResult: text, action: text, signal: text,
+    generation: text, episode: text, step: text, deadline: integer,
+    target: processControlTargetShape } },
   EffectRequest: { kind: 'object', fields: { ...common, definition: text, message: text, semanticMessage: text,
     run: text, pending: text, attempt: text, digest: text, verificationOwner: text, verificationBar: text,
     obligation: text, closure: refs } },
@@ -305,8 +312,13 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     ensure((r.purpose === 'ordinary-reply' || r.purpose === 'context-delivery') && r.speaker === host.principal.id && r.text.length > 0
       && r.semanticMessage.length > 0 && r.sourceResult.length > 0, 'attributable reply required');
     ensure(past.some(f => f.id === r.sourceResult), 'source result fact missing');
+  } else if (r.type === 'ProcessControlPayload') {
+    processPayloadCheck(r, host);
+    ensure(past.some(f => f.id === r.sourceResult), 'process supervision source result missing');
   } else if (r.type === 'EffectRequest') {
-    const d = find(r.definition, 'OperationDefinition'), m = find(r.message, 'OutboundMessage');
+    const d = find(r.definition, 'OperationDefinition'), m = payloadFrom(all, r.message).record;
+    ensure((m.purpose === 'process-control') === (d.feature === 'process-control'), 'process payload requires its governed definition');
+    if (m.type === 'ProcessControlPayload') ensure(m.generation === d.generation, 'process generation differs');
     ensure((m.purpose === 'context-delivery') === (d.feature === 'harness-live-input'), 'live-input payload requires its governed harness-live-input definition');
     ensure(r.id === `request:${encoded([m.account, m.conversation, m.semanticMessage]).hash}`, 'stable semantic identity required');
     ensure(r.digest === encoded(m).hash && r.semanticMessage === m.semanticMessage && r.run === m.run, 'request/message binding');
@@ -359,7 +371,7 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     'native settlement cannot erase retained exposure');
     if (origin) requireSettlement(host, r);
   } else {
-    const q = find(r.request, 'EffectRequest'), m = find(q.message, 'OutboundMessage');
+    const q = find(r.request, 'EffectRequest'), m = payloadFrom(all, q.message).record;
     const reservations = past.filter(f => f.kind === 'transport-AdmissionReservation');
     const op = reservations.map(f => ({ fact: f, r: (f.body as { record: { operation: string; state: string; digest: string; request: string; charge: number } }).record }))
       .filter(v => v.r.operation === r.operation).at(-1);
@@ -455,6 +467,30 @@ export function decodeOutboundMessage(input: unknown, host: EffectHost): Result<
     if (m.context) ensure(m.purpose === 'context-delivery' && m.context.input.fact === m.sourceResult
       && /^sha256:[a-f0-9]{64}$/.test(m.context.input.hash), 'explicit context input binding required');
     return freeze(m);
+  });
+}
+export function payloadFrom(all: readonly { fact: FactEnvelope; record: EffectRecord }[], id: string): { fact: FactEnvelope; record: OperationPayload } {
+  const matches = all.filter(row => row.record.id === id && (row.record.type === 'OutboundMessage' || row.record.type === 'ProcessControlPayload'));
+  ensure(matches.length === 1, 'missing or ambiguous operation payload');
+  return matches[0] as { fact: FactEnvelope; record: OperationPayload };
+}
+function processPayloadCheck(p: ProcessControlPayload, host: EffectHost): void {
+  ensure(p.type === 'ProcessControlPayload' && p.schemaVersion === 1 && p.purpose === 'process-control'
+    && p.id.length > 0 && p.semanticMessage.length > 0 && p.run.length > 0 && p.sourceResult.length > 0
+    && p.speaker === host.principal.id && p.account === p.target.machine && p.conversation.length > 0
+    && p.episode.length > 0 && p.step.length > 0 && p.generation.length > 0 && p.deadline > 0,
+  'process payload identity or scope');
+  const t = p.target;
+  ensure(t.machine === host.machine && t.incarnation.length > 0 && t.pid > 1 && t.parentPid > 1 && t.pid !== t.parentPid
+    && t.startIdentity.length > 0 && t.parentStartIdentity.length > 0 && t.executable.startsWith('/')
+    && /^sha256:[a-f0-9]{64}$/.test(t.argvDigest) && !t.executable.includes('\0'), 'exact process target required');
+  ensure(p.action === 'interrupt' && p.signal === 'SIGINT'
+    || p.action === 'terminate' && (p.signal === 'SIGTERM' || p.signal === 'SIGKILL'), 'process action/signal mismatch');
+}
+export function decodeProcessControlPayload(input: unknown, host: EffectHost): Result<ProcessControlPayload> {
+  return boundary('ProcessControlPayloadInput', input, host.boundary, () => {
+    const safe = json(input); shapeCheck(safe, effectShapes.ProcessControlPayload!);
+    const payload = safe as unknown as ProcessControlPayload; processPayloadCheck(payload, host); return freeze(payload);
   });
 }
 const liveInputAuthors = new WeakMap<object, EffectAuthor>();

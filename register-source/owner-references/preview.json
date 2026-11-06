@@ -151,7 +151,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/resource-admission-evidence.test.ts",
-        "hash": "sha256:70327b1c14c67ff05a0863bdb1288f89b824aae5cd7627961455e94120ff39f5"
+        "hash": "sha256:e1ee72768fc4ac90b1d7f37be60bd715aae9eb4d234d655375434f4e09082427"
       }
     },
     {

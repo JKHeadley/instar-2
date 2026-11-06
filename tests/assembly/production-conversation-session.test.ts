@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
 import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { createConversationSessionPort, conversationSessionPrompt, conversationSessionPolicy, CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
+import { createConversationSessionPort, conversationSessionPrompt, conversationSessionPolicy, CONVERSATION_SESSION_LIMITS, observeStall, STALL_RECOVERY_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import type { ConversationSessionConfig, ConversationState } from '../../src/assembly/production-conversation-session.js';
 import type { ConversationDelivery, ConversationWorker } from '../../src/assembly/conversation-harness-adapter.js';
 import type { HarnessAdapterPort } from '../../src/assembly/contracts.js';
@@ -12,6 +12,8 @@ import type { SessionWorkEdge, SessionWorkEdgeClose } from '../../src/assembly/p
 import type { SessionWorkRequest } from '../../src/assembly/production-session-work.js';
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
+import { processControlFixture, startOwnProcessFixture } from '../effects/process-control-fixture.js';
+import type { ProcessControlPayload } from '../../src/effects/index.js';
 
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | 'maxSteps' | 'maxResultBytes' | 'workingActivity' | 'currentActionFacts' | 'prepareInputFiles'>> = {}) {
@@ -947,7 +949,7 @@ it.each(capturedShapes.otherShapes)('recovers a lost worker once with recorded $
 
 it.each(['unknown-effects', 'uncertain-tool', 'completed-tool', 'uncertain-send', 'child', 'exhausted', 'deadline',
   'repeated', 'paused', 'observation-gap', 'stop', 'withdrawn', 'missing-admission', 'refused-admission',
-  'missing-tool-count', 'batch'] as const)('does not revive lost work across %s', async mode => {
+  'missing-tool-count'] as const)('does not revive lost work across %s', async mode => {
   const f = fixture(); Object.assign(f.config, { contextRecoveryAllowed: () => mode !== 'uncertain-send' });
   f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
   f.adapter.observe = async input => {
@@ -963,11 +965,7 @@ it.each(['unknown-effects', 'uncertain-tool', 'completed-tool', 'uncertain-send'
     return { observations: [{ kind: mode === 'paused' ? 'paused' : 'exit', evidence: 'physical' }],
       cursor: input.cursor, complete: mode !== 'observation-gap' };
   };
-  if (mode === 'batch') {
-    Object.assign(f.config, { batchWaiting: true });
-    const outcomes = await f.port.runBatch([f.request('lost'), f.request('also-lost')]);
-    expect(outcomes.map(outcome => outcome.state)).toEqual(['uncertain', 'uncertain']);
-  } else expect((await f.port.run(f.request('lost'))).state).toBe('uncertain');
+  expect((await f.port.run(f.request('lost'))).state).toBe('uncertain');
   expect(f.launches).toHaveLength(mode === 'repeated' ? 2 : 1);
   expect(f.delivered).toHaveLength(1); await f.port.close();
 });
@@ -1076,7 +1074,9 @@ it.each(['expiry', 'turns', 'authority', 'maintain', 'idle', 'prepare'] as const
   'harvests a retained uncertain worker halt before %s retirement', async path => {
     const f = fixture(path === 'turns' ? { maxSteps: 1 } : {}); f.stopFailure();
     const observe = f.adapter.observe;
-    f.adapter.observe = async input => input.delivery ? { observations: [], cursor: 0, complete: false } : observe(input);
+    // A concrete pause settles uncertain; an incomplete read now correctly holds to the
+    // original deadline, so it cannot create this pre-deadline retirement fixture.
+    f.adapter.observe = async input => input.delivery ? { observations: [{ kind: 'paused', reason: 'rate-limited', evidence: 'observed-rate-limit' }], cursor: 0, complete: true } : observe(input);
     expect(await f.port.run(f.request('uncertain'))).toMatchObject({ state: 'uncertain' });
     expect(f.state().worker).not.toBeNull(); expect(f.state().halt).toBeUndefined();
     f.adapter.observe = async () => ({ observations: [{ kind: 'exit', evidence: 'exact-driver-deadline', safetyDeadline: 3000 }], cursor: 0, complete: true });
@@ -1217,4 +1217,659 @@ it('replays the failed email turn: missing result stays uncertain, and the actua
   expect(prompt).toContain('Put that honest answer in the requested result file');
   expect(prompt).toContain('never invent account contents or completed actions');
   await f.port.close();
+});
+
+
+function stalledFixture(mode = 'frozen') {
+  const f = fixture(); f.finish(false);
+  Object.assign(f.config, { allowanceDeadline: 14_400_000, deadlineMs: 14_400_000, pollMs: 5000,
+    contextRecoveryAllowed: () => mode !== 'uncertain-send' });
+  let reviews = 0, observation = 0;
+  const admission = { refused: false, openDelegations: [] as SessionWorkEdge[],
+    uncertainEffects: mode === 'uncertain-effect' ? 1 : 0, toolPreparations: 0 };
+  f.config.io.admissionState = () => mode === 'helper' ? { ...admission, openDelegations: f.admissions } : admission;
+  const control = f.adapter.control;
+  f.adapter.control = async input => {
+    if (mode === 'effect-at-close' || mode === 'effect-completed-at-close') admission.toolPreparations++;
+    if (mode === 'result-at-close' || mode === 'effect-completed-at-close') f.finish(true);
+    return control(input);
+  };
+  const launch = f.adapter.launch;
+  f.adapter.launch = async input => {
+    if (input.restore) {
+      expect(f.state().inputs[0]?.workerRecovery).toBe('restoring');
+      expect(input.restore).toEqual({ operation: f.delivered[0]!.operation,
+        digest: f.delivered[0]!.digest, deadline: f.state().deadline });
+      f.finish(true);
+    }
+    return launch(input);
+  };
+  Object.assign(f.config, { stallRecovery: {
+    observe: (worker: ConversationWorker) => {
+      observation++;
+      return { ...worker, at: f.config.now(), progress: mode === 'progress' || mode === 'progress-race' && reviews > 0 ? String(observation) : 'frozen-frame',
+        activity: mode === 'unknown' ? 'unknown' : 'idle', waiting: mode === 'waiting' };
+    },
+    reserve: (claim: string) => { if (mode === 'charge-failure') throw Error('reservation write failed'); f.port.reserveReview(claim); },
+    review: async () => {
+      reviews++;
+      expect(f.state().inputs[0]?.stall?.phase).toBe('reviewed');
+      expect(f.state().spent).toBe(1 + reviews);
+      if (mode === 'result-arrives') f.finish(true);
+      if (mode === 'stop') f.stop();
+      if (mode === 'custody-lost') f.authorize(false);
+      if (mode === 'effects-during-review') admission.toolPreparations++;
+      if (mode === 'slow-review') f.advance(20_000);
+      if (mode === 'pressure') Object.assign(f.config.resources, { admit: async () => null });
+      return mode === 'wait' ? 'wait' : mode === 'unavailable' ? 'unknown' : 'recover';
+    },
+  } });
+  // Terminate negative simulations with an ordinary correlated reply, not a timeout kill.
+  const wait = f.config.io.wait;
+  f.config.io.wait = async ms => { await wait(ms); if (f.config.now() > 2_000_000) f.finish(true); };
+  return { ...f, reviews: () => reviews };
+}
+
+it.each(['frozen', 'slow-review'])('supervised %s work restores once with original input, destination and remaining allowance', async mode => {
+  const f = stalledFixture(mode); const request = f.request('frozen');
+  const result = await f.port.run(request);
+  expect(result.state).toBe('complete'); expect(f.reviews()).toBe(1);
+  expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(1);
+  expect(f.admissions[1]!.budget.calls).toBe(4);
+  expect(f.state().inputs[0]?.stall?.phase).toBe('continued');
+  expect(await f.port.run(request)).toEqual(result); expect(f.reviews()).toBe(1);
+});
+
+it.each(['progress', 'unknown', 'waiting', 'helper', 'uncertain-send', 'uncertain-effect'])('holds %s without supervisor spending or replacement', async mode => {
+  const f = stalledFixture(mode); await f.port.run(f.request(mode));
+  expect(f.reviews()).toBe(0); expect(f.launches).toHaveLength(1);
+});
+
+it.each(['wait', 'unavailable', 'effects-during-review', 'result-arrives', 'progress-race'])('holds %s after review and preserves ordinary completion', async mode => {
+  const f = stalledFixture(mode); expect((await f.port.run(f.request(mode))).state).toBe('complete');
+  expect(f.reviews()).toBe(1); expect(f.launches).toHaveLength(1);
+});
+
+it.each(['stop', 'custody-lost', 'effect-at-close'])('rechecks %s before a supervised replacement', async mode => {
+  const f = stalledFixture(mode); expect((await f.port.run(f.request(mode))).state).toBe('uncertain');
+  expect(f.reviews()).toBe(1); expect(f.launches).toHaveLength(1);
+  expect(f.state().inputs[0]?.request.operation).toBe(mode);
+});
+
+it('unknown, stale, changed identity and helper observations reset the corroboration clock', () => {
+  const worker = { claim: 'claim', incarnation: 'incarnation', launch: 'launch' };
+  const sample = { ...worker, at: 1000, progress: 'frame', activity: 'active' as const, waiting: false };
+  const episode = observeStall(null, sample, worker, 1000, false)!;
+  expect(observeStall(episode, { ...sample, at: 6000 }, worker, 6000, false)?.since).toBe(1000);
+  expect(observeStall(episode, { ...sample, at: 6001 }, worker, 6001, false)?.since).toBe(6001);
+  expect(observeStall(episode, sample, worker, 6001, false)).toBe(null);
+  expect(observeStall(episode, { ...sample, activity: 'unknown' }, worker, 1000, false)).toBe(null);
+  expect(observeStall(episode, { ...sample, launch: 'other' }, worker, 1000, false)).toBe(null);
+  expect(observeStall(episode, sample, worker, 1000, true)).toBe(null);
+  expect(STALL_RECOVERY_LIMITS).toMatchObject({ silenceMs: 1_800_000, frozenActiveMs: 5_400_000 });
+});
+
+const stalledRecordedShapes = JSON.parse(readFileSync(new URL('../preview/fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8')) as {
+  workOutput: string; negativeOutputs: { id: string; shape: string; output: string | null }[];
+};
+it.each(stalledRecordedShapes.negativeOutputs)('returns recorded $shape ($id) through frozen recovery without inventing completion', async recorded => {
+  const f = stalledFixture(); f.answer(recorded.output ?? '');
+  const result = await f.port.run(f.request('recorded'));
+  expect(result.state).toBe(recorded.output?.trim() ? 'complete' : 'uncertain');
+  if (result.state === 'complete') expect(result.text).toBe(recorded.output);
+  expect(f.reviews()).toBe(1); expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(1);
+});
+it('returns the recorded obligation result after supervised replacement', async () => {
+  const f = stalledFixture(); f.answer(stalledRecordedShapes.workOutput);
+  expect(await f.port.run(f.request('recorded-work'))).toMatchObject({ state: 'complete', text: stalledRecordedShapes.workOutput });
+  expect(f.launches).toHaveLength(2);
+});
+
+
+it('a failed supervisor reservation never dispatches judgment or replacement', async () => {
+  const f = stalledFixture('charge-failure');
+  expect((await f.port.run(f.request('charge-failure'))).state).toBe('complete');
+  expect(f.reviews()).toBe(0); expect(f.launches).toHaveLength(1);
+  expect(f.state().inputs[0]?.stallReviews).toBe(1);
+});
+it('unchanged work gets bounded follow-up after a wait decision, then stops spending', async () => {
+  const f = stalledFixture('wait');
+  f.config.io.wait = async ms => { f.advance(ms); if (f.config.now() > 8_000_000) f.finish(true); };
+  expect((await f.port.run(f.request('bounded-review'))).state).toBe('complete');
+  expect(f.reviews()).toBe(3); expect(f.state().spent).toBe(4); expect(f.launches).toHaveLength(1);
+});
+
+
+it.each([false, true])('resource refusal queues exact restoration without duplicate delivery (reopen=%s)', async reopen => {
+  const f = stalledFixture('pressure'); const admit = f.config.resources.admit;
+  expect((await f.port.run(f.request('pressure'))).state).toBe('queued');
+  expect(f.launches).toHaveLength(1); expect(f.state().worker).toBe(null);
+  expect(f.state().inputs[0]).toMatchObject({ state: 'queued', workerRecovery: 'restoring',
+    recoveryQueued: { closedClaim: f.launches[0]!.claim, authority: 'existing-role' } });
+  const port = reopen ? f.restart() : f.port;
+  f.advance(60_000); Object.assign(f.config.resources, { admit });
+  await port.maintain();
+  expect(await port.collect('pressure')).toMatchObject({ outcome: { state: 'complete' } });
+  expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(1);
+  expect(f.state().inputs[0]?.recoveryQueued).toBe(null);
+});
+it('activity classification changes reset the silence clock even when frame bytes are unchanged', () => {
+  const worker = { claim: 'claim', incarnation: 'incarnation', launch: 'launch' };
+  const sample = { ...worker, at: 1000, progress: 'frame', activity: 'active' as const, waiting: false };
+  const episode = observeStall(null, sample, worker, 1000, false)!;
+  expect(observeStall(episode, { ...sample, at: 2000 }, worker, 2000, false)?.since).toBe(1000);
+  expect(observeStall(episode, { ...sample, at: 2000, activity: 'indeterminate' }, worker, 2000, false)?.since).toBe(2000);
+});
+
+
+it.each(['result-at-close', 'effect-completed-at-close'])('consumes the original correlated result arriving during retirement (%s) without launching a replacement', async mode => {
+  const f = stalledFixture(mode); f.answer(stalledRecordedShapes.workOutput);
+  expect(await f.port.run(f.request('result-at-close'))).toMatchObject({ state: 'complete',
+    text: stalledRecordedShapes.workOutput, detail: 'correlated reply recovered during worker retirement' });
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+});
+it('the real admission checkpoint retains post-fence evidence for supervised recovery', async () => {
+  // @ts-expect-error physical checkpoint stays outside the pure core
+  const { createAdmissionGate } = await import('../preview/admission-gate.mjs');
+  const f = stalledFixture();
+  const gate = await createAdmissionGate({ append: () => {}, stopped: () => false, now: f.config.now });
+  f.config.io.prepareAdmission = (claim, edge) => gate.open(claim, { framework: 'claude-code', allowance: edge.budget.calls, edge });
+  f.config.io.admissionState = claim => gate.state(claim);
+  f.config.io.closeAdmission = claim => { gate.close(claim); };
+  try {
+    expect((await f.port.run(f.request('real-gate'))).state).toBe('complete');
+    expect(gate.state(f.launches[0]!.claim)).toMatchObject({ closed: true, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+    expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(1);
+  } finally { await gate.stop(); }
+});
+
+it.each(['frozen', 'result-at-close', 'effect-completed-at-close'])('recovers the exact admitted batch through each original result consumer (%s)', async mode => {
+  const f = stalledFixture(mode);
+  Object.assign(f.config, { batchWaiting: true });
+  const requests = [f.request('batch-first'), f.request('batch-second')];
+  const text = JSON.stringify({ results: requests.map((request, index) => ({ operation: request.operation, answer: { answer: `answer-${index}` } })) });
+  f.answer(text);
+  const results = await f.port.runBatch(requests);
+  expect(results.map(result => result.state)).toEqual(['complete', 'complete']);
+  expect(results.map(result => result.state === 'complete' ? result.text : undefined)).toEqual(['{"answer":"answer-0"}', '{"answer":"answer-1"}']);
+  expect(f.delivered).toHaveLength(1);
+  expect(f.launches).toHaveLength(mode === 'frozen' ? 2 : 1);
+  expect(f.reviews()).toBe(1);
+  expect(f.state().inputs.every(input => input.state === 'settled' && input.recoveryQueued == null)).toBe(true);
+  expect(await f.port.runBatch(requests)).toEqual(results);
+  expect(f.reviews()).toBe(1);
+});
+
+it.each([false, true])('queues every member of a restoration batch and preserves it across host restart=%s', async reopen => {
+  const f = stalledFixture('pressure'); Object.assign(f.config, { batchWaiting: true });
+  const admit = f.config.resources.admit;
+  const requests = [f.request('first'), f.request('second')];
+  f.answer(JSON.stringify({ results: requests.map(request => ({ operation: request.operation, answer: { answer: request.operation } })) }));
+  expect((await f.port.runBatch(requests)).map(result => result.state)).toEqual(['queued', 'queued']);
+  expect(f.state().inputs.every(input => input.recoveryQueued && input.workerRecovery === 'restoring')).toBe(true);
+  const port = reopen ? f.restart() : f.port;
+  f.advance(60_000); Object.assign(f.config.resources, { admit }); await port.maintain();
+  expect((await port.collect('first'))?.outcome).toMatchObject({ state: 'complete', text: '{"answer":"first"}' });
+  expect((await port.collect('second'))?.outcome).toMatchObject({ state: 'complete', text: '{"answer":"second"}' });
+  expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(1);
+});
+
+it('refuses restoration when one batch member custody changed without replaying any member', async () => {
+  const f = stalledFixture('pressure'); Object.assign(f.config, { batchWaiting: true });
+  const admit = f.config.resources.admit;
+  await f.port.runBatch([f.request('first'), f.request('second')]);
+  f.restore({ ...f.state(), inputs: f.state().inputs.map((input, index) => index === 0 ? input : {
+    ...input, delivery: { ...input.delivery!, digest: hash('substituted') } }) });
+  f.advance(60_000); Object.assign(f.config.resources, { admit });
+  const port = f.restart(); await port.maintain();
+  expect((await port.collect('first'))?.outcome).toMatchObject({ state: 'uncertain' });
+  expect((await port.collect('second'))?.outcome).toMatchObject({ state: 'uncertain' });
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+});
+
+it.each(['unknown', 'protected'] as const)('holds a %s stale observer signal before any supervisor or replacement', async state => {
+  const f = stalledFixture();
+  const observe = f.config.stallRecovery!.observe;
+  Object.assign(f.config.stallRecovery!, { observe: (worker: ConversationWorker) => ({ ...observe(worker)!,
+    stale: { state, lastProgressAt: 1, windowMs: 1800000 } }) });
+  expect((await f.port.run(f.request(state))).state).toBe('complete');
+  expect(f.reviews()).toBe(0); expect(f.launches).toHaveLength(1);
+});
+
+it('an independently corroborated stale-work signal reaches admitted supervision and original result', async () => {
+  const f = stalledFixture(); const observe = f.config.stallRecovery!.observe;
+  f.advance(1800000);
+  Object.assign(f.config.stallRecovery!, { observe: (worker: ConversationWorker) => ({ ...observe(worker)!,
+    stale: { state: 'stalled' as const, lastProgressAt: 1, windowMs: 1800000 } }) });
+  expect((await f.port.run(f.request('stale'))).state).toBe('complete');
+  expect(f.reviews()).toBe(1); expect(f.launches).toHaveLength(2);
+});
+
+
+it('supervised owner consumes a real isolated Eight/Six/Ten process effect, then returns only the original correlated result', async () => {
+  // The signal is injected; the child, durable claim, signal and independent exit
+  // observation are real. This is not a provider judgment or installed proof.
+  const own = await startOwnProcessFixture('incarnation:1');
+  try {
+    const f = stalledFixture(); f.advance(-900);
+    const formal = processControlFixture(own.target, own.kernel, { episode: 'stall-triage:process-owner:100', signal: 'SIGINT' });
+    let dispatches = 0;
+    const observe = f.config.stallRecovery!.observe;
+    Object.assign(f.config.stallRecovery!, {
+      observe: (worker: ConversationWorker) => ({ ...observe(worker)!, stale: { state: 'stalled' as const, lastProgressAt: 1, windowMs: 1 } }),
+      review: async () => ({ kind: 'process-control', payload: formal.payload }),
+      intervention: { run: formal.run.id, machine: own.target.machine,
+        reconcile: async () => { throw Error('already settled'); },
+        intervene: async (payload: ProcessControlPayload) => {
+          dispatches++;
+          expect(f.state().inputs[0]?.processIntervention).toMatchObject({ phase: 'prepared', payload });
+          expect(f.state().inputs[0]?.outcome).toBeNull();
+          const request = formal.prepare(), observation = value(formal.api.dispatch(request, formal.fence));
+          const [code, signal] = await own.exit; expect(code).toBeNull(); expect(signal).toBe('SIGINT');
+          formal.recordIndependentEvidence(observation.operation, request.digest, signal);
+          const settlement = formal.api.settle(observation.operation);
+          expect(f.state().inputs[0]?.outcome).toBeNull();
+          f.finish(true);
+          return settlement;
+        } }
+    });
+    const request = f.request('process-owner');
+    expect(await f.port.run(request)).toMatchObject({ state: 'complete', text: '{"answer":"hello"}' });
+    expect(f.state().inputs[0]?.processIntervention).toMatchObject({ phase: 'settled', settlement: { finalCharge: 0, delayedExecutionExcluded: true } });
+    expect(dispatches).toBe(1); expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+    expect((await f.port.run(request)).state).toBe('complete'); expect(dispatches).toBe(1);
+  } finally { own.close(); }
+}, 60000);
+
+it.each(['wrong-episode', 'wrong-worker', 'expired', 'missing-port', 'unknown-receipt', 'changed-progress', 'unknown-effects', 'protected'])(
+  'process intervention preserves the %s refusal/uncertainty without a second send', async mode => {
+    const f = stalledFixture(); f.advance(-900);
+    const formal = processControlFixture(undefined, undefined, { episode: 'stall-triage:process-owner:100', signal: 'SIGINT' });
+    const target = { ...formal.payload.target, incarnation: mode === 'wrong-worker' ? 'other' : 'incarnation:1' };
+    // Deliberately malformed, non-decoded proposals exercise the consumer fence;
+    // they never reach the driver and must not be mistaken for authority.
+    const payload = { ...formal.payload, target,
+      episode: mode === 'wrong-episode' ? 'other' : formal.payload.episode,
+      deadline: mode === 'expired' ? 99 : formal.payload.deadline };
+    let dispatches = 0, reviews = 0;
+    const observe = f.config.stallRecovery!.observe;
+    if (mode === 'unknown-effects') f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 1, toolPreparations: 0, openDelegations: [] });
+    Object.assign(f.config.stallRecovery!, {
+      observe: (worker: ConversationWorker) => ({ ...observe(worker)!,
+        progress: mode === 'changed-progress' && reviews ? 'new-frame' : 'fixed',
+        stale: { state: mode === 'protected' ? 'protected' as const : 'stalled' as const, lastProgressAt: 1, windowMs: 1 } }),
+      review: async () => { reviews++; return { kind: 'process-control', payload }; },
+      ...(mode === 'missing-port' ? {} : { intervention: { run: formal.run.id, machine: formal.payload.target.machine,
+        reconcile: async () => { throw Error('no independent observation'); },
+        intervene: async () => { dispatches++; throw Error('receipt lost after dispatch'); } } })
+    });
+    const originalWait = f.config.io.wait;
+    f.config.io.wait = async ms => { await originalWait(ms); if (f.config.now() >= 5100) f.finish(true); };
+    const result = await f.port.run(f.request('process-owner'));
+    expect(dispatches).toBe(mode === 'unknown-receipt' ? 1 : 0);
+    expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+    if (mode === 'unknown-receipt') expect(f.state().inputs[0]?.processIntervention?.phase).toBe('uncertain');
+    if (['wrong-episode', 'wrong-worker', 'expired'].includes(mode)) expect(result.state).toBe('uncertain');
+    else expect(result.state).toBe('complete');
+    await f.port.run(f.request('process-owner')); expect(dispatches).toBe(mode === 'unknown-receipt' ? 1 : 0);
+  });
+
+it('a lost process-effect reply is reconciled after host restart by observation only, retaining the original result', async () => {
+  const own = await startOwnProcessFixture('incarnation:1');
+  try {
+    const f = stalledFixture(); f.advance(-900);
+    const formal = processControlFixture(own.target, own.kernel, { episode: 'stall-triage:process-owner:100', signal: 'SIGINT' });
+    let dispatches = 0, observations = 0, operation = '', requestDigest = '', exitSignal: NodeJS.Signals | null = null;
+    let cut: ConversationState | null = null;
+    const observe = f.config.stallRecovery!.observe;
+    Object.assign(f.config.stallRecovery!, {
+      observe: (worker: ConversationWorker) => ({ ...observe(worker)!, stale: { state: 'stalled' as const, lastProgressAt: 1, windowMs: 1 } }),
+      review: async () => ({ kind: 'process-control', payload: formal.payload }),
+      intervention: { run: formal.run.id, machine: own.target.machine,
+        intervene: async () => {
+          dispatches++; cut = f.state();
+          const request = formal.prepare(), observed = value(formal.api.dispatch(request, formal.fence));
+          operation = observed.operation; requestDigest = request.digest;
+          [, exitSignal] = await own.exit;
+          f.finish(true);
+          throw Error('lost effect reply after real signal');
+        },
+        reconcile: async () => {
+          observations++;
+          formal.recordIndependentEvidence(operation, requestDigest, exitSignal);
+          return formal.api.settle(operation);
+        } }
+    });
+    const request = f.request('process-owner');
+    expect((await f.port.run(request)).state).toBe('complete');
+    expect(f.state().inputs[0]?.processIntervention?.phase).toBe('uncertain');
+    expect(cut).not.toBeNull(); f.restore(cut!); f.advance(10000);
+    const resumed = f.restart();
+    expect((await resumed.collect(request.operation))?.outcome).toMatchObject({ state: 'complete', text: '{"answer":"hello"}' });
+    expect(f.state().inputs[0]?.processIntervention).toMatchObject({ phase: 'settled', observations: 1 });
+    expect(dispatches).toBe(1); expect(observations).toBe(1); expect(f.delivered).toHaveLength(1);
+    expect((await resumed.run(request)).state).toBe('complete'); expect(dispatches).toBe(1);
+  } finally { own.close(); }
+}, 60000);
+
+it('unknown intervention observations back off and stop after three attempts without escalation or input replay', async () => {
+  const f = stalledFixture(); f.advance(-900);
+  const formal = processControlFixture(undefined, undefined, { episode: 'stall-triage:process-owner:100', signal: 'SIGINT' });
+  const payload = { ...formal.payload, target: { ...formal.payload.target, incarnation: 'incarnation:1' } };
+  let dispatches = 0, observations = 0, reviews = 0;
+  const observe = f.config.stallRecovery!.observe;
+  Object.assign(f.config.stallRecovery!, {
+    observe: (worker: ConversationWorker) => ({ ...observe(worker)!, stale: { state: 'stalled' as const, lastProgressAt: 1, windowMs: 1 } }),
+    review: async () => { reviews++; return { kind: 'process-control', payload }; },
+    intervention: { run: formal.run.id, machine: formal.payload.target.machine,
+      intervene: async () => { dispatches++; throw Error('outcome unknown'); },
+      reconcile: async () => { observations++; throw Error('no independent observation'); } }
+  });
+  f.config.io.wait = async ms => { f.advance(ms); if (f.config.now() > 60000) f.finish(true); };
+  expect((await f.port.run(f.request('process-owner'))).state).toBe('complete');
+  expect(dispatches).toBe(1); expect(reviews).toBe(1); expect(observations).toBe(3);
+  expect(f.state().inputs[0]?.processIntervention).toMatchObject({ phase: 'uncertain', observations: 3 });
+  await f.port.maintain(); expect(observations).toBe(3);
+});
+
+it.each(['SIGTERM', 'SIGKILL'] as const)('refuses %s before the prior independently settled escalation steps', async signal => {
+  const f = stalledFixture(); f.advance(-900);
+  const formal = processControlFixture(undefined, undefined, { episode: 'stall-triage:process-owner:100', signal });
+  let dispatches = 0;
+  const observe = f.config.stallRecovery!.observe;
+  Object.assign(f.config.stallRecovery!, {
+    observe: (worker: ConversationWorker) => ({ ...observe(worker)!, stale: { state: 'stalled' as const, lastProgressAt: 1, windowMs: 1 } }),
+    review: async () => ({ kind: 'process-control', payload: { ...formal.payload, target: { ...formal.payload.target, incarnation: 'incarnation:1' } } }),
+    intervention: { run: formal.run.id, machine: formal.payload.target.machine,
+      intervene: async () => { dispatches++; throw Error('must not run'); }, reconcile: async () => { throw Error('must not observe'); } }
+  });
+  expect((await f.port.run(f.request('process-owner'))).state).toBe('uncertain');
+  expect(dispatches).toBe(0);
+});
+
+it.each(['throw', 'gap', 'after-review'] as const)('a transient %s observation holds the accepted input and healthy worker until its correlated reply', async mode => {
+  const f = mode === 'after-review' ? stalledFixture('wait') : fixture();
+  const observe = f.adapter.observe;
+  let unavailable = 0;
+  f.adapter.observe = async input => {
+    if (input.delivery && unavailable === 0 && (mode !== 'after-review' || (f.state().inputs[0]?.stallReviews ?? 0) > 0)) {
+      unavailable++;
+      expect(f.state().inputs[0]?.state).toBe('accepted');
+      if (mode === 'gap') return { observations: [], cursor: input.cursor, complete: false };
+      throw Error('control plane unavailable');
+    }
+    if (unavailable) f.finish(true);
+    return observe(input);
+  };
+  const result = await f.port.run(f.request('transient'));
+  expect(result).toMatchObject({ state: 'complete', text: '{"answer":"hello"}' });
+  expect(unavailable).toBe(1); expect(f.counts().stops).toBe(0); expect(f.launches).toHaveLength(1);
+  expect(f.delivered).toHaveLength(1);
+});
+
+it('an unavailable between-turn observation leaves the next input queued without retiring its worker', async () => {
+  const f = fixture(); await f.port.run(f.request('one'));
+  const observe = f.adapter.observe;
+  let unavailable = true;
+  f.adapter.observe = async input => { if (!input.delivery && unavailable) throw Error('unreachable control plane'); return observe(input); };
+  expect((await f.port.run(f.request('two'))).state).toBe('queued');
+  expect(f.counts().stops).toBe(0); expect(f.delivered).toHaveLength(1);
+  unavailable = false; await f.port.maintain();
+  expect((await f.port.collect('two'))?.outcome.state).toBe('complete');
+  expect(f.counts().stops).toBe(0); expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(2);
+});
+
+it('nonfatal settled intervention retains its escalation delay across an unavailable observation', async () => {
+  const own = await startOwnProcessFixture('incarnation:1', [], true);
+  try {
+    const f = stalledFixture(); f.advance(-900);
+    const formal = processControlFixture(own.target, own.kernel, { episode: 'stall-triage:process-owner:100', signal: 'SIGINT' });
+    const reviewTimes: number[] = []; let sent = false, gap = false;
+    const observe = f.config.stallRecovery!.observe;
+    Object.assign(f.config.stallRecovery!, {
+      observe: (worker: ConversationWorker) => {
+        if (sent && !gap) { gap = true; return null; }
+        return { ...observe(worker)!, stale: { state: 'stalled' as const, lastProgressAt: 1, windowMs: 1 } };
+      },
+      review: async () => {
+        reviewTimes.push(f.config.now());
+        if (reviewTimes.length > 1) { f.finish(true); return 'wait'; }
+        return { kind: 'process-control', payload: formal.payload };
+      },
+      intervention: { run: formal.run.id, machine: own.target.machine,
+        reconcile: async () => { throw Error('already settled'); },
+        intervene: async () => {
+          const acknowledgment = new Promise<string>(resolve => own.child.stdout.once('data', bytes => resolve(String(bytes))));
+          const q = formal.prepare(), observed = value(formal.api.dispatch(q, formal.fence));
+          const receipt = JSON.parse(formal.ctx.captures![observed.capture.reference]!.bytes as string);
+          formal.recordNonfatalEvidence(observed.operation, q.digest, await acknowledgment, receipt.actuatorExit);
+          sent = true;
+          return formal.api.settle(observed.operation);
+        } }
+    });
+    expect(await f.port.run(f.request('process-owner'))).toMatchObject({ state: 'complete', text: '{"answer":"hello"}' });
+    expect(reviewTimes).toHaveLength(2);
+    expect(reviewTimes[1]! - reviewTimes[0]!).toBeGreaterThanOrEqual(15000);
+    expect(own.kernel.observe(own.target).state).toBe('running');
+    expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+    expect(f.state().inputs[0]?.processIntervention?.phase).toBe('settled');
+  } finally { own.close(); }
+}, 60000);
+
+// Carryover 02 r4: 1.x ActiveWorkSilenceSentinel nudge/verification, SessionMonitor responsiveness, StallTriageNurse
+// fast path/cooldown/history/restart loop and TriageOrchestrator typed actions, all inside the existing owner.
+function nudgeFixture(mode = 'wait', options: { redeliver?: boolean; typed?: boolean; activity?: 'idle' | 'active' | 'indeterminate' } = {}) {
+  const f = stalledFixture(mode);
+  let progress = 'frozen-frame';
+  const observe = f.config.stallRecovery!.observe;
+  Object.assign(f.config.stallRecovery!, { observe: (worker: ConversationWorker) => ({ ...observe(worker)!, progress,
+    activity: options.activity ?? 'idle', ...(options.typed ? { typedUnsubmitted: true } : {}) }) });
+  f.adapter.describe = () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false, nudge: true, ...(options.redeliver ? { redeliver: true } : {}) });
+  const controls: { action: string; reason: string }[] = [];
+  let nudgeState: 'nudged' | 'refused' = 'nudged', redeliverState: 'redelivered' | 'refused' = 'redelivered';
+  const control = f.adapter.control;
+  f.adapter.control = async input => {
+    if (input.action === 'nudge' || input.action === 'redeliver') {
+      controls.push({ action: input.action, reason: input.reason });
+      if (input.action === 'nudge') expect(f.state().inputs[0]?.stall?.nudge?.state).toBe('requested');
+      else { expect(f.state().inputs[0]?.reinjection?.state).toBe('requested'); expect(input.delivery?.digest).toBe(f.delivered[0]!.digest); }
+      return input.action === 'nudge' ? { state: nudgeState, evidence: `${input.action}:fixture` } : { state: redeliverState, evidence: `${input.action}:fixture` };
+    }
+    return control(input);
+  };
+  return { ...f, controls, setProgress: (next: string) => { progress = next; },
+    refuseNudge: () => { nudgeState = 'refused'; }, refuseRedeliver: () => { redeliverState = 'refused'; } };
+}
+
+it('the neutral nudge precedes judgment: a frame that changes within thirty seconds recovers without a review', async () => {
+  const f = nudgeFixture('wait');
+  let ticks = -1;
+  f.config.io.wait = async ms => { f.advance(ms); if (f.controls.length === 1 && ++ticks === 0) f.setProgress('after-nudge'); if (ticks >= 2) f.finish(true); };
+  expect((await f.port.run(f.request('nudged'))).state).toBe('complete');
+  expect(f.controls).toEqual([{ action: 'nudge', reason: 'stall-triage:nudged:unresponsive' }]);
+  expect(f.reviews()).toBe(0); expect(f.launches).toHaveLength(1);
+  const history = f.state().triageHistory!;
+  expect(history.map(row => row.outcome)).toEqual(['sent: nudge:fixture', 'recovered: frame changed within the verification window']);
+  // SessionMonitor's ten-minute unresponsive trigger, not the thirty-minute silence threshold, requested it.
+  expect(history[0]!.at).toBeGreaterThanOrEqual(1000 + STALL_RECOVERY_LIMITS.unresponsiveMs);
+  expect(history[0]!.at).toBeLessThan(1000 + STALL_RECOVERY_LIMITS.silenceMs);
+  expect(f.state().inputs[0]?.settledAt).toBe(f.config.now());
+});
+
+it('a silent frame after the verification window is recorded, then one review follows; never a second nudge for the episode', async () => {
+  const f = nudgeFixture('wait');
+  expect((await f.port.run(f.request('silent'))).state).toBe('complete');
+  expect(f.controls).toHaveLength(1); expect(f.reviews()).toBe(1);
+  const nudge = f.state().triageHistory!.find(row => row.outcome.startsWith('verified-silent'));
+  expect(nudge).toBeDefined();
+  const reviewed = f.state().triageHistory!.find(row => row.outcome === 'reviewed')!;
+  expect(reviewed.at - f.state().triageHistory![0]!.at).toBeGreaterThanOrEqual(STALL_RECOVERY_LIMITS.nudgeVerifyMs);
+  expect(reviewed).toMatchObject({ trigger: 'unresponsive', decision: 'wait', action: 'wait' });
+});
+
+it('the typed-but-not-submitted frame nudges after the nurse cooldown, long before the responsiveness threshold', async () => {
+  const f = nudgeFixture('wait', { typed: true });
+  f.config.io.wait = async ms => { f.advance(ms); if (f.controls.length) f.finish(true); };
+  expect((await f.port.run(f.request('typed'))).state).toBe('complete');
+  expect(f.controls).toEqual([{ action: 'nudge', reason: 'stall-triage:typed:typed-unsubmitted' }]);
+  const at = f.state().triageHistory![0]!.at;
+  expect(at).toBeGreaterThanOrEqual(1000 + STALL_RECOVERY_LIMITS.cooldownMs); expect(at).toBeLessThan(1000 + STALL_RECOVERY_LIMITS.unresponsiveMs);
+  expect(f.reviews()).toBe(0);
+});
+
+it('an active frame keeps the ninety-minute frozen-indicator backstop: no nudge or review at ten minutes', async () => {
+  const f = nudgeFixture('wait', { activity: 'active' });
+  expect((await f.port.run(f.request('active'))).state).toBe('complete');
+  expect(f.controls).toEqual([]); expect(f.reviews()).toBe(0);
+  expect(f.state().triageHistory ?? []).toEqual([]);
+});
+
+it('a refused or uncertain nudge still allows the bounded review; a legacy adapter without the primitive reviews as before', async () => {
+  const f = nudgeFixture('wait'); f.refuseNudge();
+  expect((await f.port.run(f.request('refused'))).state).toBe('complete');
+  expect(f.controls).toHaveLength(1); expect(f.reviews()).toBe(1);
+  expect(f.state().triageHistory![0]).toMatchObject({ action: 'nudge', outcome: 'refused: nudge:fixture' });
+  const legacy = stalledFixture('wait');
+  expect((await legacy.port.run(legacy.request('legacy'))).state).toBe('complete');
+  expect(legacy.reviews()).toBe(1);
+  expect(legacy.state().triageHistory!.map(row => row.action)).toEqual(['wait']);
+});
+
+it('the hourly auto-action ceiling refuses the nudge before the keystroke and the review still runs', async () => {
+  const f = nudgeFixture('wait');
+  f.restore({ ...(f.state() ?? {}), version: 1, conversation: 'operator-1', epoch: 0, edge: null, worker: null, claim: null, incarnation: null, authority: null,
+    deadline: 0, turns: 0, inputs: [], close: null, reserved: false, spent: 0, claimCalls: 0,
+    triagePressure: { restarts: [], autoActions: [1, 2, 3, 4, 5] } });
+  const port = f.restart();
+  Object.assign(f.config.stallRecovery!, { reserve: (claim: string) => port.reserveReview(claim) });
+  expect((await port.run(f.request('ceiling'))).state).toBe('complete');
+  expect(f.controls).toEqual([]); expect(f.reviews()).toBe(1);
+  expect(f.state().triageHistory![0]).toMatchObject({ action: 'none', outcome: 'refused: auto-action ceiling' });
+  expect(f.state().inputs[0]?.stall?.nudge).toMatchObject({ state: 'refused' });
+});
+
+it.each([
+  { action: 'reinject', support: true, redelivered: true },
+  { action: 'reinject', support: false, redelivered: false },
+])('a message-lost judgment redelivers the exact accepted input at most once ($action, driver=$support)', async ({ support, redelivered }) => {
+  const f = nudgeFixture('wait', { redeliver: support }); f.refuseNudge();
+  Object.assign(f.config.stallRecovery!, { review: async () => ({ kind: 'triage', classification: 'message-lost', action: 'reinject',
+    confidence: 0.95, followUpMs: null, reason: 'prompt visible with the message pending' }) });
+  f.config.io.wait = async ms => { f.advance(ms); if (f.state().inputs[0]?.reinjection || f.config.now() > 2_000_000) f.finish(true); };
+  expect((await f.port.run(f.request('lost'))).state).toBe('complete');
+  expect(f.controls.filter(row => row.action === 'redeliver')).toHaveLength(redelivered ? 1 : 0);
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+  if (redelivered) expect(f.state().inputs[0]?.reinjection).toMatchObject({ state: 'redelivered', evidence: 'redeliver:fixture' });
+  else expect(f.state().inputs[0]?.reinjection).toBeUndefined();
+  expect(f.state().triageHistory!.at(-1)).toMatchObject(redelivered ? { action: 'reinject', outcome: 'redelivered: redeliver:fixture' } : { decision: 'message-lost', outcome: 'reviewed' });
+});
+
+it('a message-lost judgment never redelivers once a tool effect happened after dispatch', async () => {
+  const f = nudgeFixture('effects-during-review', { redeliver: true }); f.refuseNudge();
+  const review = f.config.stallRecovery!.review;
+  // The fixture mode records one tool preparation during judgment; the judgment itself asks to reinject.
+  Object.assign(f.config.stallRecovery!, { review: async (evidence: Parameters<typeof review>[0]) => { await review(evidence);
+    return { kind: 'triage', classification: 'message-lost', action: 'reinject', confidence: 0.95, followUpMs: null, reason: 'prompt visible' }; } });
+  expect((await f.port.run(f.request('acted'))).state).toBe('complete');
+  expect(f.controls.filter(row => row.action === 'redeliver')).toHaveLength(0);
+  expect(f.state().inputs[0]?.reinjection).toBeUndefined();
+});
+
+it('suggest and uncomposed auto-interrupt judgments become a notice and a scheduled follow-up under the review ceiling', async () => {
+  const f = nudgeFixture('wait'); f.refuseNudge();
+  const decisions: string[] = [];
+  Object.assign(f.config.stallRecovery!, { review: async () => {
+    decisions.push('review');
+    return { kind: 'triage', classification: 'stuck-on-tool', action: decisions.length === 1 ? 'auto-interrupt' : 'suggest-interrupt',
+      confidence: 0.9, followUpMs: 5 * 60_000, reason: 'a command appears stuck' };
+  } });
+  f.config.io.wait = async ms => { f.advance(ms); if (f.config.now() > 8_000_000) f.finish(true); };
+  expect((await f.port.run(f.request('suggest'))).state).toBe('complete');
+  expect(decisions).toHaveLength(STALL_RECOVERY_LIMITS.reviews);
+  const history = f.state().triageHistory!.filter(row => row.outcome === 'reviewed');
+  expect(history.map(row => row.trigger)).toEqual(['unresponsive', 'follow-up', 'follow-up']);
+  // Follow-ups ran at the judged cadence, not the thirty-minute silence threshold, and never inside the cooldown.
+  for (let index = 1; index < history.length; index++) {
+    expect(history[index]!.at - history[index - 1]!.at).toBeGreaterThanOrEqual(5 * 60_000);
+    expect(history[index]!.at - history[index - 1]!.at).toBeLessThan(STALL_RECOVERY_LIMITS.silenceMs);
+  }
+  expect(f.launches).toHaveLength(1); expect(f.controls.filter(row => row.action !== 'nudge')).toEqual([]);
+  expect(f.state().inputs[0]?.stall?.notice).toContain('stuck-on-tool: suggest-interrupt');
+});
+
+it('an auto-restart judgment below the confidence floor is a notice; above it, the existing fenced replacement runs', async () => {
+  for (const confidence of [0.5, 0.9]) {
+    const f = nudgeFixture('frozen'); f.refuseNudge();
+    Object.assign(f.config.stallRecovery!, { review: async () => ({ kind: 'triage', classification: 'stuck-on-thinking', action: 'auto-restart',
+      confidence, followUpMs: null, reason: 'frozen frame' }) });
+    expect((await f.port.run(f.request(`restart-${confidence}`))).state).toBe('complete');
+    expect(f.launches).toHaveLength(confidence >= STALL_RECOVERY_LIMITS.confidenceFloor ? 2 : 1);
+    if (confidence >= STALL_RECOVERY_LIMITS.confidenceFloor) {
+      expect(f.state().triageHistory!.at(-1)).toMatchObject({ action: 'auto-restart', outcome: 'replaced: original input restored to a fresh worker' });
+      expect(f.state().triagePressure?.restarts).toHaveLength(1);
+    }
+  }
+});
+
+it('restart-loop pressure refuses a fourth automatic replacement within ten minutes, for supervised and lost workers alike', async () => {
+  const seeded = (f: ReturnType<typeof nudgeFixture>, restarts: number[]) => {
+    f.restore({ version: 1, conversation: 'operator-1', epoch: 0, edge: null, worker: null, claim: null, incarnation: null, authority: null,
+      deadline: 0, turns: 0, inputs: [], close: null, reserved: false, spent: 0, claimCalls: 0,
+      triagePressure: { restarts, autoActions: [] } });
+    const port = f.restart();
+    Object.assign(f.config.stallRecovery!, { reserve: (claim: string) => port.reserveReview(claim) });
+    return port;
+  };
+  const supervised = nudgeFixture('frozen'); supervised.refuseNudge();
+  // Three replacements inside the ten minutes before the supervised judgment at the responsiveness threshold.
+  const port = seeded(supervised, [500_000, 550_000, 600_000]);
+  expect((await port.run(supervised.request('loop'))).state).toBe('complete');
+  expect(supervised.launches).toHaveLength(1); expect(supervised.reviews()).toBe(1);
+  expect(supervised.state().triageHistory!.at(-1)).toMatchObject({ action: 'auto-restart', outcome: 'refused: restart loop pressure' });
+  expect(supervised.state().inputs[0]?.stall?.notice).toContain('restart loop pressure');
+  const lost = nudgeFixture('wait'); const lostPort = seeded(lost, [500, 700, 900]);
+  lost.config.io.wait = async ms => { lost.advance(ms); lost.exit(); };
+  const result = await lostPort.run(lost.request('lost-loop'));
+  expect(result).toMatchObject({ state: 'uncertain', detail: expect.stringContaining('restart loop pressure') });
+  expect(lost.launches).toHaveLength(1);
+  // Outside the window the brake releases: the same custody, seen later, allows a replacement again.
+  lost.advance(STALL_RECOVERY_LIMITS.restartLoopWindowMs);
+  const later = lost.restart();
+  expect(later.stallStatus!()[0]!.counts.restarts).toBe(0);
+});
+
+it('the pull-only status projection carries responsiveness, one deduplicated notice per unanswered message, and the funnel counts', async () => {
+  const f = nudgeFixture('wait');
+  const seen: ReturnType<NonNullable<ReturnType<typeof stalledFixture>['port']['stallStatus']>>[] = [];
+  Object.assign(f.config.stallRecovery!, { review: async () => { seen.push(f.port.stallStatus!()); seen.push(f.port.stallStatus!()); return 'wait'; } });
+  expect(f.port.stallStatus!()[0]).toMatchObject({ conversation: 'operator-1', worker: false, responsiveness: { state: 'healthy', userWaitMs: null, idleMs: null }, episode: null, notices: [] });
+  expect((await f.port.run(f.request('status'))).state).toBe('complete');
+  const [first, second] = seen[0]!.concat(seen[1]!);
+  expect(first).toMatchObject({ worker: true, responsiveness: { state: 'unresponsive' }, episode: { operation: 'status', phase: 'reviewed', nudge: 'verified-silent', activity: 'idle' } });
+  expect(first!.responsiveness.userWaitMs).toBeGreaterThanOrEqual(STALL_RECOVERY_LIMITS.unresponsiveMs);
+  expect(first!.notices).toHaveLength(1); expect(first!.notices[0]!.line).toContain('has no reply yet');
+  // The same unanswered message yields the same notice key: one notice per message, never one per poll.
+  expect(second!.notices).toEqual(first!.notices);
+  expect(first!.counts).toMatchObject({ nudges: 1, reviews: 1, interventions: 0, reinjections: 0, restarts: 0 });
+  const after = f.port.stallStatus!()[0]!;
+  expect(after).toMatchObject({ responsiveness: { state: 'healthy', userWaitMs: null }, episode: null, notices: [] });
+  expect(after.responsiveness.idleMs).toBe(0); expect(f.state().responsivenessNotice).toBeNull();
+  f.advance(STALL_RECOVERY_LIMITS.idleMs);
+  expect(f.port.stallStatus!()[0]!.responsiveness.state).toBe('idle');
+  // History and pressure custody survive a host restart with the owner's existing state.
+  const reopened = f.restart();
+  expect(reopened.stallStatus!()[0]!.counts).toMatchObject({ nudges: 1, reviews: 1, history: f.state().triageHistory!.length });
+});
+
+it('triage history is bounded to the inherited fifty rows', async () => {
+  const f = nudgeFixture('wait');
+  f.restore({ version: 1, conversation: 'operator-1', epoch: 0, edge: null, worker: null, claim: null, incarnation: null, authority: null,
+    deadline: 0, turns: 0, inputs: [], close: null, reserved: false, spent: 0, claimCalls: 0,
+    triageHistory: Array.from({ length: 50 }, (_, index) => ({ operation: `old-${index}`, at: index + 1, trigger: 'silence' as const, decision: 'wait', action: 'wait', outcome: 'reviewed' })) });
+  const port = f.restart();
+  Object.assign(f.config.stallRecovery!, { reserve: (claim: string) => port.reserveReview(claim) });
+  expect((await port.run(f.request('bounded'))).state).toBe('complete');
+  const history = f.state().triageHistory!;
+  expect(history).toHaveLength(STALL_RECOVERY_LIMITS.historyLimit);
+  expect(history[0]!.operation).not.toBe('old-0'); expect(history.at(-1)!.operation).toBe('bounded');
 });

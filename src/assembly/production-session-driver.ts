@@ -26,6 +26,10 @@ export interface SessionRecord {
   /** Bounded 1.x persisting-menu observation. A signal only: never authorization or a turn close. */
   readonly promptWait?: Readonly<{ digest: string; firstAt: number; lastAt: number; samples: number }> | null;
   readonly deadlineHalt?: Readonly<{ deadline: number; at: number }>;
+  readonly staleObservation?: SessionStaleRecord;
+  /** 1.x ActiveWorkSilenceSentinel neutral nudge: one bare Enter per open turn, recorded
+   * durably before the keystroke so a host restart can never send it twice. */
+  readonly nudge?: Readonly<{ at: number; turnStartedAt: number; fingerprint: string; reason: string }> | null;
 }
 export interface SessionContinuation {
   readonly pending?: Readonly<{ operation: string; digest: string; deadline: number }>;
@@ -44,10 +48,75 @@ export interface SessionReservation {
 export interface SessionJournal { readonly sessions: readonly SessionRecord[]; readonly deliveries: readonly DeliveryRecord[];
   readonly resumes: Readonly<Record<string, string>>; readonly reservations?: readonly SessionReservation[];
   readonly continuationRefusals?: readonly Readonly<{ operation: string; claim: string; reason: string; at: number }>[]; }
+export interface SessionProgressSnapshot {
+  readonly transcriptSize: number | null; readonly transcriptTail: string | null;
+  readonly descendantCpuSeconds: number | null; readonly mainProcessActive: boolean | null;
+}
+export interface SessionStaleSignal {
+  readonly state: 'progress' | 'stalled' | 'unknown' | 'protected'; readonly episode: number;
+  readonly lastProgressAt: number; readonly indeterminateStreak: number; readonly longIndeterminate: boolean; readonly windowMs: number;
+}
+export interface SessionStaleRecord extends SessionStaleSignal {
+  readonly sampledAt: number; readonly snapshot: SessionProgressSnapshot; readonly prompt: string | null;
+}
+/** Adapted from 1.x StaleSessionBackstop. A signal for the existing supervisor, never disposal authority. */
+export function advanceSessionStaleObservation(previous: SessionStaleRecord | undefined,
+  input: Readonly<{ at: number; kind: 'job' | 'conversation'; protected: boolean; liveness: 'alive' | 'indeterminate';
+    snapshot: SessionProgressSnapshot; prompt: string | null }>): SessionStaleRecord {
+  const windowMs = (input.kind === 'job' ? 30 : 180) * 60_000;
+  const base = { sampledAt: input.at, snapshot: input.snapshot, prompt: input.prompt, windowMs,
+    lastProgressAt: previous?.lastProgressAt ?? input.at, episode: previous?.episode ?? 0,
+    indeterminateStreak: 0, longIndeterminate: false };
+  if (input.liveness === 'indeterminate') {
+    // Observe at the inherited 120-second cadence: repeated reads cannot create fifteen probes.
+    const streak = (previous?.indeterminateStreak ?? 0) + (!previous || input.at - previous.sampledAt >= 120_000 ? 1 : 0);
+    return { ...base, sampledAt: !previous || input.at - previous.sampledAt >= 120_000 ? input.at : previous.sampledAt,
+      indeterminateStreak: streak, longIndeterminate: streak >= 15, state: input.protected ? 'protected' : 'unknown' };
+  }
+  const current = input.snapshot, prior = previous?.snapshot;
+  const transcriptProgress = prior && prior.transcriptSize !== null && current.transcriptSize !== null
+    && current.transcriptSize - prior.transcriptSize >= 512 && current.transcriptTail !== null
+    && current.transcriptTail !== prior.transcriptTail;
+  const cpuProgress = input.kind === 'job'
+    ? prior && prior.descendantCpuSeconds !== null && current.descendantCpuSeconds !== null
+      && current.descendantCpuSeconds - prior.descendantCpuSeconds > 1
+    : current.mainProcessActive === true;
+  const promptProgress = previous && input.prompt !== null && previous.prompt !== null && input.prompt !== previous.prompt;
+  const progress = !previous || previous.state === 'unknown' || transcriptProgress || cpuProgress || promptProgress;
+  if (input.protected) return { ...base, state: 'protected', lastProgressAt: input.at };
+  if (input.prompt === null && current.transcriptSize === null && current.descendantCpuSeconds === null)
+    return { ...base, state: 'unknown' };
+  if (progress) return { ...base, state: 'progress', lastProgressAt: input.at };
+  // The inherited floors apply across the 120-second sampling interval, not
+  // each fast owner poll. Retain the comparison baseline until it is due or a
+  // meaningful advance crosses its floor, so subfloor real work accumulates.
+  const sampled = previous && input.at - previous.sampledAt < 120_000
+    ? { ...base, sampledAt: previous.sampledAt, snapshot: previous.snapshot } : base;
+  const stale = input.at - sampled.lastProgressAt >= windowMs;
+  return { ...sampled, state: stale ? 'stalled' : 'progress',
+    episode: base.episode + (stale && previous?.state !== 'stalled' ? 1 : 0) };
+}
+const staleSignal = (record: SessionStaleRecord): SessionStaleSignal => ({ state: record.state, episode: record.episode,
+  lastProgressAt: record.lastProgressAt, indeterminateStreak: record.indeterminateStreak,
+  longIndeterminate: record.longIndeterminate, windowMs: record.windowMs });
+export interface SessionControlPlaneSignal {
+  readonly state: 'healthy' | 'degraded' | 'unknown'; readonly episode: number; readonly ewmaMs: number | null;
+  readonly consecutiveSlowCycles: number; readonly ageMs: number; readonly escalations: number;
+}
+export interface SessionPhysicalObservation {
+  readonly state: 'alive' | 'dead' | 'indeterminate'; readonly identity: string; readonly pane: string | null;
+  readonly at: number; readonly reachable: boolean;
+}
+export type SessionObserveInput = Readonly<{ operation: string; processIdentity: string; resultAvailable?: boolean }>;
+export type SessionObserveResult = Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string; safetyDeadline?: number; observationAvailable?: false }>>;
 export interface SessionIO {
   exclusive<T>(run: () => T): T;
   tmux(args: readonly string[]): Readonly<{ code: number; stdout: string }>;
   sleep(ms: number): void;
+  progressSnapshot?(framework: SessionFramework, id: string | null, cwd: string, configHome: string, identity: string): SessionProgressSnapshot;
+  controlPlaneStatus?(): SessionControlPlaneSignal;
+  retainedExposure?(identity: string): boolean;
+  observeSession?(name: string, identity: string): Promise<SessionPhysicalObservation>;
   load(): SessionJournal;
   save(journal: SessionJournal): void;
   readInbox(name: string): readonly Readonly<{ kind: 'turn-closed' | 'compact'; sessionId: string; at: number; receiptId?: string }>[];
@@ -59,9 +128,16 @@ export interface SessionIO {
 }
 /** Adapter-owned observations, never terminal content or authority to interrupt a worker. */
 export interface SessionActivityObservation {
-  readonly subject: string; readonly at: number; readonly progress: string | null; readonly wait: string | null;
+  readonly subject: string; readonly incarnation?: string; readonly launch?: string; readonly at: number; readonly progress: string | null; readonly wait: string | null;
   /** Absent on older adapters: cannot corroborate a stall. Idle is not proof of completion. */
   readonly activity?: 'active' | 'idle' | 'indeterminate' | 'unknown';
+  readonly stale?: SessionStaleSignal; readonly controlPlane?: SessionControlPlaneSignal;
+  /** 1.x StallTriageNurse typed-but-not-submitted frame for the open accepted turn: a signal only. */
+  readonly typedUnsubmitted?: boolean;
+}
+/** Private full-context supervision evidence; never part of the public activity projection. */
+export interface SessionRecoveryObservation extends SessionActivityObservation {
+  readonly incarnation: string; readonly launch: string; readonly terminal: string;
 }
 export interface ProductionSessionConfig {
   readonly operatorOwnUse: true; readonly confinement: 'unconfined' | 'admitted'; readonly framework: SessionFramework;
@@ -75,6 +151,8 @@ export interface ProductionSessionConfig {
   /** Advisory activity for registered work; a changed pane is activity, never proof of completion.
    * The owner records it in its existing work observation cycle. No terminal bytes leave this port. */
   readonly observeActivity?: (observation: SessionActivityObservation) => void;
+  readonly observeRecovery?: (observation: SessionRecoveryObservation) => void;
+  readonly workKind?: () => 'job' | 'conversation';
   /** Conversation replies require the authenticated lifecycle receipt, never pane heuristics. */
   readonly requireTurnHook?: boolean;
   /** Required exactly in `admitted` mode: the admission/completion command for a session's claim (its own
@@ -201,6 +279,22 @@ export function classifyBlockingMenu(capture: string): boolean {
 export function classifyPaneActive(capture: string): boolean {
   return /(?:esc|ctrl\+c) to interrupt|\bworking(?:…|\.\.\.|\s*\()|\bgenerating\b|[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/i.test(tail(capture, 8));
 }
+/** Port of 1.x StallTriageNurse.detectTypedButNotSubmitted: the input box holds at least 20
+ * characters after the last prompt glyph and no processing indicator is visible, the exact
+ * frame left when a bracketed-paste delivery lost its trailing Enter. A structural signal only. */
+export function classifyTypedUnsubmitted(capture: string, framework: SessionFramework): boolean {
+  if (!capture || classifyPaneActive(capture) || classifyBlockingMenu(capture)) return false;
+  const lines = tail(capture, 12).split('\n');
+  const prompt = framework === 'codex-cli' ? /[❯›>]/u : /[❯›]/u;
+  const index = lines.map(line => prompt.test(line)).lastIndexOf(true);
+  if (index < 0) return false;
+  // The inherited processing glyphs disqualify the frame only from the input line down: scrollback
+  // above a quiet prompt always holds earlier tool and assistant markers.
+  if (/⎿|✶|⏺|Coalescing|thinking|esc to interrupt/i.test(lines.slice(index).join('\n'))) return false;
+  const line = lines[index]!, match = prompt.exec(line)!;
+  const after = line.slice(match.index + match[0].length).trim();
+  return after.length >= 20 && !/^(?:[─━]+|bypass permissions.*|shift\+tab to cycle.*|\? for shortcuts.*)$/iu.test(after);
+}
 /** A prompt can remain visible throughout work; only a changed, quiet idle frame closes a turn. */
 export function classifyPaneIdle(capture: string, framework: SessionFramework): boolean {
   const lines = tail(capture, 8).split('\n').filter(line => !/^[─━]+$/u.test(line))
@@ -283,13 +377,21 @@ export interface SessionStopPort {
   stop(input: SessionStopTarget): Result<readonly string[] | SessionStopRefusal>;
 }
 
+/** One neutral Enter to the exact live worker (1.x ActiveWorkSilenceSentinel nudge). */
+export type SessionNudgeInput = Readonly<{ processIdentity: string; claim: string; incarnation: string; reason: string }>;
+export type SessionNudgeResult = Readonly<{ state: 'nudged' | 'refused'; evidence: string }>;
+export type SessionRedeliverResult = Readonly<{ state: 'redelivered' | 'refused'; evidence: string }>;
 export function createProductionSessionDriver(config: ProductionSessionConfig): NativeHarnessDriverPort & SessionStopPort & Readonly<{
   continuationReady(identity: string): Result<boolean>;
+  observeAsync(input: SessionObserveInput): Promise<SessionObserveResult>;
   observeIdle(identity: string): Result<string | null>;
   bootSweep(): Result<readonly string[]>;
   recoverDelivery(input: Readonly<{ operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }>): Result<string>;
   saveResume(identity: string, sessionId: string): Result<string>;
   recoverContext(identity: string, pending?: { operation: string; digest: string; deadline: number }): Result<string>;
+  nudge(input: SessionNudgeInput): Result<SessionNudgeResult>;
+  redeliver(input: Readonly<{ operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }>): Result<SessionRedeliverResult>;
+  recoverWorker(input: Readonly<{ operation: string; claim: string }>): Result<Readonly<{ identity: string; incarnation: string; deliveryDigest: string | null }> | null>;
 }> {
   ensure(config.operatorOwnUse === true && (config.confinement === 'unconfined' || config.confinement === 'admitted'),
     'explicit operator-own-use mode required');
@@ -371,7 +473,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const deadline = Math.min(started + config.turnDeadlineMs, session.continuation?.pending?.deadline ?? Infinity);
     ensure(deadline > started, 'context continuation deadline exhausted');
     const armed = { ...session, recovery, turnStartedAt: started, turnDeadline: deadline, closedAt: null, turnCloseEvidence: null,
-      rateRecovery: null, promptWait: null,
+      rateRecovery: null, promptWait: null, nudge: null,
       connectionRetry: null,
       turnBaseline: digestOf(capture(session.name)),
       turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
@@ -403,7 +505,12 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const existing = config.io.load().sessions.find(row => row.operation === operation && row.incarnation === incarnation && alive(row.name));
     if (existing) { verifyLive(existing); return existing.identity; }
     const currentJournal = config.io.load();
-    const active = currentJournal.sessions.filter(row => alive(row.name));
+    // The stale backstop excludes long-unverifiable slots only from this UI/session
+    // count. Six's original physical debit remains held; no CPU/memory/call allowance
+    // is reclaimed, and protected sessions stay counted. Same-work retries above
+    // still require affirmative liveness and cannot duplicate uncertain intake.
+    const active = currentJournal.sessions.filter(row => !(row.staleObservation?.longIndeterminate
+      && !config.protectedSessions.includes(row.name) && config.io.retainedExposure?.(row.identity) === true) && alive(row.name));
     ensure(active.length + (currentJournal.reservations ?? []).length < config.maxSessions, 'concurrent session cap reached');
     const name = `instar20-${createHash('sha256').update(`${operation}:${incarnation}:${randomUUID()}`).digest('hex').slice(0, 24)}`;
     const transcriptId = config.framework === 'claude-code' ? resumeId ?? randomUUID() : resumeId;
@@ -543,94 +650,45 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
       return killed;
     });
   }
-  const api = {
-    owner: 'part-eight' as const,
-    continuationReady,
-    observeIdle: (identity: string) => lockedBoundary('ProductionSessionIdle', identity, () => idleFingerprint(identity)),
-    launch(input: { operation: string; claim: string; artifact: string; incarnation: string; workingScope: string; handles: readonly string[]; restore?: { operation: string; digest: string; deadline: number } }) {
-      return boundary('ProductionSessionLaunch', input, config.context, () => {
-        const identity = config.io.exclusive(() => {
-          ensure(input.operation && input.claim && input.artifact && input.incarnation, 'launch identity required');
-          ensure(input.handles.length === 0, 'session launch accepts no ambient handles');
-          checkStop();
-          reconcileReservations();
-          const journal = config.io.load();
-          const existing = journal.sessions.find(row => row.operation === input.operation
-            && row.incarnation === input.incarnation && alive(row.name));
-          if (existing) {
-            verifyLive(existing);
-            if (existing.continuation?.state === 'prepared') submitContinuation(existing.identity);
-            const current = loadSession(existing.identity);
-            ensure(!current.continuation || current.continuation.state === 'completed'
-              || current.continuation.state === 'accepted',
-              'continuation delivery uncertain or incomplete');
-            return existing.identity;
-          }
-          const previous = journal.sessions.filter(row => row.operation === input.operation
-            && row.incarnation === input.incarnation).at(-1);
-          ensure(!previous?.continuation || previous.continuation.state === 'prepared'
-            || previous.continuation.state === 'completed',
-            'continuation delivery uncertain; no automatic respawn');
-          if (input.restore) {
-            ensure(!journal.sessions.some(row => row.continuation?.pending?.operation === input.restore!.operation
-              && row.continuation.state !== 'prepared'), 'pending continuation already submitted; no replay');
-            const original = journal.deliveries.find(row => row.operation === input.restore!.operation);
-            const former = original && journal.sessions.find(row => row.identity === original.identity);
-            ensure(original?.state === 'accepted' && original.digest === input.restore.digest && former && !alive(former.name),
-              'context restore requires exact accepted intake and a retired original worker');
-          }
-          const resumeId = journal.resumes[input.claim] ?? null;
-          ensure(!resumeId || uuid.test(resumeId), 'invalid recorded resume id');
-          const hit = resumeId !== null && config.io.transcriptExists(config.framework, resumeId, config.cwd, config.configHome);
-          const needsContinuation = !hit && (resumeId !== null || config.continuationRequired?.() === true || journal.sessions.some(row => row.claim === input.claim));
-          const continuation = input.restore
-            ? requireContinuation(input.restore.operation, input.claim, input.incarnation, 'context-wall', input.restore) : needsContinuation
-            ? requireContinuation(input.operation, input.claim, input.incarnation, 'cache-miss') : undefined;
-          const identity = spawn(input.operation, input.claim, input.incarnation, input.workingScope,
-            hit && !input.restore ? resumeId : null, input.restore ? 1 : 0, continuation);
-          if (continuation) submitContinuation(identity);
-          return identity;
-        });
-        return identity;
-      });
-    },
-    deliver(input: { operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }): Result<string> {
-      return lockedBoundary('ProductionSessionDeliver', input, () => {
-        if (config.stopped()) { stop(); throw Error('session stop authority is active'); }
-        const session = loadSession(input.processIdentity); verifyLive(session);
-        ensure(!session.continuation || session.continuation.state === 'completed',
-          'continuation delivery uncertain or incomplete');
-        ensure(input.incarnation === session.incarnation && input.operation && input.intake, 'stale or empty delivery');
-        const prior = config.io.load().deliveries.find(row => row.operation === input.operation);
-        if (prior) {
-          ensure(prior.identity === input.processIdentity && prior.intake === input.intake && prior.digest === input.digest,
-            'delivery operation reused for different input');
-          ensure(prior.state === 'accepted', 'delivery outcome uncertain; boot sweep required');
-          return prior.evidence;
-        }
-        ensure(session.turnDeadline === null || session.closedAt !== null, 'prior turn still open');
-        ensure(classifyPaneReadiness(capture(session.name)) === 'ready', 'pane is not at an idle prompt');
-        const text = config.resolveIntake(input.intake, input.digest);
-        ensure(digestOf(text) === input.digest, 'intake bytes differ from admitted digest');
-        const baseline = digestOf(capture(session.name));
-        let delivery: DeliveryRecord = { ...input, identity: input.processIdentity, text,
-          state: 'prepared', baseline, redeliveries: 0, evidence: '' };
-        config.io.save(replaceDelivery(config.io.load(), delivery));
-        armTurn(session, 0);
-        delivery = { ...delivery, state: 'sending' };
-        config.io.save(replaceDelivery(config.io.load(), delivery));
-        sendText(session, text);
-        delivery = { ...delivery, state: 'accepted', evidence: `tmux-input:${input.operation}` };
-        config.io.save(replaceDelivery(config.io.load(), delivery));
-        return delivery.evidence;
-      });
-    },
-    observe(input: { operation: string; processIdentity: string; resultAvailable?: boolean }): Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string; safetyDeadline?: number }>> {
+  const observeFrom = (input: SessionObserveInput, physical: SessionPhysicalObservation | null): SessionObserveResult => {
       return lockedBoundary('ProductionSessionObserve', input, () => {
-        const session = loadSession(input.processIdentity);
+        let session = loadSession(input.processIdentity);
+        if (physical) ensure(physical.identity === session.identity && Number.isFinite(physical.at)
+          && physical.at <= config.now() && config.now() - physical.at <= 9000,
+          'stale or substituted session observation');
         if (config.stopped()) { stop(); return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'stop authority active' }; }
+        if (physical?.state === 'indeterminate') {
+          const previous = session.staleObservation;
+          const observed = advanceSessionStaleObservation(previous, { at: config.now(), kind: config.workKind?.() ?? 'conversation',
+            protected: config.protectedSessions.includes(session.name), liveness: 'indeterminate', prompt: null,
+            snapshot: { transcriptSize: null, transcriptTail: null, descendantCpuSeconds: null, mainProcessActive: null } });
+          const stale = physical.reachable ? observed : { ...observed, indeterminateStreak: previous?.indeterminateStreak ?? 0,
+            longIndeterminate: previous?.longIndeterminate ?? false };
+          config.io.save(replaceSession(config.io.load(), { ...session, staleObservation: stale }));
+          const controlPlane = config.io.controlPlaneStatus?.();
+          try { config.observeActivity?.({ subject: session.claim, incarnation: session.incarnation, launch: session.identity,
+            at: physical.at, progress: null, wait: null, activity: 'unknown', stale: staleSignal(stale), ...(controlPlane ? { controlPlane } : {}) }); }
+          catch { /* Unknown observation does not acquire action authority. */ }
+          return { phase: 'uncertain' as const, observationAvailable: false as const, evidence: session.identity,
+            detail: 'session observation unavailable; worker state unknown' };
+        }
         if (session.deadlineHalt) return { phase: 'exit-observed' as const, evidence: `safety-ceiling:deadline:${session.identity}`, detail: 'per-turn deadline exceeded; closure must be reconciled', safetyDeadline: session.deadlineHalt.deadline };
-        if (!alive(session.name)) {
+        if (physical ? physical.state === 'dead' : !alive(session.name)) {
+          // A result may complete between the owner's final observation and exact retirement.
+          // Only the current turn's authenticated receipt plus bounded nonempty result can
+          // survive physical exit; process absence alone never manufactures completion.
+          if (config.requireTurnHook && input.resultAvailable === true) {
+            if (session.turnCloseEvidence)
+              return { phase: 'output-observed' as const, evidence: session.turnCloseEvidence, detail: 'recorded Stop hook closed turn before exit' };
+            const receipt = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
+              && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
+            if (receipt && session.turnStartedAt !== null && receipt.at >= session.turnStartedAt
+              && session.turnDeadline !== null && receipt.at <= config.now() && receipt.at <= session.turnDeadline) {
+              const evidence = `turn-closed:${session.name}:${receipt.at}`;
+              config.io.save(replaceSession(config.io.load(), { ...closeTurn(session, receipt.at), turnCloseEvidence: evidence }));
+              return { phase: 'output-observed' as const, evidence, detail: 'Stop hook and bounded result retained after exit' };
+            }
+          }
           const terminal = config.io.readTerminal?.(session.name);
           const worker = terminal?.workerExitClaim;
           const detail = terminal
@@ -638,17 +696,40 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
             : 'tmux session exited; terminal result unavailable';
           return { phase: 'exit-observed' as const, evidence: session.identity, detail };
         }
-        verifyLive(session);
-        const pane = capture(session.name);
+        if (physical) ensure(physical.identity === session.identity && physical.state === 'alive' && physical.pane !== null,
+          'exact session observation unavailable');
+        else verifyLive(session);
+        const pane = physical?.pane ?? capture(session.name);
+        const progressSnapshot = config.io.progressSnapshot?.(config.framework, session.resumeId, config.cwd, config.configHome, session.identity)
+          ?? { transcriptSize: null, transcriptTail: null, descendantCpuSeconds: null, mainProcessActive: null };
+        const stale = advanceSessionStaleObservation(session.staleObservation, { at: config.now(),
+          kind: config.workKind?.() ?? 'conversation', protected: config.protectedSessions.includes(session.name),
+          liveness: 'alive', snapshot: progressSnapshot,
+          prompt: !pane.trim() ? null : classifyPaneActive(pane) ? 'active' : classifyPaneIdle(pane, config.framework) ? 'idle' : 'indeterminate' });
+        session = { ...session, staleObservation: stale };
+        config.io.save(replaceSession(config.io.load(), session));
+        const controlPlane = config.io.controlPlaneStatus?.();
+        // The typed-but-unsubmitted frame counts only for an open turn whose delivery was accepted.
+        const typedUnsubmitted = session.turnDeadline !== null && session.closedAt === null
+          && config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1)?.state === 'accepted'
+          && classifyTypedUnsubmitted(pane, config.framework);
         try {
-          config.observeActivity?.({ subject: session.claim, at: config.now(), progress: pane.trim() ? digestOf(pane) : null,
+          config.observeActivity?.({ stale: staleSignal(stale), ...(controlPlane ? { controlPlane } : {}), ...(typedUnsubmitted ? { typedUnsubmitted: true } : {}), subject: session.claim, incarnation: session.incarnation, launch: session.identity, at: physical?.at ?? config.now(), progress: pane.trim() ? digestOf(pane) : null,
             wait: classifyPaneActive(pane) ? null : classifyStuckSignature(pane),
             activity: !pane.trim() ? 'unknown' : classifyPaneActive(pane) ? 'active'
               : classifyPaneIdle(pane, config.framework) ? 'idle' : 'indeterminate' });
         } catch { /* An advisory observer cannot fail the worker; its last sample becomes stale/unknown. */ }
+        try {
+          config.observeRecovery?.({ stale: staleSignal(stale), ...(controlPlane ? { controlPlane } : {}), ...(typedUnsubmitted ? { typedUnsubmitted: true } : {}), subject: session.claim, incarnation: session.incarnation, launch: session.identity,
+            terminal: pane, at: physical?.at ?? config.now(), progress: pane.trim() ? digestOf(pane) : null,
+            wait: classifyPaneActive(pane) ? null : classifyStuckSignature(pane),
+            activity: !pane.trim() ? 'unknown' : classifyPaneActive(pane) ? 'active'
+              : classifyPaneIdle(pane, config.framework) ? 'idle' : 'indeterminate' });
+        } catch { /* Private evidence failure cannot affect the worker. */ }
         const rate = session.rateRecovery;
         if (rate && session.turnDeadline !== null && config.now() >= session.turnDeadline) {
           config.io.save(replaceSession(config.io.load(), { ...session, deadlineHalt: { deadline: session.turnDeadline, at: config.now() } }));
+          verifyLive(session);
           run(['kill-session', '-t', literalTarget(session.name)]);
           return { phase: 'exit-observed' as const, evidence: `safety-ceiling:deadline:${session.identity}`, detail: 'per-turn deadline exceeded', safetyDeadline: session.turnDeadline };
         }
@@ -742,6 +823,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         }
         if (session.turnDeadline !== null && config.now() >= session.turnDeadline) {
           config.io.save(replaceSession(config.io.load(), { ...session, deadlineHalt: { deadline: session.turnDeadline, at: config.now() } }));
+          verifyLive(session);
           run(['kill-session', '-t', literalTarget(session.name)]);
           return { phase: 'exit-observed' as const, evidence: `safety-ceiling:deadline:${session.identity}`, detail: 'per-turn deadline exceeded', safetyDeadline: session.turnDeadline };
         }
@@ -778,6 +860,98 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         }
         return { phase: 'launched' as const, evidence: session.identity, detail: 'session live; turn still open' };
       });
+  };
+  const api = {
+    owner: 'part-eight' as const,
+    continuationReady,
+    observeIdle: (identity: string) => lockedBoundary('ProductionSessionIdle', identity, () => idleFingerprint(identity)),
+    launch(input: { operation: string; claim: string; artifact: string; incarnation: string; workingScope: string; handles: readonly string[]; restore?: { operation: string; digest: string; deadline: number } }) {
+      return boundary('ProductionSessionLaunch', input, config.context, () => {
+        const identity = config.io.exclusive(() => {
+          ensure(input.operation && input.claim && input.artifact && input.incarnation, 'launch identity required');
+          ensure(input.handles.length === 0, 'session launch accepts no ambient handles');
+          checkStop();
+          reconcileReservations();
+          const journal = config.io.load();
+          const existing = journal.sessions.find(row => row.operation === input.operation
+            && row.incarnation === input.incarnation && alive(row.name));
+          if (existing) {
+            verifyLive(existing);
+            if (existing.continuation?.state === 'prepared') submitContinuation(existing.identity);
+            const current = loadSession(existing.identity);
+            ensure(!current.continuation || current.continuation.state === 'completed'
+              || current.continuation.state === 'accepted',
+              'continuation delivery uncertain or incomplete');
+            return existing.identity;
+          }
+          const previous = journal.sessions.filter(row => row.operation === input.operation
+            && row.incarnation === input.incarnation).at(-1);
+          ensure(!previous?.continuation || previous.continuation.state === 'prepared'
+            || previous.continuation.state === 'completed',
+            'continuation delivery uncertain; no automatic respawn');
+          if (input.restore) {
+            ensure(!journal.sessions.some(row => row.continuation?.pending?.operation === input.restore!.operation
+              && row.continuation.state !== 'prepared'), 'pending continuation already submitted; no replay');
+            const original = journal.deliveries.find(row => row.operation === input.restore!.operation);
+            const former = original && journal.sessions.find(row => row.identity === original.identity);
+            ensure(original?.state === 'accepted' && original.digest === input.restore.digest && former && !alive(former.name),
+              'context restore requires exact accepted intake and a retired original worker');
+          }
+          const resumeId = journal.resumes[input.claim] ?? null;
+          ensure(!resumeId || uuid.test(resumeId), 'invalid recorded resume id');
+          const hit = resumeId !== null && config.io.transcriptExists(config.framework, resumeId, config.cwd, config.configHome);
+          const needsContinuation = !hit && (resumeId !== null || config.continuationRequired?.() === true || journal.sessions.some(row => row.claim === input.claim));
+          const continuation = input.restore
+            ? requireContinuation(input.restore.operation, input.claim, input.incarnation, 'context-wall', input.restore) : needsContinuation
+            ? requireContinuation(input.operation, input.claim, input.incarnation, 'cache-miss') : undefined;
+          const identity = spawn(input.operation, input.claim, input.incarnation, input.workingScope,
+            hit && !input.restore ? resumeId : null, input.restore ? 1 : 0, continuation);
+          if (continuation) submitContinuation(identity);
+          return identity;
+        });
+        return identity;
+      });
+    },
+    deliver(input: { operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }): Result<string> {
+      return lockedBoundary('ProductionSessionDeliver', input, () => {
+        if (config.stopped()) { stop(); throw Error('session stop authority is active'); }
+        const session = loadSession(input.processIdentity); verifyLive(session);
+        ensure(!session.continuation || session.continuation.state === 'completed',
+          'continuation delivery uncertain or incomplete');
+        ensure(input.incarnation === session.incarnation && input.operation && input.intake, 'stale or empty delivery');
+        const prior = config.io.load().deliveries.find(row => row.operation === input.operation);
+        if (prior) {
+          ensure(prior.identity === input.processIdentity && prior.intake === input.intake && prior.digest === input.digest,
+            'delivery operation reused for different input');
+          ensure(prior.state === 'accepted', 'delivery outcome uncertain; boot sweep required');
+          return prior.evidence;
+        }
+        ensure(session.turnDeadline === null || session.closedAt !== null, 'prior turn still open');
+        ensure(classifyPaneReadiness(capture(session.name)) === 'ready', 'pane is not at an idle prompt');
+        const text = config.resolveIntake(input.intake, input.digest);
+        ensure(digestOf(text) === input.digest, 'intake bytes differ from admitted digest');
+        const baseline = digestOf(capture(session.name));
+        let delivery: DeliveryRecord = { ...input, identity: input.processIdentity, text,
+          state: 'prepared', baseline, redeliveries: 0, evidence: '' };
+        config.io.save(replaceDelivery(config.io.load(), delivery));
+        armTurn(session, 0);
+        delivery = { ...delivery, state: 'sending' };
+        config.io.save(replaceDelivery(config.io.load(), delivery));
+        sendText(session, text);
+        delivery = { ...delivery, state: 'accepted', evidence: `tmux-input:${input.operation}` };
+        config.io.save(replaceDelivery(config.io.load(), delivery));
+        return delivery.evidence;
+      });
+    },
+    observe(input: SessionObserveInput): SessionObserveResult { return observeFrom(input, null); },
+    async observeAsync(input: SessionObserveInput): Promise<SessionObserveResult> {
+      if (!config.io.observeSession) return observeFrom(input, null);
+      const session = config.io.load().sessions.find(row => row.identity === input.processIdentity);
+      if (!session || config.stopped()) return observeFrom(input, null);
+      let physical: SessionPhysicalObservation;
+      try { physical = await config.io.observeSession(session.name, session.identity); }
+      catch { physical = { state: 'indeterminate', identity: session.identity, pane: null, at: config.now(), reachable: false }; }
+      return observeFrom(input, physical);
     },
     bootSweep(): Result<readonly string[]> {
       return lockedBoundary('ProductionSessionBootSweep', null, () => {
@@ -829,6 +1003,94 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
       });
     },
     stop,
+    /** 1.x ActiveWorkSilenceSentinel nudge: one bare Enter to the exact live worker of an open accepted
+     * turn. Refused while the frame generates, shows a menu or a wait signature, while a continuation or
+     * throttle recovery owns the turn, and after one nudge for the same turn. The record is durable before
+     * the keystroke. It is input under the admitted delivery's own principal, never a new authority. */
+    nudge(input: SessionNudgeInput): Result<SessionNudgeResult> {
+      return lockedBoundary('ProductionSessionNudge', input, () => {
+        checkStop();
+        const session = loadSession(input.processIdentity);
+        ensure(session.claim === input.claim && session.incarnation === input.incarnation && input.reason.trim().length > 0,
+          'nudge target differs from the admitted worker');
+        const refuse = (evidence: string): SessionNudgeResult => ({ state: 'refused', evidence });
+        if (config.protectedSessions.includes(session.name)) return refuse('protected session is never nudged');
+        if (session.deadlineHalt || session.turnDeadline === null || session.closedAt !== null || session.turnStartedAt === null
+          || config.now() >= session.turnDeadline) return refuse('no open admitted turn; nothing to nudge');
+        if (session.continuation && session.continuation.state !== 'completed') return refuse('continuation delivery pending; no nudge');
+        if (session.rateRecovery) return refuse('throttle continuation owns this turn; no nudge');
+        if (config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1)?.state !== 'accepted')
+          return refuse('delivery outcome is not accepted; no nudge');
+        if (session.nudge && session.nudge.turnStartedAt === session.turnStartedAt) return refuse('one neutral nudge per turn already sent');
+        verifyLive(session);
+        const pane = capture(session.name);
+        if (classifyPaneActive(pane)) return refuse('worker is generating; a nudge would be noise');
+        if (classifyBlockingMenu(pane)) return refuse('harness menu needs exact authorization; no input sent');
+        if (classifyStuckSignature(pane)) return refuse('wait signature owns this frame; native recovery, not a nudge');
+        const fingerprint = digestOf(pane);
+        config.io.save(replaceSession(config.io.load(), { ...session,
+          nudge: { at: config.now(), turnStartedAt: session.turnStartedAt, fingerprint, reason: input.reason } }));
+        checkStop(); verifyLive(session);
+        run(['send-keys', '-t', literalTarget(session.name), 'Enter']);
+        return { state: 'nudged', evidence: `nudge:${session.name}:${fingerprint}` };
+      });
+    },
+    /** 1.x TriageOrchestrator reinject_message: the exact accepted delivery, redelivered at most once
+     * (the existing `redeliveries` bound), only at a quiet idle prompt with no receipt for its turn.
+     * The record turns `sending` before any input; a crash there is a boot-sweep uncertainty, never a resend. */
+    redeliver(input: { operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }): Result<SessionRedeliverResult> {
+      return lockedBoundary('ProductionSessionRedeliver', input, () => {
+        checkStop();
+        const session = loadSession(input.processIdentity);
+        ensure(input.incarnation === session.incarnation && input.operation && input.intake, 'stale or empty redelivery');
+        const refuse = (evidence: string): SessionRedeliverResult => ({ state: 'refused', evidence });
+        const prior = config.io.load().deliveries.find(row => row.operation === input.operation);
+        if (!prior) return refuse('no recorded delivery to redeliver');
+        ensure(prior.identity === input.processIdentity && prior.intake === input.intake && prior.digest === input.digest,
+          'redelivery operation differs from durable intake');
+        if (prior.state !== 'accepted') return refuse('delivery outcome is not accepted; the boot sweep owns prepared and sending records');
+        if (prior.redeliveries !== 0) return refuse('one redelivery per delivery already used');
+        if (config.protectedSessions.includes(session.name)) return refuse('protected session is never redelivered to');
+        if (session.deadlineHalt || session.turnDeadline === null || session.closedAt !== null || config.now() >= session.turnDeadline)
+          return refuse('no open admitted turn; nothing to redeliver');
+        if (session.continuation && session.continuation.state !== 'completed') return refuse('continuation delivery pending; no redelivery');
+        if (session.rateRecovery) return refuse('throttle continuation owns this turn; no redelivery');
+        verifyLive(session);
+        const pane = capture(session.name);
+        if (classifyTypedUnsubmitted(pane, config.framework)) return refuse('input typed but not submitted; the neutral nudge is the exact repair');
+        if (!classifyPaneIdle(pane, config.framework) || classifyStuckSignature(pane)) return refuse('worker is not at a quiet idle prompt; the delivery may still be in flight');
+        const receipt = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
+          && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
+        if (receipt) return refuse('a turn receipt exists for this delivery; observe it instead of redelivering');
+        const text = config.resolveIntake(input.intake, input.digest);
+        ensure(digestOf(text) === input.digest, 'intake bytes differ from admitted digest');
+        const sending: DeliveryRecord = { ...prior, state: 'sending', redeliveries: 1, baseline: digestOf(pane) };
+        config.io.save(replaceDelivery(config.io.load(), sending));
+        armTurn(loadSession(input.processIdentity), 0);
+        sendText(loadSession(input.processIdentity), text);
+        const evidence = `tmux-input:${input.operation}:redelivered`;
+        config.io.save(replaceDelivery(config.io.load(), { ...sending, state: 'accepted', evidence }));
+        return { state: 'redelivered', evidence };
+      });
+    },
+    /** 1.x StaleSessionBackstop/ResumeQueue restoration lookup: the one live, identity-verified worker a
+     * registered claim still owns after a host restart, with its accepted delivery digest. Ambiguity,
+     * a halted worker or a protected session yields null; this never launches, sends or stops. */
+    recoverWorker(input: { operation: string; claim: string }): Result<Readonly<{ identity: string; incarnation: string; deliveryDigest: string | null }> | null> {
+      return lockedBoundary('ProductionSessionRecoverWorker', input, () => {
+        checkStop(); reconcileReservations();
+        const journal = config.io.load();
+        const rows = journal.sessions.filter(row => row.operation === input.operation && row.claim === input.claim
+          && namePattern.test(row.name) && alive(row.name));
+        if (rows.length !== 1) return null;
+        const session = rows[0]!;
+        if (session.deadlineHalt || config.protectedSessions.includes(session.name)) return null;
+        verifyLive(session);
+        const delivery = journal.deliveries.find(row => row.operation === input.operation && row.identity === session.identity);
+        return { identity: session.identity, incarnation: session.incarnation,
+          deliveryDigest: delivery?.state === 'accepted' ? delivery.digest : null };
+      });
+    },
     saveResume(identity: string, sessionId: string): Result<string> {
       return lockedBoundary('ProductionSessionResume', { identity, sessionId }, () => {
         const session = loadSession(identity);

@@ -160,3 +160,68 @@ it('routes a new wake to the installed checkpoint, which still refuses absent au
   expect(admitToolCall(call, config, 51, {})).toMatchObject({ decision: 'deny', reason: expect.stringContaining('call cap') });
   expect(w.received).toEqual([]);
 });
+
+it('supervision consumes the same worker allowance before the remaining provider call', async () => {
+  const w = await world(); const reserved: number[] = [];
+  w.gate.open('claim-supervised', { framework: 'claude-code', allowance: 2, edge: w.edge,
+    reserveCall: (ordinal: number) => reserved.push(ordinal) });
+  w.gate.reserveSupervisor('claim-supervised');
+  expect(w.gate.state('claim-supervised')).toMatchObject({ calls: 1 });
+  expect(w.received).toEqual([]);
+  const url = `${w.gate.base('claim-supervised')}/v1/messages`;
+  expect((await w.send(url)).status).toBe(200);
+  expect((await w.send(url)).status).toBe(400);
+  expect(w.received).toHaveLength(1); expect(reserved).toEqual([1, 2]);
+  expect(() => w.gate.reserveSupervisor('claim-supervised')).toThrow(/unavailable/);
+  expect(() => w.gate.reserveSupervisor('absent')).toThrow(/unavailable/);
+});
+
+it('stop, closed claims and failed durable reservation never admit a supervisor call', async () => {
+  let stopped = false;
+  const w = await world({ stopped: () => stopped });
+  w.gate.open('claim-supervised', { framework: 'claude-code', allowance: 2, edge: w.edge });
+  stopped = true; expect(() => w.gate.reserveSupervisor('claim-supervised')).toThrow(/unavailable/);
+  expect(w.gate.state('claim-supervised').calls).toBe(0);
+  stopped = false; w.gate.close('claim-supervised');
+  expect(() => w.gate.reserveSupervisor('claim-supervised')).toThrow(/unavailable/);
+  w.gate.open('claim-failed', { framework: 'claude-code', allowance: 2, edge: w.edge,
+    reserveCall: () => { throw Error('disk unavailable'); } });
+  expect(() => w.gate.reserveSupervisor('claim-failed')).toThrow(/reservation unavailable/);
+  expect(w.gate.state('claim-failed')).toMatchObject({ calls: 0, refused: true, refusalReason: 'reservation-unavailable' });
+  expect(w.received).toEqual([]);
+});
+
+// Carryover 02 r4, admission continuity: a restored endpoint serves only the claim adopted under its secret.
+it('restores an original endpoint only when its port is free, routes each claim under its own secret, and releases the port on stop', async () => {
+  const effects = createToolEffectOwner({ decide: () => ({ decision: 'allow', reason: 'test' }), append: () => {}, prepared: () => false, stopped: () => false, now: Date.now });
+  const edge = { id: 'session-work-edge:op:1', budget: { calls: 24, deadline: Date.now() + 60_000 } } as SessionWorkEdge;
+  const original = await createAdmissionGate({ append: () => {}, effects, stopped: () => false, now: Date.now });
+  closers.push(() => original.stop());
+  const [, port, secret] = /^http:\/\/127\.0\.0\.1:([0-9]+)\/([0-9a-f]{32})\//u.exec(original.base('adopted'))!;
+  const restorer = await createAdmissionGate({ append: () => {}, effects, stopped: () => false, now: Date.now });
+  closers.push(() => restorer.stop());
+  // The original host still holds the port: a busy bind refuses, and a bind is never owner proof by itself.
+  await expect(restorer.restore({ port: Number(port), secret })).rejects.toThrow(/EADDRINUSE/u);
+  await original.stop();
+  await restorer.restore({ port: Number(port), secret });
+  await expect(restorer.restore({ port: Number(port) + 1 === 65536 ? 1 : Number(port) + 1, secret })).rejects.toThrow('already restored on another port');
+  await expect(restorer.restore({ port: Number(port), secret: restorer.base('x').split('/')[3]! })).rejects.toThrow('exact recorded loopback port and secret required');
+  expect(() => restorer.open('adopted', { framework: 'claude-code', allowance: 24, edge, restored: { calls: 5, uncertainEffects: [], delegations: [], secret: 'f'.repeat(32) } })).toThrow('restored secret');
+  expect(() => restorer.open('adopted', { framework: 'claude-code', allowance: 24, edge, restored: { calls: 25, uncertainEffects: [], delegations: [], secret } })).toThrow('restored claim state');
+  restorer.open('adopted', { framework: 'claude-code', allowance: 24, edge, restored: { calls: 5, uncertainEffects: [{ id: 'sha256:' + '1'.repeat(64), operation: 'tool:x', digest: 'sha256:' + '2'.repeat(64) }], delegations: [], secret } });
+  expect(() => restorer.open('adopted', { framework: 'claude-code', allowance: 24, edge })).toThrow('already open');
+  restorer.open('fresh', { framework: 'claude-code', allowance: 2, edge: { ...edge, id: 'session-work-edge:fresh:1' } });
+  expect(restorer.state('adopted')).toMatchObject({ calls: 5, uncertainEffects: 1, openDelegations: [] });
+  const status = async (url: string) => (await fetch(url, { method: 'POST', body: '{}' })).status;
+  const restored = `http://127.0.0.1:${port}/${secret}`;
+  expect(await status(`${restored}/other/v1/messages`)).toBe(400);          // unadopted claim under the old secret: refused as closed, never forwarded
+  expect(await status(`${restored}/fresh/v1/messages`)).toBe(404);          // this host's own claim under the old secret
+  expect(await status(`${restorer.base('adopted')}/v1/messages`)).toBe(404); // the adopted claim under the fresh secret
+  expect(restorer.state('adopted')).toMatchObject({ calls: 5, refused: false });
+  expect(await status(`${restorer.base('fresh')}/v1/messages/count_tokens`)).not.toBe(404);
+  await restorer.stop();
+  // The restored port is released with the gate: a later owner can bind it again.
+  const later = await createAdmissionGate({ append: () => {}, effects, stopped: () => false, now: Date.now });
+  closers.push(() => later.stop());
+  await later.restore({ port: Number(port), secret });
+});

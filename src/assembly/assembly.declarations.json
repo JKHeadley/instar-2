@@ -40,5 +40,61 @@
       82
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "process-control-kernel",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "process-control.kernel.pidfd",
+        "process-control.kernel.exact-worker-ancestry",
+        "process-control.kernel.signal-submission",
+        "process-control.kernel.independent-exit-observation",
+        "process-control.kernel.unsupported-host",
+        "process-control.installed-composition.unproven"
+      ],
+      "gate": {
+        "test": "P10-PROCESS-CONTROL-PARTIAL",
+        "deadline": 1794528000000
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "irreversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "bounded",
+        "by": "rungraph.bound"
+      }
+    },
+    "standards": [
+      1,
+      4,
+      26,
+      34,
+      38,
+      39,
+      42,
+      55,
+      57,
+      60,
+      61,
+      63,
+      68,
+      69,
+      72,
+      73,
+      86,
+      95,
+      113,
+      116
+    ],
+    "holds": []
   }
 ]

@@ -236,7 +236,7 @@ it('refuses an unbound same-run operation before it can claim spend', () => {
   expect(refused(s.f.api.reserve(s.f.input(s.fence, { command: 'reserve:unbound', run: {
     owner: 'part-five', name: 'Run', id: turn.run }, request: { owner: 'part-eight', name: 'EffectRequest',
     id: 'unbound' }, attempt: 'attempt:unbound', semanticMessage: 'semantic:unbound', charge: 1 }))))
-    .toContain('serving operation requires its provider, context delivery, or exact accepted-answer reply request');
+    .toContain('serving operation requires its provider, context delivery, exact process control, or exact accepted-answer reply request');
 });
 
 it('requires a fresh Ten quiescence report after a serving port is reconstructed', () => {
@@ -315,4 +315,25 @@ it('refuses a serving profile that cannot leave bounded record completion headro
     conversation: conversation.id, ceiling: 100, maxTurns: 64, maxReplies: 0,
     expires: 500, providerMax: 0, replyMax: 0, errorLimit: 2, totalErrorLimit: 2 })))
     .toContain('record headroom exhausted');
+});
+
+it('process recovery keeps the current serving run, generation, digest and attempt bindings', () => {
+  for (const mutation of ['none', 'generation', 'run', 'digest', 'attempt'] as const) {
+    const s = serving(), turn = s.admit(1);
+    value(s.f.api.schedule('schedule:process', s.fence, { owner: 'part-five', name: 'Run', id: turn.run }, s.f.policy));
+    const payload = { type: 'TestServingProcessControlPayload', schemaVersion: 1, id: 'process:1',
+      run: mutation === 'run' ? 'another-run' : turn.run, purpose: 'process-control',
+      generation: mutation === 'generation' ? 'stale-generation' : 'generation:1', semanticMessage: 'process-semantic:1' };
+    s.f.append('effect-ProcessControlPayload', { record: payload });
+    const digest = value(canonical(payload)).hash;
+    s.f.append('effect-EffectRequest', { record: { type: 'TestServingEffectRequest', schemaVersion: 1,
+      id: 'process-request:1', run: turn.run, message: payload.id, digest,
+      attempt: mutation === 'attempt' ? 'another-attempt' : 'process-attempt:1' } });
+    const result = s.f.api.reserve(s.f.input(s.fence, { command: 'reserve:process',
+      run: { owner: 'part-five', name: 'Run', id: turn.run }, request: { owner: 'part-eight', name: 'EffectRequest', id: 'process-request:1' },
+      payloadDigest: mutation === 'digest' ? value(canonical('changed')).hash : digest,
+      attempt: 'process-attempt:1', semanticMessage: payload.semanticMessage, charge: 0 }));
+    if (mutation === 'none') expect(value(result).state).toBe('prepared');
+    else expect(refused(result)).toContain('serving operation requires');
+  }
 });
