@@ -15,7 +15,7 @@ Undo and recovery: Revert this repair if necessary; persisted inventory schema a
 Multi-machine posture: ps comm is available on the supported macOS/Linux hosts. Physical observations remain machine-local; no remote or installed-host acceptance is asserted by this repair.
 Layer below: Inspected hostQuery output and time bounds, census parser and Ten decoder, incarnation/group/ancestry/working-area/sandbox joins, cleanupTree and Six allocation return, local transcriber, session-work cleanup and fixture child execution. No membership join consumes command text. Measured command= at 1,055,278 bytes versus comm= at 257,445 bytes on this host; only sizes were printed. The real before-change physical census regression fails with failed rather than complete. The new path preserves PID, parent, group, UID, RSS, CPU, status and start identity under the same query limit.
 Bug class: integration
-Bug evidence: reproducer=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-179-repair-inventory-before.log
+Bug evidence: reproducer=tests/assembly/process-inventory.test.ts
 Hook bypass: none
 Convergence: none
 
