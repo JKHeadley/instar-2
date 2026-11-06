@@ -15,7 +15,7 @@ Undo and recovery: Revert this repair and regenerate the register (reverting the
 Multi-machine posture: Test execution and temporary journals are deliberately machine-local. The same source travels through Git; no runtime cross-machine state changes.
 Layer below: tests/preview/credential-reminders.ts remainingText/credentialNotices; credential-display.ts; journal-agent.mjs activation registration; tests/e2e/async-child.ts spawn, close and finite timeout behavior; slice-p13-state-storage.mjs; both existing round-seven worker programs and their real process cuts. The existing RPC defect history distinguishes host starvation from synchronous child starvation.
 Bug class: unit
-Bug evidence: reproducer=The supplied train-177 gate at 1cdebb160 reports eight activation-notice assertion failures, the 66,411 ms nine-cut case exceeding 60,000 ms, and one unattributed onTaskUpdate timeout. This is test-harness repair; product behavior is unchanged.
+Bug evidence: reproducer=tests/preview/journal-agent.test.ts; other=tests/preview/review-layers-canary.test.ts; other=tests/e2e/harness-adapters-round7-regression.test.ts
 Hook bypass: none
 Convergence: none
 Prompt review: No model prompt, response parser or accept/escalate/refuse path is changed. Recorded model-output replay is not required for this test-only change; real launcher assertions still exercise the original review paths.
