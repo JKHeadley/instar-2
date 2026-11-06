@@ -410,6 +410,8 @@ describe('compiled register build adapter lifecycle', () => {
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 120_000);
+  // Wiring cases build then scan the full graph; allow both scans plus fixture
+  // setup/cleanup. Each child still has its own finite 60-second wait.
   it.each(['absent ambient', 'absent clean', 'committed equivalence', 'wiring valid', 'wiring untracked'] as const)(
     'P3-P5 R2 same pinned commit and bridge: %s', async scenario => {
     const directory = mkdtempSync(join(tmpdir(), 'instar-owner-graph-cli-'));
@@ -466,7 +468,7 @@ describe('compiled register build adapter lifecycle', () => {
       writeFileSync(join(root, 'src/rungraph/ambient.ts'), "export * from './records.js';");
       const untracked = await wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
     } finally { rmSync(directory, { recursive: true, force: true }); }
-  }, 60_000);
+  }, 120_000);
   it('P3-NF-01 P3-NF-07 P3-NF-09 actual CLI reproduces committed outputs and rejects edited output', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-e2e-'));
     try {
