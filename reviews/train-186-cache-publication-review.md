@@ -7,8 +7,8 @@ Outcome: Publish generated register evidence for the committed signed-cache star
 Affected rules: 26, 37, 49, 69, 74, 90, 101, 105, 111, 113, 116
 Affected floors: secrets — no credential changes; spend cap — unchanged; stop — unchanged; no duplicate sends — no dispatch; durable intake — unchanged
 Operator questions: none
-Suggested tier: local
-Declared tier: local
+Suggested tier: ordinary
+Declared tier: ordinary
 Tier rationale: Derived register publication only; runtime repair reviewed in train-186-startup-cache-repair.md.
 Side effects: Generated source and capability evidence now binds the repaired source commit; no new runtime behavior.
 Undo and recovery: Revert this publication with its source repair and regenerate from the restored source.
