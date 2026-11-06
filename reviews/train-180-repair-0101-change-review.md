@@ -7,9 +7,9 @@ Outcome: Integrate the exact e7f0d6de54c3731784cd8740318e372c385339f5 patch to t
 Affected rules: 26, 34, 36, 37, 49, 70, 74, 95, 100, 101, 102, 107, 111, 112, 113, 116
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake retain their existing runtime enforcement; only test assertions and derived publication metadata change.
 Operator questions: none
-Suggested tier: ordinary
+Suggested tier: critical
 Declared tier: ordinary
-Tier rationale: Exact test-only owner patch integration; no production or model-facing behavior changes.
+Tier rationale: Paths suggest critical because of derived owner/register metadata; declared ordinary because this is an exact test-only owner patch integration with no production or model-facing behavior changes.
 Side effects: Both readers accept the shipped activation label with the exact renewal action. Separate model-route matching and controls rejecting unrelated text, substituted actions, garbage and contradictory reviews remain. Derived register publication may bind a new source commit; no certificate, profile, provider or expiry change.
 Undo and recovery: Revert this integration's two test edits and replay the register through the existing tools; base and previous red evidence remain available. No runtime state or send recovery is changed.
 Multi-machine posture: Test source travels through git; verification here is WSL-local. Full-head review, native/installed/live checks and host-affected cases belong to Studio. No Studio write or cross-machine authority change.
@@ -28,6 +28,10 @@ Owner provenance: e7f0d6de54c3731784cd8740318e372c385339f5:reviews/train-173-not
 1.x comparison: Searched actual JKHeadley/instar main c79dd645fbd5c0e99d4cc4e988155b600c6f19b7 src/, docs/specs/ and history. Inspected src/monitoring/MissingLoginSessionDetector.ts and docs/specs/scrape-fixture-realness.md; history ff8344b4b, 5da7c75da, 54b192d32. Read Studio ONEX-LESSONS.md sections 4 and 6. Missing-login notices do not implement this 2.0 activation assertion; reuse captured-byte verification discipline, not unrelated runtime code. The owner's comparison at 4e38b9fdaae43b62940a6a43e1e69094d1b91bd1 is retained as attributed provenance.
 
 Evidence boundary: The supplied authenticated task reports eight exact-M5 notice assertion failures, all matching e7, remaining unrelated/unknown zero. Original failure artifacts are preserved. Owner and cartographer successes are source-pattern evidence, not proof of this head. Current main Rule 122 merge and fresh full-head/native/installed/live qualification remain the desk's stated work, not production work added by this integration.
+
+Deferral: generated/register.json:1 | not-a-deferral=Existing governing text carried by the generated register, not a new promise or postponed repair.
+
+Validation: Build and typecheck exited 0; two selected captured notice controls passed, 22 other cases deliberately unselected. Both complete test files match e7 bytes. Owner rehash updated one preview artifact pin; chain repin updated zero. Register replay binds committed source 2347372712c3c217dda5121f41a3555892f52bc9 (298 entries, 121 rules, 34 terms). Fresh final portable-check results are recorded in the report.
 
 simplestRobustRoute: This is the simplest robust route: apply the single owning test patch, use existing captured controls and normal publication tooling, and preserve runtime floors unchanged. Entry is the exact assigned base, exit is pushed source with selected controls and portable checks green, and the desk retains full acceptance. No new machinery or unattended-live success is claimed.
 80/20: Correct the common assertion source once; run only the two selected controls and cheap checks, never repeat the known WSL launcher refusals or broad suites.
