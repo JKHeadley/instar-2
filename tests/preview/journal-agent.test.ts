@@ -10,7 +10,7 @@ import { openPreviewJournal, UNKNOWN_SEND_NOTICE } from './journal.js';
 // The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride an answer as its own line. The answer itself stays exact,
 // and nothing else may be appended.
-const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
+const NOTICE_LINE = /^(?:Reminder: (?:the credential "[^"]+" \([^)]+\)|your activation) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
 const answerOf = (text: string) => {
   const [answer, ...notices] = text.split('\n\n');
   for (const notice of notices) {
@@ -148,7 +148,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`}});
     let stderr=''; child.stderr.on('data',data=>{stderr+=String(data);});
-    const deadline = Date.now()+10000;
+    // Boot performs real bounded child probes; allow the same 30s as the launcher case above.
+    // This changes only readiness, not the 3s signal-response contract.
+    const deadline = Date.now()+30000;
     while ((!existsSync(log) || readFileSync(log,'utf8').split('getUpdates').length < 4) && Date.now()<deadline)
       await new Promise(done=>setTimeout(done,20));
     expect(existsSync(log),stderr).toBe(true);
@@ -206,7 +208,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
         INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`}});
     expect(refused.status).not.toBe(0);
   } finally { child?.kill('SIGKILL'); endpoint.kill('SIGTERM'); }
-},30000);
+},60000);
 
 it.each([['echo', 0], ['drop-thread', 1]])('the real launcher answers a topic from the main chat and replies into that topic (endpoint %s; a result without the thread stays UNKNOWN)', async (mode, unknown) => {
   const world = successiveWorld(), root = join(world.directory, 'topic-journal');

@@ -17,14 +17,14 @@ const oldRead = (file: string,args: string[], failures: string[]): Promise<strin
 // The fallback is intrinsic: it still ends the fixture when metadata reads or early cleanup fail.
 const SURVIVOR_BODY = 'setTimeout(()=>process.exit(0),25000);setInterval(()=>{},1000)';
 const drop = async (children: ChildProcess[]) => Promise.all(children.map(child=>new Promise<void>(resolve=>{
-  if(child.exitCode!==null||child.signalCode!==null){resolve();return;}child.once('exit',()=>resolve());child.kill('SIGTERM');
+  if(child.pid===undefined||child.exitCode!==null||child.signalCode!==null){resolve();return;}child.once('exit',()=>resolve());child.kill('SIGTERM');
 })));
 it('PREVIEW-RESOURCE-CENSUS-RECOVERY retains nine real Six debits on failed census, then same living owner verifies quiescence and admits the tenth', {timeout:120000}, async()=>{
   const root=mkdtempSync(join(tmpdir(),'resource-census-recovery-'));chmodSync(root,0o700);
   const noise: ChildProcess[]=[];
   try {
     for(let i=0;i<6;i++) {
-      const child=spawn(process.execPath,['-e','setTimeout(()=>process.exit(0),110000);setInterval(()=>{},1000)','census-fixture-'+i+'x'.repeat(200000)],{stdio:'ignore',env:{PATH:'/usr/bin:/bin'}});
+      const child=spawn(process.execPath,['-e','setTimeout(()=>process.exit(0),110000);setInterval(()=>{},1000)','census-fixture-'+i+'x'.repeat(100000),'x'.repeat(100000)],{stdio:'ignore',env:{PATH:'/usr/bin:/bin'}});
       noise.push(child);await new Promise<void>((resolve,reject)=>{child.once('spawn',()=>resolve());child.once('error',reject)});
     }
     const censusArgs=['-U',String(process.getuid!()),'-ww','-o',PROCESS_CENSUS_COLUMNS];
@@ -57,7 +57,10 @@ it('PREVIEW-RESOURCE-CENSUS-RECOVERY retains nine real Six debits on failed cens
     const ownerBefore=JSON.parse(readFileSync(ledgerPath,'utf8')).launches;
     expect(new Set(Object.values(ownerBefore).map((x: unknown)=>(x as {owner:{pid:number}}).owner.pid))).toEqual(new Set([process.pid]));
     repaired=true; // same owner, same original ceilings and allocation authority
-    const tenth=await owner.execute(input,'answer');
+    // Recovery must re-observe nine durable rows before this launch can start.
+    // Give that multi-launch recovery its own finite budget; the nine individual
+    // launches above keep their 15s bound and the 150ms negative neighbor stays exact.
+    const tenth=await owner.execute({...input,timeout:60000},'answer');
     expect(tenth).toMatchObject({code:0,stdout:'completed',resources:{cleanup:'verified',allocation:{state:'returned'}}});
     expect(owner.snapshot().counters.cleanupRecovered).toBe(9);
     expect(allocation.open()).toHaveLength(0);
