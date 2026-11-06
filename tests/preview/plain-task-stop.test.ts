@@ -14,12 +14,12 @@ const reviewAnswer = readAnswer(reviews.freshReviewOutput);
 if (!reviewAnswer.ok) throw Error('recorded review is malformed');
 const review = parseReplyReviewVerdict(reviewAnswer.value, reviews.reviewRules);
 const key = new Uint8Array(32).fill(42);
-const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
+const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '-7654321', operator: '7654321', forum: true as const,
   grant: 'grant:offline', configurationDigest: 'sha256:offline', expires: 9999999999999,
   maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 131072, cursor: 0 };
 const id = (n: number) => `telegram:12345678:update:${n}`;
 const update = (n: number, text: string) => ({ update_id: n, message: {
-  chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
+  chat: { id: -7654321, type: 'supergroup', is_forum: true }, from: { id: 7654321 }, text } });
 function assertPlainStop(text: string) {
   expect(text).toContain('Issue 2184');
   expect(text).toContain('Work on your request stopped');
@@ -62,7 +62,7 @@ for (const basis of ['summary', 'set-aside'] as const) for (const receipt of [1,
       corrections: [], memoryChanges: [], memoryCandidates: [] };
     journal.append({ kind: 'reserve', id: current, grounding, prompt: JSON.stringify({ messages: [
       { role: 'user', content: captured.request },
-      { role: 'context', content: JSON.stringify({ packet: { audience: { surface: 'telegram-private' }, history: [] } }) }] }), at: 1000 });
+      { role: 'context', content: JSON.stringify({ packet: { audience: { surface: 'telegram-group-topic', operatorOnlyVerified: true }, history: [] } }) }] }), at: 1000 });
     journal.append({ kind: 'model-uncertain', id: current, state: captured.hostOutcome, at: 1000 });
     await worker.drain(); await worker.drain();
     expect(sent).toHaveLength(1); assertPlainStop(sent[0]!);
