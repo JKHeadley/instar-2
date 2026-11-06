@@ -21,3 +21,22 @@ Decision: svi-1105-explicit-bytes | An explicit bytes keeps its exact bound (max
 ## Source attribution and evidence limits
 
 The canonical implementation and correction were cherry-picked with --no-commit; only their four implementation paths are retained. Stale publication/review records were omitted. Native algorithm and tests are unchanged from those source patches. The resulting implementation is 260 inserted / 14 removed lines across four paths, below the 400 added-line budget (including declaration and runner wiring). Original report: session-volume-parity-1105-PROGRESS.md, read through the authenticated Studio API in full. Original native 5/5 and explicit-size red/green are historical author evidence; they are not this head’s results. The refusal fixture does not prove survival of a killed native resize. No live image or service is touched.
+
+## Verification on WSL
+
+Typecheck and build exit 0; check-architecture exit 0. Targeted command: `nice -n 10 npx vitest run --maxWorkers 1 tests/preview/session-volume.test.ts tests/preview/agent-paths.test.ts tests/preview/tool-turn.test.ts tests/preview/tool-persist.test.ts tests/preview/session-admission.test.ts`. Result: 77 passed, 16 skipped, 1 failed (unchanged process-group stop test timed out at its unchanged 20s limit). The host-dependent stop case is reported for the Studio gate, not repaired here. All five native session-volume cases are skipped on Linux: no simulated native success. No full suite or broad pinned-text list under this task’s narrower test instruction.
+
+Native checks owed: explicit 16 MiB bound; existing full volume growth/preserved hashes/next write/remount/ceiling/not-full; active holder refusal and recovery; insufficient host-free refusal; resize-failure/remount; default old 2 GiB image and explicit 2 GiB refusal. Killed-native-resize survival is not established. Independent review and exact-head full/native/installed/live gates (PR2750 task and measured growth) remain OPEN.
+
+## Reused patch bytes
+
+Byte counts and SHA256 below are for `git diff <commit>^ <commit> -- <path>`; only the named implementation hunks were reused.
+
+- 037040d7 `tests/preview/journal-agent.mjs`: 998 bytes; SHA256 286a453a7cf14871e8134e602912c876c8accf67ba9987371889eb351c37bd7b.
+- 037040d7 `tests/preview/session-volume.test.ts`: 11449 bytes; SHA256 73e9d116a9d1f30065dfd76f8c2a9ca021ba8ac31248a897fa27c960c9e8f0ad.
+- 037040d7 `tests/preview/tool-turn.declarations.json`: 1310 bytes; SHA256 e3d94bac544dfeff80fcca558a9692f9c68cafca4558013b4b7255f58ca43a1c.
+- 037040d7 `tests/preview/tool-turn.mjs`: 10897 bytes; SHA256 f41277c2fbe9832c6449ce2200494af314a5db2917984e11981084364903ceaf.
+- 3a2048fe `tests/preview/tool-turn.mjs`: 1343 bytes; SHA256 4178775a52d58c6c7c47c11b5dfeac2fa8f7e6da231ab951fed5039e775dd556.
+- 3a2048fe `tests/preview/session-volume.test.ts`: 1230 bytes; SHA256 92f65794bc3df8841a67329ff8a012be039466bc64142bf5f16f7908a23f42d1.
+
+Final tool-turn.mjs, session-volume.test.ts and tool-turn.declarations.json match canonical 3a2048fe blobs byte-for-byte. journal-agent.mjs retains the exact one-line canonical change on the live base. Beyond the four implementation paths: only this report, this branch’s review record, and seven normal register generator outputs. No imported old review/publication records. HooksPath unset; hooks directory contains samples only. No bypass, stash, credentials, live image, service, provider or Telegram operations. No exit 137 observed.
