@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { setImmediate as yieldImmediate } from 'node:timers';
@@ -14,7 +14,12 @@ import { setup, value, json, hash, withoutBasis } from '../register/fixtures.js'
 import { installOwnerFixture } from '../register/owner-fixture.js';
 import { installIntakeOwnerFixture } from '../register/intake-owner-fixture.js';
 import { runChild } from './async-child.js';
-const runNode = (args: readonly string[], cwd?: string) => runChild(process.execPath, args, { cwd });
+const runNode = async (args: readonly string[], cwd?: string, timeout = 60_000) => {
+  const result = await runChild(process.execPath, args, { cwd, timeout });
+  // A killed CLI is infrastructure failure, never evidence for a negative admission case.
+  expect(result.signal, result.stderr).toBeNull();
+  return result;
+};
 // The fixture world runs at t=100. A real declared model doorway carries its real
 // verification time, which that clock correctly refuses as not-yet-verified. Shift those
 // declared times into the fixture world; the real build keeps checking them at real time.
@@ -56,6 +61,16 @@ describe('compiled register build adapter lifecycle', () => {
   // consecutive passing tests can otherwise starve Vitest's 60s reporting RPC.
   // The long multi-case test also yields between cases; no assertion is relaxed.
   afterEach(() => new Promise<void>(done => setImmediate(done)));
+  it('keeps runner timers responsive during a slow CLI and rejects a child deadline', async () => {
+    let ticks = 0;
+    const timer = setInterval(() => { ticks++; }, 20);
+    try {
+      const result = await runNode(['-e', 'setTimeout(() => process.stdout.write("done"), 250)']);
+      expect(result).toMatchObject({ status: 0, signal: null, stdout: 'done' });
+      expect(ticks).toBeGreaterThan(0);
+    } finally { clearInterval(timer); }
+    await expect(runNode(['-e', 'setTimeout(() => {}, 10000)'], undefined, 50)).rejects.toThrow('SIGTERM');
+  });
   it('P3-NF-21 P3-NF-22 P3-NF-23 P3-NF-24 P3-NF-26 P3-NF-27 R1 normal extract and completion workflows invoke the provider and full graph ladder', async () => {
     // Yield only between completed fixture/build phases; owner calls remain synchronous.
     const yieldToRunner = () => new Promise<void>(done => yieldImmediate(done));
@@ -257,7 +272,7 @@ describe('compiled register build adapter lifecycle', () => {
           + "export const repairBinding = (declarations: Parameters<typeof bindBlockingSite>[0]) => bindBlockingSite(declarations, 'fixture-holder', []);\n");
         else rmSync(binding, { force: true });
         writeFileSync(join(root, 'src/repair.declarations.json'), JSON.stringify([d])); const revision = commit();
-        const result = spawnSync(process.execPath, [script, '--replay', '--checks', 'register-source/checks.json', '--now', '100', '--commit', revision, '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
+        const result = await runNode([script, '--replay', '--checks', 'register-source/checks.json', '--now', '100', '--commit', revision, '--out', join(root, 'out')], root);
         if (error) { expect(result.status, result.stderr).not.toBe(0); expect(result.stderr).toContain(error); }
         else { expect(result.status, result.stderr).toBe(0); expect(JSON.parse(result.stdout).prerequisites).toBeGreaterThan(0); }
         await new Promise<void>(done => setImmediate(done));
@@ -274,7 +289,7 @@ describe('compiled register build adapter lifecycle', () => {
       for (const [body, other, error] of [[cap, '', null], ['', cap, 'no paired construct'], ['', '', 'no paired construct'],
         [cap + "export function wrong() { return constructGoverned('critical outcomes', 'bound', register, context); }", '', 'ambiguous colocated']] as const) {
         writeFileSync(join(root, 'src/repair.ts'), body); writeFileSync(join(root, 'src/elsewhere.ts'), other); const revision = commit();
-        const result = spawnSync(process.execPath, [script, '--replay', '--checks', 'register-source/checks.json', '--now', '100', '--commit', revision, '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
+        const result = await runNode([script, '--replay', '--checks', 'register-source/checks.json', '--now', '100', '--commit', revision, '--out', join(root, 'out')], root);
         if (error) { expect(result.status).not.toBe(0); expect(result.stderr).toContain(error); }
         else {
           expect(result.status, result.stderr).toBe(0);
@@ -289,7 +304,7 @@ describe('compiled register build adapter lifecycle', () => {
       const stores = shape.kinds.find(k => k.name === 'stores')!;
       for (const mutation of [() => { stores.invariants = []; }, () => { stores.fields.find(f => f.name === 'growth')!.values.push('invented'); }]) {
         mutation(); writeFileSync(shapePath, JSON.stringify(shape)); const revision = commit();
-        const result = spawnSync(process.execPath, [script, '--replay', '--commit', revision, '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
+        const result = await runNode([script, '--replay', '--commit', revision, '--out', join(root, 'out')], root);
         expect(result.status).not.toBe(0); expect(result.stderr).toContain('P3-NF-09');
         // R5.1 exact desk counterexample: mutate the purported anchor too. The
         // immutable checker pin must refuse even though candidate hashes agree.
@@ -299,7 +314,7 @@ describe('compiled register build adapter lifecycle', () => {
         writeFileSync(join(root, 'src/repair.declarations.json'), JSON.stringify([s.declaration('illegal-memory', 'stores', { growth: 'deletes', holdsAgentMemory: 'yes', machineScope: { kind: 'shared' }, agreesWith: [] })]));
         const changed = commit();
         for (const flag of ['--bootstrap', '--replay']) {
-          const tampered = spawnSync(process.execPath, [script, flag, '--commit', changed, '--out', join(root, 'tampered-' + flag.slice(2))], { cwd: root, encoding: 'utf8' });
+          const tampered = await runNode([script, flag, '--commit', changed, '--out', join(root, 'tampered-' + flag.slice(2))], root);
           expect(tampered.status).not.toBe(0); expect(tampered.stderr).toContain('P3-NF-09');
         }
         await new Promise<void>(done => setImmediate(done));
@@ -403,12 +418,17 @@ describe('compiled register build adapter lifecycle', () => {
       const ambient = await run(revision); expect(ambient.status).not.toBe(0); expect(ambient.stderr).toContain('source pin trails');
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 120_000);
-  it('P3-P5 R2 same pinned commit refuses with and without an ambient bridge, and resolves a committed bridge', async () => {
+  // Each pair compares one pin against its clean clone. Keeping the absent and
+  // committed cases independent bounds each proof without a six-child blocking batch.
+  it.each(['absent', 'committed'] as const)('P3-P5 R2 same pinned commit is independent of ambient files (%s bridge)', async bridge => {
     const directory = mkdtempSync(join(tmpdir(), 'instar-owner-graph-cli-'));
-    const root = join(directory, 'working'); const clean = join(directory, 'clean'); const committed = join(directory, 'committed');
+    const root = join(directory, 'working'); const clean = join(directory, 'clean');
     try {
       const inputs = ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json'];
-      for (const path of inputs) cpSync(path, join(root, path), { recursive: true });
+      for (const path of inputs) {
+        cpSync(path, join(root, path), { recursive: true });
+        await new Promise<void>(done => yieldImmediate(done));
+      }
       installOwnerFixture(root); atFixtureClock(root);
       const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
       const indexPath = join(root, 'src/rungraph/index.ts');
@@ -420,33 +440,37 @@ describe('compiled register build adapter lifecycle', () => {
       for (const decoder of manifest.decoders) decoder.module.hash = hash(viaBridge);
       writeFileSync(manifestPath, JSON.stringify(manifest));
       git(root, 'init'); git(root, 'add', ...inputs); git(root, 'commit', '-qm', 'pinned public index, absent bridge');
+      const bridgePath = join(root, 'src/rungraph/owner-bridge.ts');
+      if (bridge === 'committed') {
+        writeFileSync(bridgePath, "export * from './records.js';");
+        git(root, 'add', 'src/rungraph/owner-bridge.ts'); git(root, 'commit', '-qm', 'include bridge in committed source graph');
+      }
       const revision = git(root, 'rev-parse', 'HEAD');
       git(directory, 'clone', '--quiet', '--no-hardlinks', root, clean);
       expect(git(clean, 'rev-parse', 'HEAD')).toBe(revision);
-      writeFileSync(join(root, 'src/rungraph/owner-bridge.ts'), "export * from './records.js';");
-      expect(git(root, 'ls-tree', '-r', '--name-only', revision)).not.toContain('owner-bridge.ts');
-      expect(git(root, 'status', '--porcelain')).toContain('?? src/rungraph/owner-bridge.ts');
-      const script = resolve('scripts/build-register.mjs');
-      const run = (cwd: string, pin: string) => spawnSync(process.execPath, [script, '--replay', '--now', '100', '--commit', pin, '--out', join(cwd, 'out')], { cwd, encoding: 'utf8' });
-      for (const cwd of [root, clean]) {
-        const result = run(cwd, revision);
-        // The committed shipped-module walk refuses the absent bridge first; an ambient file never satisfies it.
-        expect(result.status).not.toBe(0); expect(result.stderr).toContain('R5: shipped import ./owner-bridge.js from src/rungraph/index.ts does not resolve');
+      if (bridge === 'absent') {
+        writeFileSync(bridgePath, "export * from './records.js';");
+        expect(git(root, 'ls-tree', '-r', '--name-only', revision)).not.toContain('owner-bridge.ts');
+        expect(git(root, 'status', '--porcelain')).toContain('?? src/rungraph/owner-bridge.ts');
       }
-      git(root, 'add', 'src/rungraph/owner-bridge.ts'); git(root, 'commit', '-qm', 'include bridge in committed source graph');
-      const pinned = git(root, 'rev-parse', 'HEAD');
-      git(directory, 'clone', '--quiet', '--no-hardlinks', root, committed);
-      expect(git(committed, 'rev-parse', 'HEAD')).toBe(pinned);
-      for (const cwd of [root, committed]) { const result = run(cwd, pinned); expect(result.status, result.stderr).toBe(0); }
-      for (const path of ['register.json', 'source.json'])
-        expect(readFileSync(join(root, 'out', path), 'utf8')).toBe(readFileSync(join(committed, 'out', path), 'utf8'));
-      // The separately shipped wiring command also scans the pin, never an
-      // expanded live-file graph. Its valid control must work before perturbing it.
-      cpSync(join(root, 'out'), join(root, 'generated'), { recursive: true });
-      const wiring = () => spawnSync(process.execPath, [resolve('scripts/check-register-wiring.mjs')], { cwd: root, encoding: 'utf8' });
-      const checked = wiring(); expect(checked.status, checked.stderr).toBe(0);
-      writeFileSync(join(root, 'src/rungraph/ambient.ts'), "export * from './records.js';");
-      const untracked = wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
+      const script = resolve('scripts/build-register.mjs');
+      for (const cwd of [root, clean]) {
+        const result = await runNode([script, '--replay', '--now', '100', '--commit', revision, '--out', join(cwd, 'out')], cwd);
+        if (bridge === 'absent') {
+          // Neither the ambient bridge nor its absence can satisfy the committed graph.
+          expect(result.status).not.toBe(0); expect(result.stderr).toContain('R5: shipped import ./owner-bridge.js from src/rungraph/index.ts does not resolve');
+        } else expect(result.status, result.stderr).toBe(0);
+      }
+      if (bridge === 'committed') {
+        for (const path of ['register.json', 'source.json'])
+          expect(readFileSync(join(root, 'out', path), 'utf8')).toBe(readFileSync(join(clean, 'out', path), 'utf8'));
+        // The wiring command accepts the committed graph, then refuses an ambient roster change.
+        cpSync(join(root, 'out'), join(root, 'generated'), { recursive: true });
+        const wiring = () => runNode([resolve('scripts/check-register-wiring.mjs')], root);
+        const checked = await wiring(); expect(checked.status, checked.stderr).toBe(0);
+        writeFileSync(join(root, 'src/rungraph/ambient.ts'), "export * from './records.js';");
+        const untracked = await wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
+      }
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }, 60_000);
   it('P3-NF-01 P3-NF-07 P3-NF-09 actual CLI reproduces committed outputs and rejects edited output', async () => {
