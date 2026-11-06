@@ -7,10 +7,10 @@ import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, PER_RULE_PASS } from './successive-fixture.js';
 import { openPreviewJournal, UNKNOWN_SEND_NOTICE } from './journal.js';
 
-// The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
+// The launcher runs on the real clock against a fixed fixture expiry, so the due activation reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride an answer as its own line. The answer itself stays exact,
 // and nothing else may be appended.
-const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
+const NOTICE_LINE = /^(?:Reminder: your activation expires in [^.]+\. Smallest step for you: approve a renewed activation record\.|Model route check: .+\.)$/u;
 const answerOf = (text: string) => {
   const [answer, ...notices] = text.split('\n\n');
   for (const notice of notices) {
@@ -19,6 +19,13 @@ const answerOf = (text: string) => {
   }
   return answer;
 };
+
+it('keeps the answer exact beside the recorded activation notice and rejects unrelated additions', () => {
+  const notice = 'Reminder: your activation expires in 6 days 21 h. Smallest step for you: approve a renewed activation record.';
+  expect(answerOf(`Understood.\n\n${notice}`)).toBe('Understood.');
+  expect(() => answerOf('Understood.\n\nUnexpected extra reply.')).toThrow();
+  expect(() => answerOf(`Understood.\n\n${notice} Extra text.`)).toThrow();
+});
 
 it.each([['bounded', 0, false], ['oversized', 5000, false], ['forum', 0, true]])('polls status at the call cap and %s Jev response follows the byte bound', async (_name, padding, forum) => {
   const world = successiveWorld(), root = join(world.directory, 'status-cap-journal');

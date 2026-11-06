@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { cp, rm } from 'node:fs/promises';
 import { setImmediate as yieldImmediate } from 'node:timers';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -408,9 +409,12 @@ describe('compiled register build adapter lifecycle', () => {
     const root = join(directory, 'working'); const clean = join(directory, 'clean'); const committed = join(directory, 'committed');
     try {
       const inputs = ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json'];
-      for (const path of inputs) cpSync(path, join(root, path), { recursive: true });
+      for (const path of inputs) await cp(path, join(root, path), { recursive: true });
       installOwnerFixture(root); atFixtureClock(root);
-      const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+      const git = async (cwd: string, ...args: string[]) => {
+        const result = await runChild('git', ['-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args]);
+        expect(result.status, result.stderr).toBe(0); return result.stdout.trim();
+      };
       const indexPath = join(root, 'src/rungraph/index.ts');
       const index = readFileSync(indexPath, 'utf8');
       const viaBridge = index.replaceAll("'./records.js'", "'./owner-bridge.js'");
@@ -419,36 +423,38 @@ describe('compiled register build adapter lifecycle', () => {
       const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
       for (const decoder of manifest.decoders) decoder.module.hash = hash(viaBridge);
       writeFileSync(manifestPath, JSON.stringify(manifest));
-      git(root, 'init'); git(root, 'add', ...inputs); git(root, 'commit', '-qm', 'pinned public index, absent bridge');
-      const revision = git(root, 'rev-parse', 'HEAD');
-      git(directory, 'clone', '--quiet', '--no-hardlinks', root, clean);
-      expect(git(clean, 'rev-parse', 'HEAD')).toBe(revision);
+      await git(root, 'init'); await git(root, 'add', ...inputs); await git(root, 'commit', '-qm', 'pinned public index, absent bridge');
+      const revision = await git(root, 'rev-parse', 'HEAD');
+      await git(directory, 'clone', '--quiet', '--no-hardlinks', root, clean);
+      expect(await git(clean, 'rev-parse', 'HEAD')).toBe(revision);
       writeFileSync(join(root, 'src/rungraph/owner-bridge.ts'), "export * from './records.js';");
-      expect(git(root, 'ls-tree', '-r', '--name-only', revision)).not.toContain('owner-bridge.ts');
-      expect(git(root, 'status', '--porcelain')).toContain('?? src/rungraph/owner-bridge.ts');
+      expect(await git(root, 'ls-tree', '-r', '--name-only', revision)).not.toContain('owner-bridge.ts');
+      expect(await git(root, 'status', '--porcelain')).toContain('?? src/rungraph/owner-bridge.ts');
       const script = resolve('scripts/build-register.mjs');
-      const run = (cwd: string, pin: string) => spawnSync(process.execPath, [script, '--replay', '--now', '100', '--commit', pin, '--out', join(cwd, 'out')], { cwd, encoding: 'utf8' });
+      const run = (cwd: string, pin: string) => runNode([script, '--replay', '--now', '100', '--commit', pin, '--out', join(cwd, 'out')], cwd);
       for (const cwd of [root, clean]) {
-        const result = run(cwd, revision);
+        const result = await run(cwd, revision);
         // The committed shipped-module walk refuses the absent bridge first; an ambient file never satisfies it.
         expect(result.status).not.toBe(0); expect(result.stderr).toContain('R5: shipped import ./owner-bridge.js from src/rungraph/index.ts does not resolve');
       }
-      git(root, 'add', 'src/rungraph/owner-bridge.ts'); git(root, 'commit', '-qm', 'include bridge in committed source graph');
-      const pinned = git(root, 'rev-parse', 'HEAD');
-      git(directory, 'clone', '--quiet', '--no-hardlinks', root, committed);
-      expect(git(committed, 'rev-parse', 'HEAD')).toBe(pinned);
-      for (const cwd of [root, committed]) { const result = run(cwd, pinned); expect(result.status, result.stderr).toBe(0); }
+      await git(root, 'add', 'src/rungraph/owner-bridge.ts'); await git(root, 'commit', '-qm', 'include bridge in committed source graph');
+      const pinned = await git(root, 'rev-parse', 'HEAD');
+      await git(directory, 'clone', '--quiet', '--no-hardlinks', root, committed);
+      expect(await git(committed, 'rev-parse', 'HEAD')).toBe(pinned);
+      for (const cwd of [root, committed]) { const result = await run(cwd, pinned); expect(result.status, result.stderr).toBe(0); }
       for (const path of ['register.json', 'source.json'])
         expect(readFileSync(join(root, 'out', path), 'utf8')).toBe(readFileSync(join(committed, 'out', path), 'utf8'));
       // The separately shipped wiring command also scans the pin, never an
       // expanded live-file graph. Its valid control must work before perturbing it.
-      cpSync(join(root, 'out'), join(root, 'generated'), { recursive: true });
-      const wiring = () => spawnSync(process.execPath, [resolve('scripts/check-register-wiring.mjs')], { cwd: root, encoding: 'utf8' });
-      const checked = wiring(); expect(checked.status, checked.stderr).toBe(0);
+      await cp(join(root, 'out'), join(root, 'generated'), { recursive: true });
+      const wiring = () => runNode([resolve('scripts/check-register-wiring.mjs')], root);
+      const checked = await wiring(); expect(checked.status, checked.stderr).toBe(0);
       writeFileSync(join(root, 'src/rungraph/ambient.ts'), "export * from './records.js';");
-      const untracked = wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
-    } finally { rmSync(directory, { recursive: true, force: true }); }
-  }, 60_000);
+      const untracked = await wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  // Four replay builds, two wiring checks and two clones: the same finite budget
+  // as adjacent multi-build cases. Async children keep task-update RPC responsive.
+  }, 120_000);
   it('P3-NF-01 P3-NF-07 P3-NF-09 actual CLI reproduces committed outputs and rejects edited output', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-e2e-'));
     try {
