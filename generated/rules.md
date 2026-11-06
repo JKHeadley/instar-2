@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:b3ee4fb9e057d321021ee600b7f91e2c01bb876406ab06d39a3e1eb3511a126a
-Source commit: fc59bc2781552c86b08cc13093ae1b95489142c1
+Register generation: sha256:3ee4fbc46f0f013ddcfb82b92232dc426afa5cca4d43e763fa870e9e97bea4e4
+Source commit: 48a3aed5470044a3bbac73dbfd09f9e54278d4fb
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -186,6 +186,13 @@ Any statement credited to a person, whether in a message, note, rule or memory, 
 
 Check: Nothing checks this yet; the checks are being built. Owed: a check when a credited statement is written to memory, notes or rules, and another when it is sent, cited or enforced, each resolving the pointer to a logged message from that person and comparing the words, tested on both sides with paraphrases. Whether the words support the claim made from them is a judgment, held by a model or an independent review, not a script. The 1.x design is `docs/specs/attribution-paper-trail.md` in JKHeadley/instar, not yet merged. The 2.0 form of the pointer is not designed.
 Terms: (none)
+
+## 122. No Feature May Require a Purchased Service
+
+Every Instar feature works fully without the user buying anything from a third party. An outside paid service may be offered as an optional add-on for robustness. A design that blocks or degrades core function when that service is absent is wrong and goes back. The subscriptions a user already chose to run their agent are not covered by this rule.
+
+Check: Nothing checks this yet. Owed: a no-purchase boot test, in which a fresh installation running only on the subscription the person chose for the agent, with no other paid service, passes the live end-to-end proofs (#43, #62) with nothing refused, held or degraded for want of an outside service. Whether a design degrades core function when the service is absent is a judgment, held by the independent review of that design, not a script.
+Terms: term:feature, term:user
 
 ## 13. Quantitative Claims Must Bind a Subject
 
