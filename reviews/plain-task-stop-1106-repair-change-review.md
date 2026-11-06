@@ -28,6 +28,8 @@ Prompt finding: 849db3a6296a | protocol-literal | Unchanged memory inventory res
 Prompt finding: 85544c20941f | protocol-literal | Unchanged waiting message, not part of this repair.
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged source label instruction, not part of this repair.
 1.x comparison: Inherited 30b3046ca47869ef1867b357c56b84b1e3f0d2fe comparison refreshed against actual JKHeadley/instar main 3d9e102a2610e8ef5769e341f1683cc662428946, searching src/, docs/specs/ and history f0d03ccc8, 6e2872663, e0dfce86f, 2aaac4288; read ONEX-LESSONS section 3. src/scaffold/templates.ts:365-372 requires plain cause/consequence/next-step; src/messaging/plainNoticeCheck.ts keeps wording checks out of delivery; src/monitoring/watchdog-notifications.ts ties notices to interventions; docs/specs/wedge-recovery-message-loss.md distinguishes notice delivery from answered work. Retain those principles and the current plain formatter. Watchdog restart promises do not fit this uncertain attempt with no retry. The 2.0 account already contains the exact evidence needed, so no separate mechanism is imported.
+Generated publication: Replay from committed source 2752c02075e527c1e4f6de91a61d2e55bbbf6444; generation sha256:e79fb4f74fbc065c0c0c1ec90d2e0784e1c445a9522918363fcd91ed0010d51b. Seven existing generated publications refreshed; owner manifests and inventory needed no changes.
+Deferral: generated/register.json:1 | not-a-deferral=Existing prerequisite descriptions are republished without adding or postponing work.
 Verification: Exact commands, red/green outcomes, host limits and pushed status are in the repair report. No Studio write or live-root access.
 
 ## Closing block
