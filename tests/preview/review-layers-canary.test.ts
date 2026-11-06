@@ -11,10 +11,10 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, 
 const operatorText = 'Please always answer briefly.';
 const reply = 'Understood.';
 const fenced = value => `\`\`\`json\n${value}\n\`\`\``;
-// The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
+// The launcher runs on the real clock against a fixed fixture expiry, so a due credential or activation reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride the answer as its own line, as in journal-agent.test.ts.
 // The answer itself stays exact, and nothing else may be appended.
-const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
+const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Reminder: your activation expires in [^.]+\. Smallest step for you: approve a renewed activation record\.|Model route check: .+\.)$/u;
 const answerOf = text => {
   const [answer, ...notices] = text.split('\n\n');
   for (const notice of notices) {
@@ -23,6 +23,17 @@ const answerOf = text => {
   }
   return answer;
 };
+
+
+// Captured from the Studio fast-train-184-6ba08adb gate, 2026-11-05.
+it('accepts the recorded activation reminder but rejects unrelated answer suffixes', () => {
+  const notice = 'Reminder: your activation expires in 6 days 21 h. Smallest step for you: approve a renewed activation record.';
+  expect(answerOf(`Answer.\n\n${notice}`)).toBe('Answer.');
+  expect(answerOf('Answer.')).toBe('Answer.');
+  for (const suffix of ['Unrelated appended prose.', `${notice} Extra prose.`,
+    notice.replace('approve a renewed activation record', 'disable the stop')])
+    expect(() => answerOf(`Answer.\n\n${suffix}`)).toThrow();
+});
 
 it.each(['wrapped', 'reply-contradiction', 'summary-contradiction'])(
   'covers answer, full-context reply review, summary and summary review offline (%s)', async mode => {
