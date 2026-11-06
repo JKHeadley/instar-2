@@ -79,6 +79,20 @@ all tracked test files in unsplit, macOS-only and non-macOS modes. Full-suite qu
 and repeated real-fixture runs are recorded in the builder's absolute lanes progress record;
 this defect remains open until that evidence establishes zero runner errors.
 
+
+## train-181 recurrence, 2026-11-05
+
+The retained gate at b95fc4f6ad08e02d180ab476eb6e744a0ed1e53a reports one
+unattributed `onTaskUpdate` timeout, 11 failing assertions and 9,304 passing tests.
+No worker trace in the supplied bounded excerpt identifies its cause. This repair
+adds an event-loop yield between the integration peer test's twelve synchronous
+receiver restarts and forwards the selected transpile cache to those children.
+That removes a known starvation opportunity, not proof of attribution for this run.
+The defect remains OPEN with the existing desk owner and closure condition: trace
+any recurrence and qualify the final candidate with a full run reporting zero
+runner errors. No test is skipped, quarantined or relabelled; the retained run is RED.
+Only the desk runs that full qualification; targeted passing tests do not close it.
+
 ## train-181 READY-gate register recurrence, 2026-11-05
 
 The subsequent eight-file READY run at 995b147a reports two register CLI case
@@ -124,3 +138,7 @@ can continue doing synchronous build work; smaller independent batches address
 that cumulative work before the timer expires. This does not attribute an
 untraced RPC error. Final qualification remains with the required pinned run
 and the existing pipeline-owned full-run closure condition.
+
+## train-187 cumulative wiring budget, 2026-11-05
+
+The imported 99db9a096 affected-file run retained one clean-wiring timeout at 60,008ms, with 14 tests passing in 770.58s and no reported RPC error. Both parent-release controls and current-time CLI replay passed. The existing owner 7b78ea242 already repairs the same two-scan fixture budget: its independent review measured valid wiring at 52,387ms and untracked wiring timing out at 60,013ms. Train-187 reuses that 120s cumulative case budget over the four isolated bridge groups, with each build/wiring child explicitly retaining its 60s SIGTERM bound. No assertion, scan, model ability or production latency contract changes. The old red remains and the defect stays OPEN for desk full-run qualification.

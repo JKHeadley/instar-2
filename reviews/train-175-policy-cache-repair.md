@@ -1,6 +1,6 @@
 # Change review — keep reviewed subscription profiles usable after cache refresh
 
-Subject base: fa960553940238a2dfad9bb28348fd63d3047799
+Subject base: 428b6287201846c206e76be32f066a6b538333e3
 Review state: open
 Reviewed content: none
 Outcome: The ordinary tool route can construct its subscription provider after Claude Code writes signed policy-cache metadata or first populates its restrictive cache. The saved turn remains available; no effect is replayed by this repair.
@@ -27,6 +27,12 @@ Decision: train-175-cache | Reuse the existing bounded cache inspector; recogniz
 Decision: train-175-enrollment | A digest enrolled before any cache already permits the baseline: arrival of a cache that only restricts it cannot widen authority. Preserve that digest only after every cache check succeeds. Preserve stricter cache-bound enrollment when it exists. No new grant or profile mutation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-175-repair-PROGRESS.md
 
 Historical owner verification (not a new train-186 run): tsc and build pass. Both changed test files pass (122 tests); recorded host profile matches its existing identity and managed digest with hooks enabled. Architecture reports only the charter-exempt native macOS self-host composition certificate. Source pins and register are regenerated with the delegated desk tools. The automatic Studio answer/full-test gate remains outstanding.
+
+Historical owner register replay: regenerated seven generated/ outputs from source commit 0c1d832a4816aeb21891e5a89242497d12c76fc1 using the existing replay command (297 entries, 120 rules). The owner rehash and support-source repin scripts completed with zero changes. This record covers the generated commit as well as the source repair.
+
+Deferral: generated/register.json:1 | not-a-deferral=Regenerated full-line register retains existing rule wording; no implementation is postponed.
+
+Integration provenance: train-186 previously rebound this record to fa960553940238a2dfad9bb28348fd63d3047799; live retains the original 428b6287201846c206e76be32f066a6b538333e3 base. Both histories survive the merge. Current validation is reported separately.
 
 ## Closing block
 

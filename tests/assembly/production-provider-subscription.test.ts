@@ -254,43 +254,41 @@ for (const [label, accepted] of [['writer', true], ['review', true], ['overCap',
     expect(f.commands().find(row => row.args.includes('--print')).env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('4096');
     expect(f.bounds.maxTokens).toBe(2048);
   });
-it('replays recorded Opus usage through the subscription adapter and effect/invocation owners, retaining total accounting', async () => {
-  const recorded = thinkingCapture.recorded.usage;
-  for (const [total, thinking, answer, accepted] of [
-    [recorded.output_tokens, recorded.output_tokens_details.thinking_tokens, thinkingCapture.recorded.answerResultTokens, true],
+it.each([
+    [thinkingCapture.recorded.usage.output_tokens, thinkingCapture.recorded.usage.output_tokens_details.thinking_tokens, thinkingCapture.recorded.answerResultTokens, true],
     [4096, 2048, 2048, true], [4097, 2048, 2049, false],
     [3286, undefined, 3286, false], [3286, -1, 3286, false], [3286, 1.5, 3286, false],
     [3286, '2048', 3286, false], [3286, 5000, 3286, false],
-  ] as const) {
-    const usage = { ...recorded, output_tokens: total,
-      output_tokens_details: thinking === undefined ? undefined : { thinking_tokens: thinking } };
-    // Only the captured usage is available; this envelope is a numeric replay, not the lost retrospective answer.
-    const f = fixture({ terminal: JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
-      session_id: 'recorded-usage-replay', result: '{}', usage }) });
-    const route = value(createClaudeCodeSubscriptionRoute(f.input));
-    let calls = 0;
-    const owner = providerFixture({ maxTokens: 2048, route: { invoke: async (bytes, bounds) => {
-      calls++;
-      // The fixture exercises the existing receipt contract; its local owner route has no response-evidence registration.
-      return route.invoke(bytes, { ...f.bounds, maxTokens: bounds.maxTokens });
-    } } });
-    roots.push(owner.directory);
-    const { request } = owner.prepare();
-    expect(request.payload.maxTokens).toBe(2048);
-    const result = await owner.api.dispatch(request, owner.fence);
-    if (accepted) {
-      value(result);
-      const response = owner.all().find(fact => fact.kind === 'judgment-provider-ProviderJudgmentAttemptRecord'
-        && (fact.body as any).record.phase === 'response-observed')!;
-      const receipt = (response.body as any).record.receipt;
-      const observation = JSON.parse(owner.metadata[receipt.reference]!.bytes!);
-      expect(observation).toMatchObject({ state: 'complete', usage: {
-        outputTokens: total, answerTokens: answer, inputTokens: 25216, charge: null } });
-      expect(() => observationCheck(observation, owner.jh.description)).not.toThrow();
-    } else refused(result, 'provider token bound exceeded');
-    expect(calls).toBe(1);
-    expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
-  }
+  ] as const)('replays recorded Opus usage through the subscription adapter and effect/invocation owners, retaining total accounting (%s total, %j thinking)', async (total, thinking, answer, accepted) => {
+  const recorded = thinkingCapture.recorded.usage;
+  const usage = { ...recorded, output_tokens: total,
+    output_tokens_details: thinking === undefined ? undefined : { thinking_tokens: thinking } };
+  // Only the captured usage is available; this envelope is a numeric replay, not the lost retrospective answer.
+  const f = fixture({ terminal: JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
+    session_id: 'recorded-usage-replay', result: '{}', usage }) });
+  const route = value(createClaudeCodeSubscriptionRoute(f.input));
+  let calls = 0;
+  const owner = providerFixture({ maxTokens: 2048, route: { invoke: async (bytes, bounds) => {
+    calls++;
+    // The fixture exercises the existing receipt contract; its local owner route has no response-evidence registration.
+    return route.invoke(bytes, { ...f.bounds, maxTokens: bounds.maxTokens });
+  } } });
+  roots.push(owner.directory);
+  const { request } = owner.prepare();
+  expect(request.payload.maxTokens).toBe(2048);
+  const result = await owner.api.dispatch(request, owner.fence);
+  if (accepted) {
+    value(result);
+    const response = owner.all().find(fact => fact.kind === 'judgment-provider-ProviderJudgmentAttemptRecord'
+      && (fact.body as any).record.phase === 'response-observed')!;
+    const receipt = (response.body as any).record.receipt;
+    const observation = JSON.parse(owner.metadata[receipt.reference]!.bytes!);
+    expect(observation).toMatchObject({ state: 'complete', usage: {
+      outputTokens: total, answerTokens: answer, inputTokens: 25216, charge: null } });
+    expect(() => observationCheck(observation, owner.jh.description)).not.toThrow();
+  } else refused(result, 'provider token bound exceeded');
+  expect(calls).toBe(1);
+  expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
 });
 
 it('keeps legacy token and charge bounds and refuses malformed answer usage without executing getters', async () => {
@@ -545,7 +543,7 @@ it('stops a pending synthetic physical child and returns UNKNOWN without fallbac
   try { expect((await result).state).toBe('uncertain'); }
   finally { clearInterval(timer); }
   expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
-}, 10000);
+});
 
 it('refuses the old invocation policy identity before any child', () => {
   const f = fixture(), policy: any = { ...subscriptionInvocationPolicy(f.input.model) };
@@ -664,13 +662,6 @@ it('accepts a descriptor login only from a host that declares the hand-off, and 
   // The same CLI report from a host that declares no hand-off is no subscription login.
   const undeclared = fixture({ status: { authMethod: 'oauth_token' } });
   expect((await value(createClaudeCodeSubscriptionRoute(undeclared.input)).invoke('request', undeclared.bounds)).state).toBe('uncertain');
-  // A host that hands the login over refuses a stored one (a plain-text login the harness could open) and any other shape.
-  for (const status of [{ email: 'synthetic@example.invalid' }, { authMethod: 'claude.ai' }, { loggedIn: false },
-    { configDirectory: '/different-profile' }, { apiKeySource: 'ANTHROPIC_API_KEY' }, { apiProvider: 'bedrock' }]) {
-    const f = fixture({ descriptor: true, status });
-    expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('uncertain');
-    expect(f.commands().some(row => row.args.includes('--print'))).toBe(false);
-  }
   const stored = fixture();
   const profile = (stored.input as unknown as { profile: ProviderSubscriptionProfile }).profile;
   const claudeAi = { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', analyticsDisabled: true,
@@ -678,6 +669,14 @@ it('accepts a descriptor login only from a host that declares the hand-off, and 
     orgId: profile.organization, orgName: 'synthetic', subscriptionType: profile.plan };
   expect(claudeSubscriptionStatusAccepted(claudeAi, profile)).toBe(true);
   expect(claudeSubscriptionStatusAccepted(claudeAi, profile, true)).toBe(false);
+});
+
+it.each([{ email: 'synthetic@example.invalid' }, { authMethod: 'claude.ai' }, { loggedIn: false },
+  { configDirectory: '/different-profile' }, { apiKeySource: 'ANTHROPIC_API_KEY' }, { apiProvider: 'bedrock' }])(
+  'refuses a descriptor login with a different shape: %j', async status => {
+    const f = fixture({ descriptor: true, status });
+    expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('uncertain');
+    expect(f.commands().some(row => row.args.includes('--print'))).toBe(false);
 });
 
 it.each(['capture', 'session-incident'])('preserves the zero-token capacity refusal from the physical CLI (%s)', async kind => {

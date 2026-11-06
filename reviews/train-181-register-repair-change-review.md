@@ -1,6 +1,6 @@
 # Change review — register CLI worker progress and bounded assertion groups
 
-Subject base: daa95de2266ae83b359ef7758bbc2c040b52419d
+Subject base: a8771b2cae58f88db9ab1b49226881ce266b402d
 Review state: open
 Reviewed content: none
 Outcome: remove the remaining synchronous CLI/wiring calls from the register lifecycle test and give independent assertion groups fresh fixtures and their existing case deadlines; prove parent-worker progress with an actual CLI barrier.
@@ -26,9 +26,11 @@ Decision: t181g-bound | pass the enclosing case timeout to asynchronous children
 
 1.x comparison: actual JKHeadley/instar origin/main 9b5790e8105f94c8ad6f13243d063e7c7efd23b6: src/core/WorktreeManager.ts uses promisified execFile for asynchronous subprocess work; src/core/InstarWorktreeManager.ts prepare and platform-copy paths still use synchronous operations. docs/specs/test-runner-concurrency-bound.md and ONEX-LESSONS section 6 require host-scope concurrency bounds, separate from worker responsiveness. Inspected worktree history b227aed93/5143e436f/6fb1db837 and limiter history 618560b3e/c91b8780e/681f86543. Fit is asynchronous child orchestration and bounded physical work; the worktree/semaphore subsystem does not implement register lifecycle fixtures. Reuse tests/e2e/async-child.ts whole, with no new runner or copied unrelated worktree behavior.
 
+Import provenance: complete owner repair 99db9a0967837d7d10527c457263b50383464952, originally based on 995b147a436d9ad67b443e85c8bed64c902046bf. Subject base rebound to the train-175 integration parent; historical train-181 evidence below remains historical.
+
 Evidence: the retained READY run reports 118 passed, two failed, one RPC error over eight files in 797.73s. An isolated unchanged run passed in 114.41s (82.391s defaults, 30.560s bridge); that is timing evidence, not Rule 37 exoneration. The defect record distinguishes the concrete remaining synchronous path from attribution of the untraced RPC error. Final validation is in the committed report and absolute lanes progress record.
 
-Integration note: train-186 imports owning repair 99db9a0967837d7d10527c457263b50383464952 via 5eefd6fd921cb93fb3f241a152bd71b76302b9a2. The test file is byte-identical; this review base is rebound. The release-evidence report describes the owner's historical run, not train-186 validation. The defect merge appends only the owner's READY-gate section. Current metadata renewal and verification are described in reviews/train-186-register-gate-repair.md.
+Integration note: train-186 imports owning repair 99db9a0967837d7d10527c457263b50383464952 via 5eefd6fd921cb93fb3f241a152bd71b76302b9a2. At that import the test file was byte-identical and the base was daa95de2266ae83b359ef7758bbc2c040b52419d; subsequent cumulative-batch repairs remain in the merged test. The release-evidence report describes the owner's historical run, not train-186 validation. That historical defect merge appended only the owner's READY-gate section. Current metadata renewal and verification are described in reviews/train-186-register-gate-repair.md.
 
 ## Closing block
 

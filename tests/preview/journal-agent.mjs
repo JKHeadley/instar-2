@@ -190,8 +190,9 @@ const approvalSurfaceOf = options => {
     operatorUid, now: wallNow, transport });
 };
 // Rules 79, 81 (plan #502): the operator dashboard served READ-ONLY by this runner, with no approval port. Installed only when
-// both are given: where it listens (loopback or this machine's Tailscale address) and the loopback endpoint that checks the
-// operator's existing dashboard PIN (an Instar 1.x host's `POST /dashboard/unlock`). Approvals stay where they are answered.
+// both are given: where it listens (loopback or this machine's Tailscale address) and the operator's existing dashboard PIN
+// check: a loopback endpoint (an Instar 1.x host's `POST /dashboard/unlock`) or, on an installation with no such host, the
+// absolute path of the operator's PIN file (row 89; the 1.x unlock comparison). Approvals stay where they are answered.
 const readOnlyDashboardOf = options => {
   const given = ['dashboard-listen', 'dashboard-pin-check'].filter(name => options[name] !== undefined);
   if (!given.length) return null;
@@ -2142,8 +2143,10 @@ export async function runJournalAgent(application, args = process.argv.slice(2))
       if (!approvalSurface && !readOnly || !force && now - dashboardAt < 15_000) return;
       dashboardAt = now;
       try {
-        const snapshot = dashboardSnapshot(journal.view, { now, zone, bot: options['bot-username'] ?? null,
-          stopped: existsSync(stopPath), statusText: statusAnswer(journal.view, now, zone,
+        // Row 89: the work in progress carries this machine's name and each turn's live working-activity line (the same
+        // evidence the typing acknowledgement reads), so the phone page says what runs where.
+        const snapshot = dashboardSnapshot(journal.view, { now, zone, bot: options['bot-username'] ?? null, machine: ownerMachine,
+          activity: id => workingActivities.current(id), stopped: existsSync(stopPath), statusText: statusAnswer(journal.view, now, zone,
             // The memory-learning line the chat answer adds after the host's extra lines (journal.ts), so both read the same.
             [...statusExtraLines(), memoryLearningLine(journal.view, turn => operatorWriter(journal.view, turn, true))], statusPullLines()) });
         dashboardText = JSON.stringify(snapshot);
