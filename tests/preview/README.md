@@ -15,15 +15,15 @@ authority, store or outbound path.
 
 ## Capabilities
 
-- `preview-collaboration-hub`: One silent collaboration hub; authenticated parent links and unknown effects stay in the journal.
+- `preview-collaboration-hub`: One silent hub; authenticated parent links; unknown effects retained.
   Details: The journal launcher exposes retained hub binding at the authenticated PIN/CSRF /dashboard/collaboration page. Its effect consumer uses the existing role/policy check, shared claim, Telegram bridge and sender; authorized message intents reserve existing replies. The optional production composition joins authenticated Threadline intake, canonical delegated work and the bounded hub model route. The concrete installation boundary is documented below; actual serving installation and independent live acceptance remain pending. Method availability is not authority.
 
-- `preview-attention-queue`: Track and acknowledge items on the authenticated dashboard; both survive handoff.
+- `preview-attention-queue`: Track/acknowledge items on authenticated dashboard across handoff.
   Details: Tracking state and pending acknowledgements survive journal replay and replica handoff; actual independent installation and live acceptance remain pending. When the existing independent passkey surface is configured, a status change opens a distinct signed tracking request there. Its existing private store retains the exact request across owner-outbox absence, and the returning owner rechecks installation, revision, expiry, signature and stop before applying it. Tracking never approves an effect. Independent-machine availability still requires a separately installed authorized operator surface/custody path and its proof.
 
 The journal runner's capability briefing is generated from these lines and the feature declarations beside the shipped sources; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
-- `fetch-inbound-media`: saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.
+- `fetch-inbound-media`: saves inbound Telegram files with bounded admission; refused downloads keep the message.
 - `preview-conversation`: answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions.
   Details: only the verified operator is admitted; a forum journal serves all topics of one configured group, including General, with topic-specific recent history and harness sessions. Forum packets identify the current topic (General, its recorded name, or topic number); shared facts carry their source topic so the agent can attribute them across topics. Private-chat packets retain their existing format. Unknown send outcomes are never resent. Failed answers remain in the journal. After bounded proven-not-sent recovery is exhausted, a definite refusal gets one content-free delivery notice; uncertain sends keep uncertainty wording. Outstanding failures in one conversation coalesce, and a failed notice never generates another notice. Stops, expiry, reply caps and audience checks still apply.
 - `preview-durable-memory`: an encrypted local journal saves messages, summaries, memory; survives restarts; correct or forget facts.

@@ -55,6 +55,8 @@ Floor comparison: searched actual 1.x snapshot 154a09ffd44749ceac6205e4a95a9df4c
 
 Floor publication: replay source 9bc1f1b2cf25e21d0ad15d09e8dccc2d23286b22, generation sha256:3994890edd277f253316cecc4a202a5cf1b737187f8ecb797fb864a13d9f4848. The separate synthetic provider diagnostic reaches physical launcher exit 125 before the CLI; this host rejects its unchanged /bin/sh ulimit -u. No host shim or product guard was changed.
 
+Floor refinement: first concise replay restored governingConstraints in tool packets, but the summary remained 47 bytes above its allowance. Further shorten only the new hub/attention descriptions and the inbound-media summary; retain authenticated parents/dashboard, unknown effects, handoff, bounded admission and refused-message retention. Full Details remain unchanged.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges and existing desk repin/build/rehash/replay. No new runtime mechanism. Boundaries remain current authority, stopped owners, retained unknown effects and verified results.
