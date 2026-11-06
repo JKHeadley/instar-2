@@ -30,6 +30,8 @@ Merge evidence: The unchanged read-only planner selected committed input 41f34e8
 
 Deferral: generated/register.json:1 | not-a-deferral=existing governing text in regenerated publication, not a new commitment
 
+Publication verification: typecheck and build pass; architecture passes; 50 focused tests pass and five macOS volume tests skip. Delegated owner rehash and chain repin report zero changes. Existing register replay at b9a6fe3de34128783851a4520bd40b6327c9dde7 emits generation sha256:da915e59c89f09fa7c5b7ac72e931b0f7e317d70c679c13ea380fedb0eee86db, 299 entries, 122 rules and 34 terms. Pinned-text child-process checks and final checks are reported without converting host timeouts into passes.
+
 simplestRobustRoute: This is the simplest robust route: express existing recorded evidence in the existing consumer schema and merge through existing checks. No new gate, bypass, policy or capability restriction. Start is the two committed inputs; completion is a tested pushed merge; native and live checks retain their normal owners.
 80/20: Scope verification to receipt selection, conflicted behavior and cheap gates; no full WSL suite or invented live qualification.
 VERDICT: author submission; no independent convergence claimed
