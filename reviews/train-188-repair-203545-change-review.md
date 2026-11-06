@@ -8,7 +8,7 @@ Affected rules: 26, 36, 37, 49, 56, 70, 74, 95, 101, 102, 107, 111, 112, 113, 11
 Affected floors: secrets — public catalog fields only; spend cap — no inference and no limit changes; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged.
 Operator questions: none
 Suggested tier: critical
-Declared tier: standard
+Declared tier: ordinary
 Tier rationale: Evidence renewal and derived publication only; executable code and routing policy are unchanged.
 Side effects: The existing Rule 56 check admits the reviewed catalog for the same finite interval from its actual fetched time. The subsidy remains explicitly estimated, never upgraded to measured. No model activation or native conformance claim is renewed.
 Undo and recovery: Revert the declaration and capture, then regenerate publication through the existing tools; stale evidence must again refuse. Preserve failed gate evidence and historical commits.
