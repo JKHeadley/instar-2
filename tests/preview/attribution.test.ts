@@ -15,6 +15,8 @@ import { attributionPacket, attributionSummary, attributionTrace, ATTRIBUTION_OB
 import { LIVE_JUDGMENTS } from './model-call-boundary.js';
 // @ts-expect-error the hook's decision stays plain JavaScript
 import { noteText } from './tool-admission.mjs';
+// @ts-expect-error the recorder stays plain JavaScript
+import { observedSubscriptionIO } from './call-diagnostics.mjs';
 // @ts-expect-error the checkpoint stays plain JavaScript
 import { createAdmissionGate } from './admission-gate.mjs';
 
@@ -102,8 +104,10 @@ async function drive(s: Scenario) {
     checkOutbound: () => {}, send: async input => { sends.push(input.expectedText); return sends.length; },
     ...(s.mode ? { attribution: { mode: s.mode, judge: async ({ id, packet }) => {
       judged++; packets.push(packet);
-      // The real launcher records this row before the answer is read; refusing it turns every answer into UNKNOWN (found live, 2026-11-06).
-      journal.append({ kind: 'call-outcome', id, role: 'reply-review', at: 1790000000000, outcome: { exitCode: 0, localLimit: null, elapsedMs: 1, type: 'result', subtype: 'success', isError: false, outputTokens: 1, promptBytes: 1 } as never });
+      // The real launcher's own recorder writes this row before the answer is read. Refusing it turned every judge answer into
+      // UNKNOWN on the real route, and hand-built rows hid that (found live, 2026-11-06): so this goes through the real recorder.
+      await observedSubscriptionIO({ execute: async () => ({ code: 0, limited: false, stdout: '', stdoutBytes: new Uint8Array() }) },
+        { maxTokens: 2048, maxOutputBytes: 16384 }, id, (row: never) => journal.append(row), { elapsed: () => 1, at: () => 1790000000000 }).execute({ stdin: 'x' });
       if (s.judge === 'throw') throw Error('timeout');
       if (s.judge === 'junk') return { value: 'not json' };
       const text = (JSON.parse(packet) as { packet: { text: string } }).packet.text;
