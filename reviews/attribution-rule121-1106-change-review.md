@@ -14,14 +14,15 @@ Side effects: With the option on, a reply the prefilter flags waits for one mode
 Undo and recovery: Launch without --attribution. Reverting the commits leaves `attribution-reserve` and `attribution-check` rows the previous build does not know, so undo means relaunching without the option first and reverting only for a journal that never ran with it.
 Multi-machine posture: Machine-local to the journal-owning host. Rows are journal rows, so they replicate as every row does; no peer lookup is needed because the journal is the log.
 Layer below: Read docs/01-the-rules.md row 121, the 1.x spec and AttributionJudge in JKHeadley/instar, the 1.x live test report, the pre-send loop and its code-found link objections, the claim-scoped excision, the Rule 58 boundary, and the admission hook's held-secret ask.
-Bug class: none
-Bug evidence: none
+Bug class: integration
+Bug evidence: reproducer=tests/preview/attribution.test.ts
 Hook bypass: none
 Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
 Decision: attr-one-call | One judge call instead of 1.x's two, with the code's facts stated in the prompt, because a marked claim cost two calls in 1.x. The replay decided it. | reported=.instar/lanes/attribution-2-0-replay/REPORT.md
 Decision: attr-own-judgment | A dedicated judgment, not a rule in the batched reply review: a confident Jev pass skips that review, and its prompt has pinned byte budgets. | reported=.instar/lanes/attribution-2-0-1106-PLAN.md
 Decision: attr-under-reply-review | Declared under preview.reply-review rather than a new capability, so a dark option needs no register or owner-reference change in this unit. | reported=.instar/lanes/attribution-2-0-replay/REPORT.md
+Decision: attr-call-record | The judge's call is a review call in the call-outcome validator and the recorder; found on the real route, and the test now runs through the real recorder. | reported=.instar/lanes/attribution-2-0-replay/REPORT.md
 Prompt review: One new question, ATTRIBUTION_QUESTION, version attribution-judge-2.0-v2, ported from the 1.x extract and support prompts into one call. It states what the sender proof means and keeps who wrote the words apart from whether the line overstates them. Replayed on real Claude and Codex calls; numbers below. No existing prompt, parser or question changed; the one objection text added is OBJECTION_TEXT[unsourced_attribution].
 Prompt finding: 0abb3dc96311 | protocol-literal | Existing fixed wording, unchanged by this change.
 Prompt finding: 4106b49fff07 | protocol-literal | Existing fixed wording, unchanged by this change.
@@ -42,7 +43,7 @@ Subject (12 paths): tests/preview/admission-gate.mjs, tests/preview/attribution-
 Verification: Real replay, .instar/lanes/attribution-2-0-replay/REPORT.md: caught 182 of 182 on Claude and on Codex; false refusals as labelled 4 of 85 and 2 of 85. Focused suites pass: attribution, capabilities, model-call-boundary, admission-gate, tool-admission, pre-send-review-order, journal-conversation-session, fail-direction-agreement. journal-agent.test.ts has six failures, identical on the base f35c547d (real-clock activation reminder). The full suite was not run here.
 Residue: attr-slack-send-owed | medium | real Slack sending is unproven because 2.0 sends on Telegram only; owed when 2.0 Slack replies go live, accepted by the hub 2026-11-06.
 Residue: attr-write-gaps | medium | notes written by shell commands, and tool turns with no checkpoint, are not checked; the rolling summary is not checked.
-Residue: attr-live-proof-owed | high | real Telegram proof on a throwaway, the record period and the measured timeout rate are still owed.
+Residue: attr-live-proof-owed | high | real Telegram proof, a refusal on the real route, the write check on the real route, the record period and the measured timeout rate are still owed. A stand-in run on the real model route found and fixed two bugs that made every check pass unchecked.
 
 ## Closing block
 
