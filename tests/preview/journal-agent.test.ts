@@ -1,6 +1,7 @@
 // @ts-nocheck -- offline process and HTTP fixtures exercise the real launcher.
 import { expect, it } from 'vitest';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { runChild } from '../e2e/async-child.js';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -10,6 +11,9 @@ import { openPreviewJournal, UNKNOWN_SEND_NOTICE } from './journal.js';
 // The launcher uses the real clock with a fixed fixture expiry. A due credential/activation reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride an answer as its own line. The answer itself stays exact,
 // and nothing else may be appended.
+// Each physical launch gets the existing status-cap fixture's 30-second startup budget.
+// Awaiting it keeps Vitest IPC responsive; multi-launch cases budget each stage separately.
+const CHILD_TIMEOUT = 30_000;
 const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Reminder: your activation expires in [^.]+\. Smallest step for you: approve a renewed activation record\.|Model route check: .+\.)$/u;
 const answerOf = (text: string) => {
   const [answer, ...notices] = text.split('\n\n');
@@ -69,7 +73,7 @@ it.each([['bounded', 0, false], ['oversized', 5000, false], ['forum', 0, true]])
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` };
     const trial = world.state().read().trial;
-    const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    const run = await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
       '--import', preload, 'tests/preview/journal-agent.mjs', 'run', '--root', root,
       '--bot-id', world.configuration.botId, '--chat-id', chat, ...(forum ? ['--forum', 'true'] : []),
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
@@ -81,7 +85,7 @@ it.each([['bounded', 0, false], ['oversized', 5000, false], ['forum', 0, true]])
       // journal-agent-resources.test.ts budgets the same launch shape (one cycle more) at 30s under a 45s
       // test; this one's 10s was the outlier and the gate's loaded full run crossed it after the run had
       // already printed its final paused notice. Every assertion below is unchanged.
-      { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
+      { cwd: process.cwd(), timeout: CHILD_TIMEOUT, env });
     expect(run.status, run.stderr).toBe(0);
     expect(run.stderr.match(/^runner exiting: .+$/gm)).toEqual(['runner exiting: cycle limit reached']);
     expect(readFileSync(log, 'utf8')).toContain('getUpdates');
@@ -159,7 +163,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`}});
     let stderr=''; child.stderr.on('data',data=>{stderr+=String(data);});
-    const deadline = Date.now()+10000;
+    const deadline = Date.now()+CHILD_TIMEOUT;
     while ((!existsSync(log) || readFileSync(log,'utf8').split('getUpdates').length < 4) && Date.now()<deadline)
       await new Promise(done=>setTimeout(done,20));
     expect(existsSync(log),stderr).toBe(true);
@@ -172,18 +176,18 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(exit).not.toBe('timeout');
     expect(stderr.match(/^runner exiting: .+$/gm)).toEqual([`runner exiting: paused by signal ${signal}`]);
     expect(readFileSync(log,'utf8').split('getUpdates').length-1).toBeLessThanOrEqual(pollsAtSignal+1);
-    const status = spawnSync(process.execPath,
+    const status = await runChild(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex')},
-        encoding:'utf8',timeout:10000});
+        timeout: CHILD_TIMEOUT});
     expect(status.status).toBe(0);
     expect(JSON.parse(status.stdout).stop).toBeNull();
     expect(JSON.parse(status.stdout).launches).toMatchObject([{ reason: `paused by signal ${signal}` }]);
     expect(existsSync(join(root,'preview-stop.json'))).toBe(false);
     writeFileSync(updates, JSON.stringify([{update_id:1,message:{chat:{id:Number(world.configuration.chatId),type:'private'},
       from:{id:Number(world.configuration.operatorSenderId)},text:'Please answer after restart.'}}]));
-    const resumed = spawnSync(process.execPath,[...args.slice(0,-4),'--max-cycles','3','--max-poll-seconds','1'],
-      {cwd:process.cwd(),encoding:'utf8',timeout:10000,env:{...process.env,
+    const resumed = await runChild(process.execPath,[...args.slice(0,-4),'--max-cycles','3','--max-poll-seconds','1'],
+      {cwd:process.cwd(),timeout: CHILD_TIMEOUT,env:{...process.env,
         INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
         INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
         INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
@@ -191,10 +195,10 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(resumed.status,resumed.stderr).toBe(0);
     expect(readFileSync(log,'utf8').split('getUpdates').length-1).toBeGreaterThan(pollsAtSignal);
     expect(readFileSync(log,'utf8').split('sendMessage').length-1).toBe(1);
-    expect(JSON.parse(spawnSync(process.execPath,
+    expect(JSON.parse((await runChild(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex')},
-        encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:2,
+        timeout: CHILD_TIMEOUT})).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:2,
           unknownCallBreakdown:{answers:0,summaries:0,reviews:0,jev:2,total:2},
           replyChecks:{unavailable:2},unknownSends:0,
           // Rules 41/75: the failed Jev attempt and its one bounded retry each retain their own UNKNOWN usage.
@@ -204,20 +208,20 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
           // Rules 28/29/35: the one admitted turn was written by the verified operator over the test endpoint.
           intakeWriters:{verifiedOperator:1,scheduler:0,legacyExactBinding:0,testOrigin:1,refused:0},
           coherence:{checked:1,unchecked:0,failed:0,pendingCorrections:0,findings:[]}});
-    const stop = spawnSync(process.execPath,
+    const stop = await runChild(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','stop','--root',root],
-      {cwd:process.cwd(),encoding:'utf8',timeout:10000});
+      {cwd:process.cwd(),timeout: CHILD_TIMEOUT});
     expect(stop.status).toBe(0);
     expect(JSON.parse(readFileSync(join(root,'preview-stop.json'),'utf8')).reason).toBe('operator');
-    const refused = spawnSync(process.execPath,[...args.slice(0,-4),'--max-cycles','1','--max-poll-seconds','1'],
-      {cwd:process.cwd(),encoding:'utf8',timeout:10000,env:{...process.env,
+    const refused = await runChild(process.execPath,[...args.slice(0,-4),'--max-cycles','1','--max-poll-seconds','1'],
+      {cwd:process.cwd(),timeout: CHILD_TIMEOUT,env:{...process.env,
         INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
         INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
         INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
         INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`}});
     expect(refused.status).not.toBe(0);
   } finally { child?.kill('SIGKILL'); endpoint.kill('SIGTERM'); }
-},30000);
+}, 8 * CHILD_TIMEOUT);
 
 it.each([['echo', 0], ['drop-thread', 1]])('the real launcher answers a topic from the main chat and replies into that topic (endpoint %s; a result without the thread stays UNKNOWN)', async (mode, unknown) => {
   const world = successiveWorld(), root = join(world.directory, 'topic-journal');
@@ -266,13 +270,13 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`};
-    const run = spawnSync(process.execPath,['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','--loader',loader,
+    const run = await runChild(process.execPath,['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','--loader',loader,
       'tests/preview/journal-agent.mjs','run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
       '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','4','--max-poll-seconds','1'],
-      {cwd:process.cwd(),encoding:'utf8',timeout:20000,env});
+      {cwd:process.cwd(),timeout: CHILD_TIMEOUT,env});
     expect(run.status,run.stderr).toBe(0);
     const sends = readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line));
     expect(sends).toHaveLength(2 + Number(unknown));
@@ -281,15 +285,15 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(sends[0].message_thread_id).toBeUndefined();
     expect(sends[1]).toMatchObject({chat_id:world.configuration.chatId,message_thread_id:7});
     expect(answerOf(sends[1].text)).toBe('Your sister is Wren; you told me in the main chat.');
-    expect(JSON.parse(spawnSync(process.execPath,
+    expect(JSON.parse((await runChild(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       // Each turn records the unavailable Jev attempt and its retry without repeating the reply send.
-      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:4,replies:2 + Number(unknown),unknownCalls:4,unknownCallBreakdown:{ jev:4,total:4 },unknownSends:2 * Number(unknown),
+      {cwd:process.cwd(),env,timeout: CHILD_TIMEOUT})).stdout)).toMatchObject({calls:4,replies:2 + Number(unknown),unknownCalls:4,unknownCallBreakdown:{ jev:4,total:4 },unknownSends:2 * Number(unknown),
         lastReplyTiming: { update: mode === 'echo' ? 2 : 1,
           intakeToApiAcceptedMs: expect.any(Number), checkMs: expect.any(Number) },
         coherence:{checked:2,unchecked:0,failed:0}});
   } finally { endpoint.kill('SIGTERM'); }
-},30000);
+}, 3 * CHILD_TIMEOUT);
 
 it.each([
   ['wrapped', { 'answer/decision/tolerated/fenced': 1, 'reply-review/decision/tolerated/fenced': 1 }, null, {}],
@@ -366,29 +370,29 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`};
-    const run = spawnSync(process.execPath,['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','--loader',loader,
+    const run = await runChild(process.execPath,['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','--loader',loader,
       'tests/preview/journal-agent.mjs','run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
       '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','3','--max-poll-seconds','1'],
-      {cwd:process.cwd(),encoding:'utf8',timeout:20000,env});
+      {cwd:process.cwd(),timeout: CHILD_TIMEOUT,env});
     expect(run.status,run.stderr).toBe(0);
     const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line)) : [];
     // A contradicted review is unavailable, never a pass and never a veto (Rules 77, 86, 95).
     // An answer that stays malformed after its one re-ask is never sent; every other mode still answers.
     expect(sends.some(send => answerOf(send.text) === 'Noted.')).toBe(
       !['answer-two-objects', 'answer-list-wrapped', 'answer-prose-wrong-fields'].includes(mode));
-    const status = JSON.parse(spawnSync(process.execPath,
+    const status = JSON.parse((await runChild(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
-      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout);
+      {cwd:process.cwd(),env,timeout: CHILD_TIMEOUT})).stdout);
     expect(status.modelJsonShapes).toEqual({ version: 1, counts, last: last && { ...last, at: expect.any(Number) } });
     expect(status.modelFailureClasses).toEqual(failures);
     expect(readFileSync(join(root, 'model-json-shapes.json'), 'utf8')).not.toMatch(/Noted|rules|Decision/u);
   } finally { endpoint.kill('SIGTERM'); }
-},30000);
+}, 3 * CHILD_TIMEOUT);
 
-it('Rule 35: a test-endpoint composition refuses a production journal before taking its lease or writing a byte', () => {
+it('Rule 35: a test-endpoint composition refuses a production journal before taking its lease or writing a byte', async () => {
   const world = successiveWorld(), root = join(world.directory, 'production-journal');
   const path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, OFFLINE_STORAGE_KEY, { kind: 'genesis', bot: world.configuration.botId,
@@ -396,8 +400,8 @@ it('Rule 35: a test-endpoint composition refuses a production journal before tak
     configurationDigest: 'sha256:production', expires: 9999999999999, maxCalls: 4, maxReplies: 4, maxTurns: 4, maxBytes: 32768, cursor: 0 });
   journal.close();
   const before = readFileSync(path);
-  const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
-    'tests/preview/journal-agent.mjs', 'run', '--root', root], { cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
+  const run = await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    'tests/preview/journal-agent.mjs', 'run', '--root', root], { cwd: process.cwd(), timeout: CHILD_TIMEOUT,
     env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: 'http://127.0.0.1:9' } });
@@ -407,9 +411,9 @@ it('Rule 35: a test-endpoint composition refuses a production journal before tak
   expect(existsSync(join(root, '.writer'))).toBe(false);
   // Refused before the writer lease: no startup-refusal record is written into the production root either.
   expect(existsSync(join(root, 'runs.jsonl'))).toBe(false);
-});
+}, 2 * CHILD_TIMEOUT);
 
-it('Rules 2, 42: a launch refused under the writer lease records its scrubbed reason and stderr stays terse', () => {
+it('Rules 2, 42: a launch refused under the writer lease records its scrubbed reason and stderr stays terse', async () => {
   const world = successiveWorld(), root = join(world.directory, 'refused-launch');
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, { kind: 'genesis', origin: 'test',
     bot: '1001', chat: '2002', operator: '2002', grant: 'grant:refusal', configurationDigest: 'sha256:recorded',
@@ -418,11 +422,11 @@ it('Rules 2, 42: a launch refused under the writer lease records its scrubbed re
   const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
     INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
     INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: 'http://127.0.0.1:9', INSTAR_CONVERSATION_OWNERS: join(world.directory, 'owners') };
-  const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+  const run = await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
     'tests/preview/journal-agent.mjs', 'run', '--root', root, '--bot-id', '1001', '--chat-id', '2002',
     '--operator-sender-id', '2002', '--grant-reference', 'grant:refusal', '--configuration-digest', 'sha256:different',
     '--expires-at', '9999999999999', '--max-calls', '4', '--max-replies', '4', '--max-turns', '4'],
-  { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env });
+  { cwd: process.cwd(), timeout: CHILD_TIMEOUT, env });
   expect(run.status).toBe(1);
   expect(run.stderr).toContain('details suppressed');
   expect(run.stderr.match(/^runner exiting: .+$/gm)).toEqual(['runner exiting: refused before launch']);
@@ -433,7 +437,7 @@ it('Rules 2, 42: a launch refused under the writer lease records its scrubbed re
     refused: 'preview: configuration-digest differs from journal' });
   // The lease is released after the record, so the next launch is not refused as a concurrent boot.
   expect(existsSync(join(root, '.writer', '.boot-lease'))).toBe(false);
-  const status = JSON.parse(spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
-    'tests/preview/journal-agent.mjs', 'status', '--root', root], { cwd: process.cwd(), env, encoding: 'utf8', timeout: 20000 }).stdout);
+  const status = JSON.parse((await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    'tests/preview/journal-agent.mjs', 'status', '--root', root], { cwd: process.cwd(), env, timeout: CHILD_TIMEOUT })).stdout);
   expect(status.startupRefusals).toEqual({ count: 1, last: { at: rows[0].launch, reason: 'preview: configuration-digest differs from journal' } });
-}, 30000);
+}, 3 * CHILD_TIMEOUT);
