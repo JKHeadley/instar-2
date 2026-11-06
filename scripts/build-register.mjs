@@ -17,7 +17,7 @@ const emptyCatalog = { fixtures: [], probes: [], sentinels: [], semanticReviews:
 // Derived pin for this repository replay publication. The desk refreshes the
 // anchor's document and rule hashes and this literal in the same reviewed PR.
 // Operator approval of that PR authorizes publication; this pin grants no runtime authority.
-const approvedConversion = 'sha256:ec44dac342daaccdc20aee6a9d6f2779096f1b4a2dcb45bfaa8de584d79dc3b5';
+const approvedConversion = 'sha256:92184e21d68f670a8eb4acff46510717e1ce954b49a4b7f99a43175ef8d3c06b';
 function resolveBuildReferences(root, input, workflow, provider, shape, owner) {
   return (workflow.references ?? []).map(reference => {
     if (reference.provider === 'decoder') {

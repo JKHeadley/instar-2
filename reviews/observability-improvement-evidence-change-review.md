@@ -16,14 +16,19 @@ Bug class: none
 Hook bypass: none
 Convergence: independent reviewer review_history found the first draft had lost the universal per-feature duty. It was restored; reviewer concurred that the revised paired wording has no remaining semantic drift. Publication/build checks remain in progress and no live enforcement is claimed.
 
-## Closing block
-
-simplestRobustRoute: Strengthen the existing foundational rule, use its existing measurement and maturation owners, and extend the existing review with scoped instructions. No parallel machinery is justified by this amendment. Real activity-to-visual evidence remains an owed check.
-80/20: One focused independent wording review changed the text; further broad review awaits the final source/publication head.
-VERDICT: author submission; not a claim of final-head approval
-
 ## Publication evidence
 
 Source commit: de665d7b892ea45e0e69e3481f510b0cf6e1fd13. Rule count remains121; only Rule39's declaration hash changed. `npm run build` passed.
 
 The current-clock replay failed with `P3-NF-24` for pre-existing overdue `deferred:slack-intake-v1:36`. A controlled read of unchanged origin/main's own build script and source reproduced the identical refusal. No waiver or fabricated live evidence was added. The repository's existing shape-only replay convention uses `--now1792195200000` (2026-10-17); regeneration from this exact source succeeded on that same explicitly historical clock. This is reproducible publication shape evidence, not a current-time readiness, live-enforcement, or improvement claim. The current-clock source gate remains a reported gap until its existing owner supplies the genuine redacted trial capture it requires. Existing Rules118–121 use the same replay convention.
+
+
+## Refresh onto the next approved rule
+
+Merged origin/main aa8cbc934 (Rule122) without changing that rule or its declaration. The topic139374 amendment becomes draft changelog revision22. Only Rule39 differs semantically from current main. Prior121-rule publication evidence above remains historical evidence for its named source commit, not the current count. The closing block is restored to the last three lines as required by REVIEW-NF-01. Current build/replay and final-head review are still pending.
+
+## Closing block
+
+simplestRobustRoute: Strengthen the existing foundational rule, use its existing measurement and maturation owners, and extend the existing review with scoped instructions. No parallel machinery is justified by this amendment. Real activity-to-visual evidence remains an owed check.
+80/20: One focused independent wording review changed the text; further broad review awaits the final source/publication head.
+VERDICT: author submission; not a claim of final-head approval
