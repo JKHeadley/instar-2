@@ -75,7 +75,7 @@ import { assessStranded, claimConversation, observeConversationOwner, recordRefu
 import { agreementLine, agreementStatus, runDueAgreements } from './store-agreements.js';
 import { connectConversationAuthority } from './conversation-authority.js';
 import { createLeaseHolder } from './two-machine-serving.js';
-import { adoptReceivedCopy, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, openReplicaStore, serveReplicaStore,
+import { adoptReceivedCopy, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, finishReplicatedHandoff, openReplicaStore, serveReplicaStore,
   backupStatusLine, sharedHistoryStatus, takeoverEligibility } from './journal-replication.js';
 import { createApprovalSurfaceClient } from './approval-surface-client.mjs';
 import { dashboardSnapshot } from './operator-dashboard.js';
@@ -1687,11 +1687,10 @@ async function main() {
       admit: (target, refusal) => dispatch.admit(target, refusal, target.startsWith('limited:') ? 10_000 : undefined),
       replicated: refusal => dispatch.replicated(refusal),
       outcome: (target, kind) => dispatch.outcome(target, kind),
-      /** A clean end: the last journal bytes go to the other machine, then the lease is handed back so it can take over at once. */
+      /** A clean end: pending outcomes and journal bytes are flushed before the lease is handed back. */
       async stop() {
         clearInterval(renewTimer);
-        try { if (shipper && lease.fence()) await shipper.drain(); } catch { /* the successor continues from the acknowledged copy */ }
-        try { await lease.release(); } catch { /* the term ends it */ }
+        await finishReplicatedHandoff({ dispatch, shipper, lease });
       } };
   };
   try {

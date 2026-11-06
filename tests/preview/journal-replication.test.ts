@@ -11,7 +11,7 @@ import { fitStatusLines, statusAnswer } from './status-command.js';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { localAuthorityClient, openConversationAuthority } from './conversation-authority.js';
 import type { AuthorityClient, AuthorityRequest } from './conversation-authority.js';
-import { adoptReceivedCopy, awaitReplicated, backupStatusLine, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, localReplicaClient, markOf,
+import { adoptReceivedCopy, awaitReplicated, backupStatusLine, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, finishReplicatedHandoff, localReplicaClient, markOf,
   openReplicaStore, readLineage, REPLICATION_UNMET, serveReplicaStore, setAsideJournals, sharedHistoryStatus, takeoverEligibility } from './journal-replication.js';
 import { createLeaseHolder } from './two-machine-serving.js';
 import type { ReplicaClient, ReplicaRequest } from './journal-replication.js';
@@ -22,6 +22,53 @@ const place = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-replication
 const genesis = () => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
   configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 262144, cursor: 0 });
 const update = (id: number) => ({ update_id: id, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: `question ${id}` } });
+
+it.each([true, false])('handoff retries the last unreachable outcome before release; authority recovered=%s', async recovered => {
+  const dir = place();
+  const log = openConversationAuthority({ path: join(dir, 'authority.jsonl'), conversation: CONVERSATION,
+    termMs: 30_000, monotonic: () => 0 });
+  try {
+    const direct = localAuthorityClient(log), events: string[] = [];
+    let reachable = true;
+    const authority: AuthorityClient = { request: async request => {
+      events.push(request.op);
+      return reachable || request.op !== 'outcome' ? direct.request(request) : { ok: false, reason: 'unreachable' };
+    } };
+    const lease = createLeaseHolder({ authority, machine: 'studio', incarnation: 'studio:handoff', monotonic: () => 0 });
+    expect((await lease.hold()).role).toBe('owner');
+    const fence = lease.fence()!;
+    const dispatch = createReplicatedDispatch({ authority, lease, cursor: 0, elapsed: () => 0, sleep: async () => {},
+      shipper: { pump: async () => {}, covers: () => true, token: () => ({ generation: 0, size: 0 }) } });
+    expect(await dispatch.admit('reply:last', () => null)).toBe(null);
+    reachable = false;
+    await dispatch.outcome('reply:last', 'accepted');
+    expect(log.handle({ op: 'read' })).toMatchObject({ view: { unresolved: ['reply:last'] } });
+    reachable = recovered;
+    events.length = 0;
+    await finishReplicatedHandoff({ dispatch, lease, shipper: { drain: async () => { events.push('drain'); return true; } } });
+    expect(events).toEqual(['outcome', 'drain', 'release']);
+    expect(log.handle({ op: 'read' })).toMatchObject({ view: { holder: null, unresolved: recovered ? [] : ['reply:last'] } });
+    // Neither a recovered receipt nor an unavailable authority creates permission to repeat the send.
+    expect(log.handle({ op: 'claim', fence, key: 'reply:last' }).ok).toBe(false);
+    expect(log.handle({ op: 'outcome', fence, key: 'reply:last', state: 'sent' })).toMatchObject({ ok: true, state: 'sent' });
+  } finally { log.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('handoff preserves stop when cleanup fails and flushes original claims even without a current fence', async () => {
+  for (const held of [true, false]) {
+    const events: string[] = [];
+    await finishReplicatedHandoff({
+      dispatch: { flush: async () => { events.push('flush'); throw Error('authority down'); } },
+      shipper: { drain: async () => { events.push('drain'); throw Error('peer down'); } },
+      lease: { fence: () => held ? { epoch: 1, incarnation: 'studio:1' } : null,
+        release: async () => { events.push('release'); throw Error('release down'); } },
+    });
+    expect(events).toEqual(held ? ['flush', 'drain', 'release'] : ['flush', 'release']);
+  }
+  const runner = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
+  expect(runner).toContain('await finishReplicatedHandoff({ dispatch, shipper, lease });');
+  expect(runner.indexOf('await lane.settle();')).toBeLessThan(runner.indexOf('if (shared) await shared.stop();'));
+});
 
 /** One machine's root with a real preview journal and a worker that answers. */
 function machine(root: string) {

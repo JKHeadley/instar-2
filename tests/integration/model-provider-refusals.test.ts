@@ -21,11 +21,13 @@ const pending = (f: Fixture) => {
     || f.kind === 'judgment-provider-ProviderJudgmentResolution')).toHaveLength(0);
   expect(f.all().filter(f => f.kind === 'run-transition').at(-1)?.body).not.toMatchObject({ record: { id: 'provider-accepted' } });
 };
-it('MODEL-PROVIDER-PATH integration provider timeout captures uncertainty; unknown charge never releases, retries or advances', async () => {
+it.each(['real timer', 'already elapsed timer'])('MODEL-PROVIDER-PATH integration provider timeout captures uncertainty; unknown charge never releases, retries or advances (%s)', async timer => {
   const http = await localProvider();
+  const timeout = timer === 'already elapsed timer' ? vi.spyOn(AbortSignal, 'timeout')
+    .mockImplementation(() => AbortSignal.abort(new DOMException('deadline elapsed before connection', 'TimeoutError'))) : null;
   try {
-    // The driver timeout stays under the admitted 100ms bound, with enough room that a stalled
-    // shared event loop cannot abort the call before it reaches the provider at all.
+    // A timeout may precede server arrival. Count invocation at the driver, not at the server;
+    // the elapsed-signal control proves that zero server arrivals still retain maximum exposure.
     http.delay(450);
     const f = providerFixture({ ...http, timeout: 90 }), { request, prepared } = f.prepare();
     const observation = value(await f.api.dispatch(request, f.fence));
@@ -36,8 +38,10 @@ it('MODEL-PROVIDER-PATH integration provider timeout captures uncertainty; unkno
     const reservation = value(f.six.inspect()).filter(r => r.record.type === 'AdmissionReservation').at(-1)!.record;
     expect(reservation).toMatchObject({ state: 'consumed', charge: 20 });
     pending(f); refused(await f.api.dispatch(request, f.fence));
-    expect(value(f.graph.read(f.id)).pending).toHaveLength(1); expect(http.requests).toHaveLength(1);
-  } finally { await http.close(); }
+    expect(value(f.graph.read(f.id)).pending).toHaveLength(1); expect(f.calls()).toBe(1);
+    expect(http.requests.length).toBeLessThanOrEqual(1);
+    if (timer === 'already elapsed timer') expect(http.requests).toHaveLength(0);
+  } finally { timeout?.mockRestore(); await http.close(); }
 });
 it('MODEL-PROVIDER-PATH integration unknown charge despite proved occurrence retains maximum exposure and pending Five step', async () => {
   const http = await localProvider();
@@ -159,6 +163,7 @@ it('MODEL-PROVIDER-PATH integration the admitted timeout bound cannot be widened
     const receipt = JSON.parse(value(f.captures.read(observation.capture as Parameters<typeof f.captures.read>[0])));
     expect(receipt).toMatchObject({ state: 'uncertain', bytes: null, usage: { charge: null }, limitation: { kind: 'transport-threw' } });
     refused(await f.api.dispatch(request, f.fence));
-    expect(http.requests).toHaveLength(1); expect(value(f.graph.read(f.id)).pending).toHaveLength(1);
+    expect(f.calls()).toBe(1); expect(http.requests.length).toBeLessThanOrEqual(1);
+    expect(value(f.graph.read(f.id)).pending).toHaveLength(1);
   } finally { await http.close(); }
 });

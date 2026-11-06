@@ -448,6 +448,19 @@ export function createReplicatedDispatch(input: Readonly<{ authority: AuthorityC
     } });
 }
 
+/** After in-flight work settles, retry its unrecorded outcomes once before handing ownership back.
+ * Each port is already bounded. Failure keeps the authority's claim unresolved; it never authorizes a resend
+ * or prevents stop. Flush even after fence loss: an admitted outcome belongs to its original claim. */
+export async function finishReplicatedHandoff(input: Readonly<{
+  dispatch: Pick<ReplicatedDispatch, 'flush'> | null;
+  shipper: Pick<JournalShipper, 'drain'> | null;
+  lease: Pick<LeaseHolder, 'fence' | 'release'>;
+}>): Promise<void> {
+  try { await input.dispatch?.flush(); } catch { /* unresolved is retained at the authority */ }
+  try { if (input.shipper && input.lease.fence()) await input.shipper.drain(); } catch { /* successor uses the acknowledged copy */ }
+  try { await input.lease.release(); } catch { /* the term ends ownership */ }
+}
+
 /** Which lease epoch this machine last wrote the journal under. Present only on a machine enrolled in the shared history. */
 export type Lineage = Readonly<{ epoch: number; seeded?: true; adopted?: Readonly<{ machine: string; epoch: number; size: number; digest: string }> }>;
 const lineagePath = (root: string) => join(root, 'journal-lineage.json');
