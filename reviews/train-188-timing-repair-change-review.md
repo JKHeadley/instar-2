@@ -28,6 +28,8 @@ Subject: tests/e2e/harness-adapters-round7-regression.test.ts, tests/preview/jou
 
 Verification: All three complete touched files passed with nice -n 10 and --maxWorkers 1: 14 crash cases (37.66s run), 4 census cases (85.17s run), and 20 launcher cases (165.14s run). The delayed SIGTERM case passed in 26.616s including boot/resume and retained the unchanged three-second signal-response assertion. No unhandled RPC errors were reported in these runs. The full-run verdict remains the automatic Studio gate's responsibility; the saved failed report is not replaced or claimed green.
 
+Publication: The initial cheap gate correctly refused stale owner-reference pins for the changed test. The delegated desk rehash and repin refreshed two preview source pins and their chain. Register publication is regenerated from committed source with the existing replay builder; no pin is edited by hand.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: use the existing nonblocking runner and independent finite fixture budgets. The credible failure is event-loop starvation and boot/reconciliation consuming the wrong test interval. Existing launch limits, stop, real census evidence, retained debits and exact crash-state assertions hold. No production subsystem or autonomous capability is added; this is a tested source handoff, not live runtime acceptance.
