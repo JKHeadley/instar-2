@@ -29,6 +29,8 @@ Decision: train-188-merge-notices | Keep the exact activation-label matcher and 
 Decision: train-188-merge-evidence | Preserve both defect narratives and original cache review attribution/replay history; keep the later measured catalog timestamps without inventing fresh verification. Native byte-bound certification remains Studio-owned. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-188-repair-070058-PROGRESS.md
 Decision: train-188-merge-publication | Use delegated owner rehash, support repin and register replay for merged bytes; never hand-edit hashes or certify an unrun native composition. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-188-repair-070058-PROGRESS.md
 
+Publication: Delegated owner rehash refreshed one preview test pin; support repin changed none. Replayed 299 entries, 122 rules and 34 terms from 3cf63d1cfcd2397ccd7ca359dd864ec435de502d, generation sha256:5328e71962624f3310ac3751443b479ccdb4c076de4070b771f1332b714c53fa. This record covers the merge, source-pin and generated-publication commits.
+
 ## Closing block
 
 simplestRobustRoute: Merge the existing repairs, resolve only overlapping intentions, and regenerate derived artifacts with the delegated tools. This is the simplest robust route; no new machinery. Existing resource caps, stop, profile, effect and intake guards remain.
