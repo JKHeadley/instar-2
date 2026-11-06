@@ -1,8 +1,8 @@
 # Change review — The Person Decides; the Agent Does the Rest
 
 Subject base: 567d0c49e9ad30bc2d620025d1a6311cadb9cd66
-Review state: open
-Reviewed content: none
+Review state: frozen
+Reviewed content: sha256:4c1b5cbfe985041d6190c8db4a9f2ab25ac1ca5f26b4cde2fa9b3f8fe16233e4
 Outcome: Record the operator's 2026-11-03 direction as Rule 120: an Instar agent does all research, account management and operation; the person only approves or declines, asks for changes, or supplies a credential; whose accounts are used is the person's choice, and the agent never recommends against full account management. A new rule in Needs building, because neither of its checks exists yet. Same wording as the earlier draft numbered 119 (PR 190), renumbered to 120 after Rule 119, One Constitution, Two Books Aligned, merged first.
 Affected rules: 18, 23, 78, 82 (scope boundary: they cover acting inside a role, when to escalate, automatic capture and how to ask; 120 states the person's whole part) and new 120. 119 applies to this change: it names its 1.x counterpart. Purpose unchanged. History preserves prior revisions; Rule 120 stays a coverage gap until its checks are built.
 Affected floors: secrets — no custody or revelation changes; spend cap — no provider calls or budget changes; stop — no cancellation changes; no duplicate sends — no dispatch changes; durable intake — no journal or admission changes.
