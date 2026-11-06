@@ -46,8 +46,14 @@ export function cutoverHarness(world, profile, childEnv = {}) {
   /** The live runner as a child the test can kill at a chosen moment (a crash with no exit record). */
   const startLive = cycles => spawn(process.execPath, launchArgs(liveRoot, 'live', cycles),
     { cwd: process.cwd(), env: env('live'), stdio: 'ignore' });
-  const status = () => spawnSync(process.execPath, [...args,
-    'status', '--root', liveRoot], { cwd: process.cwd(), env: env('live'), encoding: 'utf8', timeout: 10000 });
+  const status = () => {
+    // Status performs the same journal reconstruction as launch. Bound that work equally,
+    // and report a child failure before any caller attempts to decode an empty stdout.
+    const result = spawnSync(process.execPath, [...args, 'status', '--root', liveRoot],
+      { cwd: process.cwd(), env: env('live'), encoding: 'utf8', timeout: 30000 });
+    if (result.error || result.status !== 0) throw Error(`status child failed: ${result.error?.message ?? result.signal ?? result.status}; ${result.stderr}`);
+    return result;
+  };
   // Startup includes the real loader and journal boot. Five seconds was a scheduling
   // assumption, not an ownership condition. Keep a deadline, and fail promptly on exit.
   const waitForOverlap = async (timeoutMs = 30000) => {
