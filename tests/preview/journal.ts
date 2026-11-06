@@ -424,13 +424,17 @@ const stoppedTaskContinuity = (disposition: ContinuityAccount['disposition'], ba
  * something they do not already have: the first time this context lost verbatim history, when the
  * accounted message is not already answered, when the kind of seam changed (a summarized prefix and a
  * kept-but-unsummarized one are different claims about what can still be reached), or when the last one
- * may not have arrived -- and never twice running with the same words. */
-export const continuitySpoken = (last: { disclosure: string; basis?: 'set-aside' } | undefined,
-  account: { disposition: ContinuityAccount['disposition']; basis: ContinuityBasis; disclosure: string },
+ * may not have arrived. Equal plain wording can describe different pending requests, so suppress
+ * it only when the accounted inbound and outcome evidence also match. */
+type SpokenContinuityEvidence = Pick<ContinuityAccount, 'prePauseInbound' | 'capture' | 'disposition' | 'reference' | 'disclosure'>;
+export const continuitySpoken = (last: SpokenContinuityEvidence & { basis?: 'set-aside' } | undefined,
+  account: SpokenContinuityEvidence & { basis: ContinuityBasis },
   unresolved: boolean) =>
   (last === undefined || unresolved || account.disposition !== 'addressed'
     || (last.basis ?? 'summary') !== account.basis)
-  && account.disclosure !== last?.disclosure;
+  && (account.disclosure !== last?.disclosure || account.prePauseInbound !== last?.prePauseInbound
+    || account.capture !== last?.capture || account.disposition !== last?.disposition
+    || account.reference !== last?.reference || account.basis !== (last?.basis ?? 'summary'));
 /** A turn's sent reply without its Rule 110 disclosure (for measurement of the answer itself).
  * A silently recorded account never prefixed the text, so nothing is stripped from it. */
 export const replyBody = (turn: { intent?: string; continuity?: ContinuityAccount }) =>
@@ -6561,7 +6565,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const prior = lastSaid?.continuity;
     const carried = prior && !episodeSpoken.has(lastSaid!.id)
       && through > prior.summarizedThrough ? undefined : prior;
-    const spoken = continuitySpoken(carried, { disposition, basis, disclosure }, unresolved !== undefined);
+    const spoken = continuitySpoken(carried, { prePauseInbound: before.id,
+      capture: createHash('sha256').update(before.raw).digest('hex'), disposition, reference, basis, disclosure }, unresolved !== undefined);
     return { before, label, disposition, reference, basis, disclosure, spoken };
   };
   /** Part 21 §16: the learning loop's retrieval hints add the words of a question that missed to its source's cues. */

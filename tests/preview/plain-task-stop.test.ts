@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { createJournalWorker, openPreviewJournal, LEGACY_UNKNOWN_ANSWER_NOTICE, unknownAnswerNotice,
-  continuityDisclosure, type ReplyGrounding } from './journal-test-worker.js';
+  continuityDisclosure, continuitySpoken, type ReplyGrounding } from './journal-test-worker.js';
 import { HOLDING_REPLY, parseJevResponse, parseReplyReviewVerdict } from './reply-check.js';
 import { readAnswer } from './answer-reading.js';
 
@@ -147,4 +147,53 @@ it(`plain continuity retains exact journal checks: ${fault}`, () => {
     if (fault === 'none') expect(append).not.toThrow();
     else expect(append).toThrow('continuity account refused');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+for (const basis of ['summary', 'set-aside'] as const)
+it(`discloses different pending requests with identical stopped-task prose in one worker: ${basis}`, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'plain-stop-distinct-')), path = join(root, 'journal');
+  let journal = openPreviewJournal(path, key, genesis);
+  const sent: string[] = [];
+  try {
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => { throw Error('no repeat'); }, checkOutbound: () => {},
+      send: async ({ expectedText }) => { sent.push(expectedText); return sent.length; } });
+    worker.intake([update(1, captured.previousRequest)]);
+    journal.append({ kind: 'reserve', id: id(1), at: 1000 });
+    journal.append({ kind: 'model-uncertain', id: id(1), state: 'uncertain', at: 1000 });
+    await worker.drain();
+    for (const n of [2, 3]) {
+      worker.intake([update(n, captured.request)]);
+      journal.append({ kind: 'reserve', id: id(n), grounding: { packetSha256: `packet-${n}`,
+        summaryThrough: n - 1, ...(basis === 'summary' ? { compactedThrough: n - 1 } : { setAsideThrough: n - 1 }),
+        history: [], recalled: [], people: [], commitments: [], channelItems: [], corrections: [],
+        memoryChanges: [], memoryCandidates: [] }, at: 1000 });
+      journal.append({ kind: 'model-uncertain', id: id(n), state: captured.hostOutcome, at: 1000 });
+      await worker.drain();
+      const account = journal.view.turns.get(id(n))!.continuity!;
+      expect(account).toMatchObject({ prePauseInbound: id(n - 1), summarizedThrough: n - 1, disposition: 'pending' });
+      expect(account.spoken).not.toBe(false);
+      expect(sent.at(-1)).toContain(account.disclosure);
+      expect(sent.at(-1)).toContain('Your previous request is still open; no finished answer is confirmed.');
+      // The same delivered account has nothing new to say, despite its request remaining open.
+      expect(continuitySpoken(account, { ...account, basis }, false)).toBe(false);
+    }
+    expect(journal.view.turns.get(id(2))!.continuity!.disclosure)
+      .toBe(journal.view.turns.get(id(3))!.continuity!.disclosure);
+    journal.close(); journal = openPreviewJournal(path, key);
+    expect(journal.view.turns.get(id(3))!.continuity!.spoken).not.toBe(false);
+    expect(sent).toHaveLength(3);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('equal prose is quiet only for the same pending evidence, while answered episodes stay quiet', () => {
+  const pending = { prePauseInbound: id(1), capture: 'capture:1', disposition: 'pending' as const,
+    reference: 'no reply from me yet', disclosure: 'The same plain sentence.', basis: 'summary' as const };
+  const { basis, ...last } = pending;
+  expect(continuitySpoken(last, { ...last, basis }, false)).toBe(false);
+  for (const change of [{ prePauseInbound: id(2) }, { capture: 'capture:2' },
+    { reference: 'my reply to it was prepared but its delivery is unconfirmed' },
+    { disposition: 'superseded' as const }, { basis: 'set-aside' as const }])
+    expect(continuitySpoken(last, { ...pending, ...change }, false)).toBe(true);
+  expect(continuitySpoken(last, { ...pending, prePauseInbound: id(2), disposition: 'addressed' }, false)).toBe(false);
 });
