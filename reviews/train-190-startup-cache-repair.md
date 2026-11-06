@@ -4,7 +4,7 @@ Subject base: 11ffd8a087ee9ee874169af20e8896bf0f75eabd
 Review state: open
 Reviewed content: none
 Outcome: The existing subscription route accepts the pinned CLI's signed policy-cache metadata without changing the enrolled profile or weakening effective-policy checks. The retained failed message is not replayed by this change.
-Affected rules: 18, 26, 34, 36, 37, 42, 49, 63, 69, 74, 100, 101, 103, 105, 111, 112, 113, 116
+Affected rules: 18, 26, 34, 36, 37, 42, 49, 56, 63, 69, 74, 100, 101, 103, 105, 111, 112, 113, 116
 Affected floors: secrets — existing custody and outbound checks; spend cap — no additional calls or retries; stop — existing admission and dispatch checks; no duplicate sends — no replay or journal mutation; durable intake — failed input remains recorded.
 Operator questions: none
 Suggested tier: significant
@@ -29,6 +29,12 @@ Decision: train190-native | Use the existing guarded Studio native-contract rene
 Decision: train190-publish | Use the delegated desk rehash/repin and register generator to publish the exact source composition; run the cheap gates after the final commit. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-190-repair-PROGRESS.md
 
 Verification: Typecheck and build exit 0; both affected test files pass 122/122 in 96.50 seconds. Actual unchanged test profile matches identity and managed-policy digests with hooks enabled. Guarded native renewal passes 9/10 before (only stale certificate), 10/10 after; composition sha256:6efe6f69549488a25f9327c71388df30639ba870aa420366aaf972ad826b67fa. Delegated owner rehash/repin changes zero owner/inventory pins. Final generated publication and cheap-gate results are recorded in the repair progress file.
+
+Additional gate repair: Register replay exposed expired preview-subscription-codex metadata. Reuse exact declaration and catalog evidence from owner 5eefd6fd921cb93fb3f241a152bd71b76302b9a2 (docs/release-evidence/train-187-codex-catalog-2026-11-05.json). Observation 2026-11-06T03:40:55.257112Z proves catalog presence only; model, subscription-only guards, estimated subsidy and 2885119381ms freshness intervals stay unchanged. Seven emitted freshness-check controls prove stale/future refusals, acceptance now/at observation, and the exact expiry boundary. No unrelated E2E orchestration patch is imported. Undo restores the expired declaration and regenerates the register.
+
+1.x catalog comparison: owner inspected 79d83ec93a399c0cd5896871e3e8e29d83d3fc5c src/core/DoorwayRegistryReader.ts and docs/specs/doorway-scan-real-run.md; directly re-read those paths at bc4355b8075dad89e8667ab082c526c0460b0455 and history 35b02553b/ab26b7ca3; ONEX section 6. Preserve reviewed model knowledge versus observed reachability; the CLI-version scan cannot verify model IDs and is not transplanted.
+
+Decision: train190-catalog | Reuse owner 5eefd6fd9 catalog evidence and declaration timestamps to fix the observed stale-map failure; keep freshness duration, model choice and spend guards unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-190-repair-PROGRESS.md
 
 ## Closing block
 
