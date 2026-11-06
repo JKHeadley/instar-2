@@ -7,8 +7,8 @@ Outcome: Publish the generated register for the committed signed-cache startup r
 Affected rules: 26, 49, 69, 74, 90, 101, 102, 107, 111, 113, 116
 Affected floors: secrets — no credential changes; spend cap — no new calls; stop — unchanged; no duplicate sends — no effects dispatched; durable intake — no journal mutation.
 Operator questions: none
-Suggested tier: editorial
-Declared tier: editorial
+Suggested tier: ordinary
+Declared tier: ordinary
 Tier rationale: Mechanically derived publication from committed source; implementation review is train-182-startup-cache-repair.md.
 Side effects: Seven generated outputs now bind e2440f0ecfbbfd7add98dbdc7f5b065384007051. No hand-edited source pin and no executable behavior changed in this commit.
 Undo and recovery: Revert publication together with its source change, or replay the retained source commit again; never hand-edit generated artifacts.
