@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: ordinary
 Tier rationale: Two evidence stamps return to a committed, receipt-bound observation; no routing, model, policy, prompt or window change. The checker's suggestion follows the source path.
-Side effects: The evidence deadline moves back to 2026-12-09, still fresh. The newer observations stay in history and are not promoted.
+Side effects: The evidence deadline moves back to 2026-12-09, still fresh. The newer observations stay in history and are not promoted. The moved source is republished in generated/.
 Undo and recovery: Revert these commits and regenerate; the merge refusal returns. No stored state.
 Multi-machine posture: Declaration and receipt travel through git; the observation certifies no other host's credential or quota.
 Layer below: Read pipeline/resolve-provider-stamps.py proof_for and plan, pipeline/merge-live-chain.sh, the train-192 restore 0dd520cac and the train-187 receipt. The planner reads the receipt from the same commit as the stamps.
@@ -21,7 +21,7 @@ Convergence: none
 Prompt review: No model-facing prompt, parser or accept/escalate/refuse logic changes.
 Decision: train-180-observation-a | Restore exact ade91bee0 declaration bytes so one observation holds across trains, at the desk's decision; no new timestamp or planner change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-180-observation-a-PROGRESS.md
 
-Subject (2 paths): reviews/train-180-observation-a-change-review.md, src/assembly/production-codex-provider.declarations.json
+Subject (9 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, reviews/train-180-observation-a-change-review.md, src/assembly/production-codex-provider.declarations.json
 
 ## Closing block
 
