@@ -36,6 +36,26 @@ Register replay: regenerated seven generated/ outputs from source commit 0c1d832
 
 Deferral: generated/register.json:1 | not-a-deferral=Regenerated full-line register retains existing rule wording; no implementation is postponed.
 
+Merge ancestry annotations: the restored owner subject base now spans the candidate carryover; these existing reference/fixture/platform markers retain their original meaning.
+
+Deferral: legacy-1x/relationships/src/core/types.ts:333 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:369 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:1628 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:2047 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:2278 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:4780 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:4830 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:6072 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:6077 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:6081 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:6153 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:7165 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:7557 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/src/core/types.ts:7564 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: legacy-1x/relationships/tests/unit/relationship-delete.test.ts:69 | not-a-deferral=verbatim 1.x reference copy under legacy-1x/, not compiled or run; the marker is 1.x's own text
+Deferral: tests/preview/group-carry.test.ts:425 | not-a-deferral=Historical fixture provenance for recorded update 6232091; this comment names an existing deferred-answer capture, not a commitment to future implementation.
+Skip: tests/preview/group-carry-cli.test.ts:113 | scope=Existing shipped refresh-group CLI proof requires the native macOS host; retained unchanged from the candidate, runs on Studio. No new test skipped.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: extend the existing inspector for observed metadata and restrictive first-fetch compatibility. It prevents deterministic refusal before any model launch without a retry loop, new verifier or reauthorization ceremony. Existing malformed-policy, identity, hook, cap, stop, durable-intake and effect guards remain. The desk's new answer check supplies unattended shipped-path acceptance; this record claims no live answer yet.

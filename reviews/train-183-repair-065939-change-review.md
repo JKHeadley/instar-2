@@ -27,6 +27,8 @@ Decision: train-183-065939-provenance | Restore the cache owner's original subje
 Decision: train-183-065939-derived | Recompute owner pins and register using delegated desk tools; retain the live parent’s existing native conformance declaration verbatim: architecture computes exactly its recorded composition digest; no new certificate is asserted from WSL. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-183-repair-065939-PROGRESS.md
 Deferral: generated/register.json:1 | not-a-deferral=Generated register retains existing rule wording; no new deferred implementation.
 
+Decision: train-183-065939-review-history | Carry forward existing reference-copy and platform-scope annotations into the restored owner review, whose ancestry now includes the candidate carryover; no new skip or deferred implementation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-183-repair-065939-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: merge existing behavior, preserve history and regenerate derived references. No new mechanism or reduced capability. Existing authority, cap, stop, durable intake and send uniqueness checkpoints remain; targeted tests and cheap checks guard this handoff, and Studio owns live/full-run acceptance.
