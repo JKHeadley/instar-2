@@ -24,6 +24,8 @@ Convergence: none
 Decision: train-188-catalog-renewal | Use the fresh CLI catalog for the unchanged registered model; preserve its freshness window and estimated subsidy, without a model call or fabricated activation proof. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-188-repair-203545-PROGRESS.md
 Decision: train-188-gate-publication | Regenerate through existing desk repin and register replay; preserve the original failing gate log and leave unmodified host-dependent tests to the Studio. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-188-repair-203545-PROGRESS.md
 
+Verification: typecheck and build passed; 42 targeted tests passed across catalog freshness, declaration contracts and Codex adapter recorded-shape coverage. Desk repin changed zero pins. Register replay from exact source 1ec6b6266f878318759d4b0dd3a8f3e043d3f3bd generated sha256:2a4a586bf9946c89f6006c764a3dffccc7ab0ecdc9d5577552d5c9199b629c01 (298 entries, 121 rules; shape-only). The original Studio test failures remain in the repair report for gate rerun.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: inspect current catalog evidence, renew the existing declaration and replay publication. No new refresh service, looser age check, longer window or routing change. Existing malformed/stale/future evidence refusals, authority, stop and resource guards remain enforced. This is a source handoff, not autonomous runtime acceptance.
