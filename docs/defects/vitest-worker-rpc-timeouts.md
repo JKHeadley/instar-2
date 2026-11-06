@@ -79,6 +79,19 @@ all tracked test files in unsplit, macOS-only and non-macOS modes. Full-suite qu
 and repeated real-fixture runs are recorded in the builder's absolute lanes progress record;
 this defect remains open until that evidence establishes zero runner errors.
 
+## train-181 recurrence, 2026-11-05
+
+The retained gate at b95fc4f6ad08e02d180ab476eb6e744a0ed1e53a reports one
+unattributed `onTaskUpdate` timeout, 11 failing assertions and 9,304 passing tests.
+No worker trace in the supplied bounded excerpt identifies its cause. This repair
+adds an event-loop yield between the integration peer test's twelve synchronous
+receiver restarts and forwards the selected transpile cache to those children.
+That removes a known starvation opportunity, not proof of attribution for this run.
+The defect remains OPEN with the existing desk owner and closure condition: trace
+any recurrence and qualify the final candidate with a full run reporting zero
+runner errors. No test is skipped, quarantined or relabelled; the retained run is RED.
+Only the desk runs that full qualification; targeted passing tests do not close it.
+
 ## train-181 READY-gate register recurrence, 2026-11-05
 
 The subsequent eight-file READY run at 995b147a reports two register CLI case
@@ -101,3 +114,7 @@ closure condition remain in force; no case is quarantined.
 The first train-181 affected-file run also retained a 300.015s timeout in the nineteen-build malformed-source matrix. Its holder/deadline, colocated-construct and shape/anchor groups now own fresh fixtures, at most nine builds each, and the same 300s case bound. Async register children explicitly receive the enclosing case timeout, preserving a finite child duration formerly supplied by the synchronous-child wrapper. Neither observation attributes the desk's untraced RPC error to a particular child.
 
 That local run also timed out in the three-call ambient-wiring group at 60.442s. Clean and ambient wiring now each prepare their own committed output and run one wiring check (two CLI calls per group), keeping 60s and both assertions. The committed-clone comparison remains paired within one group.
+
+## train-187 cumulative wiring budget, 2026-11-05
+
+The imported 99db9a096 affected-file run retained one clean-wiring timeout at 60,008ms, with 14 tests passing in 770.58s and no reported RPC error. Both parent-release controls and current-time CLI replay passed. The existing owner 7b78ea242 already repairs the same two-scan fixture budget: its independent review measured valid wiring at 52,387ms and untracked wiring timing out at 60,013ms. Train-187 reuses that 120s cumulative case budget over the four isolated bridge groups, with each build/wiring child explicitly retaining its 60s SIGTERM bound. No assertion, scan, model ability or production latency contract changes. The old red remains and the defect stays OPEN for desk full-run qualification.

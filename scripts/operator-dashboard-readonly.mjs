@@ -4,11 +4,14 @@
 // links (the GitHub review, or the chat) and says how to stop, and it approves, declines and stops nothing. So it changes
 // no safeguard, and the agent serving it administers none (Purpose: the agent never administers its own safeguards).
 //
-// Its sign-in is the operator's EXISTING dashboard PIN, checked by the server that already holds it (an injected loopback
-// endpoint; for an Instar 1.x host, `POST /dashboard/unlock`), so there is no new credential. Nothing from the agent shows
+// Its sign-in is the operator's EXISTING dashboard PIN: checked by the server that already holds it (an injected loopback
+// endpoint; for an Instar 1.x host, `POST /dashboard/unlock`), or, on an installation with no such host (row 89: the real
+// installed mobile path), against the operator's own PIN file with the 1.x unlock's exact comparison, so there is no new
+// credential either way. Nothing from the agent shows
 // before that sign-in (Purpose: least revelation; the audience is the verified operator). It listens on loopback or on
 // this machine's private Tailscale address only, so there is no new public ingress (Purpose: nothing outward by default).
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { isIPv4 } from 'node:net';
 import { check } from './approval-surface-core.mjs';
@@ -36,9 +39,11 @@ export function checkListen(value) {
   return { host, port };
 }
 
-/** The operator's existing sign-in: a loopback endpoint that answers 200 for the operator's PIN and refuses anything else.
- * The PIN never leaves this machine, and the answer's body is never read (an Instar 1.x unlock answer carries a token). */
+/** The operator's existing sign-in. Given an absolute path, it is the operator's PIN file on this machine (`pinCheckFile`);
+ * given a URL, a loopback endpoint that answers 200 for the operator's PIN and refuses anything else. Either way the PIN
+ * never leaves this machine, and an endpoint's answer body is never read (an Instar 1.x unlock answer carries a token). */
 export function pinCheckAt(url, fetchImpl = fetch) {
+  if (typeof url === 'string' && url.startsWith('/')) return pinCheckFile(url);
   const target = new URL(url);
   check(target.protocol === 'http:' && target.hostname === '127.0.0.1' && !target.username && !target.password && !target.search && !target.hash,
     'the dashboard PIN check must be a loopback http address');
@@ -47,6 +52,25 @@ export function pinCheckAt(url, fetchImpl = fetch) {
       redirect: 'error', signal: AbortSignal.timeout(READ_ONLY_LIMITS.pinCheckMs) });
     await response.body?.cancel();
     return response.status === 200;
+  };
+}
+
+/** Carried from Instar 1.x `POST /dashboard/unlock` (src/server/AgentServer.ts 1256-1300 at f3f94826a): the PIN is compared
+ * as the SHA-256 of each side under `timingSafeEqual`, and a host with no PIN configured answers "not yet available" (503),
+ * never a refusal. The file takes the place of 1.x's `dashboardPin` configuration value and is read on every check, as 1.x
+ * read its configuration at request time, so a changed PIN applies without a restart. It must be a regular file, not a link,
+ * closed to other local accounts, holding the PIN on one line. A missing, empty, open or oversized file makes sign-in
+ * unavailable, not open: nothing from the agent shows. The five-tries-in-five-minutes pause is the caller's (createReadOnlyDashboard). */
+export function pinCheckFile(path) {
+  check(typeof path === 'string' && path.startsWith('/') && !path.includes('\0'), 'the dashboard PIN file must be an absolute path');
+  return async pin => {
+    const stat = lstatSync(path);
+    check(realpathSync(path) === path && stat.isFile() && !stat.isSymbolicLink() && (stat.mode & 0o007) === 0
+      && stat.size > 0 && stat.size <= READ_ONLY_LIMITS.pinChars + 2, 'dashboard PIN file unusable');
+    const expected = readFileSync(path, 'utf8').replace(/\r?\n$/u, '');
+    check(expected.length > 0 && expected.length <= READ_ONLY_LIMITS.pinChars && !/[\r\n]/u.test(expected), 'dashboard PIN file unusable');
+    const ha = createHash('sha256').update(pin).digest(), hb = createHash('sha256').update(expected).digest();
+    return timingSafeEqual(ha, hb);
   };
 }
 

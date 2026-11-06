@@ -413,6 +413,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
   async function census(leases) { return joinRoots(leases.filter(l => l.pid).map(rootOf)); }
   /** The one membership join, shared by live cleanup and restart recovery: a recovered root carries the
    * same working-area and sandbox declarations its launch row recorded, so recovery joins exactly as live does. */
+  let candidateAfter = 0;
   async function joinRoots(roots, settlement = false) {
     let snapshot, ten;
     // An owner module that cannot load is a failed census (unknown), never an empty one.
@@ -424,40 +425,46 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     if (snapshot.status === 'failed') return { state: 'failed', snapshot, members: null, rows: null };
     const { members, candidates } = launchMembership(snapshot, roots, process.pid);
     const joined = new Map(members);
-    const read = candidates.slice(0, settlement ? censusLimit : ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
-    const cwds = read.length ? await source.workingDirectories(read) : new Map();
-    if (read.length) for (const [pid, member] of joinWorkingArea(snapshot, roots, read, cwds)) joined.set(pid, member);
-    // The sandbox join: a candidate the working-area join missed (it changed directory out of the area) is still a
-    // member of a sandboxed launch if the kernel says it is in that launch's sandbox instance. An unreadable reading is
-    // unknown, so a census holding one is never complete.
+    // Rotate the bounded live window: repeatedly reading the first 64 candidates can
+    // leave a later detached worker permanently unobserved. Settlement reads them all.
+    const ordered = [...candidates].sort((a, b) => a - b);
+    const rotating = [...ordered.filter(pid => pid > candidateAfter), ...ordered.filter(pid => pid <= candidateAfter)];
+    const read = settlement ? ordered : rotating.slice(0, ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
+    if (!settlement && read.length) candidateAfter = read.at(-1);
+    // Independent bounded observations run together. A slow directory probe must not serialize
+    // behind the sandbox probe, nor may either unavailable reading become negative evidence.
     const areas = [...new Set(roots.map(l => l.sandboxArea).filter(Boolean))];
-    const unjoined = read.filter(pid => !joined.has(pid));
-    let unboxed = 0;
-    if (areas.length && unjoined.length) {
-      const readings = typeof joinSandbox === 'function' ? await source.sandboxes(unjoined, areas) : new Map();
-      if (typeof joinSandbox === 'function') for (const [pid, member] of joinSandbox(snapshot, roots, unjoined, readings)) joined.set(pid, member);
-      unboxed = await unreadCandidates(snapshot, unjoined.filter(pid => readings.get(pid)?.state !== 'observed'), new Map());
-    }
+    const [cwds, boxes] = await Promise.all([
+      read.length ? source.workingDirectories(read) : new Map(),
+      areas.length && read.length && typeof joinSandbox === 'function' ? source.sandboxes(read, areas) : new Map(),
+    ]);
+    for (const [pid, member] of joinWorkingArea(snapshot, roots, read, cwds)) joined.set(pid, member);
+    if (areas.length && typeof joinSandbox === 'function')
+      for (const [pid, member] of joinSandbox(snapshot, roots, read, boxes)) joined.set(pid, member);
     const leftover = read.filter(pid => !joined.has(pid));
-    const unread = await unreadCandidates(snapshot, leftover.filter(pid => !harnessRow(snapshot, pid)), cwds) + unboxed;
-    // A harness-user process no join reached (its working directory is unreadable to this account): unknown now, and
-    // its launcher ends it, so cleanup waits for it to go rather than reading the census as complete or as failed.
-    const harnessUnread = await unreadCandidates(snapshot, leftover.filter(pid => harnessRow(snapshot, pid)), cwds);
+    const unknownCwd = leftover.filter(pid => cwds.get(pid)?.state !== 'observed');
+    const unknownBox = areas.length ? leftover.filter(pid => boxes.get(pid)?.state !== 'observed') : [];
+    // Revalidate all unavailable candidates in one census, not one subprocess per candidate.
+    // A failed/partial second census proves no absence. A different incarnation is not the
+    // candidate in the first census; it will be considered on the next observation.
+    const unknown = new Set([...unknownCwd, ...unknownBox]);
+    if (unknown.size) {
+      const next = await source.census();
+      if (next.status === 'complete') {
+        const current = new Map(next.processes.map(row => [row.pid, row]));
+        for (const pid of unknown) {
+          const row = current.get(pid);
+          if (!row || row.zombie || row.start !== snapshot.processes.find(p => p.pid === pid)?.start) unknown.delete(pid);
+        }
+      }
+    }
+    const unread = unknownBox.filter(pid => unknown.has(pid)).length
+      + unknownCwd.filter(pid => unknown.has(pid) && !harnessRow(snapshot, pid)).length;
+    const harnessUnread = unknownCwd.filter(pid => unknown.has(pid) && harnessRow(snapshot, pid)).length;
     const settled = snapshot.status !== 'partial' && read.length >= candidates.length && !unread;
     const state = settled && !harnessUnread ? 'complete' : 'partial';
     return { state, waiting: settled && harnessUnread > 0, snapshot, members: joined, rows: new Map(snapshot.processes.map(p => [p.pid, p])),
       examined: snapshot.examined, omitted: (snapshot.omitted ?? 0) + candidates.length - read.length };
-  }
-  /** Candidates whose working directory could not be read and that are still the same live
-   * incarnation: their membership is unknown, so a census holding one is never complete. */
-  async function unreadCandidates(snapshot, read, cwds) {
-    let unread = 0;
-    for (const pid of read) {
-      if (cwds.get(pid)?.state === 'observed') continue;
-      const now = await startEvidence(pid), row = snapshot.processes.find(p => p.pid === pid);
-      if (now === UNKNOWN || (now !== null && now === row?.start)) unread++;
-    }
-    return unread;
   }
   async function sample() {
     const roots = [...launches.values()].filter(l => l.pid && l.running);
@@ -564,10 +571,11 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       : { state: 'hard', subject: `uid:${uid}`, limit: listed.length + ceilings.launch.processCount };
   }
   /** This launch's live members in one census (recorded incarnations, group, ancestry and working
-   * area); `null` when the census failed or was partial: absence is then unproven. */
+   * area). Known members remain reclaimable in a partial census; only a complete census
+   * proves absence. A failed census supplies no membership evidence. */
   async function liveMembers(lease) {
     const seen = await joinRoots([...launches.values()].filter(l => l.pid).map(rootOf), true);
-    if (seen.state !== 'complete' && !seen.waiting) return null;
+    if (seen.state === 'failed') return null;
     const mine = [...seen.members].filter(([pid, member]) => member.launch === lease.id && !seen.rows.get(pid).zombie)
       .map(([pid]) => [pid, seen.rows.get(pid).start, seen.rows.get(pid).uid]);
     // A recorded incarnation still alive is ours even if no join reached it this time.
@@ -575,7 +583,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       const row = seen.rows.get(pid);
       if (row && row.start === start && !row.zombie && !mine.some(([p]) => p === pid)) mine.push([pid, start, row.uid]);
     }
-    return Object.assign(mine, { waiting: seen.waiting === true });
+    return Object.assign(mine, { waiting: seen.state !== 'complete' });
   }
   /** After the provider exits: every live member of this launch (one that left the group, and one
    * that detached before any sample but stayed in the private working area, included) is recorded
