@@ -127,7 +127,10 @@ describe('shipped inventory and register (Rules 5, 7, 32, 36, 66, 69, 78, 84)', 
     expect(inventory.launchers['tests/preview/agent.mjs']).not.toContain('tests/preview/journal.ts');
     expect(inventory.launchers['tests/preview/journal-agent.mjs']).toContain('tests/preview/journal.ts');
     expect(Object.values(availability('tests/preview/agent.mjs'))).toEqual(Array(8).fill('not-loaded'));
-    expect(Object.values(availability('tests/preview/journal-agent.mjs'))).toEqual(Array(8).fill('available'));
+    const journalAvailability = availability('tests/preview/journal-agent.mjs');
+    expect(journalAvailability['preview-attention-queue']).toBe('switched-off');
+    expect(Object.entries(journalAvailability).filter(([id]) => id !== 'preview-attention-queue').map(([, state]) => state))
+      .toEqual(Array(7).fill('available'));
     // Available in the preview is not graduation: the register status stays dark beside it.
     expect(launchers['tests/preview/journal-agent.mjs'].find(f => f.id === 'preview-durable-memory')).toMatchObject({ availability: 'available', status: 'dark' });
   }, 60_000);

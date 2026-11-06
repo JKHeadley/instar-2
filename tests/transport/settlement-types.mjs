@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import ts from 'typescript';
-import { effectCommit } from './effect-pin.mjs';
+import { effectCommit } from './effect-revision.mjs';
 
 // Compile the real pinned eight sources against the local six declaration. No
 // surrogate EffectSettlement interface can accidentally make this seam typecheck.
