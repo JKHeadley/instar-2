@@ -7,9 +7,9 @@ Outcome: Reclaim proven launch members despite partial observations, keep unknow
 Affected rules: 26, 34, 36, 37, 42, 49, 60, 61, 70, 74, 100, 101, 105, 109, 112, 113, 116
 Affected floors: secrets — custody and redaction unchanged; spend cap — uncertain cleanup retains its Six debit, no new model retry; stop — proven members remain reclaimable and a slow observer cannot delay the stop signal; no duplicate sends — dispatch identities and recovery fences unchanged; durable intake — no journal/intake change.
 Operator questions: none
-Suggested tier: significant
-Declared tier: significant
-Tier rationale: Changes physical process observation and cleanup, with actual-child positive/negative controls and existing uncertainty/recovery neighbors.
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Changes physical process observation and cleanup plus its byte-bound native conformance declaration, with actual-child positive/negative controls and existing uncertainty/recovery neighbors.
 Side effects: Independent bounded cwd/sandbox probes run together. One batched census rechecks unavailable candidates instead of one subprocess per candidate. Live candidate windows rotate; settlement retains the whole bounded census. Positive membership authorizes reclamation even when other membership is unknown; only a complete census can verify absence. No ability, resource ceiling, effect doorway or activation authority is removed or widened.
 Undo and recovery: Revert the repair, renew the matching native certificate and regenerate register publication. Existing unresolved rows and debits remain recoverable through the existing owner; never replay an uncertain effect.
 Multi-machine posture: Machine-local physical observations, using each host's existing process identity and owners. No distributed ownership, replication or authority change.
@@ -42,6 +42,10 @@ Verification of every supplied failure class:
 - Existing resource controls passed for >64 settlement candidates, recovery with an unreadable candidate, retained debit on unreadable cwd, denied cleanup signals, and retry of a transient failed census.
 
 All test commands used nice -n 10 and --maxWorkers 1 in the foreground. tsc and build passed. The full gate was not rerun here; the pipeline owns its next full-run result, and the previous red evidence remains intact. No test was quarantined or given a new skip declaration. Native conformance was renewed using the existing guarded Studio workflow: before 9/10 (only the stale certificate assertion failed), after 10/10. Composition sha256:20556b44f00de49c7b3d806d410796d941f478001607eaf8bbae037ea747006e, 275 files; evidence under /Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-175-census-r105-evidence. Final committed-head cheap-gate outcomes are retained in the progress report.
+
+Publication: source/test/native-certificate commit 9ba065757; delegated preview-owner repin 7bea41664; canonical register replay cbb78525a. Replay source 7bea41664afbdc24eed9242b8660f8d1bb2bab21, generation sha256:61b4061abe874306d782dcde300e17a84cbfa5388004cb99fadac4a68e037dde (298 entries, 121 rules, 34 terms; shape-only, 48 warnings and 113 prerequisites). The final five census controls pass, including a partial second census that cannot prove disappearance. This record covers the source, pin and generated-publication commits.
+
+Deferral: generated/register.json:1 | not-a-deferral=Canonical replay retains existing constitutional wording and introduces no postponed implementation.
 
 ## Closing block
 
