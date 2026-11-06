@@ -42,7 +42,7 @@ Recorded traversal: preserve self-description updates 840342287/840342414, negat
 
 Publication: Existing desk rehash and repin changed zero pins. Shape-only register replay uses source 99b1da239e78c1a883885ca98c4c9013198117a9 and generation sha256:d455555e000f1c34cd87e1cc189e143a326bfb7ca5ce696a6be39ec73fdbf97b. All five launcher inventories retain identical counts, ids, status and availability; only the two declared summary text fields differ.
 
-Verification: In progress; no READY, independent verdict or installed acceptance asserted. Whole row02 remains OPEN pending full/native/independent/installed/live qualification.
+Verification: Typecheck/build pass. Four affected files: 25 passed, one failed by the unchanged 300000ms timeout in default-root-conversation declaration-duty pressure replay (no completed assertion verdict for that case). Default-context-floor 6/6, capnote 2/2, selfdesc 13/13 and the other four default-root cases pass. Original failure evidence: summary 23457 > 23419, pressure 29784 > 26632 and six historical comparison failures in the first run; original capnote expectation separately rerun and failed. No timeout is counted as PASS. Capture hashes unchanged. Whole row02 remains OPEN pending complete pressure replay and full/native/independent/installed/live qualification.
 
 ## Closing block
 
