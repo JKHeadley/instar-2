@@ -51,7 +51,7 @@ it.each([{ late: 0, audience: 5700 }, { late: 5700, audience: 0 }])(
     } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
   });
 
-it.each(['unknown', 'not-sent'] as const)('records %s without widening the send retry rule', async kind => {
+it.each(['unknown', 'refused', 'not-sent'] as const)('records %s without widening the send retry rule', async kind => {
   const root = mkdtempSync(join(tmpdir(), 'phase-outcome-'));
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
   const sent: { target: string | undefined; text: string }[] = [];
@@ -66,16 +66,17 @@ it.each(['unknown', 'not-sent'] as const)('records %s without widening the send 
     const answer = { target: `reply:${turn.id}`, text: '42' };
     const notice = { target: `delivery-notice:${turn.id}`,
       text: kind === 'unknown' ? UNKNOWN_SEND_NOTICE : REFUSED_SEND_NOTICE };
-    expect(sent).toEqual(kind === 'unknown' ? [answer, notice] : [answer, answer, notice, notice]);
+    // Proved non-delivery queues recovery; a terminal outcome gets its separate notice.
+    expect(sent).toEqual(kind === 'not-sent' ? [answer, answer] : [answer, notice]);
+    expect(journal.view.sendOutcomes.find(row => row.target === answer.target)?.recovery)
+      .toEqual(kind === 'not-sent' ? expect.objectContaining({ nextAt: at + 60_000, attempts: 2, failures: 2 }) : undefined);
     const rows = journal.view.phaseTimings!.filter(row => row.phase === 'send');
     expect(rows.map(row => ({ target: row.id, attempt: row.measurements.attempt,
-      provedNotSentAttempts: row.measurements.provedNotSentAttempts }))).toEqual(kind === 'unknown'
+      provedNotSentAttempts: row.measurements.provedNotSentAttempts }))).toEqual(kind !== 'not-sent'
       ? [{ target: answer.target, attempt: 1, provedNotSentAttempts: 0 },
         { target: notice.target, attempt: 1, provedNotSentAttempts: 0 }]
       : [{ target: answer.target, attempt: 1, provedNotSentAttempts: 1 },
-        { target: answer.target, attempt: 2, provedNotSentAttempts: 2 },
-        { target: notice.target, attempt: 1, provedNotSentAttempts: 1 },
-        { target: notice.target, attempt: 2, provedNotSentAttempts: 2 }]);
+        { target: answer.target, attempt: 2, provedNotSentAttempts: 2 }]);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 

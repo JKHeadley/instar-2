@@ -197,10 +197,17 @@ it.each([false, true])('waits for the persisted instant across restart, then dis
     await h.worker.sendRequested();
     expect(h.state.dueCalls).toBe(1);
     expect(h.state.sent.filter(text => text.includes('Put the library book by the door now.'))).toHaveLength(1);
-    h.reopen(); h.state.now += 86_400_000;
+    // Exercise restart deduplication while the original grant is still valid.
+    h.reopen(); h.state.now = h.journal.view.expires - 1;
     await h.worker.sendRequested();
     expect(h.state.dueCalls).toBe(1);
     expect(h.journal.view.order.filter(turn => turn.requestedAction)).toHaveLength(1);
+    const sent = [...h.state.sent];
+    h.state.now = h.journal.view.expires;
+    // UNKNOWN reconciliation reaches the expiry gate; it must never resend the reminder.
+    if (unknown) await expect(h.worker.sendRequested()).rejects.toThrow('preview stopped');
+    else await h.worker.sendRequested();
+    expect(h.state.sent).toEqual(sent); expect(h.state.dueCalls).toBe(1);
   } finally { h.close(); }
 });
 

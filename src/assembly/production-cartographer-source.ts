@@ -3,10 +3,8 @@
 import { createHash } from 'node:crypto';
 import type { Hash, Result } from '../index.js';
 import { hashBytes } from '../facts/index.js';
-import type { CartographerNode } from '../recall/cartographer/contracts.js';
-import type { CartographerSourcePort } from '../recall/cartographer/service.js';
-import { validCartographerPath } from '../recall/cartographer/tree.js';
-import { contentHasCredentialMaterial, isSecretBearingPath } from '../recall/cartographer/summary.js';
+import type { CartographerNode, CartographerSourcePort } from '../recall/cartographer/index.js';
+import { validCartographerPath, contentHasCredentialMaterial, isSecretBearingPath } from '../recall/cartographer/index.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import { createProductionCustodyReader } from './production-custody-wiring.js';
 import type { ProductionCustodyReadInput } from './production-custody-wiring.js';

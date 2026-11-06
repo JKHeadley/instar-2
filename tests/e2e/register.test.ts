@@ -427,9 +427,9 @@ describe('compiled register build adapter lifecycle', () => {
       expect(git(root, 'ls-tree', '-r', '--name-only', revision)).not.toContain('owner-bridge.ts');
       expect(git(root, 'status', '--porcelain')).toContain('?? src/rungraph/owner-bridge.ts');
       const script = resolve('scripts/build-register.mjs');
-      const run = (cwd: string, pin: string) => spawnSync(process.execPath, [script, '--replay', '--now', '100', '--commit', pin, '--out', join(cwd, 'out')], { cwd, encoding: 'utf8' });
+      const run = (cwd: string, pin: string) => runChild(process.execPath, [script, '--replay', '--now', '100', '--commit', pin, '--out', join(cwd, 'out')], { cwd, timeout: 60_000 });
       for (const cwd of [root, clean]) {
-        const result = run(cwd, revision);
+        const result = await run(cwd, revision);
         // The committed shipped-module walk refuses the absent bridge first; an ambient file never satisfies it.
         expect(result.status).not.toBe(0); expect(result.stderr).toContain('R5: shipped import ./owner-bridge.js from src/rungraph/index.ts does not resolve');
       }
@@ -437,18 +437,18 @@ describe('compiled register build adapter lifecycle', () => {
       const pinned = git(root, 'rev-parse', 'HEAD');
       git(directory, 'clone', '--quiet', '--no-hardlinks', root, committed);
       expect(git(committed, 'rev-parse', 'HEAD')).toBe(pinned);
-      for (const cwd of [root, committed]) { const result = run(cwd, pinned); expect(result.status, result.stderr).toBe(0); }
+      for (const cwd of [root, committed]) { const result = await run(cwd, pinned); expect(result.status, result.stderr).toBe(0); }
       for (const path of ['register.json', 'source.json'])
         expect(readFileSync(join(root, 'out', path), 'utf8')).toBe(readFileSync(join(committed, 'out', path), 'utf8'));
       // The separately shipped wiring command also scans the pin, never an
       // expanded live-file graph. Its valid control must work before perturbing it.
       cpSync(join(root, 'out'), join(root, 'generated'), { recursive: true });
-      const wiring = () => spawnSync(process.execPath, [resolve('scripts/check-register-wiring.mjs')], { cwd: root, encoding: 'utf8' });
-      const checked = wiring(); expect(checked.status, checked.stderr).toBe(0);
+      const wiring = () => runChild(process.execPath, [resolve('scripts/check-register-wiring.mjs')], { cwd: root, timeout: 60_000 });
+      const checked = await wiring(); expect(checked.status, checked.stderr).toBe(0);
       writeFileSync(join(root, 'src/rungraph/ambient.ts'), "export * from './records.js';");
-      const untracked = wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
+      const untracked = await wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
     } finally { rmSync(directory, { recursive: true, force: true }); }
-  }, 60_000);
+  }, 120_000);
   it('P3-NF-01 P3-NF-07 P3-NF-09 actual CLI reproduces committed outputs and rejects edited output', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-e2e-'));
     try {

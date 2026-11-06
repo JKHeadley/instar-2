@@ -1,8 +1,8 @@
 /** Cartographer's production owner composition. No private timer or model route. */
-import { createAwareness } from '../awareness/service.js';
-import type { AwarenessConfig } from '../awareness/service.js';
-import { createCartographer } from '../recall/cartographer/service.js';
-import type { CartographerConfig } from '../recall/cartographer/service.js';
+import { createAwareness } from '../awareness/index.js';
+import type { AwarenessConfig } from '../awareness/index.js';
+import { createCartographer } from '../recall/cartographer/index.js';
+import type { CartographerConfig } from '../recall/cartographer/index.js';
 import { createProductionCartographerSource } from './production-cartographer-source.js';
 import { ensure } from './boundary.js';
 
