@@ -1,8 +1,8 @@
 # Change review — Keep register CLI lifecycle scenarios independently bounded
 
 Subject base: 201270c8ba5c702376bbb57aaf3d2ec7fcc06382
-Review state: frozen
-Reviewed content: sha256:83083f90eef54c3b5ad82c973d3b4db6cf8a86558c469e59cdc845faeadba127
+Review state: open
+Reviewed content: none
 Outcome: Register CLI lifecycle acceptance and refusal neighbors run as separate named tests through the existing asynchronous child helper, so cumulative full-tree builds do not exhaust one case's budget or starve Vitest task-update IPC.
 Affected rules: 26/34/37/42/60/70/74/101/102/109/113/116.
 Affected floors: secrets — no product change; spend cap — no provider calls; stop — no product change; no duplicate sends — no effects; durable intake — journal and product state unchanged.

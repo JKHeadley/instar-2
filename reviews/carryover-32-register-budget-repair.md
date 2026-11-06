@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
 Tier rationale: Narrow fixture-budget repair requested by independent review; no product behavior or authority changes.
-Side effects: The five R2 parameterized cases share a 120-second budget instead of 60 seconds, following the longer-budget pattern already used by neighboring CLI cases. Each child retains its 60-second timeout. A genuinely stalled case can therefore take longer to fail, but remains finite. All assertions and isolated fixture cleanup remain intact.
+Side effects: Explicitly reopen the superseded CLI repair review because its frozen subject contains this changed fixture; preserve its historical evidence. The five R2 parameterized cases share a 120-second budget instead of 60 seconds, following the longer-budget pattern already used by neighboring CLI cases. Each child retains its 60-second timeout. A genuinely stalled case can therefore take longer to fail, but remains finite. All assertions and isolated fixture cleanup remain intact.
 Undo and recovery: Revert this test-only budget change and review record. No production data or runtime migration is involved.
 Multi-machine posture: Machine-local temporary fixture on each host; identical CLI assertions and bounds across hosts. No cross-machine runtime state is added.
 Layer below: Inspected runNode and tests/e2e/async-child.ts (60-second child timeout), build-then-wiring sequencing, setup/cleanup, and neighboring 120-second CLI case budgets. Retained independent review's measured valid and failing wiring observations.
@@ -18,6 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/e2e/register.test.ts
 Hook bypass: none
 Convergence: none
+Decision: C32-R2-REVIEW-2 | Reopen the superseded CLI repair review using the existing checker after Rule 109 identified its frozen subject changed; preserve its previous evidence and submit this new frozen review for the budget repair. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-32-common-base-1105-repair-182525-PROGRESS.md
 Decision: C32-R2-BUDGET-1 | Allow 120 seconds for the R2 fixture group using the existing longer-budget pattern: independent wiring untracked timed out at 60,013 ms and valid took 52,387 ms. Preserve child limits and assertions; do not introduce a scheduler, cache or production change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-32-common-base-1105-repair-182525-PROGRESS.md
 
 1.x FIRST: Inherit accepted reviews/carryover-32-register-cli-repair.md comparison at b227aed934ce3c61cda09142f46de06834aacc9c. Rechecked actual JKHeadley/instar recorded main 5abca9c1df110113ba80c758db3cdec52f952df9 src/lifeline/TelegramLifeline.ts:2800, docs/specs/CRASH-RECOVERY-UX-SPEC.md:141–142,627,965 and history e5f88b0fe/9585a36e6/0ca2f6756. ONEX-LESSONS section 6 read. Existing async-child adaptation retains the asynchronous subprocess behavior; this repair addresses only the 2.0 register fixture's cumulative time budget. The accepted correction adaptation from 1.x 4f88880a through port 88aabf739 is untouched.
