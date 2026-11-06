@@ -1,0 +1,28 @@
+{
+  "source": "docs/evidence/model-map-refresh-1105/catalog-receipt.json",
+  "sourceSha256": "32c065be4926ac88017f0af50204a906f43e804f75b8c2ba89d9bd669c93f7eb",
+  "fetchedAt": "2026-11-06T04:08:23.047610Z",
+  "clientVersion": "0.167.0",
+  "model": {
+    "slug": "gpt-5.6-sol",
+    "display_name": "GPT-5.6-Sol",
+    "description": "Older generation workhorse model.",
+    "visibility": "list",
+    "supported_in_api": true,
+    "context_window": 272000
+  },
+  "verifiedAt": 1793938103047,
+  "subsidyReview": {
+    "ratio": 1,
+    "basis": "estimated",
+    "reviewedAt": 1793938228529,
+    "source": "docs/evidence/model-map-refresh-1105/README.md",
+    "reason": "Existing recorded re-evaluation at the local ChatGPT login-class observation; neutral ratio 1 retains the accounting basis. Not measured pricing, quota, entitlement or zero resource use."
+  },
+  "normalization": {
+    "sourceCommit": "8d03203de54202d73170ba7a6c2d0df74e7561cb",
+    "catalogReceiptSha256": "524ad58cf5b581171e83ffa3d711d9d6a315f02c0ff11ae4cdd9b5c9be6873f1",
+    "reviewRecordSha256": "722e63f6527da0f909e1d55c9f5ddc03ad9ac4727bf0ea601f245b7d334337c2",
+    "scope": "Schema normalization of already committed observations, not a fresh catalog fetch or subsidy review. Original catalog is not included or independently rehashed; original authenticated receipt and explicit local observation retain their stated limits."
+  }
+}
