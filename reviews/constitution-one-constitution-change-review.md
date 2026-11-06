@@ -1,8 +1,8 @@
 # Change review — One Constitution, Two Books Aligned
 
 Subject base: 2f46478df4fd512e74d612ac494dc88441aa3bd6
-Review state: frozen
-Reviewed content: sha256:05f7da9b6388903e8d3d3e0569565acfb4b0c00bd1f54943fb9a796bdc10c082
+Review state: open
+Reviewed content: none
 Outcome: Record the operator's 2026-11-03 direction as Rule 119, One Constitution, Two Books Aligned: every change to either book names its counterpart in the other or says why it has none, a map names the differences, and the master governs. Bring the main obligations of the Maturation Path wording the operator approved for 1.x into Rule 72, whose wording the operator also approved; 1.x keeps more operating detail, and the alignment map names that difference. Wording approved in topic 137053.
 Affected rules: new 119; 72 (reworded), 73 (shares its machinery) and 76 (its existing exemption from the ladder, unchanged, stated in 1.x and not in Rule 72's sentence); 34 (the check carries its own tests); 1 and 69 (a checked rule, naming its enforcement); 74 and 109 (the review holds meaning); 90 and 91 (the changelog carries the history, none in the governed body); 116 (simplest robust route).
 Affected floors: secrets — no custody or revelation changes; spend cap — no provider calls; stop — no cancellation changes; no duplicate sends — no messaging changes; durable intake — no intake changes
