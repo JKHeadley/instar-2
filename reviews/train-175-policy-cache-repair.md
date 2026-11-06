@@ -1,6 +1,6 @@
 # Change review — keep reviewed subscription profiles usable after cache refresh
 
-Subject base: 76461ffc1e666a765432814b56c98269ceb8278e
+Subject base: 428b6287201846c206e76be32f066a6b538333e3
 Review state: open
 Reviewed content: none
 Outcome: The ordinary tool route can construct its subscription provider after Claude Code writes signed policy-cache metadata or first populates its restrictive cache. The saved turn remains available; no effect is replayed by this repair.
@@ -28,7 +28,13 @@ Decision: train-175-enrollment | A digest enrolled before any cache already perm
 
 Inherited owner verification (not train-183 evidence): tsc and build pass. Both changed test files pass (122 tests); recorded host profile matches its existing identity and managed digest with hooks enabled. Architecture reports only the charter-exempt native macOS self-host composition certificate. Source pins and register are regenerated with the delegated desk tools. The automatic Studio answer/full-test gate remains outstanding.
 
-Integration provenance: Owning commit 0c1d832a4816aeb21891e5a89242497d12c76fc1 copied without implementation changes. Subject base adapted to train-183 because train-175 ancestry is deliberately excluded. Original rationale and owner evidence remain historical; reviews/train-183-cache-integration-review.md records the actual integration and checks.
+Integration provenance: Owning commit 0c1d832a4816aeb21891e5a89242497d12c76fc1 copied without implementation changes. The earlier train-183 copy adapted its subject base because train-175 ancestry was then excluded; the merge now restores the original owner base and ancestry. Original rationale and owner evidence remain historical; reviews/train-183-cache-integration-review.md records the actual integration and checks.
+
+Original owner verification (historical, not new merge evidence): tsc and build pass. Both changed test files pass (122 tests); recorded host profile matches its existing identity and managed digest with hooks enabled. Architecture reports only the charter-exempt native macOS self-host composition certificate. Source pins and register are regenerated with the delegated desk tools. The automatic Studio answer/full-test gate remains outstanding.
+
+Register replay: regenerated seven generated/ outputs from source commit 0c1d832a4816aeb21891e5a89242497d12c76fc1 using the existing replay command (297 entries, 120 rules). The owner rehash and support-source repin scripts completed with zero changes. This record covers the generated commit as well as the source repair.
+
+Deferral: generated/register.json:1 | not-a-deferral=Regenerated full-line register retains existing rule wording; no implementation is postponed.
 
 ## Closing block
 
