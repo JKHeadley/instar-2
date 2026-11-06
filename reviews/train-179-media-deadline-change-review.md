@@ -9,7 +9,7 @@ Affected floors: secrets — unchanged custody and protected file assertions; sp
 Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
-Tier rationale: Changes only two named test files and this review; production composition, limits, capability and model behavior are unchanged.
+Tier rationale: Changes two named test files, their required generated pin/register evidence and this review; production composition, limits, capability and model behavior are unchanged.
 Side effects: The three real transcription cases can wait up to 180 seconds instead of 30 seconds before the test watchdog fails. Non-audio Telegram cases retain 30 seconds. No global timeout or assertion changes.
 Undo and recovery: Revert this commit to restore the prior test deadlines; no migration or installed-state recovery is needed. Keep the original red run as evidence rather than treating a subsequent pass as exoneration.
 Multi-machine posture: Host-local tests of the same offline decoder on each supported host; no cross-machine state or authority changes.
@@ -59,7 +59,13 @@ The 18:18:31 copied-preview answer failure at bf2cb698 remains red: the browser
 stalled at sent/chat-shown on forum-answer-copy-20261105-181103. No runner was
 launched against the copy. This change does not claim a repaired live answer.
 The desk retains full/native/review/live gates and owns fresh full-test admission.
-No full suite, CPU load generator, quarantine, pin edit or certificate change.
+No full suite, CPU load generator, quarantine, hand-edited pin or certificate change.
+
+Architecture passed on dbf5473d6; lint/register correctly refused the changed media
+test's stale owner-reference pin. The delegated desk-rehash-owner-manifests.mjs
+and desk-repin-chain.sh refreshed only that preview owner pin; no chain inventory
+change was required. Publish the generated register with build-register.mjs --replay
+at the pin commit, then rerun all cheap checks on the final head.
 
 ## Closing block
 
