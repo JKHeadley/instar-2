@@ -30,6 +30,8 @@ Owner reuse: The final source, test, defect and owner review are byte-identical 
 
 Subject: tests/preview/harness-launch.mjs; tests/preview/harness-user.test.ts; docs/defects/2026-11-05-harness-probe-drain-minimal.md; owner review; mechanically regenerated owner pins and register publication.
 
+Publication: Desk owner rehash and repin changed zero pins. Existing register replay from source c45cbd0c403a97ac43bc59dae46e46899d2ac6c0 generated sha256:1d5d5fb87f0e9cf9bb4f92ce129217e924706b6da812afcb54cc968585635feb (298 entries, 121 rules; shape-only). Final selected readiness/gate/launcher tests passed 25/25, with 26 unrelated cases not selected; typecheck passed after owner integration.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: finish the already queued evidence before the existing successful exit. It prevents the demonstrated incomplete probe without loosening any access guard, adding retries, or reducing tools. Start guards and bounds remain in probeAccess and harnessReadiness; success requires the entire output. This source handoff makes no independent convergence or unattended live-answer acceptance claim.
