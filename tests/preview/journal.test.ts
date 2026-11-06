@@ -1,3 +1,4 @@
+import { unknownAnswerNotice } from './journal.js';
 import { expect, it, vi } from 'vitest';
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -344,8 +345,8 @@ it('records an ended UNKNOWN answer, sends one checked notice, and preserves UNK
     let calls = 0, sends = 0, checks = 0;
     const worker = createJournalWorker(first, { now: () => 1000, stopped: () => false,
       model: async () => { calls++; return { state: 'uncertain' }; },
-      checkOutbound: text => { checks++; expect(text).toBe(`${UNKNOWN_ANSWER_NOTICE}`); },
-      send: async input => { sends++; expect(input.expectedText).toBe(`${UNKNOWN_ANSWER_NOTICE}`); return 7; } });
+      checkOutbound: text => { checks++; expect(text).toBe(unknownAnswerNotice({ text: 'question 1' })); },
+      send: async input => { sends++; expect(input.expectedText).toBe(unknownAnswerNotice({ text: 'question 1' })); return 7; } });
     worker.intake([update(1)]); await worker.drain(); await worker.drain(); first.close();
     const second = openPreviewJournal(join(root, 'journal.encrypted'), key);
     const resumed = createJournalWorker(second, { now: () => 2000, stopped: () => false,
@@ -358,7 +359,7 @@ it('records an ended UNKNOWN answer, sends one checked notice, and preserves UNK
     expect(Object.fromEntries(second.view.failureClasses)).toEqual({});
     expect(second.view.order[0]?.answer).toBeUndefined();
     expect(second.view.order[0]).toMatchObject({ modelState: 'uncertain', noticeDueAt: 1000,
-      noticeClass: 'unknown-answer', intent: `${UNKNOWN_ANSWER_NOTICE}`, sent: 7 });
+      noticeClass: 'unknown-answer', intent: unknownAnswerNotice({ text: 'question 1' }), sent: 7 });
     const status = spawnSync(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
       { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, encoding: 'utf8', timeout: 10000 });
@@ -409,7 +410,7 @@ it('never redispatches an UNKNOWN notice send after restart', async () => {
     await resumed.drain();
     expect({ sends, replies: second.view.replies, sent: second.view.order[0]?.sent,
       intent: second.view.order[0]?.intent }).toEqual({ sends: 1, replies: 1, sent: undefined,
-        intent: `${UNKNOWN_ANSWER_NOTICE}` });
+        intent: unknownAnswerNotice({ text: 'question 1' }) });
     second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -470,7 +471,7 @@ it('checks the fixed UNKNOWN notice without model review and distinguishes it fr
     worker.intake([update(2)]); await worker.drain();
     const history = JSON.parse(context).history;
     expect(history[0]).toMatchObject({ user: 'question 1', answer: null,
-      notice: UNKNOWN_ANSWER_NOTICE, outcome: 'loss notice delivered; model UNKNOWN' });
+      notice: unknownAnswerNotice({ text: 'question 1' }), outcome: 'loss notice delivered; model UNKNOWN' });
     expect(reviews).toBe(1);
     expect(journal.view.calls).toBe(3); // two answers; only the model-written answer needs a model review
     expect(Object.fromEntries(journal.view.providerStates)).toEqual({ uncertain: 1, complete: 1 });
@@ -489,7 +490,7 @@ it('uses the fixed notice check and labels the unknown outcome truthfully in lat
         context = input.context; return 'second answer';
       },
       replyCheck: { jev: async () => { throw Error('Jev unavailable'); },
-        escalate: async input => input === UNKNOWN_ANSWER_NOTICE
+        escalate: async input => input === unknownAnswerNotice({ text: 'question 1' })
           ? { verdict: 'violation', ruleIds: ['parks_on_user'], confidence: 1, latencyMs: 0 }
           : { verdict: 'pass', ruleIds: [], confidence: 1, latencyMs: 0 },
         elapsedMs: () => 0 },
@@ -498,7 +499,7 @@ it('uses the fixed notice check and labels the unknown outcome truthfully in lat
     worker.intake([update(2)]); await worker.drain();
     const history = JSON.parse(context).history;
     expect(history[0]).toMatchObject({ user: 'question 1', answer: null,
-      notice: UNKNOWN_ANSWER_NOTICE,
+      notice: unknownAnswerNotice({ text: 'question 1' }),
       outcome: 'loss notice delivered; model UNKNOWN' });
     expect(journal.view.order[0]?.replyChecks?.at(-1)).toMatchObject({ verdict: 'pass', path: 'holding' });
     expect(journal.view.order[0]?.release).toBeUndefined();

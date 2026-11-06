@@ -1,3 +1,4 @@
+import { unknownAnswerNotice, LEGACY_UNKNOWN_ANSWER_NOTICE } from './journal.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -17,8 +18,8 @@ const update = (id: number) => ({ update_id: id, message: { chat: { id: 7654321,
   from: { id: 7654321 }, text: 'What time is sunset in Denver?' } });
 const key = new Uint8Array(32).fill(42);
 
-it('pins the new notice to actual unchanged Jev questions and candidate-only full-context review', () => {
-  expect(UNKNOWN_ANSWER_NOTICE).toBe(capture.notice);
+it('preserves the historical notice and actual recorded Jev and full-context review judgments', () => {
+  expect(LEGACY_UNKNOWN_ANSWER_NOTICE).toBe(capture.notice);
   expect(capture.provenance.update).toBe(969390396);
   expect(interpretJev(parseJevResponse(capture.recordedJevOutput), 193)).toMatchObject({ verdict: 'unsure', ruleIds: ['parks_on_user'] });
   expect(interpretJev(parseJevResponse(capture.freshJevOutput), 201).verdict).toBe('pass');
@@ -31,7 +32,8 @@ for (const mode of ['recorded', 'fresh'] as const) {
     const root = mkdtempSync(join(tmpdir(), 'unknown-notice-')), path = join(root, 'journal');
     let journal = openPreviewJournal(path, key, genesis), models = 0, reviews = 0, revisions = 0;
     const sent: string[] = [];
-    // The exact private full-context input is replayed separately in the desk evidence.
+    // The original private full-context input is in the historical desk evidence.
+    // These old verdict bytes are replayed on the new candidate; this is not a fresh live judgment.
     // This portable worker fixture keeps its audience shape and actual recorded verdict bytes.
     const prepared = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet: {
       audience: { surface: 'telegram-group-topic', operatorOnlyVerified: true }, history: [] } }) },
@@ -41,19 +43,19 @@ for (const mode of ['recorded', 'fresh'] as const) {
       checkOutbound: () => {}, send: async (input: { expectedText: string }) => { sent.push(input.expectedText); return 1; },
       replyCheck: { elapsedMs: () => 0,
         jev: async () => ({ value: parseJevResponse(mode === 'recorded' ? capture.recordedJevOutput : capture.freshJevOutput), latencyMs: 201 }),
-        escalate: async (text: string) => { reviews++; expect(text).toBe(capture.notice); return { ...review, confidence: null, latencyMs: 1 }; },
+        escalate: async (text: string) => { reviews++; expect(text).toBe(unknownAnswerNotice({ text: update(1).message.text })); return { ...review, confidence: null, latencyMs: 1 }; },
         revise: async () => { revisions++; throw Error('unexpected revision'); } } };
     try {
       const worker = createJournalWorker(journal, ports);
       worker.intake([update(capture.provenance.update)]);
       await worker.drain(); await worker.drain();
       expect({ models, reviews, revisions }).toEqual({ models: 1, reviews: 0, revisions: 0 });
-      expect(sent).toEqual([capture.notice]);
+      expect(sent).toEqual([unknownAnswerNotice({ text: update(1).message.text })]);
       expect(journal.view.order[0]).toMatchObject({ modelState: 'uncertain', noticeClass: 'unknown-answer', sent: 1 });
       expect(journal.view.order[0]?.answer).toBeUndefined();
       journal.close(); journal = openPreviewJournal(path, key);
       await createJournalWorker(journal, ports).drain();
-      expect(sent).toEqual([capture.notice]); expect(models).toBe(1); expect(revisions).toBe(0);
+      expect(sent).toEqual([unknownAnswerNotice({ text: update(1).message.text })]); expect(models).toBe(1); expect(revisions).toBe(0);
     } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
   });
 }
@@ -93,7 +95,7 @@ it('replays the captured uncertain state and delivered/empty-context bytes on di
       worker.intake([update(1)]); await worker.drain(); await worker.drain();
       expect(calls, shape.id).toBe(1); expect(sent, shape.id).toHaveLength(1);
       expect(sent[0]?.trim().length, shape.id).toBeGreaterThan(0);
-      if (kind === 'summary-uncertain') expect(sent).toEqual([UNKNOWN_ANSWER_NOTICE]);
+      if (kind === 'summary-uncertain') expect(sent).toEqual([unknownAnswerNotice({ text: update(1).message.text })]);
       else if (kind === 'empty-reply-in-recorded-context') {
         // Captured empty context is not evidence Telegram delivered an empty bubble.
         // Feeding those bytes to the answer port is a synthetic empty-output control.
@@ -123,7 +125,7 @@ it('retains the real exhausted socket-turn notice despite memory acknowledgement
     worker.intake([{ ...update(recorded.update), message: { ...update(recorded.update).message,
       text: 'I prefer tea to coffee. Tell me which drink I prefer in one short sentence.' } }]);
     await worker.drain(); await worker.drain();
-    expect(sent).toEqual([UNKNOWN_ANSWER_NOTICE]);
+    expect(sent).toEqual([unknownAnswerNotice({ text: 'I prefer tea to coffee. Tell me which drink I prefer in one short sentence.' })]);
     expect({ reviews, revisions }).toEqual({ reviews: 0, revisions: 0 });
     expect(journal.view.order[0]).toMatchObject({ modelState: 'uncertain', noticeClass: 'unknown-answer', sent: 1 });
     journal.close(); journal = openPreviewJournal(path, key); await createJournalWorker(journal, ports).drain();
