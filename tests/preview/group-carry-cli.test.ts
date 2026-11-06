@@ -7,10 +7,12 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createJournalWorker, openPreviewJournal, openRequests } from './journal-test-worker.js';
 import { authority, key, records, scope, now, sealKey } from './group-carry-fixture.js';
-import { groupCarryPacket } from './group-carry.js';
+import { appendGroupCarry, groupCarryPacket } from './group-carry.js';
 import { createRelationshipEmitter, emitRelationshipChanges } from './relationship-emitter.js';
 import { resolveGroupDisclosure } from './group-disclosure.js';
 import { carryOrigin } from './group-carry.js';
+import { refreshGroupCarry } from './relationship-applier.js';
+import type { GroupCarryScope } from './group-disclosure.js';
 
 // The shipped process-limit shim is a macOS launch contract; the desk runs this whole CLI case there.
 it.skipIf(process.platform !== 'darwin')('the shipped carry-group command reads actual HTTP membership through the confined bridge, carries once, and refuses a new member', async () => {
@@ -116,25 +118,15 @@ it.skipIf(process.platform !== 'darwin')('the shipped refresh-group command appl
     grant: 'TEST-cli-refresh', configurationDigest: 'sha256:offline', expires: 9999999999999,
     maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 409600, cursor: 0 };
   const carryScope = { ...scope, sourceRoot, destinationRoot }, origin = carryOrigin(carryScope);
-  const permission = () => resolveGroupDisclosure(carryScope, authority({ scope: carryScope }), now, records, sealKey);
-  /** The private root's people, as its summary pass would have recorded them (unit-level view rows), emitted into its journal. */
-  const emitPeople = (city?: string, forgetAna = false) => {
-    const source = openPreviewJournal(sourcePath, key);
-    const [sam] = source.view.order.map(turn => turn.id) as [string];
-    source.view.people.push({ name: 'Sam Ruiz', source: sam, quote: 'Sam Ruiz' }, { name: 'Ana Lima', source: sam, quote: 'Ana Lima' });
-    source.view.personAttributes.push({ name: 'Sam Ruiz', attribute: 'job', value: 'engineer', status: 'current', source: sam, quote: 'engineer' });
-    if (city) source.view.personAttributes.push({ name: 'Sam Ruiz', attribute: 'city', value: city, status: 'current', source: sam, quote: city });
-    if (forgetAna) source.view.memory.push({ mode: 'forget', source: sam, trigger: sam, quote: 'Ana Lima' });
-    const changes = emitRelationshipChanges(source, createRelationshipEmitter(source, { now: () => now + source.view.relationshipEmits.length * 1000 + 1, origin, permission }), now, origin);
-    const seqs = source.view.relationshipEmits.map(emit => emit.seq); source.close(); return { changes, seqs };
-  };
+  const clock = Date.now; // Same clock domain as the actual carry/refresh child processes.
+  const emitPeople = (city?: string, forgetAna = false) => emitDurablePeople(sourcePath, carryScope, clock, city, forgetAna);
   const source = openPreviewJournal(sourcePath, key, genesis);
-  const worker = createJournalWorker(source, { origin: 'test', now: () => now, stopped: () => false, timeZone: 'UTC',
+  const worker = createJournalWorker(source, { origin: 'test', now: clock, stopped: () => false, timeZone: 'UTC',
     model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
   worker.intake([{ update_id: 1, message: { chat: { id: Number(scope.operator), type: 'private' },
     from: { id: Number(scope.operator) }, text: 'I met Sam Ruiz and Ana Lima at the arboretum; Sam is an engineer.' } }]); await worker.drain();
   source.close();
-  expect(emitPeople()).toMatchObject({ changes: { puts: [expect.any(String), expect.any(String)], deletes: [] }, seqs: [1, 2] });
+  expect(await emitPeople()).toMatchObject({ changes: { puts: [expect.any(String), expect.any(String)], deletes: [] }, seqs: [1, 2] });
   openPreviewJournal(destinationPath, key, { ...genesis, chat: scope.chat, forum: true }).close();
   const authorityPath = join(root, 'authority.json');
   writeFileSync(authorityPath, JSON.stringify(authority({ scope: carryScope })));
@@ -168,7 +160,7 @@ it.skipIf(process.platform !== 'darwin')('the shipped refresh-group command appl
     expect(readFileSync(destinationPath)).toEqual(emptyGroup);
     expect(JSON.parse((await run('carry-group')).stdout).result).toBe('carried');
     // The snapshot supersedes the two emits before it; the predecessor then changes: Sam moves to Porto, Ana is forgotten.
-    expect(emitPeople('Porto', true)).toMatchObject({ changes: { puts: [expect.any(String)], deletes: [expect.any(String)] }, seqs: [1, 2, 3, 4] });
+    expect(await emitPeople('Porto', true)).toMatchObject({ changes: { puts: [expect.any(String)], deletes: [expect.any(String)] }, seqs: [1, 2, 3, 4] });
     const predecessorBytes = readFileSync(sourcePath);
     const refreshed = JSON.parse((await run('refresh-group')).stdout);
     expect(refreshed).toMatchObject({ predecessor: sourceRoot, from: 2, through: 4, remaining: 0, applied: 2, forged: 0, invalid: 0, refused: 0 });
@@ -181,10 +173,85 @@ it.skipIf(process.platform !== 'darwin')('the shipped refresh-group command appl
     expect(seen).toContain('getChatMember'); expect(seen).not.toContain('sendMessage');
     const replay = openPreviewJournal(destinationPath, key, undefined, undefined, true);
     expect(replay.view.groupCarryRefreshes.map(refresh => [refresh.from, refresh.through])).toEqual([[2, 4]]);
-    const served = groupCarryPacket(replay.view.groupCarry!, 'Who is Sam?', now, 409600, replay.view).entries.filter(entry => entry.kind === 'person').map(entry => entry.text);
+    const served = groupCarryPacket(replay.view.groupCarry!, 'Who is Sam?', clock(), 409600, replay.view).entries.filter(entry => entry.kind === 'person').map(entry => entry.text);
     expect(served).toHaveLength(1);
     expect(served[0]!).toContain('Name: Sam Ruiz'); expect(served[0]!).toContain('city: Porto'); expect(served[0]!).toContain(`origin="${origin}"`);
     expect(JSON.stringify(served)).not.toContain('Ana');
     replay.close();
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); rmSync(root, { recursive: true, force: true }); }
+}, 150000);
+
+/** Persist the CLI fixture's source facts before emitting: a reopened journal must know the same people. */
+async function emitDurablePeople(sourcePath: string, carryScope: GroupCarryScope, clock: () => number, city?: string, forgetAna = false) {
+  const source = openPreviewJournal(sourcePath, key);
+  try {
+    const sam = source.view.order[0]!.id;
+    if (city) {
+      const worker = createJournalWorker(source, { origin: 'test', now: clock, stopped: () => false,
+        model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
+      worker.intake([{ update_id: 2, message: { chat: { id: Number(scope.operator), type: 'private' },
+        from: { id: Number(scope.operator) }, text: `Sam Ruiz moved to ${city}. Forget Ana Lima.` } }]);
+      await worker.drain();
+    }
+    const latest = source.view.order.at(-1)!;
+    const at = clock();
+    source.append({ kind: 'summary-reserve', through: latest.update, at });
+    source.append({ kind: 'summary', through: latest.update, at,
+      text: city ? `Sam Ruiz moved to ${city}; Ana Lima was forgotten.` : 'Sam Ruiz is an engineer; the operator also met Ana Lima.',
+      ...(!city ? { people: [{ name: 'Sam Ruiz', source: sam, quote: 'Sam Ruiz' }, { name: 'Ana Lima', source: sam, quote: 'Ana Lima' }] } : {}),
+      personAttributes: city
+        ? [{ name: 'Sam Ruiz', attribute: 'city', value: city, status: 'current', source: latest.id, quote: city }]
+        : [{ name: 'Sam Ruiz', attribute: 'job', value: 'engineer', status: 'current', source: sam, quote: 'engineer' }],
+      memory: forgetAna ? [{ mode: 'forget', source: sam, trigger: latest.id, quote: 'Ana Lima' }]
+        : [{ mode: 'remember', source: sam, trigger: sam, quote: 'Sam Ruiz' }],
+    });
+    const origin = carryOrigin(carryScope);
+    const permission = () => resolveGroupDisclosure(carryScope, authority({ scope: carryScope }), clock(), records, sealKey);
+    const changes = emitRelationshipChanges(source, createRelationshipEmitter(source, { now: clock, origin, permission }), clock(), origin);
+    return { changes, seqs: source.view.relationshipEmits.map(emit => emit.seq) };
+  } finally { source.close(); }
+}
+
+it('the refresh CLI fixture retains source people across reopen and carries two puts before a later put and tombstone', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'refresh-durable-')), sourceRoot = join(root, 'private'), destinationRoot = join(root, 'group');
+  mkdirSync(sourceRoot); mkdirSync(destinationRoot);
+  const sourcePath = join(sourceRoot, 'journal.encrypted'), destinationPath = join(destinationRoot, 'journal.encrypted');
+  const carryScope = { ...scope, sourceRoot, destinationRoot }, clock = Date.now;
+  const permission = () => resolveGroupDisclosure(carryScope, authority({ scope: carryScope }), clock(), records, sealKey);
+  const genesis = { kind: 'genesis' as const, origin: 'test' as const, bot: scope.bot, operator: scope.operator, chat: scope.operator,
+    grant: 'TEST-cli-refresh', configurationDigest: 'sha256:offline', expires: 9999999999999,
+    maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 409600, cursor: 0 };
+  try {
+    const source = openPreviewJournal(sourcePath, key, genesis);
+    const worker = createJournalWorker(source, { origin: 'test', now: clock, stopped: () => false,
+      model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
+    worker.intake([{ update_id: 1, message: { chat: { id: Number(scope.operator), type: 'private' },
+      from: { id: Number(scope.operator) }, text: 'I met Sam Ruiz and Ana Lima at the arboretum; Sam is an engineer.' } }]);
+    await worker.drain(); source.close();
+    expect(await emitDurablePeople(sourcePath, carryScope, clock)).toMatchObject({ changes: { puts: [expect.any(String), expect.any(String)], deletes: [] }, seqs: [1, 2] });
+    const reopened = openPreviewJournal(sourcePath, key);
+    const destination = openPreviewJournal(destinationPath, key, { ...genesis, chat: scope.chat, forum: true });
+    expect(reopened.view.people.map(person => person.name)).toEqual(['Sam Ruiz', 'Ana Lima']);
+    expect(reopened.view.personAttributes).toMatchObject([{ attribute: 'job', value: 'engineer' }]);
+    expect(appendGroupCarry(destination, reopened, carryScope, permission(), true, clock(), () => false)).toBe('carried');
+    expect(reopened.view.relationshipEmits.map(emit => emit.seq)).toEqual([1, 2]);
+    expect(destination.view.groupCarry!.emitsThrough).toBe(2);
+    expect(groupCarryPacket(destination.view.groupCarry!, 'Who is Ana?', clock(), 409600, destination.view).entries
+      .filter(entry => entry.kind === 'person')).toHaveLength(2);
+    reopened.close(); destination.close();
+    expect(await emitDurablePeople(sourcePath, carryScope, clock, 'Porto', true)).toMatchObject({
+      changes: { puts: [expect.any(String)], deletes: [expect.any(String)] }, seqs: [1, 2, 3, 4] });
+    const predecessor = openPreviewJournal(sourcePath, key, undefined, undefined, true), group = openPreviewJournal(destinationPath, key);
+    const bytes = readFileSync(sourcePath);
+    expect(refreshGroupCarry(group, predecessor, carryScope, permission(), true, clock(), () => false)).toMatchObject({ from: 2, through: 4, remaining: 0, result: { applied: 2 } });
+    expect(readFileSync(sourcePath)).toEqual(bytes);
+    const size = group.size;
+    expect(refreshGroupCarry(group, predecessor, carryScope, permission(), true, clock(), () => false)).toMatchObject({ through: 4, result: { applied: 0 } });
+    expect(group.size).toBe(size);
+    predecessor.close(); group.close();
+    const replay = openPreviewJournal(destinationPath, key, undefined, undefined, true);
+    const served = groupCarryPacket(replay.view.groupCarry!, 'Who is Sam?', clock(), 409600, replay.view).entries.filter(entry => entry.kind === 'person').map(entry => entry.text);
+    expect(served).toHaveLength(1); expect(served[0]).toContain('Name: Sam Ruiz'); expect(served[0]).toContain('city: Porto');
+    expect(JSON.stringify(served)).not.toContain('Ana'); replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 }, 150000);
