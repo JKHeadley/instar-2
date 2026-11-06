@@ -26,10 +26,10 @@ Decision: train-176-live-register | Reuse live's owning cumulative-budget repair
 
 Deferral: generated/register.json:1 | not-a-deferral=Regenerated register retains existing constitutional obligations; no repair work is deferred by that wording.
 
+Publication: Existing desk owner rehash and grounding repin each changed zero pins. Register replay at merge 1fb942afb1004af721fcf79681fa4106e05585ab produced 299 entries and 122 rules, generation sha256:68bc3dfa7c748d2da732eb8f810689c7b44affcfe47af833667a6204e130f6d7. This record covers that derived publication as well as the source merge. Architecture reports only the charter-exempt native macOS conformance binding; no certificate declaration is authored here.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, explicit assertion-preserving conflict resolution and existing desk repin/register replay tools. No new runtime machinery. Start guard: clean assigned head and exact fetched live commit; end guard: targeted verification and cheap checks on committed bytes; limit guard: bounded foreground one-worker tests, no full suite or live mutation. No autonomous live completion claim.
 80/20: Typecheck, targeted conflicted tests and cheap gate checks here; the Studio runs the full suite and host-bound verification under the supplied charter.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Publication: Existing desk owner rehash and grounding repin each changed zero pins. Register replay at merge 1fb942afb1004af721fcf79681fa4106e05585ab produced 299 entries and 122 rules, generation sha256:68bc3dfa7c748d2da732eb8f810689c7b44affcfe47af833667a6204e130f6d7. This record covers that derived publication as well as the source merge. Architecture reports only the charter-exempt native macOS conformance binding; no certificate declaration is authored here.
