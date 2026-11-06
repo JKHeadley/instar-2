@@ -121,10 +121,29 @@ it('the shipped launcher emits a private root\'s people per served cycle only un
   // 5. The group root carries the private root (three emits superseded by the snapshot), then the predecessor changes once more.
   {
     const source = openPreviewJournal(privatePath, OFFLINE_STORAGE_KEY), destination = openPreviewJournal(groupPath, OFFLINE_STORAGE_KEY, { ...genesis, chat: FORUM, forum: true });
-    const permission = resolveGroupDisclosure(scope, authority(true), AT + 1, operatorRecords(join(world.directory, 'operator-records')), authoritySealKey(OFFLINE_STORAGE_KEY));
+    // The shipped runner reads wall time. Using September's AT here after its
+    // November emits re-scored old people (1 -> 3) and legitimately added two puts.
+    // Use the same clock domain, then assert identities/content, not just a count.
+    const carryAt = Date.now();
+    const before = source.view.relationshipEmits.map(emit => structuredClone(emit));
+    expect(before.map(emit => [emit.seq, emit.op, emit.data.name, emit.data.origin])).toEqual([
+      [1, 'put', 'Sam Ruiz', carryOrigin(scope)], [2, 'put', 'Ana Lima', carryOrigin(scope)],
+      [3, 'put', 'Zed Quill', carryOrigin(scope)],
+    ]);
+    expect(new Set(before.map(emit => emit.recordKey)).size).toBe(3);
+    const permission = resolveGroupDisclosure(scope, authority(true), carryAt, operatorRecords(join(world.directory, 'operator-records')), authoritySealKey(OFFLINE_STORAGE_KEY));
     if (permission.kind !== 'resolved') throw Error(permission.reason);
-    expect(appendGroupCarry(destination, source, scope, permission, true, AT + 1, () => false)).toBe('carried');
-    expect(destination.view.groupCarry!.emitsThrough).toBe(3);
+    expect(appendGroupCarry(destination, source, scope, permission, true, carryAt, () => false)).toBe('carried');
+    expect(source.view.relationshipEmits).toEqual(before);
+    expect(destination.view.groupCarry!.emitsThrough).toBe(before.at(-1)!.seq);
+    const snapshotRecords = destination.view.groupCarry!.entries.filter(entry => entry.kind === 'person')
+      .map(entry => JSON.parse(entry.text) as Record<string, unknown>);
+    const content = (data: Record<string, unknown>) => { const { hlc: _hlc, observed: _observed, ...record } = data; return record; };
+    expect(snapshotRecords.map(content)).toEqual(before.map(emit => content(emit.data)));
+    const sourceSize = source.size, destinationSize = destination.size;
+    expect(appendGroupCarry(destination, source, scope, permission, true, carryAt, () => false)).toBe('already-carried');
+    expect(source.size).toBe(sourceSize); expect(destination.size).toBe(destinationSize);
+    expect(source.view.relationshipEmits).toEqual(before);
     expect(destination.view.groupCarry!.entries.filter(entry => entry.kind === 'person')).toHaveLength(3);
     source.close(); destination.close();
   }

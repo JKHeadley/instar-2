@@ -10,6 +10,8 @@ import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-
 const CLOSED_SET_SENTENCE = 'Irreversible outward sends remain outside the one-machine closed set. ';
 import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, CAPABILITY_SENTENCE_LABEL, capabilitySentence, capabilityBriefing, SELF_DESCRIPTION, SELF_IDENTITY, SIGN_OFF, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { readAnswer } from './answer-reading.js';
+import { renderCapabilityReply, renderCapabilityRevision } from './capability-render.js';
+import { SOURCE_PINS, sourcePacket } from './briefing.js';
 import { CLAIM_EVIDENCE_GUIDANCE } from './answer-provenance.js';
 import { governingConstraints, previewCapabilities, settledConstraintWording, type BlockerNote, type JournalView } from './journal.js';
 
@@ -30,11 +32,41 @@ const live = (update: number) => ({ turns: new Map([[`telegram:8989505249:update
   { prompt: read(`recorded-prompt-${update}.json`) }]]) }) as unknown as JournalView;
 const wall = (update: number, constraint: string) => ({ source: `telegram:8989505249:update:${update}`, constraint, rechecks: [] }) as unknown as BlockerNote;
 
+// train-183: exact line mappings from README summaries at e5001a818 / 3cdd7b5e8.
+// Meaning and source assessment: reviews/train-183-repair-1545-change-review.md.
+// These are compatibility comparisons, NOT new model judgments. Historical PASS/FAIL
+// certifies only the original input; neither this wording nor row40 inherits that verdict.
+const summaryRevisions = [
+  ['preview-conversation',
+    'answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.',
+    'answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions.'],
+  ['preview-durable-memory',
+    'an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.',
+    'an encrypted local journal saves messages, summaries, memory; survives restarts; correct or forget facts.'],
+  ['preview-requested-actions',
+    'an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.',
+    'answers explicit timed requests once, daily or weekdays until cancelled, without a new message.'],
+  ['preview-status-command',
+    '"status" and "how are you doing" are answered from the journal without a model call.',
+    'answers "status" and "how are you doing" from the journal without a model call.'],
+] as const;
+const currentSummaries = (text: string) => text.split('\n').map(line => {
+  const revision = summaryRevisions.find(([, before]) => line === `- ${before}`);
+  return revision ? `- ${revision[2]}` : line;
+}).join('\n');
+const relationshipSummary = '- remembers people across topics, granted groups, restarts and machines.';
+// Compare ONLY the historical inventory. Check the exact new line separately, so a
+// missing/changed/duplicate relationship line is not silently dropped by this boundary.
+const historicalInventory = (text: string) => {
+  expect(text.split('\n').filter(line => line === relationshipSummary)).toHaveLength(1);
+  return text.split('\n').filter(line => line !== relationshipSummary).join('\n');
+};
+
 // Translate declared guidance changes only; captured bytes and historical judge digests stay intact.
 // Requested result delivery is tested separately in owed-delivery.test.ts; historical PASS does not certify it.
 // The accepted retirement removes only this inventory entry, not historical evidence.
 const retiredStepCheck = '- preview.step-check: off unless launched with it; independently checks each business step and changes nothing.\n';
-const currentChannelNote = (text: string) => compactRecordedNote(text.replace(retiredStepCheck, ''))
+const currentChannelNote = (text: string) => currentSummaries(compactRecordedNote(text.replace(retiredStepCheck, '')))
   .replace('keeps standing instructions and works the promises its replies leave open, holding results for the next message.',
     'keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.')
   .replace('In the code but switched off here, so not available:', 'Code switched off here:')
@@ -76,22 +108,30 @@ const compactRecordedNote = (text: string) => text
   .replace('What you can do for the operator here:', 'Capabilities:')
   .replace('Internal machinery running under you:', 'Internal:');
 
-it('translates only the exact retired inventory entry and retains unrelated capability drift', () => {
+it('translates only declared exact inventory changes and retains unrelated capability drift', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.note.split(retiredStepCheck)).toHaveLength(2);
-  const current = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text;
+  const current = historicalInventory(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
   expect(renderedNote(capture.note)).toBe(current);
   expect(renderedNote(capture.note.replace(retiredStepCheck, ''))).toBe(current);
   // Changed retirement wording and drift in a retained capability must still fail equality.
   expect(renderedNote(capture.note.replace('changes nothing.', 'changes everything.'))).not.toBe(current);
   expect(renderedNote(capture.note.replace('faithfulness-checked', 'unchecked'))).not.toBe(current);
+  for (const [id, before, after] of summaryRevisions) {
+    expect(capture.note).toContain(`- ${id}: ${before}`);
+    expect(current).toContain(`- ${after}`);
+    expect(renderedNote(capture.note.replace(before, before + ' Without limits.'))).not.toBe(current);
+    expect(renderedNote(capture.note.replace(before, ''))).not.toBe(current);
+    expect(renderedNote(capture.note.replace(before, `${before}\n- ${id}: ${before}`))).not.toBe(current);
+  }
+  expect(renderedNote(capture.note.replace('standing grants need no new approval', 'all effects need new approval'))).not.toBe(current);
   expect(capture.note).toContain(retiredStepCheck);
 });
 
 it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and declared capability revisions', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-outward-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
-  const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text;
+  const note = historicalInventory(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
   // This base retains its harness-specific tool label; no tool or authority changed.
   const restoreBaseToolLabel = (text: string) => compactRecordedNote(currentNote(text.replace('tools: full built-in set', 'tools: full Claude Code set')));
   expect(restoreBaseToolLabel(capture.replayNote).replace(capture.replayNote.split('\n')[0], SELF_IDENTITY)).toBe(note);
@@ -115,11 +155,11 @@ it('replays preswitch update 840342287 with current self-description and the unc
   expect(capture.replayJudge.verdict).toBe('PASS');
 });
 
-it('binds the repaired answer and its explicitly reviewed identity and standing grants to the final inputs', () => {
+it('preserves the historical answer and judgment while checking declared input compatibility', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   expect(capture.question).toBe('What can you do for me here?');
-  expect(renderedNote(capture.note)).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
+  expect(renderedNote(capture.note)).toBe(historicalInventory(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text));
   expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Preserve historical prompt bytes; requested-step guidance is covered by act-first.test.ts.
   expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
@@ -191,9 +231,9 @@ it('reads the wording each live wall was settled behind from its recorded answer
   expect(settledConstraintWording(live(6232224), wall(6232224, 'no-such-constraint'))).toBeUndefined();
 });
 
-it('the recorded K11a briefing differs only in the declared conversation, media, recurring-request and result-delivery capabilities and read-first and standing-trust guidance', () => {
-  const note = capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
-    { providerAttempts: 1000, expiresAt: 1791232800000, tools: true, mcp: 0 }).text;
+it('compares the historical K11a inventory through declared capability and guidance translations', () => {
+  const note = historicalInventory(capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
+    { providerAttempts: 1000, expiresAt: 1791232800000, tools: true, mcp: 0 }).text);
   const replays = JSON.parse(read('k11a-replays.json')) as { note: string; runs: { kind: string; input: string; verdict: string; reply: string }[] };
   // Captured model results stay historical. Forum routing and media intake widen only the declared
   // conversation capability and add the registered media admission item and recurring requests; the tool,
@@ -208,7 +248,7 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   const oldRequests = '- preview-requested-actions: an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message.';
   const recurringRequests = '- preview-requested-actions: an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.';
   expect(current.note.split(oldRequests)).toHaveLength(2);
-  expect(note).toContain(compactRecordedNote(recurringRequests));
+  expect(note).toContain(currentSummaries(compactRecordedNote(recurringRequests)));
   const oldGrant = 'checked when made: consequential effects (sending outside this conversation, writing to the network or a third-party account, '
     + 'spending, changing safeguards) go through the effect doorway: one runs once the operator registers and grants it, otherwise it '
     + 'is refused and the refusal names its reason; say so plainly when one is refused. ';
@@ -311,9 +351,9 @@ it('replays five recorded answers with the rendered paragraph verbatim and diges
   const sentence = capabilitySentence(capture.limits);
   for (const run of capture.runs) {
     // Source-generation metadata remains the authentic generation each call received;
-    // the capability record and rendered paragraph match this checkout; the five
-    // historical instruction prose lines are translated explicitly above.
-    expect(currentChannelNote(run.capabilityNote.text)).toBe(note.text);
+    // the tools paragraph is unchanged; inventory compatibility uses only the
+    // declared translations above. No original judgment certifies the current note.
+    expect(currentChannelNote(run.capabilityNote.text)).toBe(historicalInventory(note.text));
     expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe(note.renderedCapabilitySha256);
     const reading = readAnswer(run.raw, { wrapped: 'accept' });
     expect(reading.ok).toBe(true);
@@ -337,7 +377,7 @@ it('replays five recorded answers with the rendered paragraph verbatim and diges
   }
 });
 
-it('binds every unchanged-question capability replay and its PASS or FAIL judgment to final instructions', () => {
+it('preserves each original question and judgment while checking translated instruction compatibility', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/capsentence2-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342414);
   expect(capture.question).toBe("What can you do in this chat, and what can't you do?");
@@ -352,7 +392,7 @@ it('binds every unchanged-question capability replay and its PASS or FAIL judgme
   for (const run of capture.runs) {
     expect(run.userMessage).toEqual(capture.recordedUserMessage);
     expect(run.inputSha256).toMatch(/^[a-f0-9]{64}$/u);
-    expect(currentChannelNote(run.capabilityNote.text)).toBe(note.text);
+    expect(currentChannelNote(run.capabilityNote.text)).toBe(historicalInventory(note.text));
     expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe(note.renderedCapabilitySha256);
     const reading = readAnswer(run.raw, { wrapped: 'accept' });
     expect(reading.ok).toBe(true);
@@ -386,4 +426,43 @@ it('binds every unchanged-question capability replay and its PASS or FAIL judgme
   expect(original.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
     v: original.judge.rubric, note: original.capabilityNote.text, reply: original.answer, provenance: original.capabilityNote.provenance,
   })).digest('hex')}`);
+});
+
+it('binds the compatibility mapping to README and generated consumer; the new relationship ability is separately declared', () => {
+  const readme = readFileSync('tests/preview/README.md', 'utf8');
+  const generated = JSON.parse(readFileSync('generated/capabilities.json', 'utf8')).launchers['tests/preview/journal-agent.mjs'];
+  for (const [id, , after] of summaryRevisions) {
+    expect(readme).toContain(`- \`${id}\`: ${after}\n`);
+    expect(generated.filter((row: { id: string }) => row.id === id)).toEqual([
+      expect.objectContaining({ id, text: after, availability: 'available' }),
+    ]);
+  }
+  expect(readme).toContain(`- \`preview.relationship-awareness\`: ${relationshipSummary.slice(2)}\n`);
+  expect(generated.filter((row: { id: string }) => row.id === 'preview.relationship-awareness')).toEqual([
+    expect.objectContaining({ text: relationshipSummary.slice(2), userFacing: false, availability: 'available' }),
+  ]);
+});
+
+it('traverses the current renderer with recorded update 715675677 and preserves its historical FAIL', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/capsentence-render-2026-10-12.json', import.meta.url), 'utf8'));
+  expect(capture.delivered.update).toBe(715675677);
+  expect(capture.judge.verdict).toBe('FAIL');
+  const packet = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
+    { providerAttempts: 1000, expiresAt: 1794519600000, tools: true, mcp: 0 });
+  const sentence = capabilitySentence({ tools: true, mcp: 0 });
+  const legacy = sentence.replace('I can use', 'The person can use');
+  expect(capture.delivered.reply.split(legacy)).toHaveLength(2);
+  const expected = capture.delivered.reply.replace(legacy, sentence);
+  expect(renderCapabilityReply(capture.delivered.reply, packet)).toBe(expected);
+  // Persist the current source packet in the recorded envelope SHAPE for the revision
+  // consumer; it is an offline traversal, not a historical input or a new judge capture.
+  const envelope = JSON.parse(read('k11a-worst-input.json')) as Envelope;
+  const context = envelope.messages.find(item => item.role === 'context')!;
+  const original = JSON.parse(context.content);
+  context.content = JSON.stringify({ ...original, packet: { ...original.packet, sources: packet.sources } });
+  expect(renderCapabilityRevision(capture.delivered.reply, JSON.stringify(envelope))).toBe(expected);
+  // A changed note without matching provenance cannot render; no fabricated authority.
+  const altered = { sources: packet.sources.map(source => source.id === 'capability-note'
+    ? { ...source, text: source.text + ' More authority.' } : source) };
+  expect(renderCapabilityReply(capture.delivered.reply, altered)).toBe(capture.delivered.reply);
 });

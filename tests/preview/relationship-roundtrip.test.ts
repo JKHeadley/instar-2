@@ -234,3 +234,38 @@ it('a partially refused emit baseline never publishes a carry and retries withou
   expect(served(w.destination.view)).toHaveLength(2);
   w.destination.close(); w.source.close();
 });
+
+it('carry baselines changed recency scores once, preserving record identities and causal witnesses without duplicate repeats', async () => {
+  const w = await world();
+  emittingPredecessor(w);
+  const before = w.source.view.relationshipEmits.map(emit => structuredClone(emit));
+  expect(before.map(emit => [emit.data.name, emit.data.significance])).toEqual([['Sam Ruiz', 4], ['Ana Lima', 3]]);
+  // Cross the one-day score boundary, still before this fixture's expiry. This
+  // deterministically explains why an initial carry can legitimately add emits.
+  const carryAt = now + 86400000 - 1000;
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, carryAt, () => false);
+  const all = w.source.view.relationshipEmits;
+  expect(all.map(emit => [emit.seq, emit.recordKey, emit.op])).toEqual([
+    [1, before[0]!.recordKey, 'put'], [2, before[1]!.recordKey, 'put'],
+    [3, before[0]!.recordKey, 'put'], [4, before[1]!.recordKey, 'put'],
+  ]);
+  const baseline = all.slice(2);
+  expect(baseline.map(emit => [emit.data.name, emit.data.significance])).toEqual([['Sam Ruiz', 3], ['Ana Lima', 2]]);
+  const stable = (data: Record<string, unknown>) => {
+    const { hlc: _hlc, observed: _observed, significance: _score, ...record } = data;
+    return record;
+  };
+  expect(baseline.map(emit => stable(emit.data))).toEqual(before.map(emit => stable(emit.data)));
+  expect(baseline.map(emit => emit.data.observed)).toEqual(before.map(emit => emit.hlc));
+  expect(w.destination.view.groupCarry!.emitsThrough).toBe(all.at(-1)!.seq);
+  const snapshot = w.destination.view.groupCarry!.entries.filter(entry => entry.kind === 'person')
+    .map(entry => JSON.parse(entry.text) as Record<string, unknown>);
+  expect(snapshot.map(record => [record.recordKey, record.significance])).toEqual(baseline.map(emit => [emit.recordKey, emit.data.significance]));
+  const sourceSize = w.source.size, destinationSize = w.destination.size;
+  const emitter = createRelationshipEmitter(w.source, { now: () => carryAt, origin: ORIGIN, permission });
+  expect(emitRelationshipChanges(w.source, emitter, carryAt, ORIGIN)).toEqual({ puts: [], deletes: [], results: [] });
+  expect(appendGroupCarry(w.destination, w.source, scope, permission(), true, carryAt, () => false)).toBe('already-carried');
+  expect(refreshGroupCarry(w.destination, w.source, scope, permission(), true, carryAt, () => false).result.applied).toBe(0);
+  expect(w.source.size).toBe(sourceSize); expect(w.destination.size).toBe(destinationSize);
+  w.destination.close(); w.source.close();
+});
