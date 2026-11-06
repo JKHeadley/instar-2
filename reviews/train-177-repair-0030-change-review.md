@@ -28,6 +28,10 @@ Decision: T177-0030-PINS | Use canonical desk rehash/repin and exact committed-s
 
 Validation: build and typecheck pass; 17 signature controls pass. The one selected changed dispatch case fails at line 438 (uncertain, expected complete), after identity and policy equality pass. Retained sibling diagnostic /tmp/train179-cache-diagnostic.log records code 125 and rawError `instar-launch: 3: ulimit: Illegal option -u`; this is inherited host evidence, not newly captured stderr for this head. No retry or Windows-cause inference. Architecture has only R105: native macOS certificate mismatches composition sha256:6efe6f69549488a25f9327c71388df30639ba870aa420366aaf972ad826b67fa. Declaration untouched; guarded renewal belongs to Studio. No new full/native/live PASS.
 
+Publication coverage: This review also covers canonical generated outputs from exact source adecbe9c5bfb5c8da7155c96de2180201262cf08, generation sha256:4a93dab0491b539b955caa30f22a1580f99b5d653f50d4608058075a133c09f3 (298 entries, 121 rules). Desk rehash and chain repin changed zero pins. These generated files record source provenance; no authority declaration changes.
+
+Research corroboration: refreshed actual JKHeadley/instar origin/main 97dbe39e68471c9295072665e83b0801fb32cc60. Search of src/ and docs/specs/ for policy-limits, policyLimits and remote-settings.json returned no matches. Read current SessionManager.ts and cli-login-expired-opens-repair.eli16.md; the inherited owner comparison remains the repair basis. History search is separately recorded in the report and not silently called complete.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the whole exact owning repair in the existing cache inspector, without retry/parser machinery or authority mutation. Start guard is assigned clean head and byte compatibility; end guards are targeted captured-shape controls, preserved red, canonical register and review evidence. The bounded builder scope leaves new native/live acceptance to Studio and makes no autonomous completion claim.
