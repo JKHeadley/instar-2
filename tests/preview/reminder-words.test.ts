@@ -24,6 +24,8 @@ const fixture = JSON.parse(readFileSync(new URL('./fixtures/reminderwords-live-2
   requestedActionsAfterRa2: { requested: number; cancelled: number; open: { quote: string }[] } };
 const recorded = (label: string) => fixture.turns.find(item => item.label === label)!;
 const readSource = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
+// Pin every qualifier in the compact capability sentence at each real consumer below.
+const REMINDER_CAPABILITY = '- answers explicit timed requests once, daily or weekdays until cancelled, without a new message.';
 const LIMITS = { providerAttempts: 1000, expiresAt: 1791232800000 };
 
 /** The recorded fault, read off the exact bytes the live model was given. The note's digest is re-derived
@@ -39,8 +41,7 @@ it('shows the contradiction the live model was given, and that this checkout no 
 
   const note = capabilityBriefing(readSource, LIMITS).text;
   // The capability is still listed, and now says plainly when it is sent and that nothing more is needed.
-  expect(note).toContain('- an explicit later-time request');
-  expect(note).toMatch(/- an explicit later-time request.*answered once at that time.*no new operator message\./u);
+  expect(note).toContain(REMINDER_CAPABILITY);
   // No blanket denial of it anywhere in the note.
   expect(note).not.toContain('no scheduled work');
   expect(note).not.toContain('unprompted messages');
@@ -52,7 +53,7 @@ it('shows the contradiction the live model was given, and that this checkout no 
 it('carries no denial of later-time sending anywhere in the always-sent text', () => {
   const always = [ANSWER_INSTRUCTIONS,
     ...sourcePacket(readSource, SOURCE_PINS, LIMITS).sources.map(item => JSON.stringify(item))].join('\n');
-  expect(always).toContain('- an explicit later-time request');
+  expect(always).toContain(REMINDER_CAPABILITY);
   for (const denial of ['no scheduler', 'no scheduled work', 'unprompted', 'background process'])
     expect(always, denial).not.toContain(denial);
 });
@@ -189,7 +190,7 @@ it('leaves an undated promise unsettled without any denial in what the model is 
     expect(state.sent).toHaveLength(1);
     const packets = seen.join('\n');
     // The capability note really is in what the model was given, and it no longer denies the capability.
-    expect(packets).toContain('- an explicit later-time request');
+    expect(packets).toContain(REMINDER_CAPABILITY);
     for (const denial of ['no scheduler', 'no scheduled work', 'unprompted', 'background process'])
       expect(packets, denial).not.toContain(denial);
     expect(recorded('a5').reply).toContain('I have no scheduler or background process');
