@@ -7,9 +7,9 @@ Outcome: Let the two named real-media tests await the bounded offline transcript
 Affected rules: 26, 34, 36, 37, 42, 49, 55, 60, 70, 74, 101, 102, 111, 113, 116
 Affected floors: secrets — unchanged custody and protected file assertions; spend cap — unchanged Six admission and allocation return; stop — unchanged production stop and an added stopped slow-path neighbor; no duplicate sends — unchanged custody deduplication assertion; durable intake — no runtime or journal change
 Operator questions: none
-Suggested tier: ordinary
-Declared tier: ordinary
-Tier rationale: Changes two named test files, their required generated pin/register evidence and this review; production composition, limits, capability and model behavior are unchanged.
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Required owner-reference and generated register publication retain critical review despite the narrow test-only cause; production composition, limits, capability and model behavior are unchanged.
 Side effects: The three real transcription cases can wait up to 180 seconds instead of 30 seconds before the test watchdog fails. Non-audio Telegram cases retain 30 seconds. No global timeout or assertion changes.
 Undo and recovery: Revert this commit to restore the prior test deadlines; no migration or installed-state recovery is needed. Keep the original red run as evidence rather than treating a subsequent pass as exoneration.
 Multi-machine posture: Host-local tests of the same offline decoder on each supported host; no cross-machine state or authority changes.
@@ -64,8 +64,11 @@ No full suite, CPU load generator, quarantine, hand-edited pin or certificate ch
 Architecture passed on dbf5473d6; lint/register correctly refused the changed media
 test's stale owner-reference pin. The delegated desk-rehash-owner-manifests.mjs
 and desk-repin-chain.sh refreshed only that preview owner pin; no chain inventory
-change was required. Publish the generated register with build-register.mjs --replay
-at the pin commit, then rerun all cheap checks on the final head.
+change was required. build-register.mjs --replay at pin commit
+009d74ec8b13ccd507fdf99c7bbd40688d61e190 exited 0, producing generation
+sha256:673b311150832984c1e01485ab8f7538ea9484336365eeae46b7ad07b3371cce
+(298 entries, 121 rules, shape-only authority). The generated seven-file register
+publication is mechanical; all final-head cheap checks remain required before push.
 
 ## Closing block
 
