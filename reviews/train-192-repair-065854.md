@@ -23,11 +23,7 @@ Prompt review: No newly authored model instruction, output parser or model decis
 
 Subject (32 paths): docs/defects/vitest-worker-rpc-timeouts.md, docs/release-evidence/train-181-register-repair-report.md, docs/release-evidence/train-187-codex-catalog-2026-11-05.json, register-source/owner-references/preview.json, scripts/check-dashboard-floors.mjs, scripts/operator-dashboard-readonly.mjs, scripts/operator-dashboard.mjs, scripts/resource-owner.mjs, src/assembly/harness.declarations.json, src/assembly/production-codex-provider.declarations.json, tests/assembly/production-provider-subscription.test.ts, tests/e2e/harness-adapters-round7-regression.test.ts, tests/e2e/model-provider-path.test.ts, tests/e2e/register.test.ts, tests/integration/model-provider-reply.test.ts, tests/integration/resource-owner-partial.test.ts, tests/integration/telegram-poll-concurrency.test.ts, tests/model-provider/crash-worker.mjs, tests/model-provider/fixture.ts, tests/preview/README.md, tests/preview/journal-agent.mjs, tests/preview/journal-agent.test.ts, tests/preview/journal-cutover-harness.mjs, tests/preview/native-loop.test.ts, tests/preview/operator-dashboard-mobile.test.ts, tests/preview/operator-dashboard.test.ts, tests/preview/operator-dashboard.ts, tests/preview/review-layers-canary.test.ts, tests/preview/tool-turn-replay.test.ts, tests/preview/tool-turn.test.ts, tests/preview/two-machine-runner.test.ts, tests/preview/two-machine-world.ts
 
-## Closing block
 
-simplestRobustRoute: This is the simplest robust route: a normal history-preserving merge, four semantic resolutions and tool-generated pin refreshes. Reuse existing runtime checkpoints and test helpers; introduce no mechanism, grant, skip or quarantine. Studio owns final qualification; no autonomous shipped-path completion is claimed.
-80/20: Run tsc/build and only affected tests plus required cheap gates; never full suites on WSL. Keep any Studio-only evidence findings explicit for the desk.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Decision: train-192-merge-history | Preserve both defect histories and both runtime branches through a normal merge; no redo or quarantine. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-192-repair-065854-PROGRESS.md
 
@@ -44,3 +40,11 @@ inherited comparison in reviews/train-192-repair-043150.md (028483097cb0a835a7d1
 ## Derived evidence
 
 Owner rehash refreshed exactly one journal-agent test artifact hash. The delegated grounding repin reported zero changed inventory entries. Register replay from merge 9bf7628d787387698cd8242821cf243cd4f9e63d produced 299 entries, 122 rules, 34 terms and 114 prerequisites (48 warnings, shape-only). Both original parent commits and origin/main remain ancestors; all existing review and defect histories are retained. This register refresh is part of the same reviewed merge repair.
+
+## Validation and host limits
+
+Typecheck, build, architecture, lint and register:check passed. The first targeted run reported 36 passing and 21 failing cases (770.24 seconds): intake-owner passed all 24, two-machine-runner passed eight including delayed transport and claim cancellation, while its unchanged standby-start case timed out. The two resolved notice assertion controls passed. Seventeen journal launcher cases and three canary cases failed before launch. A temporary diagnostic assertion exposed the existing scrubbed launch record: bot identity refused. This WSL host uses dash for /bin/sh; its read-only `ulimit -S -u` rejects the option used by the unchanged transport limit shim. The temporary diagnostic was removed; no wrapper bypass, deadline change or product fix is made for this explicitly host-dependent lane. Studio owns those checks. The full review scan found 3028 missing Studio report references and 64 missing Studio evidence paths, plus three closing-block placement errors in this record; the closing-block errors are corrected here. No missing evidence is invented.
+
+simplestRobustRoute: This is the simplest robust route: a normal history-preserving merge, four semantic resolutions and tool-generated pin refreshes. Reuse existing runtime checkpoints and test helpers; introduce no mechanism, grant, skip or quarantine. Studio owns final qualification; no autonomous shipped-path completion is claimed.
+80/20: Run tsc/build and only affected tests plus required cheap gates; never full suites on WSL. Keep any Studio-only evidence findings explicit for the desk.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
