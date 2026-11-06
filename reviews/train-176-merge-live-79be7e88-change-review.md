@@ -22,6 +22,10 @@ Prompt review: This resolution changes no model prompt, parser, acceptance polic
 Decision: train176-merge-provider | Keep injected 150ms latency and complete-receipt assertions using the existing 10000ms invocationTimeoutMs fixture option; retain all deterministic timeout/no-retry controls. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-176-repair-140517-PROGRESS.md
 Decision: train176-register | Preserve both parent histories and regenerate derived register files from committed merged source using the delegated desk repin tools if needed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-176-repair-140517-PROGRESS.md
 
+## Verification
+
+Typecheck and build passed. The repaired integration file passed all 19 tests, including nine identity mutations after a complete delayed response, both injected timeout boundaries, retained unknown charge and no redispatch. Architecture passed; initial wiring check identified the expected stale generated journal-agent source pin. Delegated desk tools refreshed zero owner pins and zero inventory entries. Rebuilt the generated register from merge commit 49424cf87b9287df95c9812b03fd7c7a2aa566a0 to bind the merged source bytes. Final cheap checks are recorded in the builder report; full-suite verification belongs to Studio under the brief.
+
 ## 1.X FIRST
 
 Searched JKHeadley/instar origin/main 149377310f9b586641a05eddf196df4543dc031a src/, docs/specs/ and history. Read src/core/CodexCliIntelligenceProvider.ts caller timeout/abort/refusal paths; inspected its history d34a499bc, 5676fc194 and 01e98a8ca. Inspected docs/specs/outbound-timeout-408-ambiguous.md and REVIEWER-DOOR-REWIRING-SPEC.md, and ONEX-LESSONS delivery and resource/testing sections. Fit: ambiguous timeout is not proof of non-occurrence and caller budgets remain bounded. Mismatch: the 1.x CLI/messaging owners do not implement this 2.0 HTTP assessment fixture, so preserve the existing 2.0 tests instead of transplanting unrelated code.
