@@ -12,7 +12,7 @@ export const subscriptionDoorway = id => {
   return { ...SUBSCRIPTION_DOORWAYS[id], create: input => createClaudeCodeSubscriptionRoute(input) };
 };
 
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 /** Two-machine tests only: a slow model (so a test can act mid-turn) and a log of which runner called it, when asked for. */
 const delayMs = Number(process.env.INSTAR_PREVIEW_CUTOVER_MODEL_DELAY_MS ?? '0');
@@ -23,6 +23,14 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       appendFileSync(join(process.env.INSTAR_PREVIEW_CUTOVER_WORLD, 'model.jsonl'),
         `${JSON.stringify({ role: process.env.INSTAR_PREVIEW_CUTOVER_ROLE, operation: invocation?.operation ?? null })}\n`);
       await new Promise(done => setTimeout(done, delayMs));
+    }
+    // A test can hold the answer until the authority has claimed an acknowledgement.
+    // This controls the race without loading the host or changing the model's output.
+    const barrier = process.env.INSTAR_PREVIEW_CUTOVER_MODEL_BARRIER;
+    if (barrier) {
+      const end = performance.now() + 30000;
+      while (existsSync(barrier) && performance.now() < end) await new Promise(done => setTimeout(done, 10));
+      if (existsSync(barrier)) throw Error('cutover model barrier expired');
     }
     // A live review answers one line per selected rule (the only form a new review accepts).
     const value = question.startsWith('Judge this proposed reply')
