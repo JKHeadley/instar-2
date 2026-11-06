@@ -1,3 +1,4 @@
+import { modelCollaborationFixture } from './model-collaboration-fixture.js';
 import { sendFormattedText } from './telegram-markdown.mjs';
 import { isGroupReviewFinalNotice, GROUP_REVIEW_FINAL_NOTICE } from './reply-check.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
@@ -381,8 +382,8 @@ it.each([['model', false], ['subscription', false], ['send', false], ['model', t
     journalProxy, requireAt('subscription'), ModelDisclosureRefused, () => {}, null,
     () => ({ invoke: async () => { modelLaunch.started(); providerCalls++; return { state: 'complete', bytes: recorded.text }; } }),
     { now: () => 0 }, () => 'fixture', {}, () => {}, () => ({}), null);
-  const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools', 'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', 'conversationSession', `return (${modelFunction});`)(
-    journalProxy, requireAt('model'), () => false, () => false, () => { throw Error('unused'); },
+  const model = Function('journal', 'collaborationSurface', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools', 'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', 'conversationSession', `return (${modelFunction});`)(
+    journalProxy, modelCollaborationFixture(journalProxy), requireAt('model'), () => false, () => false, () => { throw Error('unused'); },
     async (prepared: string, id: string) => { const result = await subscription('answer', prepared, id, {}); return { state: result.state, value: result.bytes }; },
     (x: unknown) => x, ModelDisclosureRefused, modelLaunch, false);
   let claims = 0;
@@ -432,8 +433,8 @@ it('the shipped model wrapper never releases an invocation that already reached 
   const w = await world();
   appendGroupCarry(w.destination, w.source, scope, permission(), true, start + 3600_000, () => false); w.source.close();
   let calls = 0;
-  const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
-    'ModelDisclosureRefused', 'modelLaunch', 'conversationSession', `return (${modelFunction});`)(w.destination, async () => {}, () => true, () => true,
+  const model = Function('journal', 'collaborationSurface', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
+    'ModelDisclosureRefused', 'modelLaunch', 'conversationSession', `return (${modelFunction});`)(w.destination, modelCollaborationFixture(w.destination), async () => {}, () => true, () => true,
     async () => { calls++; w.destination.view.modelCalls.total++; throw new ModelDisclosureRefused(); }, ModelDisclosureRefused, createModelLaunchBoundary(), false);
   const bindings = { now: () => friday9, stopped: () => false, groupDisclosure: async () => true, checkOutbound: () => {},
     prepareModel: () => '{}', model, send: async () => { throw Error('must not send'); } };

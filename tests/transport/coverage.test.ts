@@ -23,6 +23,7 @@ it('P6-NF-01 P6-NF-37 coverage checker rejects missing executions and unsupporte
 it('P6-NF-02 P6-NF-16 static core inspection rejects timers, protocol branches and sibling-owned definitions', () => {
   const sources = Object.fromEntries(readdirSync('src/transport').filter(p => p.endsWith('.ts')).map(p => [`src/transport/${p}`, readFileSync(`src/transport/${p}`, 'utf8')]));
   expect(inspectTransportCore(sources)).toEqual([]);
+  expect(inspectTransportCore({ 'src/transport/bypass.ts': "if (protocol === 'threadline') {}" })).not.toEqual([]);
   for (const bad of ['setTimeout(() => {}, 1);', 'export interface EffectSettlement {}', "fetch('https://api.telegram.org/sendMessage');"]) {
     expect(inspectTransportCore({ ...sources, 'src/transport/bypass.ts': bad }).length).toBeGreaterThan(0);
   }

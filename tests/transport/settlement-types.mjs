@@ -38,7 +38,9 @@ host.directoryExists = path => [...files.keys()].some(file => dirname(file) === 
 host.getSourceFile = (path, languageVersion) => {
   const source = host.readFile(path); return source === undefined ? undefined : ts.createSourceFile(path, source, languageVersion, true);
 };
-const program = ts.createProgram([...parsed.fileNames, ...files.keys()], { ...parsed.options, noEmit: true }, host);
+// Compile the pinned producer and its transitive dependencies, not unrelated
+// current assembly callers of exports introduced after the reviewed pin.
+const program = ts.createProgram([seam, ...files.keys()], { ...parsed.options, noEmit: true }, host);
 const diagnostics = ts.getPreEmitDiagnostics(program);
 if (diagnostics.length) throw Error(ts.formatDiagnosticsWithColorAndContext(diagnostics, {
   getCanonicalFileName: path => path, getCurrentDirectory: () => process.cwd(), getNewLine: () => '\n',

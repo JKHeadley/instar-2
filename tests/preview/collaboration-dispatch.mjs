@@ -29,9 +29,12 @@ export function createCollaborationDispatch({ journal, authorization, held, disc
     // dispatch fence. Take the SAME shared dispatch claim as the message sender.
     if (shared) { const refused = await shared.admit(target, () => current() ? null : 'collaboration authority changed');
       if (refused !== null) return refused; }
-    if (!current()) return { kind: 'refused', reason: 'collaboration stopped before physical dispatch' };
     let outcome = { kind: 'unknown', reason: 'topic transport interrupted' };
     try {
+      if (!current()) {
+        outcome = { kind: 'refused', reason: 'collaboration stopped before physical dispatch' };
+        return outcome;
+      }
       outcome = classifyTelegramTopic(physical.invoke({ token: tokenReference, method: 'createForumTopic',
         body: { chat_id: journal.view.genesis.chat, name: effect.name }, timeoutMs: 30000 }, credential()), effect.name);
       return outcome;

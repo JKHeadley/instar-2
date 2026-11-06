@@ -36,7 +36,7 @@ const setup = (now = fixtureNow, statusDelayMs = 0) => {
 };
 
 // Consume the existing bounded async port and retain child failure before parsing.
-// The synchronous 10s helper can return empty stdout on timeout; that is not JSON.
+// A child timeout can return empty stdout; that is not JSON.
 const readStatus = async harness => {
   const result = await harness.statusOf();
   if (result.status !== 0) throw Error(`status child failed (status=${result.status}, signal=${result.signal}): ${result.stderr}`);
@@ -49,7 +49,10 @@ it('status evidence survives an injected slow child and a failed child is refuse
   const launched = await harness.runLive(2);
   expect(launched.status, launched.stderr).toBe(0);
   // Deterministic reproduction of the old timing boundary, without host load.
-  const short = harness.status();
+  const short = spawnSync(process.execPath, [...args, 'status', '--root', harness.liveRoot],
+    { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key,
+      NODE_OPTIONS: '--import=' + 'data:text/javascript,' + encodeURIComponent('await new Promise(done => setTimeout(done, 11000));') },
+      encoding: 'utf8', timeout: 10000 });
   expect(short.status).toBeNull();
   expect(short.error?.code).toBe('ETIMEDOUT');
   const status = await readStatus(harness);

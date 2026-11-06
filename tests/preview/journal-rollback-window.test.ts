@@ -184,7 +184,7 @@ it('names every frame kind the union carries, so a new kind cannot slip in unnam
   const union = source.slice(start, end);
   const declared = new Set([...union.matchAll(/kind: '([a-z0-9-]+)'/gu)].map(match => match[1]!));
   // The union members named by type rather than written inline.
-  for (const path of ['tests/preview/model-call-boundary.ts', 'tests/preview/sentinel-record.ts', 'tests/preview/phase-timing.ts']) {
+  for (const path of ['tests/preview/model-call-boundary.ts', 'tests/preview/sentinel-record.ts', 'tests/preview/phase-timing.ts', 'tests/preview/collaboration-hub.ts', 'tests/preview/attention-queue.ts']) {
     const member = readFileSync(join(process.cwd(), path), 'utf8');
     for (const match of member.matchAll(/^export (?:interface|type) \w+\s*(?:=\s*)?\{\s*kind: '([a-z0-9-]+)'/gmu)) declared.add(match[1]!);
   }

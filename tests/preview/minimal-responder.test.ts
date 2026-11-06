@@ -161,13 +161,14 @@ it('declares a fail direction for every live gate, with only exact floors failin
   expect(PREVIEW_LIVE_GATES.find(gate => gate.gate.startsWith('pre-send reply review'))?.fails).toBe('open');
 });
 
-it('exposes no conversation-creating method at the one Telegram boundary (Rule 53)', () => {
+it('exposes bounded collaboration hub creation but no arbitrary conversation invitation (Rule 53)', () => {
   const bridge = readFileSync(join(process.cwd(), 'src/assembly/telegram-bot-api-bridge.mjs'), 'utf8');
   const line = /const validMethod = ([^;]+);/u.exec(bridge)?.[1] ?? '';
   expect([...line.matchAll(/request\?\.method === '([A-Za-z]+)'/gu)].map(match => match[1]).sort())
-    .toEqual(['answerCallbackQuery', 'getChat', 'getChatMember', 'getChatMemberCount', 'getMe', 'getUpdates',
+    .toEqual(['answerCallbackQuery', 'createForumTopic', 'getChat', 'getChatMember', 'getChatMemberCount', 'getMe', 'getUpdates',
       'sendChatAction', 'sendMessage', 'setMessageReaction']);
-  expect(bridge).not.toMatch(/createForumTopic|createChatInviteLink|sendMessage.*chat_id:\s*['"]@/u);
+  expect(bridge).toContain("Object.keys(request.body).sort().join(',') !== 'chat_id,name'");
+  expect(bridge).not.toMatch(/createChatInviteLink|sendMessage.*chat_id:\s*['"]@/u);
 });
 
 const press = (id: number, data: string) => ({ update_id: id,

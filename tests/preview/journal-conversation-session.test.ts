@@ -1,3 +1,4 @@
+import { modelCollaborationFixture } from './model-collaboration-fixture.js';
 // @ts-ignore -- physical pool boundary is JavaScript.
 import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
 // @ts-ignore -- existing reviewed account pool is JavaScript.
@@ -71,9 +72,9 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
     incarnation: 'one', deadlineMs: 10000, pollMs: 25, maxResultBytes: 65536, maxSteps: 8, maxCalls: 10 };
   let port = value(adapt(config));
   let intercept: ((request: Parameters<typeof port.run>[0]) => ReturnType<typeof port.run>) | undefined;
-  const openModel = () => Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
+  const openModel = () => Function('journal', 'collaborationSurface', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
     'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', 'conversationSession',
-    'sessionWork', 'ModelNotStarted', 'conversationSessionAnswer', 'readAnswer', 'recordShape', 'shapesPath', `return (${signature}${body});`)(journal, async () => {}, () => false, () => false,
+    'sessionWork', 'ModelNotStarted', 'conversationSessionAnswer', 'readAnswer', 'recordShape', 'shapesPath', `return (${signature}${body});`)(journal, modelCollaborationFixture(journal), async () => {}, () => false, () => false,
     () => { throw Error('unexpected tools fallback'); }, async () => { fallback++; return { state: 'complete', value: answer, usage }; },
     (input: unknown) => input, ModelDisclosureRefused, createModelLaunchBoundary(), enabled,
     { get port() { return { ...port, run: intercept ?? port.run }; }, authority }, ModelNotStarted, conversationSessionAnswer, readAnswer, () => {}, '/unused') as PreviewPorts['model'];

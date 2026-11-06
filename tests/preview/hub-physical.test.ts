@@ -6,6 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { openPreviewJournal } from './journal.js';
+import { localAuthorityClient, openConversationAuthority, type AuthorityClient } from './conversation-authority.js';
+import { createReplicatedDispatch } from './journal-replication.js';
+import { createLeaseHolder } from './two-machine-serving.js';
 import { createCollaborationSurface, type HubEffect } from './collaboration-hub.js';
 // @ts-expect-error Installed physical consumer is JavaScript.
 import { createCollaborationDispatch } from './collaboration-dispatch.mjs';
@@ -20,6 +23,53 @@ const tokenReference = { type: 'SecretRef', schemaVersion: 1, vault: 'preview', 
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '-1007654321', forum: true as const, operator: '7654321',
   grant: 'isolated-topic-contract', configurationDigest: 'sha256:offline', expires: 9_999_999_999_999,
   maxCalls: 16, maxReplies: 5, maxTurns: 20, maxBytes: 32768, cursor: 0 };
+
+it.each(['accepted', 'withdrawn', 'stopped', 'outcome-unreachable'])('settles the shared topic claim after %s, including across authority reopen', async mode => {
+  const root = mkdtempSync(join(tmpdir(), 'hub-shared-'));
+  const journal = openPreviewJournal(join(root, 'journal'), new Uint8Array(32).fill(41), genesis);
+  const authorityPath = join(root, 'authority.jsonl');
+  let log = openConversationAuthority({ path: authorityPath, conversation: 'hub-test', termMs: 30000, monotonic: () => 1000 });
+  let granted = true, calls = 0, loseOutcome = mode === 'outcome-unreachable';
+  const direct = localAuthorityClient(log);
+  const authority: AuthorityClient = { request: async request => {
+    if (request.op === 'outcome' && loseOutcome) return { ok: false, reason: 'unreachable' };
+    const result = await direct.request(request);
+    if (request.op === 'claim' && result.ok) {
+      if (mode === 'withdrawn' || mode === 'outcome-unreachable') granted = false;
+      if (mode === 'stopped') journal.append({ kind: 'stop', reason: 'operator', at: 1000 });
+    }
+    return result;
+  } };
+  const lease = createLeaseHolder({ authority, machine: 'test', incarnation: 'test:1', monotonic: () => 1000 });
+  try {
+    expect((await lease.hold()).role).toBe('owner');
+    const shared = createReplicatedDispatch({ authority, lease, cursor: 0, elapsed: () => 1000,
+      sleep: async () => { throw Error('unexpected retry'); },
+      shipper: { token: () => ({ generation: 1, size: journal.size }), pump: async () => {}, covers: () => true } });
+    const effect = { kind: 'topic' as const, name: 'Threadline' };
+    journal.append({ kind: 'collaboration', action: 'intent', at: 1000,
+      attempt: { id: 'hub:create', effect, authorization: 'grant' } });
+    journal.append({ kind: 'collaboration', action: 'dispatch', at: 1000, id: 'hub:create' });
+    const dispatch = createCollaborationDispatch({ journal,
+      authorization: () => granted && journal.view.stop === null ? 'grant' : null,
+      held: () => 'clear', disclosure: async () => {}, shared, tokenReference, credential: () => token,
+      sendTelegram: async () => { throw Error('topic must not send'); },
+      physical: { invoke: () => { calls++; return { kind: 'response', status: 200,
+        bytes: JSON.stringify({ ok: true, result: { message_thread_id: 77, name: 'Threadline' } }) }; } } });
+    expect(await dispatch('hub:create', effect)).toMatchObject({ kind: mode === 'accepted' ? 'accepted' : 'refused' });
+    expect(calls).toBe(mode === 'accepted' ? 1 : 0);
+    if (loseOutcome) expect(log.handle({ op: 'read' })).toMatchObject({ view: { unresolved: ['collaboration:hub:create'] } });
+    loseOutcome = false;
+    await shared.flush();
+    expect(log.handle({ op: 'read' })).toMatchObject({ view: { unresolved: [], claims: 1 } });
+    const fence = lease.fence()!;
+    log.close();
+    log = openConversationAuthority({ path: authorityPath, conversation: 'hub-test', termMs: 30000, monotonic: () => 1000 });
+    expect(log.handle({ op: 'read' })).toMatchObject({ view: { unresolved: [], claims: 1 } });
+    expect(log.handle({ op: 'claim', fence, key: 'collaboration:hub:create' })).toMatchObject({
+      ok: false, reason: 'already-claimed', state: mode === 'accepted' ? 'sent' : 'refused' });
+  } finally { log.close(); journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
 
 it.each(['accepted', 'lost'])('physical topic %s uses the launcher dispatcher and retains its identity through restart', async mode => {
   const root = mkdtempSync(join(tmpdir(), 'hub-physical-')), log = join(root, 'requests.jsonl');

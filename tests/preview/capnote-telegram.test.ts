@@ -21,7 +21,7 @@ it('replays the three reported Telegram answers with a note that distinguishes t
   const sources = sourcePacket(read, SOURCE_PINS, capture.limits).sources;
   const note = sources.find(source => source.id === 'capability-note')!.text;
   expect(note).toContain(clarification);
-  expect(note).toContain('Code switched off here: rungraph-core, slack-conversation-adapter, slack-ordinary-reply, ' + clarification);
+  expect(note).toContain('Code switched off here: preview-attention-queue, rungraph-core, slack-conversation-adapter, slack-ordinary-reply, ' + clarification);
   // No capability has been promoted to available, and sends still require the doorway.
   expect(note).not.toContain('- telegram-conversation-adapter:');
   expect(note).toContain("Network writes and outside sends go through the effect doorway's four checks");

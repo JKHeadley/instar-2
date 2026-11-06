@@ -153,7 +153,7 @@ export function inspectTransportCore(sources) {
         || ts.isIdentifier(n.expression) && ['setTimeout', 'setInterval', 'fetch', 'eval', 'require'].includes(n.expression.text))) issues.push(`${path}: operational side effect/dynamic import outside host`);
       // Reference adapters (design 10 §6) may name their own protocol; export wiring of an adapter
       // module is not a branch. Every other transport-core file stays protocol-free.
-      const adapter = path.endsWith('/telegram.ts') || path.endsWith('/threadline.ts');
+      const adapter = path.endsWith('/telegram.ts') || path.endsWith('/threadline.ts') || path.endsWith('/threadline-intake.ts');
       const specifier = ts.isStringLiteral(n) && (ts.isImportDeclaration(n.parent) || ts.isExportDeclaration(n.parent));
       if (!adapter && !specifier && ts.isStringLiteral(n) && /api\.telegram\.org|sendMessage|threadline/i.test(n.text)) issues.push(`${path}: protocol branch outside adapter`);
       ts.forEachChild(n, visit);

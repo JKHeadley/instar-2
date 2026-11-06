@@ -159,7 +159,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-conversation-session.test.ts",
-        "hash": "sha256:365cbb867c146966a36ed5188068d1f3905554cedf7f58ebdb44dde7cc10a703"
+        "hash": "sha256:b347c64c95bcd5f2b96cc73c0de3a42ea6143733ce7bf58f1cc00f267021fb53"
       }
     },
     {

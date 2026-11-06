@@ -1,3 +1,4 @@
+import { modelCollaborationFixture } from './model-collaboration-fixture.js';
 import { currentActionFacts, approvalBase, validateSessionWorkRow } from './journal.js';
 import { proposeOperatorRequest, operatorRequestText } from './operator-yes.js';
 // @ts-expect-error the shipped admission checkpoint is JavaScript
@@ -87,9 +88,9 @@ function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'A
       control: async () => ({ state: 'closed', evidence: 'fake' }),
     }),
   }));
-  const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
+  const model = Function('journal', 'collaborationSurface', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
     'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', 'conversationSession',
-    'sessionWork', 'ModelNotStarted', 'conversationSessionAnswer', 'readAnswer', 'recordShape', 'shapesPath', `return (${signature}${body});`)(journal,
+    'sessionWork', 'ModelNotStarted', 'conversationSessionAnswer', 'readAnswer', 'recordShape', 'shapesPath', `return (${signature}${body});`)(journal, modelCollaborationFixture(journal),
     async () => {}, () => false, () => false, () => { throw Error('fallback'); }, () => { throw Error('fallback'); },
     (input: unknown) => input, ModelDisclosureRefused, createModelLaunchBoundary(), true, { port, authority: 'grant' },
     ModelNotStarted, conversationSessionAnswer, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
