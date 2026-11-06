@@ -23,11 +23,11 @@ Decision: train184-live-merge | Keep the shared live async child helper; retain 
 1.x FIRST: Inspected actual JKHeadley/instar origin/main 97dbe39e68471c9295072665e83b0801fb32cc60, src/core/SessionLivenessOracle.ts, docs/specs/test-runner-concurrency-bound.md and git history (5129779c3, f26468ed2); read ONEX-LESSONS section 6. Reuse bounded asynchronous waiting and indeterminate evidence principles through existing 2.0 helpers; no product code transplant is required for this merge conflict.
 Prompt review: No new prompt or parser behavior; existing live changes retain their owner review records.
 
+Register replay: generated/ rebuilt from merge d8f32c87a247a5495e2630b428b60beb5cf3cf3a; this record covers the register commit too.
+Deferral: generated/register.json:1 | not-a-deferral=Generated rule wording is retained; no new deferral.
+
 ## Closing block
 
 simplestRobustRoute: Reconcile equivalent overlapping test repairs, retaining the stronger observed HTTP response control and one shared async helper. No new runtime machinery or authority. Preserve both histories with a merge commit and regenerate pins through the delegated tools.
 80/20: Target conflict files and cheap gates; Studio owns full-run acceptance. No claim of live acceptance.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Register replay: generated/ rebuilt from merge d8f32c87a247a5495e2630b428b60beb5cf3cf3a; this record covers the register commit too.
-Deferral: generated/register.json:1 | not-a-deferral=Generated rule wording is retained; no new deferral.
