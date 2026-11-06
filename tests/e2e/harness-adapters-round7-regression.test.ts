@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runChild } from './async-child.js';
-import { expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 // @ts-expect-error The exact filesystem host is JavaScript outside pure core compilation.
 import { createHarnessAdapterFileState } from '../../scripts/slice-p13-state-storage.mjs';
 
@@ -80,18 +80,21 @@ it('A2-E2E A2-R6-01 P13-NF-24 P13-NF-28 P13-NF-38 P13-NF-39 a fully fsynced pend
   });
 }, 30_000);
 
-it('A2-E2E A2-R6-02 P13-NF-24 P13-NF-28 P13-NF-39 torn owner pending bytes stay unknown across reads and block a retrying holder', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'p13-a2-r7-torn-'));
+describe('A2-E2E A2-R6-02 P13-NF-24 P13-NF-28 P13-NF-39 torn owner pending bytes', () => {
+  let root: string, pendingPath: string, torn: string;
   const script = 'tests/harness-adapters/a2-round7-recovery-race-worker.ts';
-  writeFileSync(join(root, 'state.json'), JSON.stringify(base));
-  const seed = await runChild(worker, [script, 'seed-torn', root], {
-    cwd: process.cwd(), timeout: 30_000,
-  });
-  expect(seed.signal, seed.stderr).toBe('SIGKILL');
-  const pendingPath = join(root, 'state.json.part-two', 'facts.pending');
-  const torn = readFileSync(pendingPath, 'utf8');
+  beforeAll(async () => {
+    root = mkdtempSync(join(tmpdir(), 'p13-a2-r7-torn-'));
+    writeFileSync(join(root, 'state.json'), JSON.stringify(base));
+    const seed = await runChild(worker, [script, 'seed-torn', root], {
+      cwd: process.cwd(), timeout: 30_000,
+    });
+    expect(seed.signal, seed.stderr).toBe('SIGKILL');
+    pendingPath = join(root, 'state.json.part-two', 'facts.pending');
+    torn = readFileSync(pendingPath, 'utf8');
+  }, 60_000);
 
-  for (let reconstruction = 0; reconstruction < 3; reconstruction++) {
+  it.each([0, 1, 2])('stays unknown across fresh-process reconstruction %s', async () => {
     const reader = await runChild(worker, [script, 'reader', root], {
       cwd: process.cwd(), timeout: 30_000,
     });
@@ -99,49 +102,52 @@ it('A2-E2E A2-R6-02 P13-NF-24 P13-NF-28 P13-NF-39 torn owner pending bytes stay 
     expect(JSON.parse(reader.stdout).observations)
       .toEqual([1, 2, 3].map(read => expect.objectContaining({ read, state: 'unknown' })));
     expect(readFileSync(pendingPath, 'utf8')).toBe(torn);
-  }
+  }, 60_000);
 
-  const holder = await runChild(worker, [script, 'holder', root], {
-    cwd: process.cwd(), timeout: 30_000,
-  });
-  expect(holder.status, holder.stderr).toBe(0);
-  expect(JSON.parse(holder.stdout)).toMatchObject({ state: 'unknown' });
-  expect(readFileSync(pendingPath, 'utf8')).toBe(torn);
-}, 30_000);
-
-it('A2-E2E R7-A2-R5-02 P13-NF-25 P13-NF-28 P13-NF-38 P13-NF-51 poison evidence loss stays unresolved after final-fsync SIGKILL and older-prefix reconstruction', async () => {
-  const script = 'tests/harness-adapters/a2-round7-poison-cut-worker.ts';
-  let scenarios = 0;
-  for (const cut of ['none', 'final-fsync'] as const) {
-    const directory = mkdtempSync(join(tmpdir(), `p13-a2-r7-poison-${cut}-`));
-    const seeded = await runChild(worker, [script, 'seed', cut, directory, 'control', 'full'], {
+  it('blocks a retrying holder without changing the torn bytes', async () => {
+    const holder = await runChild(worker, [script, 'holder', root], {
       cwd: process.cwd(), timeout: 30_000,
     });
-    expect(seeded.signal, seeded.stderr).toBe(cut === 'final-fsync' ? 'SIGKILL' : null);
-    expect(seeded.status, seeded.stderr).toBe(cut === 'final-fsync' ? null : 0);
+    expect(holder.status, holder.stderr).toBe(0);
+    expect(JSON.parse(holder.stdout)).toMatchObject({ state: 'unknown' });
+    expect(readFileSync(pendingPath, 'utf8')).toBe(torn);
+  }, 60_000);
+});
 
-    for (const history of ['full', 'older'] as const) for (const loss of ['control', 'conflict', 'nine-witness'] as const) {
-      const recovered = await runChild(worker, [script, 'recover', cut, directory, loss, history], {
+// Seed each cut once, then report every existing history/loss combination independently.
+describe.each(['none', 'final-fsync'] as const)(
+  'A2-E2E R7-A2-R5-02 P13-NF-25 P13-NF-28 P13-NF-38 P13-NF-51 poison evidence after %s', cut => {
+    const script = 'tests/harness-adapters/a2-round7-poison-cut-worker.ts';
+    let directory: string;
+    beforeAll(async () => {
+      directory = mkdtempSync(join(tmpdir(), `p13-a2-r7-poison-${cut}-`));
+      const seeded = await runChild(worker, [script, 'seed', cut, directory, 'control', 'full'], {
         cwd: process.cwd(), timeout: 30_000,
       });
-      if (cut === 'final-fsync') {
-        expect(recovered.status).toBe(1);
-        expect(recovered.stderr).toContain('Part Two harness state append is uncertain');
-        scenarios++;
-        continue;
-      }
-      expect(recovered.status, recovered.stderr).toBe(0);
-      const result = JSON.parse(recovered.stdout);
-      if (history === 'full' && loss === 'control') {
-        expect(result.before).toMatchObject({ state: 'poisoned' });
-        expect(result.after).toMatchObject({ state: 'poisoned' });
-      } else {
-        expect(result.after, `${cut}/${history}/${loss}`).toMatchObject({ state: 'unknown' });
-      }
-      expect(result.reconnect, `${cut}/${history}/${loss}`)
-        .toMatchObject({ disposition: 'refused', handle: null });
-      scenarios++;
-    }
-  }
-  expect(scenarios).toBe(12);
-}, 60_000);
+      expect(seeded.signal, seeded.stderr).toBe(cut === 'final-fsync' ? 'SIGKILL' : null);
+      expect(seeded.status, seeded.stderr).toBe(cut === 'final-fsync' ? null : 0);
+    }, 60_000);
+
+    it.each((['full', 'older'] as const).flatMap(history =>
+      (['control', 'conflict', 'nine-witness'] as const).map(loss => [history, loss] as const)))(
+      'retains unresolved loss or exact control with %s history and %s evidence', async (history, loss) => {
+        const recovered = await runChild(worker, [script, 'recover', cut, directory, loss, history], {
+          cwd: process.cwd(), timeout: 30_000,
+        });
+        if (cut === 'final-fsync') {
+          expect(recovered.status).toBe(1);
+          expect(recovered.stderr).toContain('Part Two harness state append is uncertain');
+          return;
+        }
+        expect(recovered.status, recovered.stderr).toBe(0);
+        const result = JSON.parse(recovered.stdout);
+        if (history === 'full' && loss === 'control') {
+          expect(result.before).toMatchObject({ state: 'poisoned' });
+          expect(result.after).toMatchObject({ state: 'poisoned' });
+        } else {
+          expect(result.after, `${cut}/${history}/${loss}`).toMatchObject({ state: 'unknown' });
+        }
+        expect(result.reconnect, `${cut}/${history}/${loss}`)
+          .toMatchObject({ disposition: 'refused', handle: null });
+      }, 60_000);
+  });
