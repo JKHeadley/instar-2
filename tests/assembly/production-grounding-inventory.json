@@ -5452,7 +5452,7 @@
     "src/assembly/production-custody-wiring.ts": "69b7749652006687f97420385b6e7df663ba8c576519cdfcb340577cdf66be83",
     "scripts/fixed-installation-verifier-clock-observer.mjs": "3eff053d740be45c0ecd0bc75e1443c91603de356b348444b4af8d9389362d4c",
     "src/assembly/assembly.declarations.json": "637a430471131fa3a051624b2c62e53f077350de79892fc4f5791cf796f3e896",
-    "src/assembly/production-composition.ts": "3d288a410c32d563ed899933fa3b8565c7c626814bc9ea9f0fffae31c5c9f599",
+    "src/assembly/production-composition.ts": "5486518ea01778deb64bf6849d0c6cab836ddeed75f01f7c4653fa1daf30387c",
     "src/effects/effect.declarations.json": "f0483f08d1a929569c41435e34227310c29b56db1e2f2ac45248e76b7e0ff6d8",
     "src/rungraph/accepted-reply.declarations.json": "fd8b36ddd0a42fd37569fc28cddd7db28cd63337314ca354ded8b71f02d27b14",
     "src/rungraph/accepted-reply.ts": "5e523f7f68ae283903f05a7b36f7affccb769de29e9b6c8d72fb21d965fa26e3",
