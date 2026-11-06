@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:9ae1f707f0303b6f3ee5b2b566ff2fdc7fafcd418ef863b8333d28cf20eebdfe",
-  "commit": "6b560599d3f6f2c69263f90f3312db4d454fdc7b",
+  "generation": "sha256:132e3bf6b756d7a286d887d4d4a1eda6309552f6893673434b51a8363902974e",
+  "commit": "46469682994bf291dbc1fcc9ac99a6538234fe62",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -9,7 +9,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files with bounded admission; refused downloads keep the message."
       },
       {
         "id": "harness-doorway-parity",
@@ -28,12 +28,28 @@
         "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
       },
       {
+        "id": "preview-attention-queue",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "Track/acknowledge items via authenticated dashboard across handoff."
+      },
+      {
+        "id": "preview-collaboration-hub",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "Silent hub; authenticated parent links; unknown effects retained."
+      },
+      {
         "id": "preview-conversation",
         "status": "dark",
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -41,7 +57,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "an encrypted local journal saves messages, summaries, memory; survives restarts; correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -57,7 +73,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -65,7 +81,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -139,7 +155,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files with bounded admission; refused downloads keep the message."
       },
       {
         "id": "harness-doorway-parity",
@@ -158,12 +174,28 @@
         "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
       },
       {
+        "id": "preview-attention-queue",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "Track/acknowledge items via authenticated dashboard across handoff."
+      },
+      {
+        "id": "preview-collaboration-hub",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "Silent hub; authenticated parent links; unknown effects retained."
+      },
+      {
         "id": "preview-conversation",
         "status": "dark",
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -171,7 +203,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "an encrypted local journal saves messages, summaries, memory; survives restarts; correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -187,7 +219,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -195,7 +227,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -269,7 +301,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files with bounded admission; refused downloads keep the message."
       },
       {
         "id": "harness-doorway-parity",
@@ -288,12 +320,28 @@
         "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
       },
       {
+        "id": "preview-attention-queue",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "Track/acknowledge items via authenticated dashboard across handoff."
+      },
+      {
+        "id": "preview-collaboration-hub",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "Silent hub; authenticated parent links; unknown effects retained."
+      },
+      {
         "id": "preview-conversation",
         "status": "dark",
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -301,7 +349,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "an encrypted local journal saves messages, summaries, memory; survives restarts; correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -317,7 +365,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -325,7 +373,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -399,7 +447,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files with bounded admission; refused downloads keep the message."
       },
       {
         "id": "harness-doorway-parity",
@@ -418,12 +466,28 @@
         "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
       },
       {
+        "id": "preview-attention-queue",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "Track/acknowledge items via authenticated dashboard across handoff."
+      },
+      {
+        "id": "preview-collaboration-hub",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "Silent hub; authenticated parent links; unknown effects retained."
+      },
+      {
         "id": "preview-conversation",
         "status": "dark",
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -431,7 +495,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "an encrypted local journal saves messages, summaries, memory; survives restarts; correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -447,7 +511,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -455,7 +519,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -529,7 +593,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files with bounded admission; refused downloads keep the message."
       },
       {
         "id": "harness-doorway-parity",
@@ -548,12 +612,28 @@
         "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
       },
       {
+        "id": "preview-attention-queue",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "Track/acknowledge items via authenticated dashboard across handoff."
+      },
+      {
+        "id": "preview-collaboration-hub",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": true,
+        "text": "Silent hub; authenticated parent links; unknown effects retained."
+      },
+      {
         "id": "preview-conversation",
         "status": "dark",
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -561,7 +641,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "an encrypted local journal saves messages, summaries, memory; survives restarts; correct or forget facts."
       },
       {
         "id": "preview-owned-obligations",
@@ -577,7 +657,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -585,7 +665,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "answers \"status\" and \"how are you doing\" from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
