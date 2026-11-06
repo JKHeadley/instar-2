@@ -159,8 +159,11 @@ it('two runners, one conversation: one reply; the peer goes away and the reply i
   await t.stop(back); await t.stop(studio);
 }, 180000);
 
-it('the owner machine is lost: the other machine takes over WITH the history, holds its reply until the peer is back, and nothing is sent twice', async () => {
-  const t = await twoMachines();
+it.each([0, 4500])('the owner machine is lost: the other machine takes over WITH the history, holds its reply until the peer is back, and nothing is sent twice (%i ms transport return)', async sendDelayMs => {
+  // Use the shipped authority term: the former 6s test-only term left only 4s
+  // locally and confused a slow synchronous transport return with owner loss.
+  // SIGKILL below causes takeover; the explicit SIGSTOP neighbors prove expiry.
+  const t = await twoMachines(30000, { INSTAR_PREVIEW_CUTOVER_SEND_DELAY_MS: String(sendDelayMs) });
   const studio = t.start('studio', ['--journal-lineage', 'seed']);
   await until('the seeded machine serves', () => studio.output.stderr.includes('owner: epoch 1'));
   const laptop = t.start('laptop');

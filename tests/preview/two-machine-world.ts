@@ -31,8 +31,8 @@ afterEach(async () => {
   }
 });
 
-export async function twoMachines(termMs = 6000) {
-  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
+export async function twoMachines(termMs = 6000, childEnv = {}) {
+  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile, childEnv);
   const { botId, chatId } = world.configuration, conversation = `telegram/bot-${botId}/chat-${chatId}`;
   harness.setUpdates([]);
   const authorityProcess = spawn(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
