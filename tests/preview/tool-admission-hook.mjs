@@ -16,7 +16,7 @@ import { appendFileSync, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, r
 import { lookup } from 'node:dns/promises';
 import { connect, isIP } from 'node:net';
 import { join } from 'node:path';
-import { admitToolCall, CODEX_NETWORK_READ_TOOLS, DELEGATION_TOOLS, DELEGATION_WAIT_TOOLS, HELD_CHECK_MAX_BYTES, hookOutput, outwardText, OUTWARD_TOOLS,
+import { admitToolCall, noteText, CODEX_NETWORK_READ_TOOLS, DELEGATION_TOOLS, DELEGATION_WAIT_TOOLS, HELD_CHECK_MAX_BYTES, hookOutput, outwardText, OUTWARD_TOOLS,
   RECORD_EXCERPT_CHARS, SUBAGENT_TOOLS, webReadHost, permissionInputDigest, permissionPromptCandidate } from './tool-admission.mjs';
 
 const NETWORK_TOOLS = Object.freeze(['WebFetch', 'WebSearch', ...CODEX_NETWORK_READ_TOOLS]);
@@ -162,10 +162,21 @@ if (target.host !== null && !isIP(target.host)) {
 // `exists` does not follow symlinks, so a dangling link is present and then refused as unresolvable (resolvedPath).
 const exists = path => { try { lstatSync(path); return true; } catch { return false; } };
 let decision = heldDecision ?? admitToolCall(call, config, n, { exists, realpath: realpathSync, addresses: () => addresses }, child, Date.now());
+// Rule 121: a note goes to the runner's attribution check once it is otherwise admitted. A check that cannot answer lets the
+// note through: failing closed would stop every memory write in an outage, and the runner records what it could not check.
+if (!permissionMode && decision.decision === 'allow' && typeof config.gate === 'string') {
+  const note = noteText(call.tool_name, call.tool_input);
+  if (note !== null) {
+    try {
+      const answer = await ask({ phase: 'pre', kind: 'attribution', tool_name: call.tool_name, tool_use_id: call.tool_use_id, text: note });
+      if (answer.decision !== 'allow') decision = { decision: 'deny', reason: answer.reason, kind: 'attribution' };
+    } catch { /* the checkpoint's own 'tool' ask below still decides whether this step may run */ }
+  }
+}
 if (permissionMode && (decision.decision !== 'allow' || decision.kind !== undefined || decision.doorway !== undefined
   || permissionInputDigest(decision.updatedInput ?? call.tool_input) !== permissionCandidate.effective))
   throw Error('current scope or exact effective input differs');
-if (heldDecision !== null) { /* refused before anything else was decided or done for it */ }
+if (heldDecision !== null || decision.kind === 'attribution') { /* refused before anything else was decided or done for it */ }
 else if (decision.decision === 'gate') {
   const kind = decision.kind;
   try { decision = { ...(await ask({ phase: 'pre', kind, tool_name: call.tool_name, tool_input: call.tool_input ?? null,

@@ -465,6 +465,18 @@ export const HELD_CHECK_MAX_BYTES = 1024 * 1024;
  * whose input does not leave it (a file tool, a search, a sandboxed shell command, whose network goes through the shell's
  * checkpoint, a subagent). Outward: WebFetch, WebSearch, a Codex network read, a named outward tool, an MCP tool, and a
  * shell command run outside the sandbox. */
+/** Rule 121: the words a file tool would put in a note. Notes are prose files; code is out of scope. Null when this is not one. */
+export function noteText(tool, input) {
+  const name = String(tool ?? ''), prose = path => typeof path === 'string' && /\.(?:md|markdown|txt)$/iu.test(path);
+  if ((name === 'Write' || name === 'Edit' || name === 'NotebookEdit') && prose(input?.file_path ?? input?.notebook_path)) {
+    const text = input?.content ?? input?.new_string ?? input?.new_source;
+    return typeof text === 'string' && text.trim() ? text : null;
+  }
+  const patch = name === 'apply_patch' ? input?.input ?? input?.command ?? input?.patch : undefined;
+  if (typeof patch !== 'string' || !patchPaths(patch)?.some(prose)) return null;
+  const added = patch.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1)).join('\n');
+  return added.trim() ? added : null;
+}
 export function outwardText(tool, input) {
   const name = String(tool ?? '');
   const outward = name === 'WebFetch' || name === 'WebSearch' || CODEX_NETWORK_READ_TOOLS.includes(name) || Object.hasOwn(OUTWARD_TOOLS, name)

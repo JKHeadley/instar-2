@@ -52,6 +52,7 @@ import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
 import { JEV_MODEL, jevQuestions, publicCredentialRegister, concealSecretMaterial, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { assertLiveJudgment, modelCallRecord, sha256 } from './model-call-boundary.js';
+import { ATTRIBUTION_QUESTION, attributionTrace } from './attribution.js';
 import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { readAnswer, taskFields } from './answer-reading.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
@@ -621,7 +622,7 @@ const recordShape = (path, role, layer, outcome, shape) => {
     durablePreviewWrite(path, saved);
   } catch { /* a diagnostics write never changes a model outcome */ }
 };
-const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
+const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') || id.endsWith(':attribution-check') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
   : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
 /** Rule 95, the fail direction of this consumer: may text around one complete Decision object be
  * discarded? The answer side says yes — the answer, a reply revision and the summary writer, which
@@ -640,13 +641,13 @@ const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';
  * (`summary:index:<n>`, {concepts}) -- and each of their consumers parses the answer as JSON. For them the runner
  * serializes the object, never the model (answer-reading.ts). Every other call's answer is prose or the conversation
  * protocol's own flat fields. Nothing branches on what the text means, only on which consumer asked. */
-const objectAnswerOf = id => /^summary:/u.test(id);
+const objectAnswerOf = id => /^summary:/u.test(id) || id.endsWith(':attribution-check');
 /** The registered live judgment a subscription call serves (model-call-boundary.ts). A revised
  * reply's held-class review is a reply review; the revision is the agent's own response to the
  * objections, with its own floor. A retrospective pass is its own judgment, and so is its duty follow-up
  * (`retrospective:N:duties`); its benchmark reruns (`retrospective:N:rerun:I`) replay an answer. */
 const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review'
-  : id.endsWith(':reply-revision') ? 'reply-revision' : /^summary:.*:review$/u.test(id) ? 'summary-review'
+  : id.endsWith(':attribution-check') ? 'attribution-check' : id.endsWith(':reply-revision') ? 'reply-revision' : /^summary:.*:review$/u.test(id) ? 'summary-review'
   : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
@@ -749,6 +750,7 @@ const stepCheckView = view => ({ total: view.stepChecks.size,
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
+  if (options.attribution !== undefined && !['record', 'enforce'].includes(options.attribution)) throw Error('preview: --attribution must be record or enforce');
   // Retired 2026-10-20 by the operator's review (promotion record): no live evidence, so it can no longer be turned on.
   if (options['step-check'] === 'true') throw new PlainRefusal('preview: the step check is retired (2026-10-20, no live evidence); launch without --step-check true');
   const stepCheckEnabled = false;
@@ -757,7 +759,7 @@ async function main() {
   const retrospectiveEnabled = options.retrospective !== 'false';
   // Part 18 (plan #402): the live sentinels, all on by default; `--sentinels none` (or a subset) is the off-switch.
   const sentinelFamilies = sentinelFamiliesOf(options.sentinels);
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'carry-group', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract', 'install-login', 'prepare-logins', 'test-copy'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'carry-group', 'audit', 'export-memory', 'attribution-trace', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract', 'install-login', 'prepare-logins', 'test-copy'].includes(command)) throw Error('preview: unknown command');
   if (command === 'test-copy') {
     // test-copy-1020: a NEW root holding a copy of the source's journal, explicitly rebound (and recorded as rebound) to a
     // test bot and the operator's own private chat on it. The source root is only read; logins, custody and the
@@ -909,6 +911,13 @@ async function main() {
       process.stdout.write(`${JSON.stringify({ frontier, exitFrontier: exited?.frontier ?? null,
         frontierMatches: exited?.frontier === frontier, records })}\n`);
     } finally { journal.close(); }
+    return;
+  }
+  if (command === 'attribution-trace') {
+    // Rule 121: read-only. Every recorded wording of a claim, oldest first, by words or by a marker's ref.
+    const journal = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+    try { process.stdout.write(`${JSON.stringify(attributionTrace(journal.view.attribution ?? [], required(options, 'query')), null, 2)}\n`); }
+    finally { journal.close(); }
     return;
   }
   if (command === 'export-memory') {
@@ -2287,6 +2296,15 @@ async function main() {
           usage: recordedUsage(result.usage) };
       },
       summaryCheck: async evidence => (await callJev('jev-summary-faithfulness', evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
+      // Rule 121, off unless launched with it. A summary-style object answer: the runner serializes it, the model never does.
+      ...(options.attribution === undefined ? {} : { attribution: { mode: options.attribution,
+        judge: async ({ id, packet, deadlineAt }) => {
+          const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}\n${packet}`, wallNow()));
+          const prepared = modelEnvelope({ question: ATTRIBUTION_QUESTION, context: packet, id, ...(writer ? { writer } : {}) });
+          const result = await invokeSubscription(prepared, id, undefined, deadlineAt);
+          return { value: result.state === 'complete' && !result.failureClass ? result.value : null,
+            ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
+        } } }),
       replyCheck: {
         elapsedMs: () => performance.now(),
         jev: (text, questions = jevQuestions, timeoutMs, occurrence, admission) => callJev(questions === SUMMARY_QUESTION ? 'jev-summary-integrity' : 'jev-reply-check',
@@ -2644,6 +2662,7 @@ async function main() {
           hold: bounds => hostResources.hold('maintenance', bounds), scrub: text => redact(text).text,
           held: heldVerdict(heldSecrets), now: wallNow }) : null,
         append: appendWork, stopped: gateStopped, now: wallNow, held: heldVerdict(heldSecrets),
+        note: (call, text) => worker.attributionOfNote(call, text),
         effects: createToolEffectOwner({ decide: (tool, input, parent) => conversationSession && sessionConnectors.has(parent.child)
           ? admitSessionConnector({ tool, input, config: admissionConfig(), mcp: readRootMcp(root), enabled: accountActions,
             now: wallNow(), decide: admitToolCallEffect })
