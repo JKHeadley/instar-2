@@ -9,7 +9,7 @@ Affected floors: secrets — synthetic local credentials only; spend cap — unc
 Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
-Tier rationale: Test infrastructure repair only. Production source, policy and authority are untouched; real process, HTTP and durable-state assertions remain.
+Tier rationale: Test infrastructure repair only. Production source, policy and authority are untouched; generated artifact pins follow the repaired tests; real process, HTTP and durable-state assertions remain.
 Side effects: Round7 reports separate boundary cases; asynchronous waits allow the worker RPC to run. Crash fixture can explicitly request a larger coordinated test-only invocation window; other tests retain the 100ms default. Real audio test allows the existing decoder chain to finish.
 Undo and recovery: Revert this repair commit to restore earlier test drivers. No production data or schema changes; disposable test roots retain crash evidence.
 Multi-machine posture: Machine-local disposable test processes and synthetic credentials. WSL runs portable checks; Studio supplies installed media tooling and native host checks. No Studio writes.
@@ -28,7 +28,9 @@ Decision: train184-repair-async | Await child completion and separate independen
 Decision: train184-repair-http | Use a coordinated 10s fixture invocation window for crash tests, retain 100ms defaults elsewhere, and require an observed response before printing the crash marker; cover a slow response and a timed-out response. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-184-repair-193028-PROGRESS.md
 Decision: train184-repair-media | Give the real decoder test 150s to cover its existing 30s and 90s children plus cleanup; do not alter production timeouts or skip the proof. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-184-repair-193028-PROGRESS.md
 
-Subject (6 paths): tests/e2e/harness-adapters-round7-regression.test.ts, tests/e2e/model-provider-path.test.ts, tests/model-provider/crash-worker.mjs, tests/model-provider/fixture.ts, tests/preview/media-understanding.test.ts, tests/preview/proofs-launcher.test.ts
+Decision: train184-repair-repin | Regenerate test artifact pins and register replay using the supplied desk tools after lint found stale owner references; do not hand-edit hashes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-184-repair-193028-PROGRESS.md
+
+Subject (6 test paths plus generated pins and register replay): tests/e2e/harness-adapters-round7-regression.test.ts, tests/e2e/model-provider-path.test.ts, tests/model-provider/crash-worker.mjs, tests/model-provider/fixture.ts, tests/preview/media-understanding.test.ts, tests/preview/proofs-launcher.test.ts
 
 ## Closing block
 
