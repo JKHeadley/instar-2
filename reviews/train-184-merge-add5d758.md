@@ -9,13 +9,13 @@ Affected floors: secrets — no credential path change; spend cap — no calls o
 Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
-Tier rationale: One test fixture uses the existing query port; no product behavior, timeout, resource ceiling, or persistent format changes.
+Tier rationale: Reconcile live changes and test fixture conflicts without adding runtime behavior. Existing feature owner reviews remain applicable.
 Side effects: The fixture no longer relies on real ps succeeding for invented absent PIDs or a complete ambient host census. Real-host recovery tests remain intact. No new runtime mechanism or capability restriction.
 Undo and recovery: Revert this test and review commit to restore ambient observations; no runtime migration or journal repair.
 Multi-machine posture: Deliberately machine-local test observations; the real Six journal is reopened with distinct incarnations. No change to replication, ownership, or deployment behavior.
 Layer below: scripts/resource-owner.mjs startEvidence/recover/settle, scripts/process-inventory.mjs census, tests/preview/six-host-resources.ts and the existing real-host orphan recovery test. Production retains a row whenever absence is unproven and resumes partial returns using their original settlement.
-Bug class: unit
-Bug evidence: reproducer=tests/integration/resource-owner.test.ts
+Bug class: none
+Bug evidence: none
 Hook bypass: none
 Convergence: none
 Decision: train184-live-merge | Keep the shared live async child helper; retain train-184 observed-response crash controls and its invocationTimeoutMs fixture API. Rebind the live integration consumer to that API. Preserve newer evidenced catalog timestamps and existing review provenance. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-184-repair-065047-PROGRESS.md
@@ -28,3 +28,6 @@ Prompt review: No new prompt or parser behavior; existing live changes retain th
 simplestRobustRoute: Reconcile equivalent overlapping test repairs, retaining the stronger observed HTTP response control and one shared async helper. No new runtime machinery or authority. Preserve both histories with a merge commit and regenerate pins through the delegated tools.
 80/20: Target conflict files and cheap gates; Studio owns full-run acceptance. No claim of live acceptance.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+
+Register replay: generated/ rebuilt from merge d8f32c87a247a5495e2630b428b60beb5cf3cf3a; this record covers the register commit too.
+Deferral: generated/register.json:1 | not-a-deferral=Generated rule wording is retained; no new deferral.
