@@ -518,7 +518,7 @@ if (!existsSync(${JSON.stringify(permit)})) throw Error('parent release absent')
         expect(result.status, result.stderr).toBe(0); return result.stdout;
       };
       const first = JSON.parse(await run()) as { rules: number; entries: number; generation: string; authority: string };
-      expect(first.rules).toBe(121); expect(first.entries).toBeGreaterThan(121); expect(first.authority).toBe('shape-only');
+      expect(first.rules).toBe(122); expect(first.entries).toBeGreaterThan(122); expect(first.authority).toBe('shape-only');
       const before = readFileSync(join(root, 'register.json'), 'utf8'); await run('--check'); await run();
       expect(readFileSync(join(root, 'register.json'), 'utf8')).toBe(before);
       expect(readFileSync(join(root, 'capabilities.md'), 'utf8')).toContain('register-tooling');
