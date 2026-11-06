@@ -1,6 +1,6 @@
 # Change review — drain probe stdout before success
 
-Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
+Subject base: 3f28c10a23f29a788d4c3a9a90116cdb34e5fc2f
 Review state: open
 Reviewed content: none
 Outcome: Retain all access-probe rows when its pipe reader pauses by waiting for the existing stdout write callback before the existing successful exit.
@@ -22,6 +22,8 @@ Convergence: none
 Prompt review: No model prompt, model-output parsing or judgment change; only the OS access-probe producer waits for its pipe.
 
 Decision: HPROBE-MINIMAL-1105 | Reuse only the proven stdout flush and real slow-reader regression, retaining existing refusal, identity and resource behavior. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/harness-probe-drain-minimal-1105-PROGRESS.md
+
+Integration: Source owner caaf501e0e8a2733701dcd19f79b643c60ed480a originally reviewed against b5806d1e015dc650cdc1dee2e0accab05a849d4b. This record is open and bound to the actual train-188 integration base above, avoiding attribution of unrelated intervening changes to this repair. Source, test and defect bytes remain identical to that owner.
 
 ## Closing block
 
