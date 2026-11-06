@@ -1,7 +1,7 @@
 # Generated glossary
 
-Register generation: sha256:ef4fa6b76e7bfbc47c0d2ea94c4f7296146e0bc1d947e3023088b270a0c781b5
-Source commit: b97d0f7dcc054d02a94a20b2d8c919ac5613a684
+Register generation: sha256:3ee4fbc46f0f013ddcfb82b92232dc426afa5cca4d43e763fa870e9e97bea4e4
+Source commit: 48a3aed5470044a3bbac73dbfd09f9e54278d4fb
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -75,7 +75,7 @@ A capability the system offers that has a name a person could ask for. A module 
 not a feature; "private views" is. The test: could it appear in the agent's own briefing as
 something it can do? (Rules 34, 39, 62, 72, 76.)
 
-Used by: rule:105, rule:118, rule:30, rule:34, rule:39, rule:52, rule:62, rule:72, rule:73, rule:78, rule:8, rule:84, rule:91
+Used by: rule:105, rule:118, rule:122, rule:30, rule:34, rule:39, rule:52, rule:62, rule:72, rule:73, rule:78, rule:8, rule:84, rule:91
 
 ## governed port
 
@@ -237,7 +237,7 @@ Used by: rule:102, rule:105, rule:120, rule:62, rule:8, rule:80, rule:87
 A principal the agent serves — any standing. Every operator is a user; a user with only
 requester standing is a user the agent works *for* but does not take *binding* decisions from.
 
-Used by: rule:114, rule:14, rule:2, rule:28, rule:35, rule:52, rule:54, rule:62, rule:72, rule:76, rule:77, rule:78, rule:83, rule:85, rule:87, rule:95
+Used by: rule:114, rule:122, rule:14, rule:2, rule:28, rule:35, rule:52, rule:54, rule:62, rule:72, rule:76, rule:77, rule:78, rule:83, rule:85, rule:87, rule:95
 
 ## user-facing
 
