@@ -12,7 +12,9 @@ let tenOwner = null;
 export const loadTenOwner = () => tenOwner ??= import('../src/assembly/process-inventory.js')
   .catch(() => import('../dist/assembly/process-inventory.js'));
 
-const CENSUS_COLUMNS = 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=';
+// Arguments carry neither incarnation nor membership evidence. Collect only the executable
+// name so long model prompts cannot exhaust the bounded query or enter resource observations.
+const CENSUS_COLUMNS = 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,comm=';
 const ADAPTER = 'host-ps-lsof-sandbox-inventory-v2';
 /**
  * The sandbox reading (macOS): the kernel's `sandbox_check` for each named pid, asked from outside the sandbox, so no
@@ -54,7 +56,7 @@ export function cpuMilliseconds(text) {
   return Math.round((Number(days) * 86400 + seconds) * 1000);
 }
 
-/** One census row: pid ppid pgid uid rss time stat <lstart: 5 fields> command… */
+/** One census row: pid ppid pgid uid rss time stat <lstart: 5 fields> executable name */
 function parseRow(line, sample) {
   const parts = line.trim().split(/\s+/u);
   if (parts.length < 12) return null;

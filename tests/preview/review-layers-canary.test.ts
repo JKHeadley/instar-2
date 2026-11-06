@@ -14,7 +14,7 @@ const fenced = value => `\`\`\`json\n${value}\n\`\`\``;
 // The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride the answer as its own line, as in journal-agent.test.ts.
 // The answer itself stays exact, and nothing else may be appended.
-const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
+const NOTICE_LINE = /^(?:Reminder: (?:the credential "[^"]+" \([^)]+\)|your activation) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
 const answerOf = text => {
   const [answer, ...notices] = text.split('\n\n');
   for (const notice of notices) {
@@ -112,7 +112,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         '--bot-username', world.configuration.botUsername, '--max-cycles',
         mode === 'summary-contradiction' ? '1' : '3', '--max-poll-seconds', '1'],
       { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env });
-      expect(run.status, run.stderr).toBe(0);
+      expect(run.status, JSON.stringify({ signal: run.signal, error: run.error?.message, stderr: run.stderr })).toBe(0);
       const rows = readFileSync(calls, 'utf8').trim().split('\n').map(line => JSON.parse(line));
       const roles = rows.map(row => row.role);
       expect(roles).toEqual(mode === 'summary-contradiction'
@@ -145,7 +145,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
         'tests/preview/journal-agent.mjs', 'status', '--root', root],
       { cwd: process.cwd(), encoding: 'utf8', timeout: 10000, env });
-      expect(status.status, status.stderr).toBe(0);
+      expect(status.status, JSON.stringify({ signal: status.signal, error: status.error?.message, stderr: status.stderr })).toBe(0);
       const view = JSON.parse(status.stdout);
       expect(view.calls).toBe(mode === 'reply-contradiction' ? 5 : 4);
       const sealed = readFileSync(join(root, 'journal.encrypted'));

@@ -305,7 +305,7 @@ it('ordinary settlement returns its debit with more than 64 unrelated cwd candid
   const fake = Array.from({ length: 80 }, (_, i) => 920000 + i);
   const fakeRows = fake.map(pid => `${pid} 1 ${pid} 501 4096 0:00.10 S Mon Nov  3 15:00:00 2027 /bin/sleep 60`).join('\n');
   const query = async (file: string, args: string[]) => {
-    if (file === '/bin/ps' && args[0] === '-U' && args.includes('pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command='))
+    if (file === '/bin/ps' && args[0] === '-U' && args.includes('pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,comm='))
       return (await hostQuery(file, args)) + fakeRows + '\n';
     if (file === '/usr/sbin/lsof' || file === '/usr/bin/sudo') {
       const real = await hostQuery(file, args);

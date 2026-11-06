@@ -41,7 +41,7 @@ export interface InventoryProcess {
   readonly pid: number; readonly ppid: number; readonly pgid: number; readonly uid: number;
   /** The platform's process start identity (with the pid, one incarnation). */
   readonly start: string;
-  /** Executable and ordered argv exactly as the platform reports them, joined; in memory only. */
+  /** Executable name reported by the platform; diagnostic only, never membership authority. */
   readonly command: string;
   readonly zombie: boolean;
   readonly cwd: WorkingDirectory;

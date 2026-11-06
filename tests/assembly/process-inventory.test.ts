@@ -130,7 +130,9 @@ describe('launch membership join', () => {
 describe('physical inventory adapter (real host)', () => {
   it('enumerates the current user completely, with reported readings and real working directories', async () => {
     const area = realpathSync(mkdtempSync(join(tmpdir(), 'inventory-')));
-    const child = spawn('/bin/sleep', ['10'], { cwd: area, detached: true, stdio: 'ignore' });
+    const argument = 'inventory-argument-must-not-be-collected-' + 'x'.repeat(64 * 1024);
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)', argument],
+      { cwd: area, detached: true, stdio: 'ignore' });
     try {
       await new Promise(done => setTimeout(done, 150));
       const inventory = createProcessInventory({ query: hostQuery, now: () => 1, monotonic: () => 1, identity: HOST_IDENTITY,
@@ -140,7 +142,10 @@ describe('physical inventory adapter (real host)', () => {
       const own = census.processes.find((p: InventoryProcess) => p.pid === process.pid);
       expect(own?.resource).toMatchObject({ state: 'reported', sourceSample: census.id });
       expect(own!.resource.rssBytes).toBeGreaterThan(0);
-      expect(census.processes.some((p: InventoryProcess) => p.pid === child.pid)).toBe(true);
+      const observedChild = census.processes.find((p: InventoryProcess) => p.pid === child.pid);
+      expect(observedChild).toBeDefined();
+      // Arguments are neither identity nor membership evidence; large prompts must not fill the census.
+      expect(observedChild!.command).not.toContain('inventory-argument-must-not-be-collected');
       const cwd = await inventory.workingDirectories([child.pid!, 99999999]);
       expect(cwd.get(child.pid)).toEqual({ state: 'observed', path: area });
       expect(cwd.get(99999999)).toEqual({ state: 'unavailable' });
