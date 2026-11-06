@@ -17,14 +17,29 @@ owner implementations were inspected directly, alongside src/ searches and their
 - `production-session-work.ts` exposes admitted model work with resource and stop floors.
 - `src/recall/README.md` documents whole-store reads and unresolved production bindings.
 
-The new CartographerSourcePort remains an interface supplied by tests, not an implemented
-committed-Git source adapter. Existing public owners can support an adaptation, but this
-branch has not connected them into the required producer. This is incomplete work, not a
-claim that the platform cannot support it or that the operator must grant new authority.
+The source adapter now has a production implementation in
+`src/assembly/production-cartographer-source.ts`: real exact append/flush receipts
+and the existing `createProductionCustodyReader` enforce current standing, scoped
+positions, expiry, generation and stop before releasing captured committed bytes.
+`scripts/cartographer-committed-source.mjs` adapts the original batched Git identity
+read with exact-root admission, finite population/byte/command limits and pinned
+revision rechecks. `production-cartographer.ts` constructs the real Awareness
+consumer; `production-composition.ts` exposes it only with the installed shared
+fact and persistence owners. This is source composition, not installed activation.
+
+The finite capture currently refuses a repository exceeding 4096 entries or 2 MiB;
+it is not the complete original incremental large-tree worker. Receipt projection
+removes the extra per-observation readback scan. The actual shared storage paths
+still block the required work-bound claim: `createCartographer` construction calls
+`FactStorePort.read`; `authorAndAppend` and FactStore append verify whole segments;
+`ProductionStorage.persistence.readExact` decodes `exact.encrypted` and searches
+all rows. A returned page/output cap does not bound those reads. The smallest
+continuation is indexed/budgeted reads and replay at the existing Two/Ten owners,
+then binding this adapter to their bounded path; no new storage authority is needed.
 
 Required remaining work:
 
-- Implement and verify the scoped committed-Git producer through the existing tool and
+- Complete the scoped committed-Git producer through the existing tool and
   custody owners: root selection/canonical identity/revision checks, finite byte/CPU/heap
   work, incremental batched OIDs, committed blob originals and retained source references.
   Preserve RootAuthority/RootRegistry behavior and structural-only navigation where applicable.
@@ -35,7 +50,8 @@ Required remaining work:
   observations, worker ceilings and restart-persistent cursor/breaker behavior.
 - Bind returned sweep state to existing durable scheduled-work occurrences, and bind the
   actual declared session/tool consumer and generated awareness to its matching manifest.
-  Fixture buildGrounding consumption is component evidence, not production wiring.
+  The constructed Awareness consumer is exercised, but installed source configuration,
+  real session delivery and generated capability registration still need integration.
 - Complete existing-install source and reader migration, independent review, combined
   full tests, native conformance and installed/live proof. Production roots stay closed.
 

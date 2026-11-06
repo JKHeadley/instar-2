@@ -52,7 +52,8 @@ function checked(o: CartographerObservation): void {
   ensure(redact(JSON.stringify(o)).count === 0, 'credential-bearing observation refused', 'floor');
 }
 /** Appends; never overwrites the earlier description, source identity, or rejection evidence. */
-export function captureCartographerObservation(o: CartographerObservation, at: Json, writer: RecallWriter): Result<string> {
+export function captureCartographerObservation(o: CartographerObservation, at: Json, writer: RecallWriter,
+  observed?: (fact: FactEnvelope) => void): Result<string> {
   const context: BoundaryContext = { site: writer.context.site, preserved: writer.context.preserved, register: writer.context.decode.register };
   return boundary('CartographerObservation', o, context, () => {
     checked(o);
@@ -60,6 +61,7 @@ export function captureCartographerObservation(o: CartographerObservation, at: J
       principal: writer.principal as Json, provenance: writer.provenance as Json, at,
       body: { root: o.root, revision: o.revision, source: o.source, disposition: o.disposition,
         node: JSON.stringify(o.node), originalSummary: o.originalSummary }, required: [] }, writer.context, writer.store, writer.privateKey));
+    observed?.(receipt.fact);
     return receipt.fact.id;
   });
 }

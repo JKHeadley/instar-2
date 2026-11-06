@@ -1,3 +1,5 @@
+import { composeProductionCartographer } from './production-cartographer.js';
+import type { ProductionCartographerInput } from './production-cartographer.js';
 import { admitAcceptedProviderReply, createSequentialServingAdmission } from '../transport/index.js';
 import type { FenceToken, LoopPolicy } from '../transport/index.js';
 import type { Result } from '../index.js';
@@ -26,6 +28,7 @@ import { boundary, ensure, take } from './boundary.js';
 export interface ProductionOwnerCompositionInput {
   readonly assembly: Omit<AssemblyComposition, 'production' | 'model'>;
   readonly grounding: ProductionGroundingReaderInput;
+  readonly cartographer?: ProductionCartographerInput;
   readonly run: Omit<RunGraphDependencies, 'grounding' | 'assemblyHistory'>;
   readonly intake: IntakeDependencies;
   readonly scheduled?: Readonly<{ intake: IntakeDependencies;
@@ -65,6 +68,10 @@ export function composeProductionOwners(input: ProductionOwnerCompositionInput) 
     ensure(input.run.store === store && input.provider.judgment.store === store
       && input.effect.spine.store === store, 'production owners: shared signed store required');
     ensure(input.assembly.harnesses.includes(input.grounding.harness), 'harness: actual grounding adapter required');
+    if (input.cartographer) ensure(input.cartographer.service.writer.store === store
+      && input.cartographer.source.custody.storage.persistence === input.assembly.persistence,
+    'Cartographer requires the installed shared fact and custody owners');
+    const cartographer = input.cartographer ? composeProductionCartographer(input.cartographer) : undefined;
     const intake = take(createIntakePort(input.intake));
     const scheduledIntake = input.scheduled ? (() => {
       ensure(input.scheduled!.intake.storage === input.intake.storage
@@ -114,7 +121,7 @@ export function composeProductionOwners(input: ProductionOwnerCompositionInput) 
       admitAcceptedProviderReply(input.provider.judgment.authority, run, command, fence,
         { owner: 'part-five', name: 'Run', id: replyRun }, policy, input.assembly.host.boundary);
     const serving = createSequentialServingAdmission(input.provider.judgment.authority, input.assembly.host.boundary);
-    return Object.freeze({ composition, intake, scheduledIntake, scheduled, run, provider, responder,
+    return Object.freeze({ composition, cartographer, intake, scheduledIntake, scheduled, run, provider, responder,
       reply, admitReply, serving, transport: input.provider.judgment.authority, telegram: input.telegram });
   });
 }

@@ -83,12 +83,8 @@ export function createCartographer(config: CartographerConfig) {
     take(c.source.admit({ root: c.source.root, revision, purpose, topic }));
     ensure(take(c.source.revision()) === revision, 'Cartographer source revision changed', 'integrity');
   };
-  const capture = (o: CartographerObservation) => {
-    const id = take(captureCartographerObservation(o, c.at(), c.writer));
-    const fact = take(c.writer.store.read()).find(f => f.id === id);
-    ensure(fact, 'Cartographer appended observation missing', 'integrity');
-    tree.observe(fact); return id;
-  };
+  const capture = (o: CartographerObservation) =>
+    take(captureCartographerObservation(o, c.at(), c.writer, fact => { tree.observe(fact); }));
   const navigation = (query: string, options: NavigateOptions = {}, topic = c.topic): Result<CartographerManifest> =>
     boundary('CartographerNavigate', { query, options, topic }, c.context, () => {
       const revision = take(c.source.revision()); admit('read', revision, topic); pinned = revision;
@@ -111,8 +107,8 @@ export function createCartographer(config: CartographerConfig) {
         label: 'Cartographer code-map hints; summaries are untrusted, fresh does not mean correct',
         reason: `read ${m.nodesVisited} nodes; omitted ${m.nodesTruncated} direct edges; revision ${m.revision}`,
         items: m.scored.map(node => ({ at: input.now, source: m.evidence.find(e => e.path === node.path)!.fact,
-          speaker: 'Cartographer (derived code description)', text: JSON.stringify({ root: m.root, revision: m.revision,
-            path: node.path, fresh: node.fresh, summary: node.summary ?? '', evidence: m.evidence.find(e => e.path === node.path) }) })) };
+          speaker: 'Cartographer (derived code description)', text: JSON.stringify({ evidence: m.evidence.find(e => e.path === node.path),
+            root: m.root, revision: m.revision, path: node.path, fresh: node.fresh, summary: node.summary ?? '' }) })) };
     },
   };
   let inflight = false;

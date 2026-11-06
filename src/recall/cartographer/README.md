@@ -23,7 +23,8 @@ Freshness refers to the source owner's pinned local revision, not a peer's fresh
 This code starts no timer, changes no grants, sends no messages and calls no provider API.
 
 The source-read budget in navigation is tested independently from output size. Fact-store
-replay at construction and append/readback are still whole-store operations. These are not
+replay at construction and the underlying fact author/append still read whole stores.
+The projection now consumes the signed append receipt without an extra readback scan. These are not
 claimed to satisfy production bounded custody. The partial sweep also lacks full cross-page
 ordering, freshness aggregates, revalidation and durable scheduler binding. Exact remaining
 work and inspected owner contracts are in `docs/defects/carryover-95-owner-composition.md`.
@@ -31,3 +32,13 @@ work and inspected owner contracts are in `docs/defects/carryover-95-owner-compo
 Tests under `tests/recall/cartographer/` retain the 1.x summary/navigation assertions,
 including real temporary Git repositories, and add actual-read bounds, custody/rebuild,
 freshness, grounding consumption and recorded-shape rejection. No live activation is claimed.
+
+Production source composition lives in `src/assembly/production-cartographer-source.ts`
+and `production-cartographer.ts`, connected by `production-composition.ts`. The host
+producer is `scripts/cartographer-committed-source.mjs`; it reads only a pinned Git
+commit after exact-root admission. Capture stores complete permitted originals using
+real exact persistence receipts and mediated custody, then feeds the existing
+Awareness consumer. A capture is limited to 4096 entries and 2 MiB; it does not
+replace the original large-tree detect worker. Shared persistence and FactStore
+traversal limits remain open as documented in the defect record. No installed
+configuration, root grant or existing-install migration is supplied by construction.
