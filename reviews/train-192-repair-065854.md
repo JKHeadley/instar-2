@@ -40,3 +40,7 @@ Decision: train-192-merge-pins | Resolve derived files temporarily from a parent
 ## 1.X FIRST
 
 inherited comparison in reviews/train-192-repair-043150.md (028483097cb0a835a7d1264680a44dc4c2acb063). Refreshed actual JKHeadley/instar main to 083e79a9c55944fc8fba95cea55d3b6ce41b5647; searched src/ and docs/specs/ for worker RPC timeouts and post-claim cancellation, inspected src/core/hostTestRunnerSemaphore.ts and docs/specs/test-runner-concurrency-bound.eli16.md, plus history 1f90fa1a9, 618560b3e, e1a1b7218 and 95b289eef. This host admission code bounds competing suites, not this 2.0 dispatch-claim cleanup or fixture IPC blocking. Reuse existing 2.0 async child helpers and claim finalization; no new 1.x transplant fits this merge repair. Read Studio ONEX-LESSONS.md sections 1 and 6: prove actual ownership effects, consumer wiring and aggregate resource bounds.
+
+## Derived evidence
+
+Owner rehash refreshed exactly one journal-agent test artifact hash. The delegated grounding repin reported zero changed inventory entries. Register replay from merge 9bf7628d787387698cd8242821cf243cd4f9e63d produced 299 entries, 122 rules, 34 terms and 114 prerequisites (48 warnings, shape-only). Both original parent commits and origin/main remain ancestors; all existing review and defect histories are retained. This register refresh is part of the same reviewed merge repair.
