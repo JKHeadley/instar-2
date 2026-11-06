@@ -11,10 +11,10 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, 
 const operatorText = 'Please always answer briefly.';
 const reply = 'Understood.';
 const fenced = value => `\`\`\`json\n${value}\n\`\`\``;
-// The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
+// The launcher runs on the real clock against a fixed fixture expiry, so a due credential/activation reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride the answer as its own line, as in journal-agent.test.ts.
 // The answer itself stays exact, and nothing else may be appended.
-const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
+const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Reminder: your activation expires in [^.]+\. Smallest step for you: approve a renewed activation record\.|Model route check: .+\.)$/u;
 const answerOf = text => {
   const [answer, ...notices] = text.split('\n\n');
   for (const notice of notices) {
@@ -112,7 +112,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         '--bot-username', world.configuration.botUsername, '--max-cycles',
         mode === 'summary-contradiction' ? '1' : '3', '--max-poll-seconds', '1'],
       { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env });
-      expect(run.status, run.stderr).toBe(0);
+      const runsPath = join(root, 'runs.jsonl');
+      const launchRecord = existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : '';
+      expect(run.status, run.stderr + launchRecord).toBe(0);
       const rows = readFileSync(calls, 'utf8').trim().split('\n').map(line => JSON.parse(line));
       const roles = rows.map(row => row.role);
       expect(roles).toEqual(mode === 'summary-contradiction'

@@ -23,13 +23,18 @@ it('PREVIEW-RESOURCE-CENSUS-RECOVERY retains nine real Six debits on failed cens
   const root=mkdtempSync(join(tmpdir(),'resource-census-recovery-'));chmodSync(root,0o700);
   const noise: ChildProcess[]=[];
   try {
-    for(let i=0;i<6;i++) {
-      const child=spawn(process.execPath,['-e','setTimeout(()=>process.exit(0),110000);setInterval(()=>{},1000)','census-fixture-'+i+'x'.repeat(200000)],{stdio:'ignore',env:{PATH:'/usr/bin:/bin'}});
+    // Linux ps caps each argv row at 128 KiB: nine rows exceed the old 1 MiB reader.
+    for(let i=0;i<9;i++) {
+      const child=spawn(process.execPath,['-e','setTimeout(()=>process.exit(0),110000);setInterval(()=>{},1000)',...Array.from({length:4},(_,part)=>'census-fixture-'+i+'-'+part+'x'.repeat(50000))],{stdio:'ignore',env:{PATH:'/usr/bin:/bin'}});
       noise.push(child);await new Promise<void>((resolve,reject)=>{child.once('spawn',()=>resolve());child.once('error',reject)});
     }
     const censusArgs=['-U',String(process.getuid!()),'-ww','-o',PROCESS_CENSUS_COLUMNS];
+    // Reproduce the historical argv census explicitly; production now requests compact comm.
+    // Split the long fixture argv above to stay below Linux's per-argument size limit.
+    const legacyArgs=(args:string[])=>args.map(arg=>arg===PROCESS_CENSUS_COLUMNS
+      ? PROCESS_CENSUS_COLUMNS.replace(/comm=$/u,'args='):arg);
     const failures: string[]=[];
-    expect(await oldRead('/bin/ps',censusArgs,failures)).toBeNull();
+    expect(await oldRead('/bin/ps',legacyArgs(censusArgs),failures)).toBeNull();
     expect(failures).toContain('ERR_CHILD_PROCESS_STDIO_MAXBUFFER');
     const compact=await hostQuery('/bin/ps',censusArgs);
     expect(compact).not.toBeNull();expect(Buffer.byteLength(compact)).toBeLessThan(1024*1024);
@@ -37,7 +42,7 @@ it('PREVIEW-RESOURCE-CENSUS-RECOVERY retains nine real Six debits on failed cens
     noise.forEach(child=>expect(inventoryPids.has(child.pid)).toBe(true));
     let repaired=false;
     const query=(file:string,args:string[])=>file==='/bin/ps'&&args.includes(PROCESS_CENSUS_COLUMNS)&&!repaired
-      ? oldRead(file,args,failures):hostQuery(file,args);
+      ? oldRead(file,legacyArgs(args),failures):hostQuery(file,args);
     const allocation=createHostResourceAllocation({root,machine:'machine:census-fixture',ceilings:RESOURCE_CEILINGS,
       incarnation:`census-fixture:${process.pid}`,now:()=>Date.now(),monotonic:()=>performance.now()});
     const ledgerPath=join(root,'owned-launches.json');
