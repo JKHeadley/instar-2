@@ -550,11 +550,11 @@ child.unref(); process.stdout.write(String(child.pid));`;
     } finally { process.kill(Number(neighbor), 'SIGKILL'); }
   });
 
-  /** A detached node child, in a new session with its parent gone, that holds ~400 MiB while its launcher keeps running in the
+  /** A detached idle node child, in a new session with its parent gone, while its launcher keeps running in the
    * foreground: either inside the launch's own temporary directory (the scratch volume: the working-area join reaches it) or at
    * the root directory, outside the whole volume (only the sandbox join reaches it). */
   const big = (cwd: string) => `import { spawn } from 'node:child_process';
-const child = spawn(process.execPath, ['-e', 'const b = Buffer.alloc(400 * 1024 * 1024, 7); setInterval(() => { b[0] = (b[0] + 1) % 251; }, 200);'],
+const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000);'],
   { detached: true, stdio: 'ignore', cwd: ${cwd} });
 child.unref(); process.stdout.write(String(child.pid));`;
 
@@ -563,10 +563,22 @@ child.unref(); process.stdout.write(String(child.pid));`;
       launch: { ...RESOURCE_CEILINGS.launch, memoryBytes: 96 * 1024 * 1024, processCount: 8 } }) as Owner;
     // As in the tree-ceiling test, unrelated UID growth must not prevent the launcher from
     // forking before the detached child's memory can be sampled. Keep all tree/identity joins real.
-    await small.attach({ query: treeLimitQuery(hostQuery) });
     let node = '', workspace = '', daemon = 0;
+    let sampledDaemon = false;
+    // Inject only the detached child's RSS reading, keeping the real census, identity,
+    // working-area and sandbox joins. This proves the memory decision without allocating
+    // 400 MiB on the Studio. setup-qualification separately exercises real RSS at a 1-byte ceiling.
+    await small.attach({ query: treeLimitQuery(async (file: string, args: string[]) => {
+      const result = await hostQuery(file, args);
+      if (result === null || !args.includes('pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=')) return result;
+      return result.split('\n').map((line: string) => {
+        const fields = line.trim().split(/\s+/u);
+        if (daemon > 1 && Number(fields[0]) === daemon) { fields[4] = String(400 * 1024); sampledDaemon = true; return fields.join(' '); }
+        return line;
+      }).join('\n');
+    }) });
     try {
-      // Write the big-child launcher, then run it (printing the child's pid to a workspace file) and stay alive in the
+      // Write the idle-child launcher, then run it (printing the child's pid to a workspace file) and stay alive in the
       // foreground long enough for a sample to see the child's memory. The child detached into the sibling tmp directory,
       // inside the scratch volume: the working-area join reaches it, its memory counts against the launch, and the owner
       // ends it. The memory kill clears the call's stdout, so the test reads the child's pid from the workspace file live.
@@ -580,6 +592,7 @@ child.unref(); process.stdout.write(String(child.pid));`;
       const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
       // The launcher's own call is ended on the memory ceiling the detached child pushed the launch over: proof the join
       // reaches a child inside the volume (a bare launcher plus sleep is far under 96 MiB).
+      expect(sampledDaemon).toBe(true);
       expect(posts[1]).toMatchObject({ exitCode: null, interrupted: 'memory' });
       expect(Number.isSafeInteger(daemon) && daemon > 1).toBe(true);
       // The detached child is gone: the owner killed it as a joined member, not a bystander.
