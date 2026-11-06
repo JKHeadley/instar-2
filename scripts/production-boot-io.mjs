@@ -245,6 +245,7 @@ function subscriptionServerPolicy(configDirectory) {
   const names = readdirSync(configDirectory).filter(name =>
     name.startsWith('policy-limits.json') || name.startsWith('remote-settings')).sort();
   const reviewed = ['policy-limits.json', 'policy-limits.json.stamp.json', 'remote-settings.json'];
+  const signedCaches = ['policy-limits.json', 'remote-settings.json'];
   const hold = reason => { throw Error(`subscription server policy: ${reason}; activation hold`); };
   const object = (value, field) => {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) hold(`${field}: expected object`);
@@ -258,12 +259,32 @@ function subscriptionServerPolicy(configDirectory) {
     if (!Array.isArray(value) || value.length !== 0) hold(`${field}: expected []`);
   };
   return names.map(name => {
-    if (!reviewed.includes(name)) hold(`${name}: unexpected file`);
+    const signedCache = signedCaches.find(base => name === `${base}.signature.json` || name === `${base}.signature-iat.json`);
+    if (!reviewed.includes(name) && !signedCache) hold(`${name}: unexpected file`);
     const path = join(configDirectory, name), info = lstatSync(path);
     if (!info.isFile() || info.size > 65536 || realpathSync(path) !== path) hold(`${name}: unsafe path or size`);
     let settings;
     try { settings = JSON.parse(readFileSync(path, 'utf8')); }
     catch { hold(`${name}: unreadable JSON`); }
+    if (signedCache) {
+      if (!names.includes(signedCache)) hold(`${name}: missing ${signedCache}`);
+      const signature = name.endsWith('.signature.json');
+      keys(settings, signature ? ['jws', 'receivedAt'] : ['typ', 'aud', 'sub', 'ws', 'iat'], name,
+        signature ? ['jws', 'receivedAt'] : ['typ', 'iat']);
+      const time = signature ? 'receivedAt' : 'iat';
+      if (!Number.isSafeInteger(settings[time]) || settings[time] < 0) hold(`${name}.${time}: expected nonnegative safe integer`);
+      if (signature) {
+        if (typeof settings.jws !== 'string' || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u.test(settings.jws))
+          hold(`${name}.jws: expected compact JWS`);
+      } else for (const field of ['typ', 'aud', 'sub', 'ws']) {
+        if (Object.hasOwn(settings, field) && (typeof settings[field] !== 'string' || !settings[field].length || settings[field].length > 1024))
+          hold(`${name}.${field}: expected bounded string`);
+      }
+      // The pinned CLI verifies signatures and tracks accepted issuance times. Neither is
+      // effective policy or Instar authority. Refreshing either must not revoke an unchanged
+      // activation; the policy body and stamp identity/content remain checked and bound below.
+      return null;
+    }
     if (name === 'policy-limits.json') {
       keys(settings, ['restrictions', 'compliance_taints', 'monitoring_notice', 'defaults'], name);
       object(settings.restrictions, `${name}.restrictions`);
@@ -297,7 +318,7 @@ function subscriptionServerPolicy(configDirectory) {
       settings = binding;
     }
     return { path, settings };
-  });
+  }).filter(row => row !== null);
 }
 
 /** Preview-only provider host. No secret file or Keychain contents are read here. `runAs` (harness-user.mjs readiness:
@@ -354,11 +375,16 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
         throw Error('subscription managed configuration unsupported');
       policy.push({ path, settings });
     }
-    // Include every reviewed cache file in the same activation-bound digest.
-    // Effective policy or identity/content changes hold launches; cache freshness does not.
+    const uncachedDigest = digest(policy);
+    // A profile enrolled before the CLI's first cache fetch already authorizes the
+    // unrestricted baseline. The reviewed cache schema above can only restrict that
+    // baseline (false allowances, no taints/notices, remote control off, empty remote
+    // settings). Its arrival cannot widen the grant. Preserve that enrollment while
+    // still inspecting every file; a profile enrolled WITH cache bindings keeps them.
     policy.push(...subscriptionServerPolicy(profile.configDirectory));
     lastPolicy = policy;
-    return Object.freeze({ loginProfileIdentity: subscriptionProfileIdentity(bindings), managedConfigurationDigest: digest(policy) });
+    return Object.freeze({ loginProfileIdentity: subscriptionProfileIdentity(bindings),
+      managedConfigurationDigest: profile.managedConfigurationDigest === uncachedDigest ? uncachedDigest : digest(policy) });
   };
   // The tool turn's admission hook is load-bearing: managed policy that disables hooks must refuse it. Read
   // from the policy the same inspection just verified against the profile's digest; unknown is not false.
