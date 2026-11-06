@@ -20,6 +20,8 @@ Hook bypass: none
 Convergence: none
 Decision: carryover-95-repair-213556-harness | Repair the three harness mismatches without changing production behavior or weakening send, review or resource settlement checks. Include scrubbed launch refusal records in canary diagnostics. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-95-cartographer-1105-repair-213556-PROGRESS.md
 
+Decision: carryover-95-repair-213556-pins | Refresh the census test artifact hash with the supplied desk rehash tool, then regenerate the register from the committed source; no authority or manifest population changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-95-cartographer-1105-repair-213556-PROGRESS.md
+
 ## 1.x comparison
 
 Fetched actual JKHeadley/instar main 13e4f75507520aa6c43c0aec006b7ec2fbd28332; searched src/, docs/specs/ and file history. src/monitoring/ExternalHogProcTable.ts and ExternalHogRealAdapters.ts use compact comm= for whole-table inventory, and args= only for a candidate. docs/specs/external-hog-zombie-autokill-sentinel.md describes the same compact inventory. Available shallow file history resolves to 2aaac4288, not a claim about earlier evolution. docs/specs/TESTING-INTEGRITY-SPEC.md and ONEX-LESSONS.md testing/resource sections support binding real assembly dependencies, replaying captured shapes, and bounded test concurrency. Fit: preserve the compact 2.x production census and repair its historical argv regression. Mismatch: no sentinel implementation port or production buffer increase is needed. Existing recorded-answer replay remains unchanged (proofroom-summary-cascade-stall-2026-09-30.json, update 715672480).
