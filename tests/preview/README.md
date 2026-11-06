@@ -230,7 +230,8 @@ is that person, or the text names them exactly), in the private root's view only
 a record or add a name, obey the operator's correct and forget rows, and never reach a group because
 the carry refuses a source that holds imports (`relationship-journal.test.ts`). Not carried: the 1.x
 HTTP routes, CLI, LLM identity prompts, anomaly scoring and plaintext JSON files; see
-`legacy-1x/relationships/README.md`.
+`docs/implementation/carryover-40-one-memory-1104.md`, and the 1.x sources under
+`legacy-1x/relationships/` at commit `8e7df7f5f`.
 
 While the disclosure grant or the operator-only audience cannot be shown, every turn of the carried
 group, a due request included, is held unsent and continues once both hold again. The final model

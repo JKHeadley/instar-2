@@ -5,7 +5,7 @@
  * not one-per-root or one-per-machine. Section 0 is the piece of the 1.x replicated-store
  * substrate (`ReplicatedRecordEnvelope.ts`, `UnionReader.ts`, `HybridLogicalClock.ts`)
  * this kind stands on, ported under the same names because 2.0 has no replicated record
- * store; the originals are kept verbatim under legacy-1x/relationships/.
+ * store; the originals are kept verbatim at commit 8e7df7f5f under legacy-1x/relationships/.
  *
  * It layers the `relationship-record` kind onto that substrate with the PII-specific
  * hardening the 1.x security spec (`ws23-relationships-userregistry-security.md`) demands.
