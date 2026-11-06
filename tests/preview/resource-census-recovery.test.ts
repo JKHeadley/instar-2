@@ -28,8 +28,10 @@ it('PREVIEW-RESOURCE-CENSUS-RECOVERY retains nine real Six debits on failed cens
       noise.push(child);await new Promise<void>((resolve,reject)=>{child.once('spawn',()=>resolve());child.once('error',reject)});
     }
     const censusArgs=['-U',String(process.getuid!()),'-ww','-o',PROCESS_CENSUS_COLUMNS];
+    // Freeze the old full-argv query: the production census now uses compact comm=.
+    const legacyArgs=['-U',String(process.getuid!()),'-ww','-o','pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command='];
     const failures: string[]=[];
-    expect(await oldRead('/bin/ps',censusArgs,failures)).toBeNull();
+    expect(await oldRead('/bin/ps',legacyArgs,failures)).toBeNull();
     expect(failures).toContain('ERR_CHILD_PROCESS_STDIO_MAXBUFFER');
     const compact=await hostQuery('/bin/ps',censusArgs);
     expect(compact).not.toBeNull();expect(Buffer.byteLength(compact)).toBeLessThan(1024*1024);
@@ -37,7 +39,7 @@ it('PREVIEW-RESOURCE-CENSUS-RECOVERY retains nine real Six debits on failed cens
     noise.forEach(child=>expect(inventoryPids.has(child.pid)).toBe(true));
     let repaired=false;
     const query=(file:string,args:string[])=>file==='/bin/ps'&&args.includes(PROCESS_CENSUS_COLUMNS)&&!repaired
-      ? oldRead(file,args,failures):hostQuery(file,args);
+      ? oldRead(file,legacyArgs,failures):hostQuery(file,args);
     const allocation=createHostResourceAllocation({root,machine:'machine:census-fixture',ceilings:RESOURCE_CEILINGS,
       incarnation:`census-fixture:${process.pid}`,now:()=>Date.now(),monotonic:()=>performance.now()});
     const ledgerPath=join(root,'owned-launches.json');
