@@ -2676,7 +2676,7 @@ async function main() {
       chmodSync(scope, 0o700);
       const project = realpathSync(scope), framework = doorway.session.framework;
       const mountVolume = identity => {
-        if (attachSessionVolume(root, layout ? { at: layout.mount } : {}) !== project) throw Error('preview: the session volume is not the working scope');
+        if (attachSessionVolume(root, { ...(layout ? { at: layout.mount } : {}), log: line => process.stderr.write(`preview: ${line}\n`) }) !== project) throw Error('preview: the session volume is not the working scope');
         if (identity) grantVolume(project, identity.user, identity.runner);
       };
       const physicalFor = () => createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,

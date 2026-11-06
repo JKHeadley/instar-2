@@ -1,0 +1,23 @@
+{
+  "source": "/home/echo/.codex/models_cache.json",
+  "sourceSha256": "1f67ea74b4c796c635b707501b2025f9d833ecce7a23a3ebb7b597574f045f82",
+  "fetchedAt": "2026-11-06T04:47:35.900343061Z",
+  "clientVersion": "0.167.0",
+  "model": {
+    "slug": "gpt-5.6-sol",
+    "display_name": "GPT-5.6-Sol",
+    "visibility": "list",
+    "supported_in_api": true
+  },
+  "observedUtc": "2026-11-06T04:47:40.308175+00:00",
+  "loginStatus": "Logged in using ChatGPT",
+  "loginStatusCommand": "codex login status",
+  "probeLimitation": "Fresh app-server model/list attempt refused by read-only filesystem; no bypass attempted. Catalog is the existing CLI provider-fetched artifact, not a new successful probe.",
+  "verifiedAt": 1793940455900,
+  "subsidyReview": {
+    "ratio": 1,
+    "basis": "estimated",
+    "reason": "Existing subscription-only doorway and current ChatGPT login; retain the existing full subscription-coverage estimate, not measured billing, free capacity, or zero resource use.",
+    "freshFor": 2885119381
+  }
+}

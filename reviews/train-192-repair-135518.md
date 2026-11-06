@@ -20,7 +20,10 @@ Hook bypass: none
 Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
 
-Subject (1 paths): src/assembly/production-codex-provider.declarations.json
+Subject (16 paths): docs/defects/codex-model-map-refresh-2026-11-05.md, docs/release-evidence/codex-model-map-refresh-1105.json, docs/release-evidence/session-volume-isolated-1105-report.md, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, src/assembly/production-codex-provider.declarations.json, tests/integration/model-provider-refusals.test.ts, tests/preview/journal-agent.mjs, tests/preview/session-volume.test.ts, tests/preview/tool-turn.declarations.json, tests/preview/tool-turn.mjs
+
+Prompt review: No new prompt or parser is authored. Merge imports live volume-growth code and diagnostics unchanged and preserves train-192 cancellation cleanup; existing model-facing review dispositions remain in their original records. No live model acceptance claim.
+Deferral: generated/register.json:1 | not-a-deferral=Generated register carries existing tracked text from the merged inputs; this repair introduces no deferred behavior.
 
 ## 1.X FIRST
 
@@ -28,6 +31,10 @@ Actual JKHeadley/instar origin/main 149377310f9b586641a05eddf196df4543dc031a: se
 
 Decision: train192-proven-observation | Restore exact ade91bee0 declaration bytes, whose committed train-187 receipt binds both timestamps and remains fresh. Preserve newer evidence without promoting it. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-192-repair-135518-PROGRESS.md
 Decision: train192-live-merge | Merge 79be7e88 normally, preserving both histories and behaviors; regenerate derived artifacts with the delegated tools. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-192-repair-135518-PROGRESS.md
+
+## Receipt selection
+
+Unmodified Studio resolve-provider-stamps.py selected committed 0dd520cacc22b174c0fefd441e62ddd38a863c2a against live 79be7e88. Selected declaration SHA256 6279ad016a675418cc696d230c42c9e50537cda675b33d1b05db9e96a2037c8d, receipt SHA256 acc46c7e2613d13eabd2171b4201d093eb359cea7b0048620850f62828735c18. Both timestamps are 1793936455257. Live's unbound receipt is still rejected. Git otherwise auto-selects the live stamp because the restored value equals the merge base; explicitly retain the verifier-selected exact blob. Generated conflicts use live provisionally and are replayed from the merged source.
 
 ## Closing block
 
