@@ -101,3 +101,26 @@ parsed exclusions through Vitest's public `configureVitest` hook before discover
 The inventory regression exercises ordinary and serial files, both CLI spellings,
 and the positive Studio selection, proving an exact disjoint union with the full
 inventory. No test is quarantined and no assertion or product ability is removed.
+
+## train-181 READY-gate register recurrence, 2026-11-05
+
+The subsequent eight-file READY run at 995b147a reports two register CLI case
+timeouts and one unattributed onTaskUpdate error (118 passed, two failed;
+797.73s). The bridge case still used synchronous children for four builds and
+two wiring checks; the earlier conversion had not covered it. All six remaining
+CLI/wiring call sites in tests/e2e/register.test.ts now use its existing async
+runNode/runChild path, including the malformed-source matrix. This closes that
+concrete starvation path, without claiming attribution of the untraced RPC error.
+The ten-build defaults case becomes three fresh groups of at most four builds;
+the bridge case becomes four fresh groups of at most two calls. Their 120s
+and 60s case bounds remain unchanged, and every prior assertion is retained.
+A real CLI preload waits for its parent worker to release a file barrier: the
+async path releases it and builds, while the unreleased neighbor refuses before
+the CLI runs. This demonstrates event-loop progress without artificial CPU load.
+The isolated original cases took 82.391s and 30.560s and passed; that rerun does
+not erase the retained READY failure. The existing desk owner and full-run
+closure condition remain in force; no case is quarantined.
+
+The first train-181 affected-file run also retained a 300.015s timeout in the nineteen-build malformed-source matrix. Its holder/deadline, colocated-construct and shape/anchor groups now own fresh fixtures, at most nine builds each, and the same 300s case bound. Async register children explicitly receive the enclosing case timeout, preserving a finite child duration formerly supplied by the synchronous-child wrapper. Neither observation attributes the desk's untraced RPC error to a particular child.
+
+That local run also timed out in the three-call ambient-wiring group at 60.442s. Clean and ambient wiring now each prepare their own committed output and run one wiring check (two CLI calls per group), keeping 60s and both assertions. The committed-clone comparison remains paired within one group.
