@@ -7,10 +7,10 @@ Outcome: The register bridge matrix yields while CLI children run, and proof sta
 Affected rules: 9, 14, 26, 34, 37, 38, 42, 43, 60, 73, 74, 95, 101, 102, 113, 116
 Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake retain their existing runtime enforcement. This change repairs test execution and evidence collection only.
 Operator questions: none
-Suggested tier: ordinary
-Declared tier: ordinary
-Tier rationale: Two existing test fixtures change; no runtime capability, authorization, prompt, parser, production deadline or constitutional wording changes.
-Side effects: Delegated desk rehash refreshes the 15 existing proof-file pins in register-source/owner-references/part-nine.json; no inventory entries or authority change. Independent register matrices repeat setup but retain every acceptance and refusal assertion. The committed bridge fixture uses the adjacent full-graph 120-second hang ceiling. Proof status uses the existing bounded async port; nonzero exit or signal is reported before JSON parsing. An injected 11-second status delay exercises the former 10-second timeout without host load.
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Generated register publication binds the repaired test evidence. Two existing test fixtures change; no runtime capability, authorization, prompt, parser, production deadline or constitutional wording changes.
+Side effects: Seven generated outputs replay committed source fec42e6b5021f3502fac792f91cbb4c17ee803c2 with generation sha256:19a755276fc706cfbfe543b9bd6aa85ecbc04ce595394fe2c501ecb13ecfc0f1 and shape-only authority. Delegated desk rehash refreshes the 15 existing proof-file pins in register-source/owner-references/part-nine.json; no inventory entries or authority change. Independent register matrices repeat setup but retain every acceptance and refusal assertion. The committed bridge fixture uses the adjacent full-graph 120-second hang ceiling. Proof status uses the existing bounded async port; nonzero exit or signal is reported before JSON parsing. An injected 11-second status delay exercises the former 10-second timeout without host load.
 Undo and recovery: Revert these test patches together and regenerate affected source evidence through the existing tools. The reverted fixtures recover their former timing vulnerability; runtime state and operator data are untouched.
 Multi-machine posture: Test fixtures remain local temporary repositories and launcher roots. Asynchronous waiting accommodates a slow host without changing committed-source authority or production proof deadlines; Git carries the same assertions to each host.
 Layer below: Existing tests/e2e/async-child.ts runChild and tests/preview/journal-cutover-harness.mjs statusOf/statusOn ports. No new scheduler or process collector.
@@ -21,6 +21,8 @@ Convergence: none
 Prompt review: No model-facing text, output parsing or accept/escalate/refuse policy changes. The status JSON here is deterministic CLI evidence, not model output.
 Deferral: generated/register.json:1 | not-a-deferral=Existing generated governing text; publishing this fixture repair adds no deferred work.
 Decision: train-173-gate-owned-repair | Apply the exact owned test patches from 47d59ce25a948229b23774218c50e5b259977828 and 944b258c3c248496ac7f4bed40a807d507eab649 plus cc47685ea57621eb8710272982df34ed29d04dab, preserving their controls and acceptance conditions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-173-repair-PROGRESS.md
+
+Decision: train-173-gate-publication | Regenerate from committed repair fec42e6b5021f3502fac792f91cbb4c17ee803c2 with the existing replay tool and cover source plus publication in this record; require all three cheap checks after the final commit before push. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-173-repair-PROGRESS.md
 
 1.x comparison: Actual JKHeadley/instar origin/main 154a09ffd44749ceac6205e4a95a9df4c56f4659 was searched in src/, docs/specs/ and Git history. Read src/core/hostTestRunnerSemaphore.ts and docs/specs/test-runner-concurrency-bound.md; inspected CARTOGRAPHER-SWEEP-EVENTLOOP-SAFETY.md and conformance-gate-timeout.md matches, history 1f90fa1a9/618560b3e/c91b8780e/681f86543/e1a1b7218, and ONEX-LESSONS.md section 6. Reused the bounded, yielding, workload-specific waiting principle. The 1.x suite admission semaphore does not fit this local 2.0 child-evidence boundary, so reuse the existing 2.0 async ports and the named owning repairs instead of copying a global scheduler.
 
