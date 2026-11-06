@@ -1,8 +1,8 @@
 # Change review — Codex model-map freshness evidence
 
 Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
-Review state: frozen
-Reviewed content: sha256:679f6ba68f7a53e32091ccff5c9431f526261a1f018ced4085d7e21f6c86401c
+Review state: open
+Reviewed content: none
 Outcome: Renew only preview-subscription-codex's listing verification and explicitly estimated neutral subsidy, retaining both 2885119381 ms windows; publish the ordinary register from narrow source commit 8d03203de54202d73170ba7a6c2d0df74e7561cb. Source handoff only, with no release or production-invocation claim.
 Affected rules: 13, 26, 49, 56, 74, 90, 101, 102, 107, 111, 113, 116
 Affected floors: secrets — redacted catalog and classification only; spend cap — no provider invocation and no claimed discount or zero charge; stop — unchanged; no duplicate sends — no send or effect added; durable intake — unchanged.
@@ -24,6 +24,8 @@ Prompt review: No prompt, model-output parser, accept/escalate/refuse decision o
 Decision: MM-1105-1 | Use the hash-matching receipt's captured fetch time 1793938103047, rather than the older prose timestamp or current clock; preserve exact model and windows. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/model-map-evidence-refresh-1105-PROGRESS.md
 Decision: MM-1105-2 | Re-evaluate ratio 1 as the same conservative estimated accounting basis at the real local login-class observation 1793938228529; never imply measured price, Studio identity or zero resource use. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/model-map-evidence-refresh-1105-PROGRESS.md
 Decision: MM-1105-3 | Publish one reusable narrow source commit before ordinary generated output and this review; retain earlier four failures and leave other deadlines and release gates to their named owners. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/model-map-evidence-refresh-1105-PROGRESS.md
+
+Integration review: train-192 explicitly reopens this round because its register replay at the merged head 84d7bb0768f456fb3b38eb5df7dccf31e97bad03 regenerates the seven generated/ outputs (generated/capabilities.json, capabilities.md, coverage.md, glossary.md, register.json, rules.md and source.json), which this record's subject covers (Rule 109); no source, test, document or declaration in the subject changed, and the reviewed content cannot be restored because the publication must be true to the merged head. The previous frozen content and verdict remain in git history. reviews/train-192-change-review.md covers the merged candidate (decision train-192-review-rounds), whose desk review is still required.
 
 ## Closing block
 
