@@ -530,14 +530,38 @@ it('recovery resumes a partial allocation return under its durable settlement, a
   expect(allocation.close(set, 'recovery-observed-gone:cut-launch').reason).toMatch(/another settlement/u);
   writeFileSync(ledgerPath, JSON.stringify({ version: 1, launches: { 'cut-launch': { pid: 999999, start: 'gone',
     owner: { pid: 999998, start: 'gone' }, members: {}, allocation: set } } }));
+  // This tests durable settlement recovery, not ambient ps availability. A failed host read
+  // correctly keeps the debit, even for these absent fixture PIDs. Control observations through
+  // the existing query port; the real owner, inventory decoder and Six journal still run.
+  let unavailable: 'owner' | 'member' | 'census' | null = null;
+  const query = async (file: string, args: string[]) => {
+    if (file === '/bin/sh') return '256\n1024\nunlimited\nunlimited\n1024\n2048\n';
+    if (file === '/bin/ps' && args[0] === '-U') return unavailable === 'census' ? null : '';
+    if (file === '/bin/ps' && args[0] === '-o') {
+      if (unavailable === 'owner' && args.at(-1) === '999998'
+        || unavailable === 'member' && args.at(-1) === '999999') return null;
+      return args.at(-1) === String(process.pid) ? 'Fri Nov 6 00:00:00 2026' : '';
+    }
+    throw Error(`unexpected recovery query ${file}`);
+  };
+  const retainedLedger = readFileSync(ledgerPath, 'utf8');
+  for (const missing of ['owner', 'member', 'census'] as const) {
+    unavailable = missing;
+    const held = six(root), owner = createResourceOwner(ceilings());
+    await owner.attach({ ledgerPath, allocation: held, query });
+    expect(owner.snapshot().orphans).toMatchObject([{ launch: 'cut-launch', state: 'unknown' }]);
+    expect(held.open()).toEqual([{ launch: 'cut-launch', set }]);
+    expect(readFileSync(ledgerPath, 'utf8')).toBe(retainedLedger);
+  }
+  unavailable = null;
   const next = six(root);
-  await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: next });
+  await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: next, query });
   expect(next.open()).toEqual([]);
   expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
   // Close finished but the row survived (its removal failed): the closed set is recognized as returned.
   writeFileSync(ledgerPath, JSON.stringify({ version: 1, launches: { 'cut-launch': { pid: 999999, start: 'gone',
     owner: { pid: 999998, start: 'gone' }, members: {}, allocation: set } } }));
-  await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: six(root) });
+  await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: six(root), query });
   expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
 });
 
