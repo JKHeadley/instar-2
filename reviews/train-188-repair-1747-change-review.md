@@ -30,6 +30,8 @@ Decision: train-188-repair-evidence | Preserve census owner bytes, named ancestr
 
 Subject (7 paths): scripts/production-boot-io.mjs, tests/assembly/production-provider-subscription.test.ts, tests/assembly/subscription-policy-signatures.test.ts, tests/fixtures/claude-signed-cache-2026-11-05/README.md, tests/fixtures/claude-signed-cache-2026-11-05/policy-limits.json.signature.json, tests/preview/journal-agent.test.ts, tests/preview/review-layers-canary.test.ts
 
+Publication: Existing desk repin chain changed zero inventory hashes; desk owner rehash updated one preview test pin. Generated current-source publication is shape-only. Architecture requires the exempt native macOS self-host certificate renewal; no declaration is altered to hide it. Build/typecheck and 17 signature cases passed; two cache binding/refusal cases and two notice controls passed. One subscription dispatch assertion and nine launcher exit assertions failed and remain failed; original logs and exact commands are retained in the repair report.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the two named patches without whole branch ancestry, broader exceptions or new mechanisms. Schema, path, identity, managed policy, hook, stop and effect guards remain; finite captured positive/negative cases validate source. Full/native/installed/live acceptance remains with the desk.
