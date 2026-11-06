@@ -9,7 +9,7 @@ Affected floors: secrets — offline synthetic fixtures only; spend cap — no m
 Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
-Tier rationale: Test orchestration and evidence only; no product runtime, constitutional wording, prompt, authority or acceptance-rule change.
+Tier rationale: Test orchestration, generated source publication and evidence only; no product runtime, constitutional wording, prompt, authority or acceptance-rule change.
 Side effects: The defaults batch becomes three independent fixtures with at most four CLI calls and the same 120s bound. Bridge coverage becomes four independent fixtures with at most two calls and the same 60s bound. Malformed-source coverage becomes three fixtures with at most nine builds and the same 300s bound. Children use the existing async helper and inherit the enclosing case timeout. Two positive builds support the independent wiring fixtures. All 76 original unique assertion expressions remain; the new file has 81. No skip, quarantine or higher deadline.
 Undo and recovery: Revert this integration and regenerate source publication if required. Keep the supplied red and existing open RPC defect; no installed state needs recovery.
 Multi-machine posture: Host-local workers and temporary repositories; real clone byte comparisons remain. This does not claim multi-host execution or bound other programs on the host.
@@ -26,7 +26,7 @@ Recorded failure: Supplied READY gate for ae959a2854681502c728f604a6961a4de6d1a1
 
 Decision: train190g-owner | Import complete owning test repair 99db9a0967837d7d10527c457263b50383464952 unchanged; retain every old assertion and deadline, the real-child progress controls, and the existing RPC defect closure condition. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-190-repair-PROGRESS.md
 
-Evidence: docs/release-evidence/train-181-register-repair-report.md is unchanged historical owner evidence, not this branch's result. Current targeted validation and final-head cheap-gate output are recorded in the absolute lanes/train-190-repair-PROGRESS.md. Whole-file owner equality and 76/76 original assertion preservation were checked before execution.
+Evidence: docs/release-evidence/train-181-register-repair-report.md is unchanged historical owner evidence, not this branch's result. Current targeted validation and final-head cheap-gate output are recorded in the absolute lanes/train-190-repair-PROGRESS.md. Whole-file owner equality and 76/76 original assertion preservation were checked before execution. Typecheck passed. Delegated rehash/repin changed zero owner/inventory pins; register replay from b147255b37d04189cccaaaa015d1ea310f80f061 produced generation a03cfb4e46ad5e7ef9546e2d3fc488c004296cedd40bf6175fee25df2a114949 (298 entries, 121 rules).
 
 ## Closing block
 
