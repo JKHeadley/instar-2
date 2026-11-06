@@ -1,0 +1,20 @@
+{
+  "source": "same-role configured CODEX_HOME/models_cache.json",
+  "sourceSha256": "71936e7c201f9bde87a0fa9de246c07f929a677678087934445efd8ff8e6760c",
+  "fetched_at": "2026-11-06T03:40:55.257112Z",
+  "client_version": "0.167.0",
+  "model": {
+    "slug": "gpt-5.6-sol",
+    "display_name": "GPT-5.6-Sol",
+    "visibility": "list"
+  },
+  "verifiedAt": 1793936455257,
+  "scope": "Catalog presence only; no model inference, paid request, liveness or exact-price claim.",
+  "subsidyReview": {
+    "ratio": 1,
+    "basis": "estimated",
+    "reviewedAt": 1793936455257,
+    "source": "src/assembly/production-codex-provider.ts",
+    "basisDetail": "Existing per-call ChatGPT-only auth check refuses API-key login; existing provider reports zero additional metered demand and actual charge unknown. The estimate and unchanged freshness interval are retained."
+  }
+}
