@@ -1,3 +1,4 @@
+import { recoveryDelay, TTL_MS } from './delivery-recovery.js';
 import { createPromiseStore, recordCommitments, closeCommitment, recordReplyLoop, schedulePromise, promiseRetryDelay as workRetryDelay, COMMITMENT_WAITS_ON } from '../../src/rungraph/promises.js';
 import type { CommitmentNote as CoreCommitmentNote, CommitmentClosure, CommitmentWaitsOn, ReplyLoop } from '../../src/rungraph/promises.js';
 export { COMMITMENT_WAITS_ON, OBLIGATION_FORMAT_RETRIES, OBLIGATION_FORMAT_RETRY_MS } from '../../src/rungraph/promises.js';
@@ -58,6 +59,7 @@ import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type SettledSendOutcome, type Speaker } from './outbound-provenance.js';
 import { acceptedMemoryFailure, memoryFailureOffer, memoryFailures, memoryLearningLine, memoryLessons, validStoredMemoryFailure, withLearnedCues,
   MEMORY_FAILURE_DECISION, type MemoryFailureProposal } from './memory-learning.js';
+import { correctionStatusClause, type PresentedCorrection } from './correction-loop-driver.js';
 import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, RETRO_DUTY_FOLLOWUP_QUESTION,
   dutiesLeftUninspected, dutyFollowUpPacket, mergeDutyFollowUp, retroCallReserve, retroFollowUpReason, RETROSPECTIVE_DUTIES,
   type RetroPass, type RetroSiblingEvidence, type RetrospectiveDuty } from './retrospective.js';
@@ -70,6 +72,11 @@ import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, oper
 import { chatYesReference, reviewYesReference, SHARED_ACCESS_NOTE } from '../../src/operator/explicit-yes.js';
 import type { ExplicitYesInstallation, SharedAccessDisclosure } from '../../src/operator/explicit-yes.js';
 import { reviewLink, type ReviewYesSource } from './review-yes-source.js';
+import { applyCommitmentSendIntent, applyCommitmentSendReceipt, applyCommitmentStatusReserve, applyCommitmentStatusSettled, applyCommitmentStoreRecord, checkCommitmentSendIntent, checkCommitmentStoreRecord,
+  commitmentSendTarget, commitmentStatusId, type CommitmentSendIntentRecord, type CommitmentSendSentRecord, type CommitmentStatusReserveRecord, type CommitmentStatusSettledRecord,
+  type CommitmentStoreRecord, type CommitmentStoreView } from './commitment-record.js';
+import type { CommitmentNoticeProducer } from './commitment-notice-contract.js';
+import { createCommitmentDoorway, type CommitmentSendAdmission, type CommitmentStatusModel } from './commitment-send.js';
 import { applySentinelRecord, checkSentinelRecord, retainedSentinelEvidence, presenceNoteDue, type SentinelRecord, type SentinelView } from './sentinel-record.js';
 import { taskFields } from './answer-reading.js';
 import { encodeReply, fitsOneMessage, replyPartTarget, splitReply, wholeReplySent, MAX_ANSWER_BYTES, MAX_REPLY_PARTS, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
@@ -604,8 +611,10 @@ export const GROUP_DISCLOSURE_HOLD_NOTICE = 'PREVIEW — I\'m holding a reply un
 /** Rule 87: every push is classified at the one send boundary. `status` is pull-only (status,
  * self-state, digest) and is never pushed; a limited answer to an incoming message is its result. */
 export type OutboundDisposition = 'result' | 'action-needed' | 'status';
-export type OutboundKind = 'reply' | 'held-notice' | 'reminder' | 'limited-answer' | 'incident' | 'approval' | 'request-result';
+export type OutboundKind = 'reply' | 'held-notice' | 'reminder' | 'limited-answer' | 'incident' | 'approval' | 'request-result' | 'commitment' | 'commitment-notice' | 'commitment-result';
 export const OUTBOUND_DISPOSITIONS: Readonly<Record<OutboundKind, OutboundDisposition>> = Object.freeze({ reply: 'result', 'request-result': 'result',
+  // Part 18 §6: an observation is pull-only; a separately admitted notice is action/result-bearing.
+  commitment: 'status', 'commitment-notice': 'action-needed', 'commitment-result': 'result',
   // An unchanged held status is pull-only (Rule 87): it stays in `status`, never a push.
   'held-notice': 'status', reminder: 'result', 'limited-answer': 'action-needed', incident: 'action-needed', approval: 'action-needed' });
 
@@ -986,7 +995,10 @@ export interface ReplyGrounding { packetSha256: string; summaryThrough: number |
   /** The reachability floor's set-aside frontier: older history neither summarized nor shown (absent when none). */
   setAsideThrough?: number; history: string[]; recalled: string[];
   people: string[]; commitments: number[]; channelItems: string[]; corrections: string[];
-  memoryChanges: number[]; memoryCandidates: string[] }
+  memoryChanges: number[]; memoryCandidates: string[];
+  /** Carryover row 32: the sources of the standing preferences this packet carried (absent on rows written
+   * before it was recorded, which read as not carried). The correction lifecycle's delivery evidence. */
+  preferences?: string[] }
 /** Rule 110: the frontier below which this context lost verbatim history, and how. The set-aside floor always lies
  * above a summary's frontier (it only removes history the summary left verbatim), so the higher one is the account. */
 export const continuityFrontier = (grounding: Pick<ReplyGrounding, 'compactedThrough' | 'setAsideThrough'> | undefined):
@@ -1069,7 +1081,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 6;
+export const JOURNAL_GENERATION = 8;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1082,7 +1094,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['recovery-resume', 'send-prepared', 'send-acceptance', 'commitment-store', 'commitment-send-intent', 'commitment-send-sent', 'commitment-status-reserve', 'commitment-status-settled', 'send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1094,7 +1106,7 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refu
   'reply-review-state', 'reply-revision', 'reply-revision-reserve', 'reply-revision-review',
   'reply-revision-review-reserve', 'requested-reminder-intent', 'requested-reminder-sent', 'reserve',
   'retract', 'retract-request', 'retract-request-sent', 'retro', 'retro-duty', 'retro-duty-reserve',
-  'retro-rerun', 'retro-rerun-reserve', 'retro-reserve', 'send-outcome', 'send-timing', 'sent',
+  'retro-rerun', 'retro-rerun-reserve', 'retro-reserve', 'send-outcome', 'send-recovery', 'send-reconciled', 'send-timing', 'sent',
   'sentinel', 'session-work', 'status-answer', 'step-check', 'step-check-reserve', 'step-check-start',
   'step-open', 'stop', 'stop-challenge', 'summary', 'summary-candidate', 'summary-check', 'summary-due',
   'summary-failed', 'summary-faithfulness', 'summary-faithfulness-reserve', 'summary-integrity-reserve',
@@ -1102,6 +1114,12 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refu
 
 export type JournalRecord =
   | PhaseTiming
+  /** Additive: the commitment and beacon modules' durable rows (commitment-record.ts). */
+  | CommitmentStoreRecord
+  | CommitmentSendIntentRecord
+  | CommitmentSendSentRecord
+  | CommitmentStatusReserveRecord
+  | CommitmentStatusSettledRecord
   // Non-additive: an older writer must not discard the no-repeat expectation.
   | { kind: 'media-claim'; id: string; digest: string; at: number }
   | { kind: 'media-custody'; id: string; result: MediaCustodyResult; at: number }
@@ -1309,7 +1327,12 @@ export type JournalRecord =
     /** Due reminders summarized by a count line instead of another push (Rule 52); kept in memory. */
     overflow?: ReminderRef[]; provenance?: OutboundProvenance; at: number }
   /** Rule 42: a definite refusal or an unknown dispatch outcome of one outbound intent; never delivery, never retried. */
-  | { kind: 'send-outcome'; target: string; outcome: 'refused' | 'unknown'; reason: string; at: number }
+  | { kind: 'send-outcome'; target: string; outcome: 'refused' | 'unknown'; reason: string; recovery?: RecoverySend; at: number }
+  | { kind: 'recovery-resume'; configuration: string; operator?: string; at: number }
+  | { kind: 'send-prepared'; target: string; subject: OutboundSubject; provenance: OutboundProvenance; configuration?: string | null; at: number }
+  | { kind: 'send-acceptance'; target: string; subject: string; message: number; at: number }
+  | { kind: 'send-reconciled'; target: string; subject: string; message: number; at: number }
+  | { kind: 'send-recovery'; target: string; attempt: number; action: 'start' | 'finish' | 'expire' | 'cancel'; outcome?: SendOutcome; at: number }
   /** Rule 41: one live model call recorded at the launcher's single boundary before its result is used. */
   | ModelCallRecord
   | { kind: 'requested-reminder-sent'; batch: number; message: number; at: number }
@@ -1393,7 +1416,10 @@ export type JournalRecord =
     /** What the plan estimated this pass's answer would cost. Kept so that, if the answer runs over the route's
      * output cap, the next ask is sized from what this estimate really cost. Absent on rows written before it
      * was recorded, which fall back to the halving. */
-    estimatedAnswerBytes?: number; at: number }
+    estimatedAnswerBytes?: number;
+    /** Carryover row 32: the gate-crossing correction clusters this pass's packet presented to the review (the
+     * loop's durable route event). Absent when none, and on rows written before it was recorded. */
+    corrections?: PresentedCorrection[]; at: number }
   | { kind: 'retro'; pass: number; state: 'complete' | 'failed' | 'unknown'; result?: RetroPass['result']; reason?: string; usage?: ModelUsage; at: number }
   /** One bounded benchmark rerun of a promoted case under the current reply configuration, inside its pass. */
   | { kind: 'retro-rerun-reserve'; pass: number; index: number; case: string; contextDigest: string; at: number }
@@ -1469,7 +1495,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   toolRouted?: boolean;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
-  reserved: boolean; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; safetyCeiling?: 'deadline' | 'calls'; toolChecks?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; acknowledgementMode?: 'reaction-or-text'; heldNoticeSent?: number; heldNoticeSentAt?: number; acknowledgementPath?: 'reaction' | 'text'; memoryPending?: true; memoryUnresolved?: true; memoryUndecided?: true; datedPending?: true;
+  reserved: boolean; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; safetyCeiling?: 'deadline' | 'calls'; toolChecks?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; intentProvenance?: OutboundProvenance; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; acknowledgementMode?: 'reaction-or-text'; heldNoticeSent?: number; heldNoticeSentAt?: number; acknowledgementPath?: 'reaction' | 'text'; memoryPending?: true; memoryUnresolved?: true; memoryUndecided?: true; datedPending?: true;
   /** This turn's own answer decided what it withdrew: the keys it cancelled, or none. Rules 57, 93: a
    * recorded decision, including "withdraws none", settles the reminder question this turn opened. */
   reminderDecided?: true; askConflict?: string; lastNamedPerson?: string;
@@ -1634,7 +1660,11 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   jevChecks: number; replyCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number };
   replyCheckPaths: { jev: number; subscription: number; holding: number; 'operator-echo': number }; lastReplyCheck: ReplyCheckResult | null;
   /** Rule 42: definite refusals and unknown dispatches, one per outbound target. */
-  sendOutcomes: { target: string; outcome: 'refused' | 'unknown'; reason: string; at: number }[];
+  recoveryPressure?: { failures: number[]; suspended: boolean; configuration: string | null;
+    observed: { target: string; at: number; accepted: boolean; configuration: string | null }[];
+    resumedAfter?: number; suspendedAt?: number; resumedBy?: string };
+  sendEvidence?: Record<string, { subject: OutboundSubject; provenance: OutboundProvenance; configuration?: string | null; message?: number }>;
+  sendOutcomes: { target: string; outcome: 'refused' | 'unknown'; reason: string; at: number; recovery?: RecoverySend; cancelled?: true }[];
   /** Rule 89: signed outbound intents by speaker. */
   speakers: Record<Speaker, number>;
   /** Rules 41 and 75: counts of recorded model calls; the full records stay in the journal. */
@@ -1648,7 +1678,9 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   /** UNKNOWN calls conservatively written off by an authorized cap raise; absent until one is. */
   writtenOff?: string[];
   /** Part 18: the live sentinels' recorded decisions; absent until a sentinel records one. */
-  sentinels?: SentinelView }
+  sentinels?: SentinelView;
+  /** Typed commitments, beacon bookkeeping and sweep dispositions; absent until first written. */
+  commitmentStore?: CommitmentStoreView }
 
 function reserveTokens(view: JournalView, key: string, kind: CallKind, input: number, output: number): void {
   if (![input, output].every(n => Number.isSafeInteger(n) && n > 0)) throw Error('preview journal: invalid token reservation');
@@ -1952,7 +1984,11 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
   }
   const legacyFloor = snapshot.retained.reduce((max, row) => 'at' in row ? Math.max(max, row.at) : max, 0);
   const clockFloor = saved.clockFloor ?? saved.turns.reduce((max, [, turn]) => Math.max(max, turn.at), legacyFloor);
-  const view: JournalView = { ...saved, ...(saved.activeSessionWork !== undefined || Object.keys(activeSessionWork).length
+  // A compacted promise receives the same projection defaults as its source
+  // facts on replay; compaction must not strand an older undated admission.
+  const promises = { commitments: [] as CommitmentNote[] };
+  recordCommitments(promises, saved.commitments);
+  const view: JournalView = { ...saved, commitments: promises.commitments, ...(saved.activeSessionWork !== undefined || Object.keys(activeSessionWork).length
     ? { activeSessionWork } : {}), forwardFrames: [], personAttributes: saved.personAttributes ?? [], clockFloor, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null, operatorRequests: saved.operatorRequests ?? [],
     tokenTotals: saved.tokenTotals ?? emptyTokenTotals(), tokenCalls: saved.tokenCalls ?? [],
     replyCheckPaths: { ...saved.replyCheckPaths, 'operator-echo': saved.replyCheckPaths?.['operator-echo'] ?? 0 },
@@ -2395,15 +2431,29 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
         awaitingDelivery: attachableReport(work), deliveryUnknown: !attachableReport(work) });
   return items;
 }
-/** Work steps due now: never one in flight or one whose result still waits to reach the operator. */
+/** Work steps due now: never one in flight or one whose result still waits to reach the operator.
+ * Preserve PromiseBeacon's deadline-directed dispatch under the coalesced wake: declaration order
+ * must not put a later deadline ahead of the earliest due result. Equal slots retain their order. */
 export const dueObligationWork = (view: JournalView, now: number) =>
-  obligationSchedule(view).filter(item => !item.inFlight && !item.awaitingDelivery && !item.deliveryUnknown && item.slot <= now);
+  obligationSchedule(view).filter(item => !item.inFlight && !item.awaitingDelivery && !item.deliveryUnknown && item.slot <= now)
+    .sort((left, right) => left.slot - right.slot);
 /** Earliest actionable work anchor; timers are hints, never work or send authority. */
 export function nextObligationAt(view: JournalView): number | null {
   if (view.stop || !obligationCapacity(view)) return null;
   const slots = obligationSchedule(view).filter(item => !item.inFlight && !item.awaitingDelivery && !item.deliveryUnknown
     && Number.isSafeInteger(item.slot)).map(item => item.slot);
   return slots.length ? Math.min(...slots) : null;
+}
+/** Recovery shares the installed next-due wake; a deadline is a hint, never send authority. */
+export function nextDeliveryRecoveryAt(view: JournalView): number | null {
+  if (view.stop || view.recoveryPressure?.suspended) return null;
+  const due = view.sendOutcomes.flatMap(item => {
+    const r = item.recovery;
+    if (!r || r.started) return [];
+    const at = Math.min(r.firstAt + TTL_MS, Math.max(r.nextAt, (view.lastOutboundAt?.[String(r.input.thread ?? 'main')] ?? 0) + 30_000));
+    return at < view.expires ? [at] : [];
+  });
+  return due.length ? Math.min(...due) : null;
 }
 /** Completed results waiting for a reply to carry them: the reply-only grant has no unsolicited send. */
 export const pendingReports = (view: JournalView, topic?: { thread: number | undefined }) => obligationSchedule(view).filter(item => item.awaitingDelivery)
@@ -2866,8 +2916,10 @@ export const requestByKey = (view: JournalView, key: string) =>
   view.dated.find(item => datedKey(item) === key) ?? carriedRequests(view).find(item => datedKey(item) === key);
 /** Rules 57, 93: a due turn created but not yet sent is withdrawn once any request it carries is cancelled, corrected
  * or forgotten. It is never answered or sent; its other requests fall due again on their own. */
+const queuedRequestedDelivery = (view: JournalView, turn: Turn) => view.sendOutcomes.some(item =>
+  item.target === `reply:${turn.id}` && item.recovery && !item.recovery.started);
 export const actionWithdrawn = (view: JournalView, turn: Turn) => {
-  if (turn.requestedAction === undefined || turn.requestedAction.legacy !== undefined || turn.intent !== undefined) return false;
+  if (turn.requestedAction === undefined || turn.requestedAction.legacy !== undefined || turn.intent !== undefined && !queuedRequestedDelivery(view, turn)) return false;
   if (turn.requestedAction.owed) return turn.requestedAction.owed.some(ref => !owedResultAuthority(view, ref));
   const active = new Set(activeRequests(view).map(datedKey));
   return requestKeys(turn).some(key => !active.has(key));
@@ -2886,7 +2938,7 @@ export const lastRecurringOccurrence = (view: JournalView, item: DatedItem) => {
 /** Recurring series remain withdrawable. One-time requests close on dispatch (including legacy batches). */
 export const openRequests = (view: JournalView) => {
   const dispatched = new Set([...[...view.reminders.values()].flatMap(batch => batch.requested ? batch.items.map(reminderKey) : []),
-    ...view.order.filter(turn => turn.intent !== undefined).flatMap(requestKeys)]);
+    ...view.order.filter(turn => turn.intent !== undefined && !queuedRequestedDelivery(view, turn)).flatMap(requestKeys)]);
   return activeRequests(view).filter(item => item.recurrence !== undefined || !dispatched.has(datedKey(item)))
     .map(item => {
       const last = item.recurrence ? lastRecurringOccurrence(view, item) : undefined;
@@ -2895,7 +2947,7 @@ export const openRequests = (view: JournalView) => {
 };
 /** Open requests no live (unsent, unwithdrawn) due turn carries yet: what the next due point may take. */
 export const pendingRequests = (view: JournalView, at?: number) => {
-  const queued = new Set(view.order.filter(turn => turn.intent === undefined && !actionWithdrawn(view, turn)).flatMap(requestKeys));
+  const queued = new Set(view.order.filter(turn => (turn.intent === undefined || queuedRequestedDelivery(view, turn)) && !actionWithdrawn(view, turn)).flatMap(requestKeys));
   return openRequests(view).flatMap(open => {
     const item = open.recurrence ? requestByKey(view, datedKey(open))! : open;
     if (!item.recurrence) return queued.has(datedKey(item)) ? [] : [item];
@@ -3231,6 +3283,7 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
   const index = /^summary:index:(0|[1-9][0-9]*)$/u.exec(row.id);
   const valid = work ? row.role === 'model' && view.obligationWork[work[1]!]?.inFlight === Number(work[2])
     : index ? row.role === 'summary' && view.indexOpen?.key === `index:${index[1]!}`
+    : /^commitment-status:\d+$/u.test(row.id) ? row.role === 'model' && !!view.commitmentStore?.statusOpen.includes(Number(row.id.slice(18)))
     : row.role === 'summary' ? !!summary && view.summaryReservations.has(Number(summary[1]))
     && (summary[2] === undefined || view.summaryReviews.has(Number(summary[1])))
     : row.role === 'reply-review' ? row.id.endsWith(':held-notice-review') && !!view.turns.get(row.id.slice(0, -19))?.heldNoticeReviewReserved
@@ -3294,6 +3347,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
     return turn?.heldNoticeIntent !== undefined ? { sent: turn.heldNoticeSent } : undefined; }
   if (kind === 'reply-part') { const part = view.turns.get(rest.slice(1).join(':'))?.replyParts?.[Number(rest[0]) - 2];
     return part?.started ? { sent: part.sent } : undefined; }
+  if (kind === 'commitment-send') { const send = view.commitmentStore?.sends[Number(key)];
+    return send ? { sent: send.sent } : undefined; }
   if (kind === 'requested-reminder') { const batch = view.reminders.get(requestedBatchKey(Number(key)));
     return batch?.requested ? { sent: batch.sent } : undefined; }
   if (kind === 'limited') { const turn = view.turns.get(key);
@@ -3306,7 +3361,67 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
 }
 /** Rule 42: the one target-outcome lookup every view reads. A receipt is acceptance; a recorded
  * definite refusal stays a refusal with its reason; anything else (including a legacy intent with
- * no record) is UNKNOWN. None of the three is ever retried. */
+ * no record) is UNKNOWN. Only separately retained proof of non-delivery admits recovery. */
+/** Durable recovery payload, carried in the existing encrypted send-outcome projection. */
+export interface RecoverySend {
+  input: { text: string; expectedText: string; formatting?: ReplyFormatting; chat: string; thread?: number; update: number;
+    kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown };
+  provenance: OutboundProvenance; firstAt: number; attempts: number; failures: number; nextAt: number; started?: true;
+}
+/** The escalation outcome and pressure move in one journal frame, including on replay.
+ * 1.x DeliveryFailureSentinel: five consecutive failed escalations in the inclusive hour;
+ * a successful escalation clears failure history, never an ordinary successful reply. */
+function recordEscalationPressure(view: JournalView, target: string, at: number, accepted: boolean): void {
+  const evidence = view.sendEvidence?.[target];
+  if (!target.startsWith('delivery-notice:') || !evidence) return;
+  const prior = view.recoveryPressure, observed = [...prior?.observed ?? []];
+  const index = observed.findIndex(item => item.target === target);
+  if (index !== -1) {
+    if (!accepted || observed[index]!.accepted) return;
+    // Correct the provisional outcome in its original journal order, not at receipt time.
+    observed[index] = { ...observed[index]!, accepted: true };
+  } else observed.push({ target, at, accepted, configuration: evidence.configuration ?? null });
+  let failures: number[] = [], suspended = false, suspendedAt: number | undefined;
+  let configuration = prior?.configuration ?? null;
+  for (const item of observed.slice(prior?.resumedAfter ?? 0)) {
+    failures = item.accepted ? [] : [...failures.filter(time => time >= item.at - 3_600_000), item.at];
+    if (!suspended) configuration = item.configuration;
+    if (failures.length >= 5 && !suspended) { suspended = true; suspendedAt = item.at; }
+  }
+  view.recoveryPressure = { failures, suspended, configuration, observed,
+    ...(prior?.resumedAfter === undefined ? {} : { resumedAfter: prior.resumedAfter }),
+    ...(prior?.resumedBy ? { resumedBy: prior.resumedBy } : {}),
+    ...(suspendedAt === undefined ? {} : { suspendedAt }) };
+}
+/** Only previously signed, started sends may consult an independently persisted receipt. */
+function reconcilableSends(view: JournalView): { target: string; subject: string }[] {
+  const candidates = new Map<string, string>();
+  for (const [target, evidence] of Object.entries(view.sendEvidence ?? {}))
+    if (sendTarget(view, target)?.sent === undefined) candidates.set(target, evidence.provenance.contentHash);
+  for (const turn of view.order) {
+    if (turn.intent && turn.sent === undefined && turn.intentProvenance)
+      candidates.set(`reply:${turn.id}`, turn.intentProvenance.contentHash);
+    for (const [index, part] of (turn.replyParts ?? []).entries()) if (part.started && part.sent === undefined)
+      candidates.set(replyPartTarget(turn.id, index + 2), part.provenance.contentHash);
+  }
+  for (const item of view.sendOutcomes) if (item.recovery?.started)
+    candidates.set(item.target, item.recovery.provenance.contentHash);
+  return [...candidates].filter(([target]) => !view.sendOutcomes.some(item => item.target === target && item.outcome !== 'unknown'))
+    .map(([target, subject]) => ({ target, subject }));
+}
+function recoveryReceipt(target: string, message: number, at: number): JournalRecord {
+  const [kind, ...rest] = target.split(':'), id = rest.join(':');
+  if (kind === 'reply') return { kind: 'sent', id, message, at };
+  if (kind === 'reply-part') return { kind: 'reply-part-sent', id: rest.slice(1).join(':'), part: Number(rest[0]), message, at };
+  if (kind === 'limited') return { kind: 'limited-sent', id, message, at };
+  if (kind === 'operator-result' || kind === 'retract-request') return { kind: kind === 'operator-result' ? 'operator-result-sent' : 'retract-request-sent', request: id, message, at };
+  if (kind === 'requested-reminder') return { kind: 'requested-reminder-sent', batch: Number(id), message, at };
+  return { kind: 'held-notice-sent', id: kind === 'working-progress' ? rest.slice(1).join(':') : id, message, at,
+    ...(kind === 'working-progress' ? { workingProgress: Number(rest[0]) } : {}),
+    ...(kind === 'waiting-progress' ? { waitingProgress: true } : {}),
+    ...(kind === 'login-outage' ? { loginOutage: true } : {}),
+    ...(kind === 'delivery-notice' ? { deliveryUnknown: true } : {}) };
+}
 export type TargetOutcome = { kind: 'accepted'; message: number } | { kind: 'refused'; reason: string } | { kind: 'unknown'; reason: string | null };
 export function sendOutcomeOf(view: JournalView, target: string, sent: number | undefined): TargetOutcome {
   if (sent !== undefined) return { kind: 'accepted', message: sent };
@@ -3317,6 +3432,7 @@ export function sendOutcomeOf(view: JournalView, target: string, sent: number | 
 function needsDeliveryNotice(view: JournalView, turn: Turn): boolean {
   if (!turn.accepted || turn.editOf || turn.groupedInto || turn.intent === undefined || turn.answer === undefined || turn.deliveryNotice) return false;
   const whole = replyOutcomeOf(view, turn);
+  if (view.sendOutcomes.some(item => item.target === whole.target && (item.cancelled || item.recovery && !item.recovery.started))) return false;
   return whole.started && whole.outcome.kind !== 'accepted';
 }
 /** The reply target a turn's intent was dispatched under (a grouped turn shares its leader's send). */
@@ -3390,9 +3506,16 @@ export function sendOutcomeCounts(view: JournalView) {
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
   }
   for (const [key, batch] of view.reminders) settle(reminderTarget(view, key, batch), batch.sent);
+  for (const send of view.commitmentStore?.sends ?? []) settle(commitmentSendTarget(send.ordinal), send.sent);
   return { accepted, refused: refusedItems, unknown, speakers: { ...view.speakers },
-    lastRefusal: view.sendOutcomes.filter(item => item.outcome === 'refused').at(-1) ?? null,
-    unknownReasons, lastUnknown: view.sendOutcomes.filter(item => item.outcome === 'unknown').at(-1) ?? null };
+    lastRefusal: publicSendFailure(view.sendOutcomes.filter(item => item.outcome === 'refused').at(-1)),
+    unknownReasons, lastUnknown: publicSendFailure(view.sendOutcomes.filter(item => item.outcome === 'unknown').at(-1)),
+    recovery: { suspended: view.recoveryPressure?.suspended ?? false, failedEscalations: view.recoveryPressure?.failures.length ?? 0,
+      remedy: view.recoveryPressure?.suspended ? 'Repair delivery configuration or send /resume-delivery from the authenticated operator account.' : null, queued: view.sendOutcomes.filter(item => item.recovery && !item.recovery.started).length,
+      uncertain: view.sendOutcomes.filter(item => item.recovery?.started).length } };
+}
+function publicSendFailure(item: JournalView['sendOutcomes'][number] | undefined) {
+  return item ? { target: item.target, outcome: item.outcome, reason: item.reason, at: item.at } : null;
 }
 export interface ModelCallCounts { total: number; byJudgment: Record<string, number>; byOutcome: Record<string, number>; usageUnknown: number;
   last: Pick<ModelCallRecord, 'id' | 'judgment' | 'route' | 'outcome' | 'latencyMs' | 'usage' | 'at'>[] }
@@ -3410,6 +3533,12 @@ function checkSendOutcome(view: JournalView, row: Extract<JournalRecord, { kind:
   if (!target || target.sent !== undefined || view.sendOutcomes.some(item => item.target === row.target)
     || (row.outcome !== 'refused' && row.outcome !== 'unknown') || typeof row.reason !== 'string' || !row.reason)
     throw Error('preview journal: send outcome order');
+  const r = row.recovery;
+  if (r && (row.outcome !== 'refused' || r.started || !Number.isSafeInteger(r.attempts) || r.attempts < 1 || r.attempts >= 9
+    || !Number.isSafeInteger(r.firstAt) || r.firstAt > row.at || !Number.isSafeInteger(r.nextAt) || r.nextAt <= row.at
+    || !Number.isSafeInteger(r.failures) || r.failures < 0 || r.failures >= 9
+    || r.nextAt > r.firstAt + TTL_MS || r.input.chat !== view.genesis.chat || !r.provenance))
+    throw Error('preview journal: recovery schedule refused');
 }
 function checkModelCall(row: ModelCallRecord): void {
   const judgment = LIVE_JUDGMENTS[row.judgment];
@@ -3424,7 +3553,8 @@ function checkModelCall(row: ModelCallRecord): void {
     throw Error('preview journal: model call record refused');
 }
 /** The exact act an outbound intent's signature covers. */
-export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' | 'held-notice-intent' | 'requested-reminder-intent' | 'limited-intent' | 'operator-result-intent' | 'retract-request' }>): OutboundSubject {
+export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' | 'held-notice-intent' | 'requested-reminder-intent' | 'limited-intent' | 'operator-result-intent' | 'retract-request' | 'commitment-send-intent' }>): OutboundSubject {
+  if (row.kind === 'commitment-send-intent') return { target: commitmentSendTarget(row.ordinal), chat: row.chat, thread: row.thread, body: row.text };
   if (row.kind === 'retract-request') return { target: `retract-request:${row.request.id}`, chat: row.chat, body: row.text };
   const thread = row.thread === undefined ? {} : { thread: row.thread };
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
@@ -3895,12 +4025,13 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   // Update only after validation. UNKNOWN intents count too: absence of a receipt is not silence proof.
   const intent = row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'limited-intent'
     || row.kind === 'operator-result-intent' || row.kind === 'requested-reminder-intent' || row.kind === 'reminder-intent'
-    || row.kind === 'retract-request';
+    || row.kind === 'retract-request' || row.kind === 'commitment-send-intent';
   const receipt = row.kind === 'sent' || row.kind === 'held-notice-sent' || row.kind === 'limited-sent'
     || row.kind === 'reply-part-start' || row.kind === 'reply-part-sent' || row.kind === 'reminder-sent'
-    || row.kind === 'requested-reminder-sent' || row.kind === 'operator-result-sent' || row.kind === 'retract-request-sent';
+    || row.kind === 'requested-reminder-sent' || row.kind === 'operator-result-sent' || row.kind === 'retract-request-sent' || row.kind === 'commitment-send-sent';
   if (intent || receipt) {
     const thread = 'thread' in row ? row.thread : 'id' in row ? view.turns.get(row.id)?.thread
+      : row.kind === 'commitment-send-sent' ? view.commitmentStore?.sends[row.ordinal]?.thread
       : row.kind === 'requested-reminder-sent' ? view.turns.get(view.reminders.get(requestedBatchKey(row.batch))?.items[0]?.source ?? '')?.thread
         : row.kind === 'operator-result-sent' || row.kind === 'retract-request-sent'
           ? view.operatorRequests.find(item => item.request.id === row.request)?.thread : undefined;
@@ -3917,7 +4048,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   if (row.kind === 'send-format-refused') {
     const prepared = replyFormatting(view, row.target), target = sendTarget(view, row.target);
     if (!prepared || prepared.refusal || !target || target.sent !== undefined
-      || view.sendOutcomes.some(item => item.target === row.target) || !parseRefused(row.response))
+      || view.sendOutcomes.some(item => item.target === row.target && !item.recovery?.started) || !parseRefused(row.response))
       throw Error('preview journal: format refusal order');
     prepared.refusal = row.response;
     return;
@@ -4001,9 +4132,75 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (!notice || notice.sent !== undefined || !Number.isSafeInteger(row.message) || row.message <= 0) throw Error('preview journal: operator result receipt order');
     notice.sent = row.message; return;
   }
+  if (row.kind === 'recovery-resume') {
+    const prior = view.recoveryPressure, turn = row.operator ? view.turns.get(row.operator) : undefined;
+    if (!prior?.suspended || !/^sha256:[a-f0-9]{64}$/u.test(row.configuration) || view.stop || row.at >= view.expires
+      || (row.operator ? !turn?.accepted || !turn.writer || !operatorWriter(view, turn) || turn.text.trim() !== '/resume-delivery'
+        || turn.requestedAction || turn.editOf || turn.at < (prior.suspendedAt ?? Infinity) || prior.resumedBy === row.operator
+        : prior.configuration === null || row.configuration === prior.configuration))
+      throw Error('preview journal: recovery resume authority or current configuration refused');
+    view.recoveryPressure = { failures: [], suspended: false, configuration: row.configuration,
+      observed: prior.observed, resumedAfter: prior.observed.length, ...(row.operator ? { resumedBy: row.operator } : {}) }; return;
+  }
+  if (row.kind === 'send-prepared') {
+    const target = sendTarget(view, row.target);
+    if (!target || target.sent !== undefined || row.subject.target !== row.target || view.sendEvidence?.[row.target])
+      throw Error('preview journal: prepared send identity or order');
+    (view.sendEvidence ??= {})[row.target] = { subject: row.subject, provenance: row.provenance, configuration: row.configuration ?? null }; return;
+  }
+  if (row.kind === 'send-acceptance') {
+    const evidence = view.sendEvidence?.[row.target];
+    if (!evidence || evidence.provenance.contentHash !== row.subject || !Number.isSafeInteger(row.message) || row.message <= 0
+      || evidence.message !== undefined && evidence.message !== row.message)
+      throw Error('preview journal: acceptance identity or conflict');
+    evidence.message = row.message; recordEscalationPressure(view, row.target, row.at, true); return;
+  }
+  if (row.kind === 'send-reconciled') {
+    if (!Number.isSafeInteger(row.message) || row.message <= 0
+      || !reconcilableSends(view).some(item => item.target === row.target && item.subject === row.subject))
+      throw Error('preview journal: reconciliation receipt order');
+    const index = view.sendOutcomes.findIndex(item => item.target === row.target);
+    if (index !== -1) view.sendOutcomes.splice(index, 1);
+    project(view, recoveryReceipt(row.target, row.message, row.at), system, admission);
+    recordEscalationPressure(view, row.target, row.at, true); return;
+  }
+  if (row.kind === 'send-recovery') {
+    const prior = view.sendOutcomes.find(item => item.target === row.target), r = prior?.recovery;
+    if (!prior || !r || row.attempt !== r.attempts) throw Error('preview journal: recovery order');
+    if (row.action === 'cancel') {
+      const turn = view.turns.get(row.target.replace(/^reply(?:-part:[0-9]+)?:/u, ''));
+      if (r.started || !turn || !actionWithdrawn(view, turn)) throw Error('preview journal: recovery cancellation order');
+      delete prior.recovery; prior.cancelled = true; prior.reason = 'requested action withdrawn before recovery'; return;
+    }
+    if (row.action === 'expire') {
+      if (r.started || row.at < r.firstAt + TTL_MS) throw Error('preview journal: recovery expiry order');
+      delete prior.recovery; prior.reason = 'delivery recovery TTL exhausted'; return;
+    }
+    if (row.action === 'start') {
+      if (r.started || view.stop || view.recoveryPressure?.suspended || row.at >= view.expires || row.at < r.nextAt || row.at >= r.firstAt + TTL_MS)
+        throw Error('preview journal: recovery not eligible');
+      r.started = true; (view.lastOutboundAt ??= {})[String(r.input.thread ?? 'main')] = row.at; prior.outcome = 'unknown'; prior.reason = 'recovery dispatch has no receipt'; return;
+    }
+    if (row.action !== 'finish' || !r.started || !row.outcome) throw Error('preview journal: recovery result order');
+    const outcome = settleSendOutcome(row.outcome);
+    if (outcome.kind === 'accepted') {
+      // Consume the recovery before applying the original receipt owner, including its promise settlement.
+      view.sendOutcomes.splice(view.sendOutcomes.indexOf(prior), 1);
+      project(view, recoveryReceipt(row.target, outcome.message, row.at), system, admission); return;
+    }
+    prior.outcome = outcome.kind === 'unknown' ? 'unknown' : 'refused'; prior.reason = outcome.reason;
+    const failures = r.failures + (outcome.kind === 'not-sent' ? 1 : 0);
+    const delay = recoveryDelay(outcome, failures, r.firstAt, row.at);
+    if (delay === null) { if (outcome.kind !== 'unknown') delete prior.recovery;
+      if (outcome.kind === 'not-sent' || outcome.kind === 'refused' && outcome.retryAfterMs)
+        prior.reason = `${outcome.reason} (delivery recovery exhausted)`;
+    }
+    else { r.attempts++; r.failures = failures; r.nextAt = row.at + delay; delete r.started; }
+    return;
+  }
   if (row.kind === 'send-outcome') {
     checkSendOutcome(view, row);
-    view.sendOutcomes.push({ target: row.target, outcome: row.outcome, reason: row.reason, at: row.at }); return;
+    view.sendOutcomes.push({ target: row.target, outcome: row.outcome, reason: row.reason, at: row.at, ...(row.recovery ? { recovery: row.recovery } : {}) }); recordEscalationPressure(view, row.target, row.at, false); return;
   }
   if (row.kind === 'tool-turn') { projectToolTurn(view, row); return; }
   if (row.kind === 'model-call') {
@@ -4016,7 +4213,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       latencyMs: row.latencyMs, usage: row.usage, at: row.at }].slice(-20);
     return;
   }
-  if ((row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'requested-reminder-intent' || row.kind === 'limited-intent') && row.provenance)
+  if ((row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'requested-reminder-intent' || row.kind === 'limited-intent' || row.kind === 'commitment-send-intent') && row.provenance)
     view.speakers[row.provenance.speaker]++;
   if (row.kind === 'reminder-grant') {
     if (view.reminderGrant !== null || view.stop || row.trial !== view.genesis.grant
@@ -4465,8 +4662,29 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     view.calls++;
     view.retroPasses.push({ pass: row.pass, at: row.at, turnsSeen: row.turnsSeen, cases: row.cases, omitted: row.omitted, eligible: row.eligible,
       packetSha256: row.packetSha256, contextDigest: row.contextDigest,
-      ...(row.estimatedAnswerBytes === undefined ? {} : { estimatedAnswerBytes: row.estimatedAnswerBytes }) });
+      ...(row.estimatedAnswerBytes === undefined ? {} : { estimatedAnswerBytes: row.estimatedAnswerBytes }),
+      ...(row.corrections === undefined ? {} : { corrections: row.corrections }) });
     return;
+  }
+  if (row.kind === 'commitment-store') {
+    checkCommitmentStoreRecord(row);
+    view.commitmentStore = applyCommitmentStoreRecord(view.commitmentStore, row); return;
+  }
+  if (row.kind === 'commitment-send-intent') {
+    checkCommitmentSendIntent(view, row);
+    view.commitmentStore = applyCommitmentSendIntent(view.commitmentStore, row);
+    view.replies++; return;
+  }
+  if (row.kind === 'commitment-send-sent') { applyCommitmentSendReceipt(view, row); return; }
+  if (row.kind === 'commitment-status-reserve') {
+    if (view.stop || view.calls >= view.limits.maxCalls) throw Error('preview journal: commitment status reservation refused');
+    view.commitmentStore = applyCommitmentStatusReserve(view.commitmentStore, row);
+    reserveTokens(view, commitmentStatusId(row.ordinal), 'summary', view.limits.maxBytes, subscriptionOutputMaximum);
+    view.calls++; return;
+  }
+  if (row.kind === 'commitment-status-settled') {
+    applyCommitmentStatusSettled(view.commitmentStore, row);
+    settleTokens(view, commitmentStatusId(row.ordinal), row.usage); return;
   }
   if (row.kind === 'sentinel') {
     checkSentinelRecord(row, id => view.turns.has(id));
@@ -5289,7 +5507,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       || row.parts.some(part => typeof part.text !== 'string' || !part.text || (part.formatting === undefined && part.body !== encodeReply(part.text)) || !fitsOneMessage(part.text))))
       throw Error('preview journal: reply parts refused');
     if (row.formatting !== undefined) turn.formatting = structuredClone(row.formatting);
-    turn.intent = row.text; turn.intentAt = row.at; turn.intentBody = row.body ?? row.text; view.replies++;
+    turn.intent = row.text; turn.intentAt = row.at; turn.intentBody = row.body ?? row.text; if (row.provenance) turn.intentProvenance = row.provenance; view.replies++;
     if (row.parts !== undefined) turn.replyParts = row.parts.map(part => ({ ...part }));
     if (row.correctionDeferred) {
       turn.correctionDeferred = true;
@@ -5352,6 +5570,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       turn.summaryBatch = row.summaries;
     } }
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined
+      || !Number.isSafeInteger(row.message) || row.message <= 0
       || row.latencyMs !== undefined && (turn.sendMs !== undefined || !Number.isSafeInteger(row.latencyMs) || row.latencyMs < 0))
       throw Error('preview journal: receipt order');
     turn.sent = row.message; turn.sentAt = row.at;
@@ -5549,7 +5768,15 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       // Frames of removed features only replay; nothing writes them again.
       if (row.kind === 'summary-due' || row.kind === 'requested-reminder-intent')
         throw Error('preview journal: removed frame kind refused');
-      if (row.kind === 'send-outcome') checkSendOutcome(view!, row);
+      if (row.kind === 'send-prepared' && !verifyOutbound(row.provenance, row.subject))
+        throw Error('preview journal: prepared send provenance refused');
+      if (row.kind === 'send-outcome') {
+        checkSendOutcome(view!, row);
+        const r = row.recovery;
+        if (r && !verifyOutbound(r.provenance, { target: row.target, chat: r.input.chat,
+          ...(r.input.thread === undefined ? {} : { thread: r.input.thread }), body: r.input.text }))
+          throw Error('preview journal: recovery provenance refused');
+      }
       // Rule 35: a production store refuses test-origin compositions and test-origin identities here, at its write boundary.
       if (origin !== undefined && (row.kind === 'genesis' ? row.origin : view?.genesis.origin) !== (origin === 'test' ? 'test' : undefined))
         throw Error(`preview journal: ${origin}-origin write refused by a ${(row.kind === 'genesis' ? row.origin : view?.genesis.origin) ?? 'production'} store`);
@@ -5559,7 +5786,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       if (row.kind === 'genesis' && row.forum !== undefined) validateChatBinding(row);
       if (row.kind === 'genesis' && row.origin !== undefined && row.origin !== 'test') throw Error('preview journal: invalid genesis origin');
       if ((row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'limited-intent' || row.kind === 'operator-result-intent'
-        || row.kind === 'retract-request') && row.provenance !== undefined && !verifyOutbound(row.provenance, outboundSubjectOf(row)))
+        || row.kind === 'retract-request' || row.kind === 'commitment-send-intent') && row.provenance !== undefined && !verifyOutbound(row.provenance, outboundSubjectOf(row)))
         throw Error('preview journal: outbound provenance refused');
       if (row.kind === 'intent' && row.parts !== undefined && row.parts.some((part, index) => !verifyOutbound(part.provenance,
         { target: replyPartTarget(row.id, index + 2), chat: row.chat, ...(row.thread === undefined ? {} : { thread: row.thread }), body: part.body })))
@@ -5976,6 +6203,10 @@ export function concurrentWorkItem(input: { now: number; zone?: string; current:
 }
 
 export interface PreviewPorts {
+  /** Read the original claim owner's exact persisted receipt; never send or infer acceptance. */
+  reconcileSend?(target: string, subject: string): Promise<number | null>;
+  /** Host observation of current auth-relevant routing, never bearer identity as operator authority. */
+  recoveryConfiguration?(): string | null;
   /** Bound independent topic drains; omitted retains the serial compatibility path. */
   topicConcurrency?: number;
   /** Current scoped authority and real group membership, checked afresh before every model or send port. */
@@ -6044,7 +6275,7 @@ export interface PreviewPorts {
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
   send(input: { text: string; expectedText: string; formatting?: ReplyFormatting; chat: string; thread?: number; replyTo?: number; update: number;
     kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown;
-    target?: string; provenance?: OutboundProvenance; admit?: () => void; current?: () => boolean;
+    target?: string; retryAttempt?: number; provenance?: OutboundProvenance; admit?: () => void; current?: () => boolean;
     observeSendPhase?: (phase: 'audienceAdmittedAt' | 'transportBegunAt' | 'transportReturnedAt') => void }): Promise<number | null | SendOutcome>;
   /** The host calls input.admit after its last disclosure read, before replication/dispatch. */
   sendAdmits?: true;
@@ -6099,6 +6330,8 @@ export interface PreviewPorts {
   /** The bounded retrospective review: one subscription attempt over the pass's case packet.
    * `value` is the model's JSON answer text; anything else leaves the cases owed. `question` is set only for the
    * pass's duty follow-up (RETRO_DUTY_FOLLOWUP_QUESTION); absent, the port asks RETROSPECTIVE_QUESTION. */
+  /** Row 01: the beacon's status line through the launcher's recorded model boundary. */
+  commitmentStatus?: CommitmentStatusModel;
   retrospect?(state: string, id: string, question?: string): Promise<{ state: 'complete'; value: string; usage?: ModelUsage }
     | { state: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage }>;
   /** Typed seam for evidence other builds own (build 5: waiver authorizations and acts). Absent: the duty is recorded unavailable. */
@@ -6155,6 +6388,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       : { kind: 'refused', reason: 'group disclosure authority or audience refused' },
     ...(original.sessionWork ? { sessionWork: guarded(original.sessionWork) } : {}),
     ...(original.retrospect ? { retrospect: guarded(original.retrospect) } : {}),
+    ...(original.commitmentStatus ? { commitmentStatus: guarded(original.commitmentStatus) } : {}),
     ...(original.stepCheck ? { stepCheck: { jev: guarded(original.stepCheck.jev) } } : {}),
     ...(original.summaryCheck ? { summaryCheck: guarded(original.summaryCheck) } : {}),
     ...(original.replyCheck ? { replyCheck: { ...original.replyCheck,
@@ -6217,7 +6451,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const record = () => recordTiming(target, 'send', measurements, ports.now());
     try {
     let prepared = admitted === undefined;
-    const admit = () => { if (!prepared) { gate(); if (input.current && !input.current()) throw Error('acknowledgement cancelled'); observeSendPhase('audienceAdmittedAt'); admitted!(); prepared = true; } };
+    const retainSubject = () => {
+      if (provenance && !journal.view.sendEvidence?.[target]) journal.append({ kind: 'send-prepared', target,
+        subject: { target, chat: input.chat, ...(input.thread === undefined ? {} : { thread: input.thread }), body: input.text }, provenance, configuration: ports.recoveryConfiguration?.() ?? null, at: ports.now() });
+    };
+    const admit = () => { if (!prepared) { gate(); if (input.current && !input.current()) throw Error('acknowledgement cancelled'); observeSendPhase('audienceAdmittedAt'); admitted!(); prepared = true; retainSubject(); } };
     if (admitted) {
       if (!isGroupReviewFinalNotice(input.text, input.expectedText) && !await disclosure()) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };
       if (input.current && !input.current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
@@ -6233,11 +6471,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     let attempted: SendOutcome = { kind: 'unknown', reason: 'send port failed' };
     if (!journal.verifyOutbound(provenance, subject)) attempted = { kind: 'refused', reason: 'outbound provenance unsigned' };
     else for (let attempt = 0; attempt < NOT_SENT_ATTEMPTS; attempt++) {
+      if (prepared) retainSubject();
       if (input.current && !input.current()) { attempted = { kind: 'refused', reason: 'acknowledgement cancelled' }; break; }
       measurements.attempt = attempt + 1;
       try {
         if (!original.sendAdmits) observeSendPhase('transportBegunAt');
-        attempted = settleSendOutcome(await (admitted ? original.send : ports.send)({ ...input, ...(replyTo === null ? {} : { replyTo }), target, provenance: provenance!, observeSendPhase, ...(admitted && original.sendAdmits ? { admit } : {}) }));
+        attempted = settleSendOutcome(await (admitted ? original.send : ports.send)({ ...input, ...(replyTo === null ? {} : { replyTo }), target, retryAttempt: attempt, provenance: provenance!, observeSendPhase, ...(admitted && original.sendAdmits ? { admit } : {}) }));
       } catch { attempted = { kind: 'unknown', reason: 'send port failed' }; }
       finally { if (!original.sendAdmits) observeSendPhase('transportReturnedAt'); }
       if (attempted.kind !== 'not-sent') break;
@@ -6248,8 +6487,24 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (!prepared) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };
     const outcome: SettledSendOutcome = attempted.kind === 'not-sent'
       ? { kind: 'refused', reason: attempted.reason } : attempted;
+    if (outcome.kind === 'accepted') journal.append({ kind: 'send-acceptance', target, subject: provenance!.contentHash, message: outcome.message, at: ports.now() });
     if (outcome.kind !== 'accepted') {
-      try { journal.append({ kind: 'send-outcome', target, outcome: outcome.kind, reason: redact(outcome.reason).text, at: ports.now() }); }
+      try {
+        const at = ports.now(), firstAt = Number(measurements.sendEnteredAt);
+        const attempts = Number(measurements.attempt ?? 1), failures = Number(measurements.provedNotSentAttempts ?? 0);
+        const delay = recoveryDelay(attempted, failures, firstAt, at);
+        // Progress and outage notices describe current state; their original eligibility cannot be carried as a saved callback.
+        // Only durable reply/result targets use delayed recovery; failure notices keep their two-attempt bound.
+        const durableResult = /^(?:reply|reply-part|limited|operator-result|retract-request):/u.test(target);
+        const recovery = delay !== null && durableResult && !input.current && provenance ? {
+          input: { text: input.text, expectedText: input.expectedText, chat: input.chat, update: input.update,
+            ...(input.thread === undefined ? {} : { thread: input.thread }), ...(input.formatting ? { formatting: input.formatting } : {}),
+            ...(input.kind ? { kind: input.kind } : {}), ...(input.disposition ? { disposition: input.disposition } : {}),
+            ...(input.replyMarkup ? { replyMarkup: input.replyMarkup } : {}) },
+          provenance, firstAt, attempts, failures, nextAt: at + delay } : undefined;
+        journal.append({ kind: 'send-outcome', target, outcome: outcome.kind, reason: redact(outcome.reason).text,
+          ...(recovery ? { recovery } : {}), at });
+      }
       catch { /* the intent stays UNKNOWN without its reason */ }
     }
     return outcome;
@@ -8277,7 +8532,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const packet = JSON.parse(context) as { summary?: { through: number }; memorySummary?: { text: string }; history?: unknown[];
               historySetAside?: { through: number };
               recalled?: unknown[]; people?: unknown[]; commitments?: { items: { id: number }[] }[];
-              channelMemory?: unknown[]; corrections?: unknown[]; memory?: unknown[]; memoryCandidates?: { id: string }[] };
+              channelMemory?: unknown[]; corrections?: unknown[]; memory?: unknown[]; memoryCandidates?: { id: string }[];
+              preferences?: { source: string }[] };
             const shownPeople = named.filter((_, index) => has('person', index));
             const shownOpen = open.filter((_, index) => has('commitment', index));
             const grounding: ReplyGrounding = { packetSha256: createHash('sha256').update(context).digest('hex'),
@@ -8294,7 +8550,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 || change.mode === 'remember' && !selectedFacts.includes(change)
                 || preferenceState().lineage.has(JSON.stringify([change.source, change.quote]))
                 || change.mode === 'correct' && supersededCorrection(change)
-                ? [] : [index]), memoryCandidates: packet.memoryCandidates?.map(item => item.id) ?? [] };
+                ? [] : [index]), memoryCandidates: packet.memoryCandidates?.map(item => item.id) ?? [],
+              ...(packet.preferences ? { preferences: packet.preferences.map(item => item.source) } : {}) };
             if ((packet.history?.length ?? 0) !== grounding.history.length || (packet.recalled?.length ?? 0) !== grounding.recalled.length
               || (packet.people?.length ?? 0) !== grounding.people.length || (packet.commitments?.reduce((n, item) => n + item.items.length, 0) ?? 0) !== grounding.commitments.length
               || (packet.channelMemory?.length ?? 0) !== grounding.channelItems.length || (packet.memory?.length ?? 0) !== grounding.memoryChanges.length)
@@ -8596,7 +8853,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // already have used heldNoticeIntent. A notice's own UNKNOWN never creates another notice.
   const noticeFailedReplies = async () => {
     for (const turn of journal.view.order) {
-      if (halted() || journal.view.replies >= journal.view.limits.maxReplies) return;
+      if (halted() || journal.view.recoveryPressure?.suspended || journal.view.replies >= journal.view.limits.maxReplies) return;
       if (!needsDeliveryNotice(journal.view, turn) || !await disclosure()) continue;
       const covers = journal.view.order.filter(item => item !== turn && item.thread === turn.thread
         && needsDeliveryNotice(journal.view, item)).map(item => item.id);
@@ -8735,6 +8992,54 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // One fresh read per pass decides which turns may proceed; the model and send ports still re-read their own.
       const audienceHolds = await disclosure();
       completeApprovals();
+      for (const candidate of reconcilableSends(journal.view)) {
+        gate();
+        const message = journal.view.sendEvidence?.[candidate.target]?.message
+          ?? await ports.reconcileSend?.(candidate.target, candidate.subject) ?? null;
+        if (message !== null) journal.append({ kind: 'send-reconciled', ...candidate, message, at: ports.now() });
+      }
+      const configuration = ports.recoveryConfiguration?.() ?? null;
+      if (journal.view.recoveryPressure?.suspended && configuration && configuration !== journal.view.recoveryPressure.configuration
+        && journal.view.recoveryPressure.configuration !== null)
+        journal.append({ kind: 'recovery-resume', configuration, at: ports.now() });
+      if (journal.view.recoveryPressure?.suspended && configuration) {
+        const resume = journal.view.order.find(turn => turn.accepted && turn.writer && fromOperator(turn) && !turn.editOf && !turn.requestedAction
+          && turn.at >= (journal.view.recoveryPressure?.suspendedAt ?? Infinity)
+          && turn.id !== journal.view.recoveryPressure?.resumedBy && turn.text.trim() === '/resume-delivery' && turn.answer === undefined && turn.intent === undefined);
+        if (resume) journal.append({ kind: 'recovery-resume', configuration, operator: resume.id, at: ports.now() });
+      }
+      const recoveringTopics = new Set<string>();
+      if (audienceHolds && !journal.view.recoveryPressure?.suspended) for (const pending of [...journal.view.sendOutcomes]) {
+        const r = pending.recovery, at = ports.now();
+        if (!r || r.started || at < r.nextAt) continue;
+        gate();
+        if (at >= r.firstAt + TTL_MS) {
+          journal.append({ kind: 'send-recovery', target: pending.target, attempt: r.attempts, action: 'expire', at }); continue;
+        }
+        const recoveryTurn = journal.view.turns.get(pending.target.replace(/^reply(?:-part:[0-9]+)?:/u, ''));
+        if (recoveryTurn && actionBlocked(recoveryTurn)) {
+          if (actionWithdrawn(journal.view, recoveryTurn)) journal.append({ kind: 'send-recovery', target: pending.target, attempt: r.attempts, action: 'cancel', at });
+          continue;
+        }
+        const topic = String(r.input.thread ?? 'main');
+        if (recoveringTopics.has(topic) || at < (journal.view.lastOutboundAt?.[topic] ?? 0) + 30_000) continue;
+        recoveringTopics.add(topic);
+        ports.checkOutbound(r.input.text);
+        ports.checkOutbound(r.input.expectedText);
+        if (!journal.verifyOutbound(r.provenance, { target: pending.target, chat: r.input.chat,
+          ...(r.input.thread === undefined ? {} : { thread: r.input.thread }), body: r.input.text })) continue;
+        journal.append({ kind: 'send-recovery', target: pending.target, attempt: r.attempts, action: 'start', at });
+        if (!journal.view.sendEvidence?.[pending.target]) journal.append({ kind: 'send-prepared', target: pending.target,
+          subject: { target: pending.target, chat: r.input.chat, ...(r.input.thread === undefined ? {} : { thread: r.input.thread }), body: r.input.text }, provenance: r.provenance, at });
+        const sourceTurn = pending.target.startsWith('reply:') ? journal.view.turns.get(pending.target.slice('reply:'.length)) : undefined;
+        const replyTo = sourceTurn && sourceTurn.update === r.input.update && sourceTurn.thread === r.input.thread ? turnMessageId(sourceTurn) : null;
+        let outcome: SendOutcome;
+        try { outcome = settleSendOutcome(await ports.send({ ...r.input, ...(replyTo === null ? {} : { replyTo }), target: pending.target, provenance: r.provenance, retryAttempt: r.attempts })); }
+        catch { outcome = { kind: 'unknown', reason: 'recovery send port failed' }; }
+        if (outcome.kind !== 'accepted') outcome = { ...outcome, reason: redact(outcome.reason).text };
+        if (outcome.kind === 'accepted') journal.append({ kind: 'send-acceptance', target: pending.target, subject: r.provenance.contentHash, message: outcome.message, at: ports.now() });
+        journal.append({ kind: 'send-recovery', target: pending.target, attempt: r.attempts, action: 'finish', outcome, at: ports.now() });
+      }
       // A split reply left part-way by a restart continues before anything new is answered.
       for (const turn of journal.view.order) if (turn.replyParts?.length) await sendReplyParts(turn);
       if (due) scheduleRequests();
@@ -8858,7 +9163,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         }
         if (turn.answer === undefined && !turn.reserved && !turn.noticeClass && isStatusCommand(turn.text)) {
           const answer = statusAnswer(journal.view, ports.now(), ports.timeZone ?? 'UTC',
-            [...ports.statusExtra?.() ?? [], memoryLearningLine(journal.view, fromOperator)], ports.statusLines?.() ?? []);
+            [...ports.statusExtra?.() ?? [], memoryLearningLine(journal.view, fromOperator),
+              `Learned ${correctionStatusClause(journal.view, fromOperator, ports.now())}.`], ports.statusLines?.() ?? []);
           const packet = { ...JSON.parse(packetFor(before(turn.update), true, [], [], [], turn.thread, false, [], [], false, turn)) as object,
             statusFacts: answer };
           const prompt = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet }) },
@@ -10531,6 +10837,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (outcome.kind === 'accepted') try { journal.append({ kind: 'operator-result-sent', request: id, message: outcome.message, at: ports.now() }); }
     catch { /* stays UNKNOWN; never repeated */ }
   };
+  /** Row 01: commitment sends and status lines through this worker's one outbound boundary and its model port. */
+  const commitmentDoorway = (admit: CommitmentSendAdmission, noticeProducer?: CommitmentNoticeProducer) => createCommitmentDoorway({ journal, admit, ...(noticeProducer ? { noticeProducer } : {}), now: ports.now, stopped: ports.stopped, checkOutbound: ports.checkOutbound,
+    push: (target, provenance, input) => push(input.noticeKind === 'concrete-result' ? 'commitment-result' : 'commitment-notice', target, provenance, input),
+    ...(ports.commitmentStatus ? { model: ports.commitmentStatus } : {}) });
   /** A raise request exists only with a challenge the independent verifier issued for its exact subject. */
   const issueRaise = (lead: Turn, reason: RaiseReason): ApprovalRequest | undefined => {
     const surface = ports.approvalSurface, view = journal.view;
@@ -11950,7 +12260,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       gate();
       const pass = journal.view.retroPasses.length;
       journal.append({ kind: 'retro-reserve', pass, turnsSeen: journal.view.order.length, cases: plan.cases.map(item => item.id), omitted: plan.omitted,
-        eligible: plan.eligible, packetSha256: plan.packetSha256, contextDigest, estimatedAnswerBytes: plan.estimatedAnswerBytes, at: ports.now() });
+        eligible: plan.eligible, packetSha256: plan.packetSha256, contextDigest, estimatedAnswerBytes: plan.estimatedAnswerBytes,
+        ...(plan.corrections.length ? { corrections: plan.corrections } : {}), at: ports.now() });
       // Benchmark reruns: the promoted case's original question through the live reply assembly, as of that turn.
       for (const [index, target] of plan.reruns.entries()) {
         const id = `retrospective:${String(pass)}:rerun:${String(index)}`;
@@ -12248,7 +12559,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     for (const turn of acknowledgementTimers.keys()) void acknowledgeReply(turn).catch(() => {});
     await answerLimited();
     await pollReviewRequests(); await issueRetractRequest(); };
-  return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
+  return { commitmentDoorway, intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };

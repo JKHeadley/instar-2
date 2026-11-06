@@ -8,6 +8,7 @@ import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETRO_ANSWER_BUDGET_BYTES, RETRO_A
   RETRO_EFFICIENCY_CHARS, RETRO_FEEDBACK_OWNER_CHARS, RETRO_MAX_OMITTED_ROWS, RETRO_MIN_INTERVAL_MS,
   RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, RETRO_UNACCOUNTED_REASON, disciplineSource, eligibleCases,
   estimatedAnswerBytes, retroAnswerBudget, reviewRecordOf, rowMissingReason, validateRetrospective, type RetroCase } from './retrospective.js';
+import { correctionWorld } from './correction-fixture.js';
 import { SUBSCRIPTION_MAX_OUTPUT_TOKENS } from '../../src/assembly/production-provider.js';
 
 /** The three live retrospective failures of 2026-10-02, recorded AFTER the compact answer shape went live, so
@@ -127,28 +128,36 @@ it('replays the three recorded live failures of 2026-10-02, each after the compa
   expect(justinPasses.every(pass => pass.inspected === null && pass.efficiency === null)).toBe(true);
 });
 
-it('prices the feedback row a recorded correction MUST owe, and the validator really requires it', () => {
-  const plain = liveCase(liveIds.message, 'message', { conversation: 'main' });
-  const correction = liveCase(liveIds.message, 'message', { conversation: 'main', correction: 'prefer' });
-  const feedbackRow = Buffer.byteLength(JSON.stringify({ case: correction.id, classification: pad(RETRO_CLASSIFICATION_CHARS),
-    disposition: 'improvement-owned', owner: pad(RETRO_FEEDBACK_OWNER_CHARS), next: pad(RETRO_OUTCOME_REASON_CHARS) }));
-  // The row is real work the answer cannot leave out, so the estimate must charge for it.
-  expect(estimatedAnswerBytes([correction]) - estimatedAnswerBytes([plain])).toBeGreaterThanOrEqual(feedbackRow);
-  // Both sides of the requirement, against the live validator: without the row the case is not inspected (changed
-  // by plan #412: it is recorded omitted and stays owed, where it used to refuse the whole pass)...
-  const view = { retroPasses: [], dated: [], turns: new Map() } as unknown as JournalView;
-  const body = (feedback: unknown[]) => ({ inspected: [correction.id], omitted: [],
-    duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length), wells: GRAVITY_WELLS.map(() => 0), eff: 'nothing wasted',
-    findings: [], grades: [], feedback, authorizations: [], comparisons: [], closures: [] });
-  expect(validateRetrospective(body([]), { cases: [correction] }, view, 1))
-    .toMatchObject({ inspected: [], omitted: [{ case: correction.id, reason: rowMissingReason('feedback') }] });
-  // ...and with it the case is inspected, and the row is clipped at the length the question states for it.
-  const result = validateRetrospective(body([{ case: correction.id, classification: pad(RETRO_CLASSIFICATION_CHARS + 50),
-    disposition: 'improvement-owned', owner: pad(RETRO_FEEDBACK_OWNER_CHARS), next: pad(RETRO_OUTCOME_REASON_CHARS) }]),
-  { cases: [correction] }, view, 1);
-  expect(result.feedback).toHaveLength(1);
-  expect(result.inspected).toEqual([correction.id]);
-  expect(result.feedback[0]!.classification).toHaveLength(RETRO_CLASSIFICATION_CHARS);
+it('prices both correction review rows and keeps either missing row owed', () => {
+  const w = correctionWorld();
+  try {
+    const id = w.preference('Lead with the action.', start);
+    const plain = liveCase(`turn:${id}`, 'message', { conversation: 'main' });
+    const correction = { ...plain, meta: { ...plain.meta, correction: 'prefer' } };
+    const feedback = { case: correction.id, classification: pad(RETRO_CLASSIFICATION_CHARS + 50),
+      disposition: 'investigating', owner: pad(RETRO_FEEDBACK_OWNER_CHARS), next: pad(RETRO_OUTCOME_REASON_CHARS) };
+    const classReview = { case: correction.id,
+      standardReview: { verdict: 'new-standard-needed', standardRef: pad(80),
+        proposedDelta: pad(RETRO_OUTCOME_REASON_CHARS), isPolicyRelaxation: false },
+      processReview: { verdict: 'process-gap', proposedDelta: pad(RETRO_OUTCOME_REASON_CHARS) },
+      rationale: pad(RETRO_OUTCOME_REASON_CHARS), confidence: 'medium' };
+    const requiredBytes = Buffer.byteLength(JSON.stringify({ ...feedback, classification: pad(RETRO_CLASSIFICATION_CHARS) }))
+      + Buffer.byteLength(JSON.stringify(classReview));
+    expect(estimatedAnswerBytes([correction]) - estimatedAnswerBytes([plain])).toBeGreaterThanOrEqual(requiredBytes);
+    const body = (feedbackRows: unknown[], classReviews: unknown[]) => ({ inspected: [correction.id], omitted: [],
+      duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length), wells: GRAVITY_WELLS.map(() => 0), eff: 'nothing wasted',
+      findings: [], grades: [], feedback: feedbackRows, classReviews, authorizations: [], comparisons: [], closures: [] });
+    // A real recorded correction owes both independent class review and a feedback disposition.
+    expect(validateRetrospective(body([], [classReview]), { cases: [correction] }, w.view, 1))
+      .toMatchObject({ inspected: [], omitted: [{ case: correction.id, reason: rowMissingReason('feedback') }] });
+    expect(validateRetrospective(body([feedback], []), { cases: [correction] }, w.view, 1))
+      .toMatchObject({ inspected: [], omitted: [{ case: correction.id, reason: rowMissingReason('class review') }] });
+    const result = validateRetrospective(body([feedback], [classReview]), { cases: [correction] }, w.view, 1);
+    expect(result.feedback).toHaveLength(1);
+    expect(result.classReviews).toHaveLength(1);
+    expect(result.inspected).toEqual([correction.id]);
+    expect(result.feedback[0]!.classification).toHaveLength(RETRO_CLASSIFICATION_CHARS);
+  } finally { w.close(); }
 });
 
 it('sizes the answer budget from the REAL retrospective frame, not from a reply\'s bytes per token', () => {

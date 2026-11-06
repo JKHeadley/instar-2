@@ -50,14 +50,21 @@ it('keeps the actual truncated terminal result refused, while the earlier comple
   expect(() => validate(failed!.terminalResult!)).toThrow();
 });
 
-it('replays the historical cap evidence and identifies the added memory policy separately', () => {
+it('replays the historical cap evidence and identifies later memory and correction policies separately', () => {
   // These outputs were captured on October 17. Bind that prompt exactly while
-  // identifying the sole later policy addition; this is not a fresh provider run.
+  // identifying the later memory and correction additions; this is not a fresh provider run.
   const memoryGuidance = MEMORY_LEARNING_POLICY
     + 'The remembered count is durable fact writes from that turn, including in followUps. A positive count supports a save claim; no separate save request is needed.';
   const lines = RETROSPECTIVE_QUESTION.split('\n');
   expect(lines.filter(line => line === memoryGuidance)).toHaveLength(1);
-  const capturedQuestion = lines.filter(line => line !== memoryGuidance).join('\n');
+  expect(lines.filter(line => line.startsWith('lessonSources on an answer'))).toHaveLength(1);
+  expect(lines.filter(line => line.startsWith('classReviews:'))).toHaveLength(1);
+  // Reconstruct only the historical question, never relabel old outputs as answers to the new policy.
+  const capturedQuestion = lines.filter(line => line !== memoryGuidance
+    && !line.startsWith('lessonSources on an answer') && !line.startsWith('classReviews:'))
+    .map(line => line.split(' correctionCandidates, when present,')[0]!
+      .replace('"classReviews":[{"case":id,"standardReview":{},"processReview":{},"rationale":text,"confidence":text}],', ''))
+    .join('\n');
   expect(fixture.replays.length).toBeGreaterThanOrEqual(2);
   for (const replay of fixture.replays) {
     expect(replay.questionSha256).toBe(createHash('sha256').update(capturedQuestion).digest('hex'));

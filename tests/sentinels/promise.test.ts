@@ -42,6 +42,56 @@ it('closes a promise that leaves the open population, and does nothing while sto
   const gone = decidePromises({ now: 2000, stopped: false, promises: [], state: asked });
   expect(gone.actions).toEqual([expect.objectContaining({ event: 'closed' })]);
   expect(gone.state['commitment:0']?.closedAt).toBe(2000);
+  const resumed = decidePromises({ now: 3000, stopped: false, promises: [promise()], state: gone.state });
+  expect(resumed.actions[0]).toEqual({ kind: 'work', id: 'commitment:0' });
+  expect(resumed.state['commitment:0']?.closedAt).toBeNull();
   expect(decidePromises({ now: 5000, stopped: true, promises: [promise()], state: {} })).toEqual({ state: {}, actions: [] });
   expect(decidePromises({ now: 5000, stopped: false, promises: [promise({ dueAt: Number.NaN })], state: {} }).actions).toEqual([]);
+});
+
+it('keeps a known promise open when its next due time is future or temporarily unknown', () => {
+  const asked = decidePromises({ now: 1000, stopped: false, promises: [promise()], state: {} }).state;
+  for (const dueAt of [9000, Number.NaN]) {
+    const observed = decidePromises({ now: 2000, stopped: false, promises: [promise({ dueAt })], state: asked });
+    expect(observed.state['commitment:0']?.closedAt).toBeNull();
+    expect(observed.actions).toEqual([]);
+  }
+});
+
+it('starts a new due episode for continued work, but never repeats an unchanged slot after replay', () => {
+  const asked = decidePromises({ now: 1000, stopped: false, promises: [promise()], state: {} }).state;
+  const acted = decidePromises({ now: 2000, stopped: false, promises: [promise({ actedAt: 2000 })], state: asked }).state;
+  const continued = promise({ dueAt: 5000, actedAt: 2000 });
+  const next = decidePromises({ now: 5000, stopped: false, promises: [continued], state: JSON.parse(JSON.stringify(acted)) });
+  expect(next.actions[0]).toEqual({ kind: 'work', id: 'commitment:0' });
+  expect(decidePromises({ now: 5001, stopped: false, promises: [continued], state: next.state }).actions).toEqual([]);
+});
+
+it('a recorded dependency wait is waiting even after a definite step, and clears on resumed work', () => {
+  const waiting = decidePromises({ now: 2000, stopped: false,
+    promises: [promise({ waitsOn: 'external', actedAt: 2000 })], state: {} });
+  expect(waiting.state['commitment:0']?.outcome).toBe('waiting');
+  const resumed = decidePromises({ now: 3000, stopped: false,
+    promises: [promise({ actedAt: 3000 })], state: waiting.state });
+  expect(resumed.state['commitment:0']?.outcome).toBe('acted');
+  expect(resumed.state['commitment:0']?.reportedAt).toBeNull();
+});
+
+it('dependency clearance requests work even when that same slot was previously reported overdue', () => {
+  const asked = decidePromises({ now: 1000, stopped: false, promises: [promise()], state: {} }).state;
+  const overdue = decidePromises({ now: 1000 + R, stopped: false, promises: [promise()], state: asked }).state;
+  const waiting = decidePromises({ now: 2000 + R, stopped: false, promises: [promise({ waitsOn: 'operator' })], state: overdue });
+  expect(waiting.state['commitment:0']?.outcome).toBe('waiting');
+  const resumed = decidePromises({ now: 3000 + R, stopped: false, promises: [promise()], state: waiting.state });
+  expect(resumed.actions[0]).toEqual({ kind: 'work', id: 'commitment:0' });
+});
+
+it('adopts the slot of an older already-reported row without replaying its action, then rearms a later slot', () => {
+  const state = { 'commitment:0': { dueSeenAt: 1000, workRequestedAt: 1000, reportedAt: 2000,
+    closedAt: null, outcome: 'reported' as const } };
+  const migrated = decidePromises({ now: 3000, stopped: false, promises: [promise()], state });
+  expect(migrated.actions).toEqual([]);
+  expect(migrated.state['commitment:0']?.dueAt).toBe(1000);
+  const later = decidePromises({ now: 5000, stopped: false, promises: [promise({ dueAt: 5000 })], state: migrated.state });
+  expect(later.actions[0]).toEqual({ kind: 'work', id: 'commitment:0' });
 });

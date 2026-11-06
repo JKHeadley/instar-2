@@ -22,6 +22,37 @@ const snapshot = (processes: InventoryProcess[], status: 'complete' | 'partial' 
 const root = (id: string, pid: number, start: string | null, area: string | null = '/work/area'): LaunchRoot =>
   ({ id, pid, known: new Map(start ? [[pid, start]] : []), workingArea: area, start });
 
+describe('bounded physical census', () => {
+  it('keeps every identity and reading when unrelated argv would overflow the host query', async () => {
+    const rows = Array.from({ length: 4096 }, (_, i) => `${i + 2} 1 ${i + 2} 501 4 0:01.25 S ${T1} /bin/worker`);
+    const names = rows.join('\n');
+    const argv = rows.map(row => row + ' prompt=' + 'x'.repeat(4096)).join('\n');
+    expect(Buffer.byteLength(names)).toBeLessThan(1024 * 1024);
+    expect(Buffer.byteLength(argv)).toBeGreaterThan(1024 * 1024);
+    const inventory = createProcessInventory({ now: () => 1, monotonic: () => 1, identity: HOST_IDENTITY,
+      uid: 501, limit: 4096, freshForMs: 2000, query: async (file: string, args: string[]) => {
+        expect(file).toBe('/bin/ps');
+        const output = args.at(-1)?.endsWith(',comm=') ? names : argv;
+        return Buffer.byteLength(output) > 1024 * 1024 ? null : output;
+      } });
+    const census = await inventory.census();
+    expect(census).toMatchObject({ status: 'complete', examined: 4096, omitted: 0 });
+    expect(census.processes).toHaveLength(4096);
+    expect(census.processes.at(-1)).toMatchObject({ pid: 4097, ppid: 1, pgid: 4097, start: T1,
+      command: '/bin/worker', resource: { state: 'reported', cumulativeCpuMs: 1250, rssBytes: 4096 } });
+  });
+
+  it.each([
+    [null, 'failed', null],
+    ['unreadable', 'partial', 1],
+    [`2 1 2 501 4 0:00 S ${T1} /bin/worker\n3 1 3 501 4 0:00 S ${T1} /bin/worker`, 'partial', 1],
+  ])('retains uncertainty for a failed, malformed or over-limit census (%s)', async (output, status, omitted) => {
+    const inventory = createProcessInventory({ now: () => 1, monotonic: () => 1, identity: HOST_IDENTITY,
+      uid: 501, limit: 1, freshForMs: 2000, query: async () => output });
+    expect(await inventory.census()).toMatchObject({ status, omitted });
+  });
+});
+
 describe('Ten process inventory decoder', () => {
   it('a failed census carries no rows and never reads as an empty population; complete counts must agree', () => {
     const base = { type: 'ProcessInventory', schemaVersion: 1, id: 'inventory:f', machine: 'm', hardwareProfile: 'h', adapter: 'a',

@@ -75,11 +75,19 @@ describe('P4 owner source consumption', { timeout: 60_000 }, () => {
    const commit = git('rev-parse', 'HEAD'), files = git('ls-tree', '-r', '--name-only', commit).split('\n');
    const p4 = 'register-source/owner-references/part-four.json', p5 = 'register-source/owner-references.json';
    const original = JSON.parse(readFileSync(join(root, p4), 'utf8'));
-   const load = (m = original, extra: Record<string, string> = { [p5]: readFileSync(join(root, p5), 'utf8') }) => loadOwnerReferences(root, { commit, files, sources: { ...extra, [p4]: JSON.stringify(m) } });
+   // Every mutation checks the same immutable commit. Read each committed artifact
+   // once through the loader's existing show port instead of spawning git hundreds
+   // of times for repeated decoder/module references and unchanged P5 manifests.
+   const artifacts = new Map<string, string>();
+   const show = (path: string) => {
+    if (!artifacts.has(path)) artifacts.set(path, execFileSync('git', ['-C', root, 'show', `${commit}:${path}`], { encoding: 'utf8' }));
+    return artifacts.get(path)!;
+   };
+   const load = (m = original, extra: Record<string, string> = { [p5]: readFileSync(join(root, p5), 'utf8') }) => loadOwnerReferences(root, { commit, files, show, sources: { ...extra, [p4]: JSON.stringify(m) } });
    expect(load().documents.map(d => d.id)).toEqual(['rungraph.contract', 'intake.contract']);
    expect(load().decoders.find(d => d.id === 'createFactStore.append')).toMatchObject({ symbol: 'createFactStore' });
    expect(load(original, {}).documents[0]).toMatchObject({ id: 'intake.contract', declarationPath: 'src/intake/port.declarations.json' });
-   expect(loadOwnerReferences(root, { commit, files, sources: { [p5]: JSON.stringify(original) } }).documents[0]?.id).toBe('intake.contract');
+   expect(loadOwnerReferences(root, { commit, files, show, sources: { [p5]: JSON.stringify(original) } }).documents[0]?.id).toBe('intake.contract');
    for (const mutate of [
     (m: typeof original) => { m.owner = 'part-five'; },
     (m: typeof original) => { m.owner = 'part-seven'; },

@@ -1,4 +1,4 @@
-// Claude Stop and SessionStart(compact) hook. Writes one atomic, local receipt.
+// Claude UserPromptSubmit, Stop and SessionStart(compact) hook. Writes one atomic, local receipt.
 import { mkdirSync, writeFileSync, renameSync, readFileSync, openSync, closeSync, fsyncSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -14,7 +14,7 @@ for await (const part of process.stdin) {
 let parsed;
 try { parsed = JSON.parse(body); } catch { process.exit(2); }
 if (typeof parsed.session_id !== 'string') process.exit(2);
-const kind = process.argv[2] === 'compact' ? 'compact' : 'turn-closed';
+const kind = process.argv[2] === 'compact' ? 'compact' : process.argv[2] === 'ack' ? 'input-acknowledged' : 'turn-closed';
 mkdirSync(inbox, { recursive: true, mode: 0o700 });
 const receiptId = randomUUID();
 const filename = `${name}.${Date.now()}.${receiptId}.json`;

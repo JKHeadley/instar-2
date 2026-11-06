@@ -202,13 +202,17 @@ export interface MemoryLessons {
   pinned: string[];
 }
 /** The learning loop's current lessons, derived from the failures. A hint is learned from one failure whose source
- * memory held but recall did not reach (or from the reminder itself, which holds the fact, when the original could
+ * memory held but recall did not reach (or from the correction/reminder itself, which holds the fact, when the original could
  * not be resolved); a pin needs the same source to fail repeatedly. */
 export function memoryLessons(view: JournalView, failures: readonly MemoryFailure[]): MemoryLessons {
-  const hints = new Map<string, string[]>(), counts = new Map<string, { count: number; last: number }>();
+  // Carryover 32, CorrectionLedger.record/distinctCounts (1.x 4f88880a): retain one
+  // lesson per source and count real occurrences, not how many detectors noticed it.
+  // The journal already supplies stable intake ids; no lossy normalized-text hash
+  // or second SQLite store is needed to identify one operator occurrence.
+  const hints = new Map<string, string[]>(), counts = new Map<string, { triggers: Set<string>; last: number }>();
   for (const failure of failures) {
     const target = failure.truth.source
-      ?? (failure.signal === 'operator-reminded' && failure.cause === 'source-unresolved' ? failure.trigger : undefined);
+      ?? (failure.cause === 'source-unresolved' ? failure.trigger : undefined);
     if (target === undefined || withdrawn(view.memory, target)) continue;
     if (failure.cause === 'not-retrieved' || failure.cause === 'summarized-away' || failure.cause === 'source-unresolved') {
       const cues = hints.get(target) ?? [];
@@ -216,9 +220,11 @@ export function memoryLessons(view: JournalView, failures: readonly MemoryFailur
       if (cues.length) hints.set(target, cues);
     }
     const seen = counts.get(target);
-    counts.set(target, { count: (seen?.count ?? 0) + 1, last: failure.triggerUpdate });
+    const triggers = seen?.triggers ?? new Set<string>();
+    triggers.add(failure.trigger);
+    counts.set(target, { triggers, last: Math.max(seen?.last ?? failure.triggerUpdate, failure.triggerUpdate) });
   }
-  const pinned = [...counts].filter(([, seen]) => seen.count >= PIN_AFTER_FAILURES)
+  const pinned = [...counts].filter(([, seen]) => seen.triggers.size >= PIN_AFTER_FAILURES)
     .sort((a, b) => b[1].last - a[1].last).slice(0, PINNED_FACTS_LIMIT).map(([source]) => source);
   return { hints, pinned };
 }

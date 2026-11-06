@@ -161,6 +161,9 @@ export interface SessionWorkRequest {
   /** The durable work item this step serves; also the delivery operation, used at most once. It
    * names the child too: each step is a fresh session, never a continuation of an earlier one. */
   readonly operation: string;
+  /** Typed inbox policy retained from DeliveryRetryManager; metadata never changes the prompt. */
+  readonly inbox?: Readonly<{ type: 'info' | 'sync' | 'alert' | 'request' | 'query' | 'response' | 'handoff' | 'wellness' | 'system';
+    createdAt: number; ttlMs: number; priority: 'normal' | 'critical' }>;
   readonly question: string; readonly context: string;
   /** The reviewed grant this child runs under, named in the edge. */
   readonly authority: string;

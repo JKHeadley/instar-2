@@ -15,15 +15,17 @@ it('Stop receipt is durable and SessionStart(compact) returns grounding from a l
   try {
     const stop = spawnSync(process.execPath, [script], { env, input: JSON.stringify({ session_id: 'id' }), encoding: 'utf8' });
     expect(stop.status).toBe(0);
+    const ack = spawnSync(process.execPath, [script, 'ack'], { env, input: JSON.stringify({ session_id: 'id' }), encoding: 'utf8' });
+    expect(ack.status).toBe(0);
     const compact = spawnSync(process.execPath, [script, 'compact'], { env,
       input: JSON.stringify({ session_id: 'id' }), encoding: 'utf8' });
     expect(compact.status).toBe(0);
     expect(JSON.parse(compact.stdout).hookSpecificOutput.additionalContext).toBe('Retained operator context.');
     expect(readdirSync(root).filter(name => name.endsWith('.json')).map(name =>
-      JSON.parse(readFileSync(join(root, name), 'utf8')).kind).sort()).toEqual(['compact', 'turn-closed']);
+      JSON.parse(readFileSync(join(root, name), 'utf8')).kind).sort()).toEqual(['compact', 'input-acknowledged', 'turn-closed']);
     expect(readdirSync(root).filter(name => name.endsWith('.json')).map(name =>
       JSON.parse(readFileSync(join(root, name), 'utf8')).receiptId)).toEqual([
-      expect.stringMatching(/^[0-9a-f-]{36}$/), expect.stringMatching(/^[0-9a-f-]{36}$/),
+      expect.stringMatching(/^[0-9a-f-]{36}$/), expect.stringMatching(/^[0-9a-f-]{36}$/), expect.stringMatching(/^[0-9a-f-]{36}$/),
     ]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -11,7 +11,11 @@ prepared connector launch references. No account credential is copied by this wo
 implements bounded, correlated JSON-line RPC over private process pipes. Requests and
 notifications are captured in the host directory before projection. No RPC is retried.
 The common host records dispatch intent before delivery and retains uncertain inputs
-through restart. The transport closes only the recorded PID with the matching start
+through restart. A correlated `turn/start` response with a valid turn identity records the
+consumer acceptance time. Observations expose that time only for the matching submitted
+input and worker; the host retains it in its existing inbox custody. An open accepted turn
+can use its admitted lifetime without expiring the typed-input ACK deadline. Missing or
+malformed RPC acceptance supplies no ACK and never permits automatic replay. The transport closes only the recorded PID with the matching start
 stamp, and a reconstructed transport can retire the previous incarnation. Process
 inspection that cannot establish identity retains uncertainty and capacity; only observed
 absence or a different start stamp retires a reconstructed identity without signaling. Process
@@ -33,6 +37,16 @@ closure, matching saved bytes, a new claim and remaining original lifetime. It
 starts the restored turn through its normal delivery path before returning the
 replacement handle. A bare launch never replays input. A missing host receipt or
 an uncertain RPC submission remains uncertain across restart.
+
+A restarted host can collect a completed turn from the existing physical capture without
+reopening pipes or making a model call. The session journal binds each submission to its
+worker, intake digest, thread and exact grounded text digest before dispatch. Recovery
+requires one matching request, one successful response and the existing reader's completed
+turn evidence. Missing, legacy, partial or ambiguous evidence retains uncertainty; an
+empty final answer is not success. Captures are bounded to 16 MiB and checked against the
+recorded process identity. After confirmed process retirement, a prepared bootstrap with
+no turn request in its complete capture may retry through normal host admission. Any
+recorded turn request holds this conservative non-dispatch proof closed.
 
 For explicit lifecycle closure the host closes admission before control. Control interrupts the exact active turn and
 closes the exact physical process. A host stop or finite lifetime also closes the pipe

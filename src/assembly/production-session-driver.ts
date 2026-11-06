@@ -43,6 +43,9 @@ export interface SessionReservation {
 }
 export interface SessionJournal { readonly sessions: readonly SessionRecord[]; readonly deliveries: readonly DeliveryRecord[];
   readonly resumes: Readonly<Record<string, string>>; readonly reservations?: readonly SessionReservation[];
+  /** Exact protocol submission bindings; raw evidence remains in host-owned captures. */
+  readonly protocolDeliveries?: readonly Readonly<{ operation: string; identity: string; claim: string; incarnation: string;
+    digest: string; submissionDigest: string; thread: string }>[];
   readonly continuationRefusals?: readonly Readonly<{ operation: string; claim: string; reason: string; at: number }>[]; }
 export interface SessionIO {
   exclusive<T>(run: () => T): T;
@@ -50,7 +53,7 @@ export interface SessionIO {
   sleep(ms: number): void;
   load(): SessionJournal;
   save(journal: SessionJournal): void;
-  readInbox(name: string): readonly Readonly<{ kind: 'turn-closed' | 'compact'; sessionId: string; at: number; receiptId?: string }>[];
+  readInbox(name: string): readonly Readonly<{ kind: 'turn-closed' | 'compact' | 'input-acknowledged'; sessionId: string; at: number; receiptId?: string }>[];
   /** Physical bridge terminal metadata; absent until a worker actually exits. */
   readTerminal?(name: string): Readonly<{ code: number | null; signal: string | null;
     workerExitClaim: Readonly<{ workerPid: number; code: number | null; signal: string | null }> | null }> | null;
@@ -70,7 +73,7 @@ export interface ProductionSessionConfig {
   readonly scratchDir?: string;
   readonly context: AssemblyDecodeContext; readonly io: SessionIO; readonly now: () => number;
   readonly stopped: () => boolean; readonly resolveIntake: (id: string, digest: string) => string;
-  readonly maxSessions: number; readonly turnDeadlineMs: number; readonly readyTimeoutMs: number;
+  readonly maxSessions: number; readonly turnDeadlineMs: number; readonly readyTimeoutMs?: number;
   readonly protectedSessions: readonly string[]; readonly hookScript?: string;
   /** Advisory activity for registered work; a changed pane is activity, never proof of completion.
    * The owner records it in its existing work observation cycle. No terminal bytes leave this port. */
@@ -374,7 +377,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
       rateRecovery: null, promptWait: null,
       connectionRetry: null,
       turnBaseline: digestOf(capture(session.name)),
-      turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
+      turnReceiptIds: config.io.readInbox(session.name)
         .flatMap(row => row.receiptId ? [row.receiptId] : []) };
     config.io.save(replaceSession(config.io.load(), armed));
     config.io.armDeadline(session.name, session.identity, deadline);
@@ -415,7 +418,8 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
       ? [resumeId ? '--resume' : '--session-id', transcriptId!, ...sessionLaunchFlags('claude-code', admitted), ...model]
       : [ ...(resumeId ? ['resume', resumeId] : []), ...sessionLaunchFlags('codex-cli', admitted), ...model];
     const lifecycleHooks = config.hookScript && config.framework === 'claude-code'
-      ? { Stop: [{ hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)}` }] }],
+      ? { UserPromptSubmit: [{ hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)} ack` }] }],
+        Stop: [{ hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)}` }] }],
         ...(config.compactGroundingFile ? { SessionStart: [{ matcher: 'compact', hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)} compact` }] }] } : {}) }
       : null;
     // One settings object carries every Claude hook: the admission hook and, when configured, the lifecycle hooks.
@@ -441,7 +445,8 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const session = config.io.load().sessions.find(row => row.name === name);
     ensure(session, 'spawned session identity missing');
     const identity = session.identity;
-    const until = config.now() + config.readyTimeoutMs;
+    // Carryover 08: retain the proven startup allowance; explicit test/host bounds still win.
+    const until = config.now() + (config.readyTimeoutMs ?? (resumeId ? 120_000 : 90_000));
     while (config.now() < until) {
       checkStop(); verifyLive(session);
       const state = classifyPaneReadiness(capture(name));
@@ -586,12 +591,38 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           const continuation = input.restore
             ? requireContinuation(input.restore.operation, input.claim, input.incarnation, 'context-wall', input.restore) : needsContinuation
             ? requireContinuation(input.operation, input.claim, input.incarnation, 'cache-miss') : undefined;
-          const identity = spawn(input.operation, input.claim, input.incarnation, input.workingScope,
-            hit && !input.restore ? resumeId : null, input.restore ? 1 : 0, continuation);
-          if (continuation) submitContinuation(identity);
+          let identity: string;
+          let grounding = continuation;
+          try {
+            identity = spawn(input.operation, input.claim, input.incarnation, input.workingScope,
+              hit && !input.restore ? resumeId : null, input.restore ? 1 : 0, grounding);
+          } catch (error) {
+            // 1.x handleReadyAndInject: one fresh fallback for a dead resume,
+            // before any input. A live menu, unknown identity or stop never qualifies.
+            if (!hit || input.restore) throw error;
+            checkStop(); reconcileReservations();
+            const current = config.io.load();
+            const failed = current.sessions.filter(row => row.operation === input.operation && row.incarnation === input.incarnation);
+            ensure(failed.every(row => !alive(row.name)) && !(current.reservations ?? []).some(row =>
+              row.operation === input.operation && row.incarnation === input.incarnation), 'resume startup retirement unconfirmed');
+            grounding = requireContinuation(input.operation, input.claim, input.incarnation, 'cache-miss');
+            identity = spawn(input.operation, input.claim, input.incarnation, input.workingScope, null, 1, grounding);
+          }
+          if (grounding) submitContinuation(identity);
           return identity;
         });
         return identity;
+      });
+    },
+    notDispatched(input: { operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }): Result<boolean> {
+      return lockedBoundary('ProductionSessionNonDispatch', input, () => {
+        const session = loadSession(input.processIdentity);
+        ensure(session.incarnation === input.incarnation && !alive(session.name), 'non-dispatch requires the exact retired worker');
+        const prior = config.io.load().deliveries.find(row => row.operation === input.operation);
+        if (!prior) return true; // Every send persists its sending record before touching the terminal.
+        ensure(prior.identity === input.processIdentity && prior.intake === input.intake && prior.digest === input.digest,
+          'non-dispatch input differs');
+        return prior.state === 'prepared' && prior.redeliveries === 0;
       });
     },
     deliver(input: { operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }): Result<string> {
@@ -602,7 +633,12 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           'continuation delivery uncertain or incomplete');
         ensure(input.incarnation === session.incarnation && input.operation && input.intake, 'stale or empty delivery');
         const prior = config.io.load().deliveries.find(row => row.operation === input.operation);
-        if (prior) {
+        // Carryover 08: the host may transfer a never-sent input after retiring
+        // its old worker. Sending/unknown records can never take this path.
+        const transfer = prior && prior.identity !== input.processIdentity && prior.state === 'prepared'
+          && prior.redeliveries === 0 && prior.intake === input.intake && prior.digest === input.digest
+          && !alive(loadSession(prior.identity).name);
+        if (prior && !transfer) {
           ensure(prior.identity === input.processIdentity && prior.intake === input.intake && prior.digest === input.digest,
             'delivery operation reused for different input');
           ensure(prior.state === 'accepted', 'delivery outcome uncertain; boot sweep required');
@@ -625,12 +661,40 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         return delivery.evidence;
       });
     },
+    acknowledgement(input: { operation: string; processIdentity: string }) {
+      return boundary('ProductionSessionAcknowledgement', null, config.context, () => {
+        const session = loadSession(input.processIdentity);
+        const delivery = config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1);
+        if (!delivery || delivery.operation !== input.operation || delivery.identity !== session.identity
+          || delivery.state !== 'accepted' || session.turnStartedAt === null) return null;
+        const ack = config.io.readInbox(session.name).filter(row => row.kind === 'input-acknowledged'
+          && row.sessionId === session.resumeId && typeof row.receiptId === 'string'
+          && !session.turnReceiptIds?.includes(row.receiptId) && Number.isSafeInteger(row.at)
+          && row.at >= session.turnStartedAt! && row.at <= config.now()).at(-1);
+        return ack?.at ?? null;
+      });
+    },
     observe(input: { operation: string; processIdentity: string; resultAvailable?: boolean }): Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string; safetyDeadline?: number }>> {
       return lockedBoundary('ProductionSessionObserve', input, () => {
         const session = loadSession(input.processIdentity);
         if (config.stopped()) { stop(); return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'stop authority active' }; }
         if (session.deadlineHalt) return { phase: 'exit-observed' as const, evidence: `safety-ceiling:deadline:${session.identity}`, detail: 'per-turn deadline exceeded; closure must be reconciled', safetyDeadline: session.deadlineHalt.deadline };
         if (!alive(session.name)) {
+          // Carryover 08: process death cannot erase an already closed answer.
+          // Use the same bound lifecycle evidence, never a result file alone.
+          const delivery = config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1);
+          const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
+            && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
+          const closed = hook && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
+            && session.turnDeadline !== null && hook.at <= config.now() && hook.at <= session.turnDeadline;
+          if (config.requireTurnHook && input.resultAvailable && delivery?.operation === input.operation
+            && delivery.state === 'accepted' && session.rateRecovery?.state !== 'sending' && (session.turnCloseEvidence || closed)) {
+            const evidence = session.turnCloseEvidence ?? `turn-closed:${session.name}:${hook!.at}`;
+            if (!session.turnCloseEvidence) config.io.save(replaceSession(config.io.load(), {
+              ...closeTurn(session, hook!.at), turnCloseEvidence: evidence,
+            }));
+            return { phase: 'output-observed' as const, evidence, detail: 'retired worker retained correlated result and Stop hook' };
+          }
           const terminal = config.io.readTerminal?.(session.name);
           const worker = terminal?.workerExitClaim;
           const detail = terminal
@@ -703,7 +767,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           if (!rate && config.now() + 30_000 < session.turnDeadline) {
             config.io.save(replaceSession(config.io.load(), { ...session,
               rateRecovery: { dueAt: config.now() + 30_000, state: 'waiting', fingerprint: digestOf(pane) },
-              turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
+              turnReceiptIds: config.io.readInbox(session.name)
                 .flatMap(row => row.receiptId ? [row.receiptId] : []), turnStartedAt: config.now() }));
             return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit recovery waiting' };
           }
@@ -725,7 +789,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
             // Durable before touching the terminal. Capture old Stop receipts so none can
             // close the continued turn; the driver still requires its normal completion evidence.
             const sending = { ...session, rateRecovery: { ...rate, state: 'sending' as const, submittedAt: config.now() },
-              turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
+              turnReceiptIds: config.io.readInbox(session.name)
                 .flatMap(row => row.receiptId ? [row.receiptId] : []), turnStartedAt: config.now(),
               turnBaseline: digestOf(pane) };
             config.io.save(replaceSession(config.io.load(), sending));
@@ -787,6 +851,12 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           if (!alive(session.name)) { config.io.save(replaceDelivery(config.io.load(), { ...row, state: 'uncertain' })); outcomes.push(`${row.operation}:uncertain`); continue; }
           verifyLive(session);
           const pane = capture(session.name);
+          // Carryover 08, 1.x PendingInjectStore: retain a never-dispatched input
+          // when readiness is temporarily unavailable. The caller owns the next
+          // bounded recovery attempt; no send or fresh authority is created here.
+          if (row.state === 'prepared' && row.redeliveries === 0 && classifyPaneReadiness(pane) !== 'ready') {
+            outcomes.push(`${row.operation}:awaiting-readiness`); continue;
+          }
           // A send already started can have completed and returned to the same
           // prompt. An unchanged pane cannot prove non-arrival in that window.
           if (row.state !== 'prepared' || digestOf(pane) !== row.baseline
