@@ -28,6 +28,8 @@ Decision: train188-133026-publication | Recompute owner pins and generated regis
 
 Verification: The existing receipt validator accepts the selected committed bytes and rejects the original candidate for mismatched model time, live for missing subsidy review time, and expired/future controls. Targeted tests and final publication checks are recorded in the report.
 
+Publication: Delegated owner and support rehash changed no pins. Register replay from 3735bf536db3df383b941e6d5a82eecfa0d1ef92 generated 299 entries, 122 rules and 34 terms, generation sha256:c1814e001fbc4a68005ce73aff95d5b425885ac51fc5bcac89f50bade31eda3d. This record covers the merge and its generated publication. Build and architecture checks passed; 42 targeted tests passed.
+
 ## Closing block
 
 simplestRobustRoute: Reuse complete existing evidence and merge the existing source repairs, then regenerate derived publication. This is the simplest robust route; no new gate, receipt, timestamp or runtime machinery. The start guard is the provenance refusal, the end guard is receipt validation and register consistency, and the original freshness windows remain the limit guards. No live completion is claimed.
