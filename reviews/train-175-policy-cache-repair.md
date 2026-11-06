@@ -34,6 +34,8 @@ Deferral: generated/register.json:1 | not-a-deferral=Regenerated full-line regis
 
 Integration provenance: train-186 previously rebound this record to fa960553940238a2dfad9bb28348fd63d3047799; live retains the original 428b6287201846c206e76be32f066a6b538333e3 base. Both histories survive the merge. Current validation is reported separately.
 
+Skip: tests/preview/hub-recorded.test.ts:45 | scope=Inherited private actual-provider capture replay requires INSTAR_HUB_CAPTURE_ROOT and hash-verified bytes. Absence visibly skips and cannot certify the model-facing path; this merge adds no skip and claims no fresh capture replay.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: extend the existing inspector for observed metadata and restrictive first-fetch compatibility. It prevents deterministic refusal before any model launch without a retry loop, new verifier or reauthorization ceremony. Existing malformed-policy, identity, hook, cap, stop, durable-intake and effect guards remain. The desk's new answer check supplies unattended shipped-path acceptance; this record claims no live answer yet.

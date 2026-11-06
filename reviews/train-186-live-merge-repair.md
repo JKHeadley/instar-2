@@ -28,6 +28,11 @@ Deferral: generated/register.json:1 | not-a-deferral=Generated rule text preserv
 
 Register replay: after the merge ae6790d97ae1fd0fb06c14ca7175224e8ce117ac, both delegated owner/support scripts reported zero changed pins. The existing replay rebuilt seven generated outputs (301 entries, 122 rules, 34 terms); this record covers the generated publication as well as the merge. The retained live conformance certificate requires Studio re-certification of merged composition bytes; it is not re-declared here.
 
+Prompt finding: 4b98dc2a1b9f | protocol-literal | toolsBriefing enumerates the existing full tool inventory; selfdesc-abilities tests that boundary against the captured briefing. It is not a fixture-trigger or expected answer for interpreting user intent. Unchanged by this merge.
+Prompt finding: 95e349aaf4ac | protocol-literal | Existing effect-doorway and standing-grant guidance states where authorization is enforced; the regression asserts that capability boundary, not a phrase that decides user meaning. Unchanged by this merge.
+
+Review annotation repair: The combined histories broaden two inherited review subjects. Document their existing private-capture test scope without adding a skip, and retain neutral-dispatch/fixture-trigger review attribution. The two existing capability guidance literals are explicitly dispositioned here; source and test bytes remain unchanged.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: merge the existing complementary corrections, preserving assertions and histories, and regenerate derived metadata. No new runner, guard or product mechanism is needed. Existing child bounds, fixture cleanup and admission checks remain; no autonomous shipped-path completion is claimed.

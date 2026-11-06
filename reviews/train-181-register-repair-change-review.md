@@ -32,6 +32,9 @@ Evidence: the retained READY run reports 118 passed, two failed, one RPC error o
 
 Integration note: train-186 imports owning repair 99db9a0967837d7d10527c457263b50383464952 via 5eefd6fd921cb93fb3f241a152bd71b76302b9a2. At that import the test file was byte-identical and the base was daa95de2266ae83b359ef7758bbc2c040b52419d; subsequent cumulative-batch repairs remain in the merged test. The release-evidence report describes the owner's historical run, not train-186 validation. That historical defect merge appended only the owner's READY-gate section. Current metadata renewal and verification are described in reviews/train-186-register-gate-repair.md.
 
+Skip: tests/preview/hub-recorded.test.ts:45 | scope=Inherited private actual-provider capture replay requires INSTAR_HUB_CAPTURE_ROOT and hash-verified bytes. Absence visibly skips and cannot certify the model-facing path; this merge adds no skip and claims no fresh capture replay.
+Prompt review: The merge carries existing source changes through their owning review records; this record originally covered test orchestration only. No fixture-trigger or expected-answer rule is added by the conflict resolution, and no dispatch is rewritten to suggest a verdict. Existing tool inventory and doorway guidance remain general capability/authority statements, not user-intent classifiers.
+
 ## Closing block
 
 simplestRobustRoute: complete the existing asynchronous child conversion and separate independent assertion groups without changing the production checker or weakening its comparisons.
