@@ -4,17 +4,17 @@ The repair preserves the train's accepted members and merges the already accepte
 
 ## Decisions
 
-R1: accepted native supervisor/report-loss repair, unchanged. The owner backstop moves from 600ms to 850ms; the extension also applies before termination. A missing report stays UNKNOWN. The existing 150ms and 500ms report-stall controls distinguish an accounted STOPPED from missing evidence. The member's resource-owner neighbor retains the tight refusal case and uses the existing roomy limit for normal completion.
+t181-r1: accepted native supervisor/report-loss repair, unchanged. The owner backstop moves from 600ms to 850ms; the extension also applies before termination. A missing report stays UNKNOWN. The existing 150ms and 500ms report-stall controls distinguish an accounted STOPPED from missing evidence. The member's resource-owner neighbor retains the tight refusal case and uses the existing roomy limit for normal completion.
 
-R2: journal-agent and review-layers-canary answer assertions accept the exact activation renewal notice. Added controls reject altered instructions and unrelated appended text. Answer/review behavior does not change.
+t181-r2: journal-agent and review-layers-canary answer assertions accept the exact activation renewal notice. Added controls reject altered instructions and unrelated appended text. Answer/review behavior does not change.
 
-R3: the local HTTP fixture exposes the observed request boundary. A controlled abort occurs there, while the test independently asserts the selected 90ms or admitted 100ms timeout. The before-arrival abort has zero server requests but the same consumed exposure and no retry. Real timer ordering no longer falsely guarantees HTTP receipt.
+t181-r3: the local HTTP fixture exposes the observed request boundary. A controlled abort occurs there, while the test independently asserts the selected 90ms or admitted 100ms timeout. The before-arrival abort has zero server requests but the same consumed exposure and no retry. Real timer ordering no longer falsely guarantees HTTP receipt.
 
-R4: peer subprocesses inherit the selected transpile cache and a finite 15s cold-start envelope; their admitted protocol deadline stays 3s. An injected 3.1s startup succeeds, while a forced subprocess timeout is explicitly infrastructure failure rather than a semantic refusal. The twelve-restart matrix yields between children. The gate's unattributed RPC timeout remains in the existing OPEN defect with its owner and full-qualification condition.
+t181-r4: peer subprocesses inherit the selected transpile cache and a finite 15s cold-start envelope; their admitted protocol deadline stays 3s. An injected 3.1s startup succeeds, while a forced subprocess timeout is explicitly infrastructure failure rather than a semantic refusal. The twelve-restart matrix yields between children. The gate's unattributed RPC timeout remains in the existing OPEN defect with its owner and full-qualification condition.
 
-R5: the owner-loss test uses the existing shipped 30s term, as its stale-owner neighbor already does. The prior 6s test term left only 1s beyond the admitted 5s transport for synchronous work. Both takeovers still require exact epochs, holder, history, receipt accounting, refusal to send without a peer and no duplicate sends.
+t181-r5: the owner-loss test uses the existing shipped 30s term, as its stale-owner neighbor already does. The prior 6s test term left only 1s beyond the admitted 5s transport for synchronous work. Both takeovers still require exact epochs, holder, history, receipt accounting, refusal to send without a peer and no duplicate sends.
 
-R6: local verification exposed two idle signal tests expiring before the first poll. Separate a bounded 30s cold-start readiness wait from the existing 10s polling wait and 3s signal-response bound. Inject an 11s initial startup in the SIGTERM case; the total case envelope becomes 90s to include its existing restart/status commands. No runtime timing is changed.
+t181-r6: local verification exposed two idle signal tests expiring before the first poll. Separate a bounded 30s cold-start readiness wait from the existing 10s polling wait and 3s signal-response bound. Inject an 11s initial startup in the SIGTERM case; the total case envelope becomes 90s to include its existing restart/status commands. No runtime timing is changed.
 
 ## 1.x comparison and constitutional floors
 
@@ -24,4 +24,13 @@ Rules 1/26/37/70/107 retain red evidence and require source repair; 31/63/113 re
 
 ## Verification
 
-Targeted verification is being recorded in the absolute lanes progress record; this section will be finalized before publication. Only touched test files and cheap gates are authorized here. No full saved report was fetched and no full suite was run.
+All 67 selected checks pass across seven affected test files, run in the foreground with `nice -n 10` and `--maxWorkers 1`:
+
+- `tests/integration/model-provider-refusals.test.ts`: 19 passed; `tests/integration/fixed-installation-peer.test.ts`: 14 passed (combined 113.67s).
+- `tests/preview/two-machine-runner.test.ts`: 6 passed; `tests/preview/review-layers-canary.test.ts`: 4 passed.
+- `tests/preview/journal-agent.test.ts`: final run 20 passed in 149.45s, including the injected eleven-second initial startup. The earlier local run's two startup failures remain recorded and motivated t181-r6; that earlier run had 28 passed/2 failed across three files.
+- Native `one accounted slot` and both `guard report stall` cases: 3 passed. Resource-owner `kills a launch that forks past its process ceiling`: 1 passed. This explicit selection left 50 other cases unselected, including CPU burners prohibited on the Studio; it is not a quarantine. Combined 15.32s.
+
+Build and final typecheck exited 0. Architecture independently exited 0 without an R105 exception. Delegated desk rehash updated one preview owner-reference pin; the grounding inventory had no changed pin. Generated register replay at 9a5d860f6351bec12064fc131d1ed3afedea6a33 has generation sha256:b9cd16ba937933661c2dda3e7a59bd576622b54586e58aadc0f598f4771f4322: 298 entries, 121 rules, 34 terms, 113 prerequisites, explicitly shape-only.
+
+The final post-commit lint, register check, change-review check, whitespace check and publication evidence are recorded in `/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-181-repair-PROGRESS.md`. Local record validation has no findings. No full saved report was fetched, no full suite was run, and no test result file was fabricated. The desk's full rerun remains the acceptance event for the unassigned RPC recurrence and whole candidate. Native tests are local unprivileged observations, not fresh installed-host certification.
