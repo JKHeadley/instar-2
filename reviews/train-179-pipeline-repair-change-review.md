@@ -31,6 +31,44 @@ Model-facing boundary: no prompt, output parser, model judgment, acceptance or e
 
 Verification: build/typecheck passed. Inventory and real tmux cleanup 13/13; media and Telegram files 33/33; launcher 19/19; final crash matrix and canaries 18/18; selected resource-owner controls 3/3. Earlier red attempts are retained in the progress logs, including the before-change census reproducer and transient canary status exit. No full suite run is claimed. Desk native renewal ran the actual ten-case contract: before 9/10 with only the stale certificate assertion, after 10/10; renewed composition sha256:878d0afdfd0f569b5b012eb9881267f276331bff54fb240403ffcecf0f113530. Rehash refreshed one preview owner pin; chain inventory required no changes.
 
+## Narrow gate revalidation, 2026-11-05
+
+The desk's 15:52 directive limits this follow-up to the supplied inventory, session cleanup,
+media allocation and Telegram audio assertions from 142f1490b. Their source repair is
+be9ab8e836bb1123d67ff0f06bdb0b4da88d2cea, already contained in the assigned head
+573066db9295d41be52246f70303a8c5085626f5. This follow-up changes only this evidence record;
+it does not duplicate the repair or alter runtime composition, tests, timeouts or acceptance.
+
+1.X FIRST rechecked: actual JKHeadley/instar origin/main
+48c8af38b266349d42385e343c14aaf963879e41, searching src/ and docs/specs/ for process census,
+lstart, ps comm, TmuxOutcome and zombie. src/monitoring/ExternalHogProcTable.ts uses comm=
+with opaque start identity and unknown malformed CPU readings. src/core/SessionManager.ts
+and docs/specs/unified-session-lifecycle-robustness.md retain indeterminate failed probes.
+Read docs/specs/test-runner-concurrency-bound.md and ONEX-LESSONS.md sections 2 and 6;
+inspected history 4e38b9fda/e460a9be3 and 1f90fa1a9/618560b3e/e1a1b7218. The existing
+2.0 repair reuses executable-only census and unknown-on-failed-observation behavior while
+keeping Ten decoding and Six allocation; importing the 1.x sentinel would add a second owner.
+
+Decision: T179-R3-REUSE | Revalidate the existing owning repair and retain the copied-preview failure as separate red evidence; the supplied older assertions do not justify another source change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-179-repair-PROGRESS.md
+
+Verification on 573066db9: nice -n 10 npm run typecheck exited 0. Foreground
+nice -n 10 npx vitest run --maxWorkers 1 tests/assembly/process-inventory.test.ts
+tests/e2e/session-work-tmux.test.ts tests/preview/media-understanding.test.ts
+tests/preview/telegram-files.test.ts exited 0: all 46 tests passed in 42.13 seconds.
+This covers the exact supplied failures and their complete/partial/failed census, physical
+helper disappearance, stop, capacity refusal before spawn, and allocation-return neighbors.
+The media tests also replayed the captured summary-writer, summary-uncertain, Jev
+undecided/unsure, reply-review, delivered and empty reply shapes at updates 715672480,
+715672483, 715672482, 969389570, 969389923, 715672479 and 715672550, plus attachment
+bridge update 715676899. These are captured-shape replays, not fresh live judgments.
+
+The 17:22:08 copied-preview answer check at 573066db remains a failure, recorded in
+preview-deploy.log for forum-answer-copy-20261105-171706. No runner was launched against
+that copy and no live success is claimed. Full/native/review/live gates remain unchanged;
+this evidence-only follow-up submits the existing repair for the desk's full-test admission.
+Logs: train-179-r3-typecheck.log and train-179-r3-targeted.log in the absolute desk lanes
+directory. No full suite, load test, quarantine, safeguard bypass or capability reduction.
+
 ## Closing block
 
 simplestRobustRoute: Remove unused process arguments from the existing bounded census, correct two stale test assertions and yield during fixture children. Keep existing owners, finite bounds, uncertainty, stop and cleanup evidence; add no runtime machinery and quarantine nothing.
