@@ -21,7 +21,7 @@ afterEach(() => {
   roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true }));
 });
 
-async function compose(mode: 'poll' | 'invoke') {
+async function compose(mode: 'poll' | 'invoke', fallbackFirst = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'telegram-poll-')));
   roots.push(root);
   const pollStarted = join(root, 'poll-started');
@@ -31,10 +31,16 @@ async function compose(mode: 'poll' | 'invoke') {
   const server = createServer((request, response) => {
     request.resume();
     request.on('end', () => {
-      writeFileSync(pollStarted, 'received');
-      const timer = setTimeout(() => finishPoll?.(), HOLD_MS);
+      if (!fallbackFirst) writeFileSync(pollStarted, 'received');
+      const timer = setTimeout(() => {
+        finishPoll?.();
+        // Force the gate failure's ordering without load: the fallback sends before
+        // the child can finish, so launch settlement necessarily completes it again.
+        if (fallbackFirst) writeFileSync(pollStarted, 'received');
+      }, fallbackFirst ? 0 : HOLD_MS);
       finishPoll = () => {
         clearTimeout(timer);
+        if (response.headersSent || response.writableEnded) return;
         response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"ok":true,"result":[]}');
       };
     });
@@ -49,13 +55,11 @@ async function compose(mode: 'poll' | 'invoke') {
     read: (ref: string) => captures.get(ref) ?? null }, `http://127.0.0.1:${address.port}`);
   const owner = createResourceOwner();
   await owner.attach({ statePath: join(root, 'resources.json') });
-  const started = performance.now();
-  let launchSettledAt = 0;
   // The child marks that it is running (its gate opened, its timer armed) before waiting for the concurrent poll.
   const marker = join(root, 'launched');
   const launch = owner.execute({ executable: '/bin/sh', args: ['-c', `echo > '${marker}'; while [ ! -f '${pollStarted}' ]; do sleep 0.05; done; echo ok`], cwd: root, env: { PATH: '/usr/bin:/bin' },
     stdin: '', timeout: LAUNCH_TIMEOUT_MS, maxBytes: 1024 }, 'answer')
-    .then((result: unknown) => { launchSettledAt = performance.now() - started; finishPoll?.(); return result; });
+    .then((result: unknown) => { finishPoll?.(); return result; });
   // The launch is in flight (like a ~0.3 s version preflight) when the runner's poll cycle starts its long poll.
   // Wait for the child itself rather than a fixed delay: under load the owner's admission and process-limit
   // queries can outlast any fixed delay, and a launch not yet spawned is never frozen mid-flight.
@@ -65,15 +69,15 @@ async function compose(mode: 'poll' | 'invoke') {
   }
   const request = { method: 'getUpdates', body: { offset: 0, limit: 10, timeout: 3 }, timeoutMs: HOLD_MS + 2000 };
   const polled = mode === 'poll' ? await telegram.poll(request, TEST_TOKEN) : telegram.invoke(request, TEST_TOKEN);
-  const polledAt = performance.now() - started;
-  return { launch: await launch, polled, polledAt, launchSettledAt };
+  return { launch: await launch, polled };
 }
 
 it('the long poll waits without freezing a concurrent launch: the finished child is observed, not timed out',
   { timeout: 30000 }, async () => {
-    const { launch, polled, polledAt, launchSettledAt } = await compose('poll');
+    const { launch, polled } = await compose('poll');
+    // The owner clears the execution timer when it observes child completion, before
+    // awaiting cleanup. Cleanup may finish after the poll's fallback, without a timeout.
     expect(launch).toMatchObject({ code: 0, limited: false, localLimit: null, stdout: 'ok\n' });
-    expect(launchSettledAt).toBeLessThan(polledAt);
     expect(polled).toMatchObject({ kind: 'response', status: 200 });
     expect(JSON.parse((polled as { bytes: string }).bytes)).toEqual({ ok: true, result: [] });
   });
@@ -82,4 +86,12 @@ it('the same composition over the synchronous transport freezes the launch past 
   { timeout: 30000 }, async () => {
     const { launch } = await compose('invoke');
     expect(launch).toMatchObject({ limited: true, localLimit: 'timeout', stdout: '' });
+  });
+
+it('a poll completed by its fallback tolerates later launch settlement without a second response',
+  { timeout: 30000 }, async () => {
+    const { launch, polled } = await compose('poll', true);
+    expect(launch).toMatchObject({ code: 0, limited: false, localLimit: null, stdout: 'ok\n' });
+    expect(polled).toMatchObject({ kind: 'response', status: 200 });
+    expect(JSON.parse((polled as { bytes: string }).bytes)).toEqual({ ok: true, result: [] });
   });
