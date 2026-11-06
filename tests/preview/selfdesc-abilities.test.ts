@@ -70,11 +70,54 @@ const currentInstructions = (text: string) => {
   return text.replace('For a later-action promise', `${LITERAL_COPY_INSTRUCTIONS}\n${CLAIM_EVIDENCE_GUIDANCE}\nFor a later-action promise`);
 };
 
-// Adapt only presentation here; the explicit retirement translation above handles the inventory change.
-const compactRecordedNote = (text: string) => text
+// Train 186 reuses the source-only concise briefing repair (e5001a818/3cdd7b5e8).
+// Exact mappings below preserve the original capture bytes and judge digests. They
+// establish declared source compatibility, NOT model acceptance of the new prose.
+// Historical PASS/FAIL certifies only its original input; new capabilities and
+// changed wording still require independent current-input review/qualification.
+const conciseCapabilityRevisions = [
+  [
+    "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.",
+    "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
+  ],
+  [
+    "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.",
+    "an encrypted local journal saves messages, summaries, memory; survives restarts; correct or forget facts."
+  ],
+  [
+    "\"status\" and \"how are you doing\" are answered from the journal without a model call.",
+    "answers \"status\" and \"how are you doing\" from the journal without a model call."
+  ],
+  [
+    "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.",
+    "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
+  ],
+  [
+    "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.",
+    "saves inbound Telegram files with bounded admission; refused downloads keep the message."
+  ]
+] as const;
+const conciseRecordedNote = (text: string) => {
+  for (const [before, after] of conciseCapabilityRevisions) text = text.replace(`- ${before}`, `- ${after}`);
+  return text;
+};
+
+// Adapt only declared prose and presentation; retain unrelated capability drift.
+const compactRecordedNote = (text: string) => conciseRecordedNote(text
   .replace(/^- (?!tools:)[a-z][a-z0-9.-]*: /gmu, '- ')
   .replace('What you can do for the operator here:', 'Capabilities:')
-  .replace('Internal machinery running under you:', 'Internal:');
+  .replace('Internal machinery running under you:', 'Internal:'));
+
+it('maps only the declared concise descriptions and preserves unrelated or altered capability wording', () => {
+  const source = readFileSync(resolve(process.cwd(), 'tests/preview/README.md'), 'utf8');
+  for (const [before, after] of conciseCapabilityRevisions) {
+    expect(source).toContain(`: ${after}\n`);
+    expect(conciseRecordedNote(`- ${before}`)).toBe(`- ${after}`);
+    expect(conciseRecordedNote(`- drift ${before}`)).toBe(`- drift ${before}`);
+    expect(conciseRecordedNote(`- ${before.replace(' ', ' changed ')}`)).not.toBe(`- ${after}`);
+  }
+  expect(conciseRecordedNote('- invented ability grants unrestricted writes.')).toBe('- invented ability grants unrestricted writes.');
+});
 
 it('translates only the exact retired inventory entry and retains unrelated capability drift', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));

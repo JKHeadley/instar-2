@@ -59,6 +59,10 @@ Floor refinement: first concise replay restored governingConstraints in tool pac
 
 Final byte adjustment: remove redundant One from the hub description; keep the unchanged fixed prompt guard. Verify historical self-description compatibility separately; old judgments cannot certify this wording.
 
+Decision: train186-replay | Declare exact source-proven concise-description compatibility in historical self-description replay; preserve original captures, rubrics, judgments and digests, and add drift controls. Historical judgments do not certify the changed prose or new abilities. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-186-PROGRESS.md
+
+Replay meaning assessment: compare pre-repair source 7a2603e91 tests/preview/README.md with current README. Conversation retains operator chat/topics, encrypted photos/audio/files and text descriptions; memory retains encrypted local messages/summaries/facts, restart survival, correction/forgetting; status retains both exact queries and no model call; requests retain explicit timing, once/daily/weekdays, cancellation and no new message; media retains bounded admission and message retention on refused download. Full Details remain unchanged. Only these five exact full descriptions translate; changed or unrelated lines remain mismatches. Tool/outbound authority paragraph and digest remain exact. This is source compatibility plus recorded output consumer traversal, not a new model judgment. Independent current-input acceptance remains gate-owned.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges and existing desk repin/build/rehash/replay. No new runtime mechanism. Boundaries remain current authority, stopped owners, retained unknown effects and verified results.
