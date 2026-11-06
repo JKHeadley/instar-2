@@ -100,7 +100,7 @@ it('A2-E2E A2-R6-01 P13-NF-24 P13-NF-28 P13-NF-38 P13-NF-39 a fully fsynced pend
   expect(createHarnessAdapterFileState(join(control, 'state.json')).load()).toMatchObject({
     revision: 1, attempts: [{ operation: 'operation:cut' }],
   });
-}, 30_000);
+}, 100_000); // Three sequential waves of 30s child deadlines, plus assertion overhead.
 
 it('A2-E2E A2-R6-02 P13-NF-24 P13-NF-28 P13-NF-39 torn owner pending bytes stay unknown across reads and block a retrying holder', async () => {
   const root = mkdtempSync(join(tmpdir(), 'p13-a2-r7-torn-'));
@@ -123,35 +123,33 @@ it('A2-E2E A2-R6-02 P13-NF-24 P13-NF-28 P13-NF-39 torn owner pending bytes stay 
   expect(holder.code, holder.stderr).toBe(0);
   expect(JSON.parse(holder.stdout)).toMatchObject({ state: 'unknown' });
   expect(readFileSync(pendingPath, 'utf8')).toBe(torn);
-}, 30_000);
+}, 160_000); // Five dependent child deadlines; none may be treated as crash evidence.
 
-it.each(['none', 'final-fsync'] as const)('A2-E2E R7-A2-R5-02 P13-NF-25 P13-NF-28 P13-NF-38 P13-NF-51 poison evidence loss stays unresolved after final-fsync SIGKILL and older-prefix reconstruction (%s)', async cut => {
+const poisonCases = (['none', 'final-fsync'] as const).flatMap(cut =>
+  (['full', 'older'] as const).flatMap(history =>
+    (['control', 'conflict', 'nine-witness'] as const).map(loss => ({ cut, history, loss }))));
+
+it.each(poisonCases)('A2-E2E R7-A2-R5-02 P13-NF-25 P13-NF-28 P13-NF-38 P13-NF-51 poison evidence loss stays unresolved after final-fsync SIGKILL and older-prefix reconstruction ($cut/$history/$loss)', async ({ cut, history, loss }) => {
   const script = 'tests/harness-adapters/a2-round7-poison-cut-worker.ts';
-  let scenarios = 0;
   const directory = mkdtempSync(join(tmpdir(), `p13-a2-r7-poison-${cut}-`));
   const seeded = await asyncWorker(script, ['seed', cut, directory, 'control', 'full']);
   expect(seeded.signal, seeded.stderr).toBe(cut === 'final-fsync' ? 'SIGKILL' : null);
   expect(seeded.code, seeded.stderr).toBe(cut === 'final-fsync' ? null : 0);
 
-  for (const history of ['full', 'older'] as const) for (const loss of ['control', 'conflict', 'nine-witness'] as const) {
-    const recovered = await asyncWorker(script, ['recover', cut, directory, loss, history]);
-    if (cut === 'final-fsync') {
-      expect(recovered.code).toBe(1);
-      expect(recovered.stderr).toContain('Part Two harness state append is uncertain');
-      scenarios++;
-      continue;
-    }
-    expect(recovered.code, recovered.stderr).toBe(0);
-    const result = JSON.parse(recovered.stdout);
-    if (history === 'full' && loss === 'control') {
-      expect(result.before).toMatchObject({ state: 'poisoned' });
-      expect(result.after).toMatchObject({ state: 'poisoned' });
-    } else {
-      expect(result.after, `${cut}/${history}/${loss}`).toMatchObject({ state: 'unknown' });
-    }
-    expect(result.reconnect, `${cut}/${history}/${loss}`)
-      .toMatchObject({ disposition: 'refused', handle: null });
-    scenarios++;
+  const recovered = await asyncWorker(script, ['recover', cut, directory, loss, history]);
+  if (cut === 'final-fsync') {
+    expect(recovered.code).toBe(1);
+    expect(recovered.stderr).toContain('Part Two harness state append is uncertain');
+    return;
   }
-  expect(scenarios).toBe(6);
-}, 60_000);
+  expect(recovered.code, recovered.stderr).toBe(0);
+  const result = JSON.parse(recovered.stdout);
+  if (history === 'full' && loss === 'control') {
+    expect(result.before).toMatchObject({ state: 'poisoned' });
+    expect(result.after).toMatchObject({ state: 'poisoned' });
+  } else {
+    expect(result.after, `${cut}/${history}/${loss}`).toMatchObject({ state: 'unknown' });
+  }
+  expect(result.reconnect, `${cut}/${history}/${loss}`)
+    .toMatchObject({ disposition: 'refused', handle: null });
+}, 65_000); // Two 30s child deadlines and assertion overhead for each independent proof.
