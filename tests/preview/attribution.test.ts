@@ -2,17 +2,21 @@
  * Whether the judge reads correctly is measured on real model calls: .instar/lanes/attribution-2-0-replay (1.x's three
  * test tiers all passed with a stub while the real judge missed 51 of 72 known false credits). */
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, type PreviewPorts } from './journal-test-worker.js';
 import { importChannelItems } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { JEV_MODEL, jevQuestions } from './reply-check.js';
-import { attributionPacket, attributionTrace, ATTRIBUTION_OBJECTION, decideAttribution, markerFacts, normalizeWords, parseAttributionAnswer, parseMarker, worthJudging,
+import { attributionPacket, attributionSummary, attributionTrace, ATTRIBUTION_OBJECTION, decideAttribution, markerFacts, normalizeWords, parseAttributionAnswer, parseMarker, worthJudging,
   type AttributionMode, type SourceRecord } from './attribution.js';
 import { LIVE_JUDGMENTS } from './model-call-boundary.js';
+// @ts-expect-error the hook's decision stays plain JavaScript
 import { noteText } from './tool-admission.mjs';
+// @ts-expect-error the checkpoint stays plain JavaScript
+import { createAdmissionGate } from './admission-gate.mjs';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -217,10 +221,48 @@ describe('imported records resolve, and prove less than a live turn', () => {
 });
 
 describe('the trail', () => {
+  it('counts what passed unchecked and why, so the timeout rate is a number', () => {
+    expect(attributionSummary([{ verdict: 'pass', latencyMs: 100, surface: 'send' }, { verdict: 'unchecked', cause: 'judge failed', latencyMs: 45000, surface: 'send' }, { verdict: 'refuse', latencyMs: 0, surface: 'write' }]))
+      .toMatchObject({ checks: 3, bySurface: { send: 2, write: 1 }, uncheckedBy: { 'judge failed': 1 } });
+  });
   const row = (at: number, span: string, verdict: string, ref?: string) => ({ at, id: `t${at}`, surface: 'write', mode: 'record', verdict, spans: [{ span, ...(ref ? { ref } : {}) }], findings: [] });
   it('reads every wording of a claim back, oldest first, by words or by ref', () => {
     const rows = [row(3000, 'Sam\'s standing rule: no laptop', 'refuse'), row(1000, 'Sam corrected me about the laptop', 'pass', 'telegram 1/2'), row(2000, 'an unrelated line', 'pass')];
     expect(attributionTrace(rows, 'laptop').map(item => item.at)).toEqual([new Date(1000).toISOString(), new Date(3000).toISOString()]);
     expect(attributionTrace(rows, 'telegram 1/2')).toHaveLength(1);
+  });
+});
+
+describe('the real hook asks the real checkpoint (a note is written or refused before the file changes)', () => {
+  const run = async (note: (call: string, text: string) => Promise<string | null>, path: string, content: string) => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'attribution-hook-'))); roots.push(root);
+    const ws = join(root, 'ws'), state = join(root, 'state'), tmp = join(root, 'tmp');
+    for (const dir of [ws, state, tmp]) mkdirSync(dir);
+    const asked: string[] = [];
+    const gate = await createAdmissionGate({ append: () => {}, stopped: () => false, now: () => 5, note: async (call: string, text: string) => { asked.push(text); return note(call, text); },
+      effects: { admit: () => ({ admitted: false, reason: 'unused' }), observed: () => {} } });
+    try {
+      gate.open('claim-a', { framework: 'claude-code', allowance: 2, edge: { id: 'session-work-edge:op:1', child: 'session-work-x' } });
+      writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp, maxCalls: 50, maxWriteBytes: 1048576, operations: [], gate: gate.base('claim-a') }));
+      const child = spawn(process.execPath, [join(__dirname, 'tool-admission-hook.mjs'), 'pre', state], { stdio: ['pipe', 'pipe', 'pipe'] });
+      let stdout = '';
+      child.stdout.on('data', chunk => { stdout += String(chunk); });
+      child.stdin.end(JSON.stringify({ tool_name: 'Write', tool_input: { file_path: join(ws, path), content }, tool_use_id: 'toolu_note' }));
+      const status = await new Promise<number | null>(resolve => child.on('close', resolve));
+      return { asked, status, denied: /"permissionDecision":"deny"/u.test(stdout) || status === 2, stdout, wrote: existsSync(join(ws, path)) };
+    } finally { await gate.stop(); }
+  };
+  it('refuses a false credit in a note and hands back the way through', async () => {
+    const result = await run(async () => 'Rule 121: refused. say source unknown', 'notes.md', FALSE_CREDIT);
+    expect(result.asked).toEqual([FALSE_CREDIT]); expect(result.denied).toBe(true); expect(result.stdout).toContain('Rule 121');
+  });
+  it('clears a note the check clears', async () => {
+    const result = await run(async () => null, 'notes.md', KEPT); expect(result.asked).toEqual([KEPT]); expect(result.denied).toBe(false);
+  });
+  it('a failing check lets the note through', async () => {
+    const result = await run(async () => { throw Error('down'); }, 'notes.md', FALSE_CREDIT); expect(result.denied).toBe(false);
+  });
+  it('never asks about code', async () => {
+    const result = await run(async () => 'refused', 'a.ts', FALSE_CREDIT); expect(result.asked).toEqual([]); expect(result.denied).toBe(false);
   });
 });

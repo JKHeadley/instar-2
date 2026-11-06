@@ -52,7 +52,7 @@ import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
 import { JEV_MODEL, jevQuestions, publicCredentialRegister, concealSecretMaterial, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { assertLiveJudgment, modelCallRecord, sha256 } from './model-call-boundary.js';
-import { ATTRIBUTION_QUESTION, attributionTrace } from './attribution.js';
+import { ATTRIBUTION_QUESTION, attributionSummary, attributionTrace } from './attribution.js';
 import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { readAnswer, taskFields } from './answer-reading.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
@@ -914,9 +914,10 @@ async function main() {
     return;
   }
   if (command === 'attribution-trace') {
-    // Rule 121: read-only. Every recorded wording of a claim, oldest first, by words or by a marker's ref.
+    // Rule 121: read-only. With --query, every recorded wording of a claim, oldest first, by words or a marker's ref; without, the counts.
     const journal = openPreviewJournal(journalPath, key(), undefined, undefined, true);
-    try { process.stdout.write(`${JSON.stringify(attributionTrace(journal.view.attribution ?? [], required(options, 'query')), null, 2)}\n`); }
+    const rows = journal.view.attribution ?? [];
+    try { process.stdout.write(`${JSON.stringify(options.query ? attributionTrace(rows, options.query) : attributionSummary(rows), null, 2)}\n`); }
     finally { journal.close(); }
     return;
   }

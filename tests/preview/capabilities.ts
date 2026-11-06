@@ -60,7 +60,7 @@ export const PREVIEW_CAPABILITY_META: Readonly<Record<string, CapabilityMeta>> =
     acceptance: outcome('reply') },
   'preview.reply-review': { change: 'capability', enabledBy: 'default', sources: [...RUNNER, 'tests/preview/reply-check.ts', 'tests/preview/attribution.ts'],
     evidence: { unit: ['tests/preview/reply-check.test.ts', 'tests/preview/reply-review-corpus.test.ts', 'tests/preview/attribution.test.ts'],
-      integration: ['tests/preview/review-layers-canary.test.ts', 'tests/preview/reviewer-thinking-bound.test.ts'], procedure: 'tests/preview/jev-live-test.md' },
+      integration: ['tests/preview/review-layers-canary.test.ts', 'tests/preview/reviewer-thinking-bound.test.ts', 'tests/preview/attribution.test.ts'], procedure: 'tests/preview/jev-live-test.md' },
     acceptance: outcome('reviewed-reply') },
   'preview.held-reply-notice': { change: 'repair', enabledBy: 'default', sources: [...RUNNER],
     evidence: { unit: ['tests/preview/held-reply-replay.test.ts', 'tests/preview/journal-long-message.test.ts'],

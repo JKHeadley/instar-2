@@ -172,4 +172,12 @@ export function attributionTrace(rows: readonly { at: number; id: string; surfac
     verdict: row.verdict, wordings: (row.spans ?? []).filter(hit), refused: row.findings.filter(hit).map(finding => finding.reason) }));
 }
 
+/** The record period's numbers: how many checks, how many refused, and what passed unchecked and why (the timeout rate). */
+export function attributionSummary(rows: readonly { verdict: string; cause?: string; latencyMs: number; surface: string }[]) {
+  const count = (values: readonly string[]) => Object.fromEntries([...new Set(values)].sort().map(value => [value, values.filter(item => item === value).length]));
+  const judged = rows.map(row => row.latencyMs).filter(ms => ms > 0).sort((a, b) => a - b);
+  return { checks: rows.length, bySurface: count(rows.map(row => row.surface)), byVerdict: count(rows.map(row => row.verdict)),
+    uncheckedBy: count(rows.filter(row => row.verdict === 'unchecked').map(row => row.cause ?? 'unknown')), medianMs: judged[Math.floor(judged.length / 2)] ?? null };
+}
+
 export const attributionDigest = (text: string) => createHash('sha256').update(text).digest('hex');
