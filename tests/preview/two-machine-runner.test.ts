@@ -6,6 +6,8 @@
 import { expect, it } from 'vitest';
 import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { REPLY_ACKNOWLEDGEMENT } from './journal.js';
 import { readRuns } from './self-state.js';
@@ -36,6 +38,46 @@ function expectSendAccounting(status, t) {
     sendOutcomes: { accepted: t.sends().length, refused: cancelled.length, unknown: 0 },
   });
 }
+
+// A refused claim is consumed too. Only a matching cancelled acknowledgement may
+// explain a claim without a physical send; unknown, missing and duplicate outcomes fail.
+function expectClaimAccounting(view, records, status, t) {
+  expectSendAccounting(status, t);
+  const claims = records.filter(row => row.t === 'claim');
+  const outcomes = records.filter(row => row.t === 'outcome');
+  expect(new Set(claims.map(row => row.key)).size).toBe(claims.length);
+  expect(new Set(outcomes.map(row => row.key)).size).toBe(outcomes.length);
+  expect(outcomes.map(row => row.key).sort()).toEqual(claims.map(row => row.key).sort());
+  expect(outcomes.filter(row => row.state === 'sent')).toHaveLength(t.sends().length);
+  const cancelled = status.heldNotices.filter(notice => notice.state === 'refused')
+    .map(notice => `held-notice:telegram:${t.world.configuration.botId}:update:${notice.update}`);
+  for (const row of outcomes) {
+    expect(['sent', 'refused']).toContain(row.state);
+    if (row.state === 'refused') expect(cancelled).toContain(row.key);
+  }
+  expect(view).toMatchObject({ claims: claims.length, unresolved: [] });
+}
+const authorityRecords = t => readFileSync(join(t.world.directory, 'authority', 'log.jsonl'), 'utf8')
+  .trim().split('\n').map(line => JSON.parse(line).rec);
+
+it('requires one final outcome per claim and accepts only evidenced cancelled acknowledgement claims without a send', () => {
+  const key = 'held-notice:telegram:123:update:1';
+  const t = { world: { configuration: { botId: '123' } }, sends: () => [{ text: 'Juniper is the marker.' }] };
+  const status = { replies: 2, unknownSends: 0,
+    heldNotices: [{ update: 1, state: 'refused', refusal: 'acknowledgement cancelled' }],
+    sendOutcomes: { accepted: 1, refused: 1, unknown: 0 } };
+  const records = [{ t: 'claim', key: 'reply:1' }, { t: 'outcome', key: 'reply:1', state: 'sent' },
+    { t: 'claim', key }, { t: 'outcome', key, state: 'refused' }];
+  const view = { claims: 2, unresolved: [] };
+  expectClaimAccounting(view, records, status, t);
+  // Cancellation before claiming leaves only the reply's claim, but keeps its local refusal.
+  expectClaimAccounting({ claims: 1, unresolved: [] }, records.slice(0, 2), status, t);
+  for (const invalid of [records.slice(0, 3), [...records, records[0]], [...records, records[1]],
+    records.map(row => row.key === key ? { ...row, key: 'unrelated' } : row),
+    records.map(row => row.t === 'outcome' && row.key === key ? { ...row, state: 'unknown' } : row)])
+    expect(() => expectClaimAccounting(view, invalid, status, t)).toThrow();
+  expect(() => expectClaimAccounting({ ...view, unresolved: [key] }, records, status, t)).toThrow();
+});
 
 it('accounts for cancelled acknowledgement intents without accepting lost, duplicate or unknown sends', () => {
   const reply = { kind: 'send', role: 'studio', text: 'Juniper is the marker.' };
@@ -76,7 +118,8 @@ it('two runners, one conversation: one reply; the peer goes away and the reply i
   expect(answers(t)[0].role).toBe('studio');
   await until('the shared cursor passes the answered update', async () => (await t.view()).cursor === 2);
   expect((await t.view())).toMatchObject({ epoch: 1, holder: { machine: 'studio' }, unresolved: [] });
-  expect((await t.view()).claims).toBe(t.sends().length);
+  await until('the authority has every outcome', async () => (await t.view()).unresolved.length === 0);
+  expectClaimAccounting(await t.view(), authorityRecords(t), await t.status('studio'), t);
   expect(t.polls('laptop')).toHaveLength(0);
   const copy = JSON.parse(readFileSync(join(t.rootOf('laptop'), 'replica', 'copy-state.json'), 'utf8'));
   expect(copy).toMatchObject({ epoch: 1, machine: 'studio' });
@@ -108,7 +151,8 @@ it('two runners, one conversation: one reply; the peer goes away and the reply i
   await until('the shared cursor passes the second update', async () => (await t.view()).cursor === 3);
   await pause(4000);
   expect(answers(t)).toHaveLength(2);
-  expect((await t.view())).toMatchObject({ epoch: 1, unresolved: [], claims: t.sends().length });
+  expect((await t.view())).toMatchObject({ epoch: 1, unresolved: [] });
+  expectClaimAccounting(await t.view(), authorityRecords(t), await t.status('studio'), t);
   expect(t.polls('laptop')).toHaveLength(0);
   expect(studio.output.stderr).toContain('the other machine acknowledged the journal; replies are sent');
   expectSendAccounting(await t.status('studio'), t);
@@ -173,7 +217,8 @@ it('the owner machine is lost: the other machine takes over WITH the history, ho
   expect(existsSync(join(t.rootOf('studio'), final.sharedHistory.setAside[0]))).toBe(true);
   await pause(3000);
   expect(answers(t)).toHaveLength(2);
-  expect((await t.view())).toMatchObject({ epoch: 3, holder: { machine: 'studio' }, unresolved: [], claims: t.sends().length });
+  expect((await t.view())).toMatchObject({ epoch: 3, holder: { machine: 'studio' }, unresolved: [] });
+  expectClaimAccounting(await t.view(), authorityRecords(t), await t.status('studio'), t);
   // The survivor was paused by a signal: a deliberate pause is not relaunched by its supervisor.
   expect(readRuns(join(t.rootOf('laptop'), 'runs.jsonl')).launches.at(-1)).toMatchObject({ reason: 'paused by signal SIGTERM', revival: 'inhibited' });
   await t.stop(returned);
@@ -253,7 +298,56 @@ it.each([0, 1500])('an owner that stalls past its term and comes back is stale: 
   expect(back.output.stderr).toContain('standby: held by laptop');
   await pause(3000);
   expect(answers(t)).toHaveLength(2);
-  expect((await t.view())).toMatchObject({ epoch: 2, holder: { machine: 'laptop' }, claims: t.sends().length });
+  expect((await t.view())).toMatchObject({ epoch: 2, holder: { machine: 'laptop' } });
   await until('nothing is left unresolved', async () => (await t.view()).unresolved.length === 0);
+  expectClaimAccounting(await t.view(), authorityRecords(t), await t.status('laptop'), t);
   await t.stop(back); await t.stop(laptop);
 }, 240000);
+
+// Hold the successful claim response until the answer is ready. The real runner must
+// cancel the acknowledgement after claiming it, and settle that claim as refused.
+it('settles a claimed acknowledgement cancelled by the answer without sending it or leaving an unknown claim', async () => {
+  const t = await twoMachines(30000);
+  const barrier = join(t.world.directory, 'hold-model');
+  writeFileSync(barrier, 'hold');
+  let releaseClaim = () => {}, claimedNotice = false;
+  const claimHeld = new Promise<void>(done => { releaseClaim = done; });
+  const proxy = createServer(async (request, response) => {
+    try {
+      const chunks = []; for await (const chunk of request) chunks.push(chunk);
+      const body = Buffer.concat(chunks).toString('utf8'), op = JSON.parse(body).request;
+      const upstream = await fetch(t.url + request.url, { method: 'POST',
+        headers: { authorization: request.headers.authorization, 'content-type': 'application/json' }, body });
+      const answer = await upstream.text();
+      if (op.op === 'claim' && op.key.startsWith('held-notice:') && JSON.parse(answer).ok) {
+        claimedNotice = true; unlinkSync(barrier);
+        await Promise.race([claimHeld, pause(4000)]);
+      } else if (op.op === 'claim' && !op.key.startsWith('held-notice:')) releaseClaim();
+      response.writeHead(upstream.status, { 'content-type': 'application/json' }); response.end(answer);
+    } catch (error) { response.writeHead(500); response.end(String(error)); }
+  });
+  proxy.listen(0, '127.0.0.1'); await once(proxy, 'listening');
+  try {
+    const studio = t.harness.startRunner(t.rootOf('studio'), 'studio', 100000, [
+      '--machine-posture', 'multi-machine', '--conversation-authority', `http://127.0.0.1:${proxy.address().port}`,
+      '--replica-listen', `127.0.0.1:${t.ports.studio}`, '--replica-peer', `http://127.0.0.1:${t.ports.laptop}`,
+      '--owner-machine', 'studio', '--journal-lineage', 'seed'],
+    { ...t.envOf('studio'), INSTAR_PREVIEW_CUTOVER_MODEL_BARRIER: barrier });
+    started.push(studio.child);
+    await until('the seeded owner serves', () => studio.output.stderr.includes('owner: epoch 1'));
+    const laptop = t.start('laptop');
+    await until('the peer stands by', () => laptop.output.stderr.includes('standby: held by studio'));
+    t.harness.setUpdates([message(t.world, 1, 'What is the marker? Juniper.')]);
+    await until('the answer', () => answers(t).length === 1);
+    expect(claimedNotice).toBe(true);
+    await until('the cancelled acknowledgement is recorded', async () =>
+      (await t.status('studio')).heldNotices.some(notice => notice.refusal === 'acknowledgement cancelled'));
+    expectSendAccounting(await t.status('studio'), t);
+    expect(t.sends()).toHaveLength(1);
+    expect(await t.view()).toMatchObject({ claims: 2, unresolved: [] });
+    expectClaimAccounting(await t.view(), authorityRecords(t), await t.status('studio'), t);
+    await t.stop(studio); await t.stop(laptop);
+  } finally {
+    releaseClaim(); proxy.closeAllConnections(); await new Promise(done => proxy.close(done));
+  }
+}, 90000);

@@ -78,3 +78,19 @@ must use different process ids. Discovery checks compare the actual runner inven
 all tracked test files in unsplit, macOS-only and non-macOS modes. Full-suite qualification
 and repeated real-fixture runs are recorded in the builder's absolute lanes progress record;
 this defect remains open until that evidence establishes zero runner errors.
+
+## train-192 recurrence, 2026-11-06
+
+The supplied M5 Pro gate for `7ef1ab43fe974d468c72c51dadbb1332993c5344` recorded
+one unattributed `onTaskUpdate` error and a 115,602 ms timeout in the intake owner
+manifest matrix, against its 60,000 ms limit. The same matrix passed unchanged
+in 4,824 ms on WSL with one worker. This does not exonerate the original failure
+or identify the worker responsible for the unattributed error.
+
+The fixture now copies asynchronously, uses the existing bounded async child helper
+for Git, and reads each unique referenced blob from its real fixture commit once.
+The matrix uses the loader's existing `show` port, as the register build does. Each
+manifest still undergoes all owner, path, dependency and hash checks; the timeout
+and assertions are unchanged. This removes repeated blocking Git children inside
+one case without serializing unrelated files or increasing runner deadlines.
+Full-gate qualification remains with the pipeline; this record stays OPEN.
