@@ -49,6 +49,10 @@ Decision: train186-publication | Use cint-L37 desk chain. Existing 8d49872e2 con
 
 Publication: ordinary replay from ae8125e347df87166f81c77dca1ab9a3b5089291 produced 300 entries and 121 rules, generation sha256:c2721b391014bd092482c45dba75624be93a6075b60c834518fbdc951b78a1db. Existing conversion repair 8d49872e2 matches this anchor and shape byte for byte. Desk repin and rehash changed zero pins. Main purpose/rules text remains exact. Private hub evidence: all 18 input/raw/consumer files downloaded read-only and matched the hashes pinned in hub-recorded.test.ts; run the six recorded cases with INSTAR_HUB_CAPTURE_ROOT.
 
+Decision: train186-floor | Reuse existing concise capability wording from e5001a818 and 3cdd7b5e8 with consumer assertions from 5a7f7739b; shorten this member's two new brief lines while retaining full Details. The measured summary exceeds the unchanged floor by 144 bytes and tool packets lose governingConstraints; no guard or constitutional text changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-186-PROGRESS.md
+
+Floor comparison: searched actual 1.x snapshot 154a09ffd44749ceac6205e4a95a9df4c56f4659 src/ and docs/specs/ for context budget/prompt overflow, finding crossModelReviewer.ts, MessageDelivery.ts, OutboundAdvisory.ts and Threadline/inter-agent specs; history inspected 2aaac4288. No matching fixed generated-packet floor repair in those inspected paths. Retain the 2.0 existing source-generated concise briefing mechanism. Existing train repair e5001a818 owns the shared wording reduction; reuse it once, with 3cdd7b5e8 awareness correction and 5a7f7739b exact consumer assertions. Our two new capability lines keep the same state and authority limits; full details remain unchanged. Recorded hub cases all passed before this adjustment; rerun actual recorded shapes and measured floor after generation.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges and existing desk repin/build/rehash/replay. No new runtime mechanism. Boundaries remain current authority, stopped owners, retained unknown effects and verified results.
