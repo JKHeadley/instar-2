@@ -2453,15 +2453,17 @@ async function main() {
               : current && !current() ? 'acknowledgement cancelled' : null, undefined, retryAttempt, provenance.contentHash);
           if (refused !== null) return refused;
         }
-        if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
-          return { kind: 'refused', reason: 'stopped before physical dispatch' };
-        if (current && !current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
-        const noticeTurn = target?.startsWith('held-notice:') ? journal.view.turns.get(target.slice('held-notice:'.length)) : null;
-        const reaction = noticeTurn?.acknowledgementMode === 'reaction-or-text'
-          && noticeTurn.heldNoticeIntent === expectedText && text === expectedText && Number.isSafeInteger(replyTo);
-        if (!reaction) typing.stop(chat, thread); // answers and progress lines end the indicator
+        // A claim may have been granted while the answer cancelled its acknowledgement.
+        // Settle every post-claim exit, including refusals before physical dispatch.
         let outcome = { kind: 'unknown', reason: 'send port failed' };
         try {
+          if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
+            return outcome = { kind: 'refused', reason: 'stopped before physical dispatch' };
+          if (current && !current()) return outcome = { kind: 'refused', reason: 'acknowledgement cancelled' };
+          const noticeTurn = target?.startsWith('held-notice:') ? journal.view.turns.get(target.slice('held-notice:'.length)) : null;
+          const reaction = noticeTurn?.acknowledgementMode === 'reaction-or-text'
+            && noticeTurn.heldNoticeIntent === expectedText && text === expectedText && Number.isSafeInteger(replyTo);
+          if (!reaction) typing.stop(chat, thread); // answers and progress lines end the indicator
           observeSendPhase?.('transportBegunAt');
           if (reaction) {
             const reactionOutcome = reactionAcknowledgement(noticeInvoke, chat, replyTo);
@@ -2688,7 +2690,7 @@ async function main() {
       chmodSync(scope, 0o700);
       const project = realpathSync(scope), framework = doorway.session.framework;
       const mountVolume = identity => {
-        if (attachSessionVolume(root, layout ? { at: layout.mount } : {}) !== project) throw Error('preview: the session volume is not the working scope');
+        if (attachSessionVolume(root, { ...(layout ? { at: layout.mount } : {}), log: line => process.stderr.write(`preview: ${line}\n`) }) !== project) throw Error('preview: the session volume is not the working scope');
         if (identity) grantVolume(project, identity.user, identity.runner);
       };
       const physicalFor = () => createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
