@@ -9,7 +9,7 @@ Affected floors: secrets — unchanged production checks; spend cap — unchange
 Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
-Tier rationale: Four test files only; no production behavior, prompt, model parser, authority, or governed text changes.
+Tier rationale: Four test files and their derived publication binding; no production behavior, prompt, model parser, authority, or governed text changes.
 Side effects: The install cleanup and multi-build bridge fixture have finite 120-second budgets. Asynchronous child execution and bulk filesystem work let worker reporting progress during those operations. Unexpected cleanup errors still fail.
 Undo and recovery: Revert the test repair if rejected; no installed or live state changes. Fixture cleanup remains scoped to its own temporary roots.
 Multi-machine posture: Machine-local targeted tests use one worker. No ownership or replication changes; the desk retains full-suite qualification.
@@ -20,10 +20,12 @@ Hook bypass: none
 Convergence: none
 Prompt review: No prompt or model-facing path changes. Added fixed notice text is assertion evidence from the supplied gate, never a model trigger or dispatch rule.
 
-Subject (4 paths): tests/e2e/register.test.ts, tests/preview/journal-agent.test.ts, tests/preview/mcp-setup.test.ts, tests/preview/review-layers-canary.test.ts
+Subject (5 paths): tests/e2e/register.test.ts, tests/preview/journal-agent.test.ts, tests/preview/mcp-setup.test.ts, tests/preview/review-layers-canary.test.ts, register-source/owner-references/preview.json
 
 Decision: T176-R1 | Match only the current activation reminder and its exact renewal action, retaining exact answers and rejecting unrelated appended text. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-176-repair-PROGRESS.md
 Decision: T176-R2 | Await large cleanup and reuse the asynchronous child helper for the bridge fixture; use the adjacent multi-build fixture's finite budget without weakening its assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-176-repair-PROGRESS.md
+
+Publication: The delegated desk rehash tool refreshed exactly the journal-agent test artifact hash in register-source/owner-references/preview.json; the inventory repin tool changed no paths. Generated publication will be replayed from this committed source. No hand-edited pins.
 
 The existing source behavior is preserved: reminders remain visible, an ambient bridge still cannot satisfy the committed graph, a committed bridge still resolves identically in a fresh clone, and an extra untracked source still refuses wiring. The MCP test still exercises production npm installation and migration. This record does not supersede the independent integration review, its live acceptance obligations, or CB6-MF-A / CB7-R90 / CB1-MF5.
 
