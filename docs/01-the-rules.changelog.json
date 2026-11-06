@@ -5,13 +5,13 @@
     "status": "draft",
     "cause": {
       "kind": "conversation",
-      "note": "Topic 139374, November 5, 2026: Justin approved the proposed Improvement Requires Evidence and Visibility effort and requested a 24-hour autonomous run with recurring reports in this topic. The proposal explicitly covered whole-effort and material-subcomponent outcomes, baselines, repeated evaluation, visual history, independent coverage and corrective review. Final-head constitutional review and paired PR approval remain pending."
+      "note": "Echo proposed this effort in Telegram 139374/139375 on 2026-11-05. Justin replied: \"Perfect please start a 24 hour autonomous session to move this work forward\" and \"I expect some of the results of this work to be an ongoing job that also reports directly within this topic\" [source: telegram 139374/139377 2026-11-05T22:42:43Z]. These words authorize pursuing the work, not final constitutional wording. Final-head constitutional review and paired PR approval remain pending."
     },
     "changes": [
       {
         "what": "Strengthen existing foundational Rule 39 Observability with measurable outcomes, recorded baselines, versioned repeated evaluations, understandable visual history, whole-effort and material-part coverage, independent coverage checks and accountable recurring corrective review.",
         "why": "Telemetry and an active or completed process do not by themselves prove improvement; unregistered work and gaps must stay visible, and evidence must reach a visual a person understands.",
-        "ref": "Telegram topic 139374, November 5, 2026; paired 1.x Observability amendment and constitution-alignment map."
+        "ref": "Echo proposal Telegram 139374/139375 and Justin reply 139374/139377 2026-11-05; paired 1.x Observability amendment and constitution-alignment map."
       }
     ]
   },
