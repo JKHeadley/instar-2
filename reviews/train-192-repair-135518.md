@@ -36,6 +36,10 @@ Decision: train192-live-merge | Merge 79be7e88 normally, preserving both histori
 
 Unmodified Studio resolve-provider-stamps.py selected committed 0dd520cacc22b174c0fefd441e62ddd38a863c2a against live 79be7e88. Selected declaration SHA256 6279ad016a675418cc696d230c42c9e50537cda675b33d1b05db9e96a2037c8d, receipt SHA256 acc46c7e2613d13eabd2171b4201d093eb359cea7b0048620850f62828735c18. Both timestamps are 1793936455257. Live's unbound receipt is still rejected. Git otherwise auto-selects the live stamp because the restored value equals the merge base; explicitly retain the verifier-selected exact blob. Generated conflicts use live provisionally and are replayed from the merged source.
 
+## Derived register
+
+Replay from merge 95a914ac162bed0700df39391afdb2a6d1f2379d produced 299 entries, 122 rules, 34 terms, 114 prerequisites and 48 shape-only warnings. Delegated owner and grounding repin tools reported zero changed hashes. Source typecheck, build and architecture checks passed before replay.
+
 ## Closing block
 
 simplestRobustRoute: Restore exact proven committed bytes, pass the existing receipt checkpoint and perform a normal history-preserving merge. No added resolver, new timestamp, weakened check or capability reduction.
