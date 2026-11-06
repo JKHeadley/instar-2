@@ -19,7 +19,7 @@ const roots: string[] = [];
 const root = () => { const p = mkdtempSync(join(tmpdir(), 'mcp-setup-')); roots.push(p); return p; };
 // The real npm fixture owns an installed release and an isolated cache. Removing
 // both exceeded the default 10s hook budget in the M5Pro gate. Await cleanup with
-// the install case's finite budget, yielding I/O instead of blocking worker IPC.
+// a finite 2-minute budget, yielding I/O instead of blocking worker IPC.
 afterEach(async () => {
   for (const p of roots.splice(0)) await rm(p, { recursive: true, force: true });
 }, 120000);
@@ -134,6 +134,8 @@ it('the registered release migration reaches an existing root with no MCP file',
   const before = bytes(p); await migration.run(p); expect(bytes(p)).toBe(before);
   expect(readFileSync(join(p, 'operator.json'), 'utf8')).toBe('untouched');
 });
+// updateRoot bounds its npm child at 300s. Let it settle and finish migrations
+// before the runner starts cleanup; a shorter test deadline races those writes.
 it('the production npm install carries the loader dependency and migrates before switching', async () => {
   const p = root(), cache = process.env.npm_config_cache;
   process.env.npm_config_cache = root();
@@ -145,7 +147,7 @@ it('the production npm install carries the loader dependency and migrates before
   } finally {
     if (cache === undefined) delete process.env.npm_config_cache; else process.env.npm_config_cache = cache;
   }
-}, 120000);
+}, 360000);
 it('real setup installs defaults and the add CLI consumes secrets only from stdin', () => {
   const p = root();
   const setup = spawnSync(process.execPath, ['bin/instar2.mjs', 'setup', p],
