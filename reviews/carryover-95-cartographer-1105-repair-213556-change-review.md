@@ -7,15 +7,17 @@ Outcome: Repair extracted-send wiring, activation-notice recognition and histori
 Affected rules: 34, 37, 70, 74, 101, 102, 113, 116
 Affected floors: secrets — no credentials or live calls; spend cap — offline fixtures only; stop — existing assertions preserved; no duplicate sends — existing send/recovery assertions preserved; durable intake — existing journal/replay assertions preserved
 Operator questions: none
-Suggested tier: ordinary
+Suggested tier: critical
 Declared tier: ordinary
-Tier rationale: Three regression harness corrections with no production edits or authority change.
+Tier rationale: Three regression harness corrections with no production edits or authority change; generated register identities make the path heuristic critical, but the manually declared scope remains ordinary.
 Side effects: Temporary bounded child processes and fixture directories; exact child handles are cleaned up. No production roots or serving logins used.
 Undo and recovery: Revert this repair commit; production behavior and persisted formats are unchanged.
 Multi-machine posture: Source edits are portable. Native resource-owner and launcher lifecycle verification still requires a compatible gate host; WSL results are reported without claiming a pass.
 Layer below: The extracted shipped send body calls replyFormatting; bind its real implementation. Historical census overflow must request historical args columns, while the real compact census still inventories every fixture PID.
-Bug class: test harness drift
-Bug evidence: Assigned f2abc0de fast log reports ten group-carry failures from missing replyFormatting, two rejected activation notices, and one census overflow assertion against compact comm columns.
+Bug class: unit
+Bug evidence: reproducer=tests/preview/group-carry-requests.test.ts
+
+Observed failure: Assigned f2abc0de fast log reports ten group-carry failures from missing replyFormatting, two rejected activation notices, and one census overflow assertion against compact comm columns.
 Hook bypass: none
 Convergence: none
 Decision: carryover-95-repair-213556-harness | Repair the three harness mismatches without changing production behavior or weakening send, review or resource settlement checks. Include scrubbed launch refusal records in canary diagnostics. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-95-cartographer-1105-repair-213556-PROGRESS.md
