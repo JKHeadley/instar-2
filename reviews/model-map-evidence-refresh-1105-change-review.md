@@ -8,7 +8,7 @@ Affected rules: 13, 26, 49, 56, 74, 90, 101, 102, 107, 111, 113, 116
 Affected floors: secrets — redacted catalog and classification only; spend cap — no provider invocation and no claimed discount or zero charge; stop — unchanged; no duplicate sends — no send or effect added; durable intake — unchanged.
 Operator questions: none
 Suggested tier: critical
-Declared tier: routine
+Declared tier: ordinary
 Tier rationale: This is evidence renewal, not a validator, model, capability or policy change. The stale deadline correctly refused. Existing boundary tests and real captured listing prove the source update; release gates retain their own bars.
 Side effects: The listed model and conservative estimate pass their existing age checks until their unchanged windows expire. The declaration makes no invocation or measured-price claim; runtime login admission and unresolved spend accounting remain separate.
 Undo and recovery: Revert narrow source commit 8d03203de54202d73170ba7a6c2d0df74e7561cb and regenerate through build-register; the old expired evidence refuses again. EchoDesk owns evidence renewal before the listing deadline 2026-12-09T13:33:42.428Z and estimate deadline 2026-12-09T13:35:47.910Z.
