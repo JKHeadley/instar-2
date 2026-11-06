@@ -100,7 +100,7 @@ it('replays the captured uncertain state and delivered/empty-context bytes on di
         // Captured empty context is not evidence Telegram delivered an empty bubble.
         // Feeding those bytes to the answer port is a synthetic empty-output control.
         expect(shape.raw).toBe(''); expect(sent).toEqual([MODEL_FAILURE_REPLY]);
-      } else expect(sent[0]).not.toBe(UNKNOWN_ANSWER_NOTICE);
+      } else expect(sent[0]).not.toContain(UNKNOWN_ANSWER_NOTICE);
     } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
   }
 });
