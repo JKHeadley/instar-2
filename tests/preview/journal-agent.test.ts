@@ -7,10 +7,10 @@ import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, PER_RULE_PASS } from './successive-fixture.js';
 import { openPreviewJournal, UNKNOWN_SEND_NOTICE } from './journal.js';
 
-// The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
+// The launcher runs on the real clock against a fixed fixture expiry, so a due activation reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride an answer as its own line. The answer itself stays exact,
 // and nothing else may be appended.
-const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
+const NOTICE_LINE = /^(?:Reminder: your activation expires in [^.]+\. Smallest step for you: approve a renewed activation record\.|Model route check: .+\.)$/u;
 const answerOf = (text: string) => {
   const [answer, ...notices] = text.split('\n\n');
   for (const notice of notices) {
@@ -19,6 +19,17 @@ const answerOf = (text: string) => {
   }
   return answer;
 };
+
+it('accepts the captured activation notice while refusing unrelated appended text', () => {
+  // Exact notice from the train-173 Studio gate at 9cf2e24c, not model-authored text.
+  const notice = 'Reminder: your activation expires in 6 days 23 h. Smallest step for you: approve a renewed activation record.';
+  expect(answerOf('Noted.')).toBe('Noted.');
+  expect(answerOf(`Noted.\n\n${notice}`)).toBe('Noted.');
+  expect(answerOf('Noted.\n\nModel route check: typesafe-jev/jev-1.13.0 is unverified.')).toBe('Noted.');
+  expect(() => answerOf('Noted.\n\nAn unrelated addition.')).toThrow();
+  expect(() => answerOf(`Noted.\n\n${notice} An unrelated addition.`)).toThrow();
+  expect(() => answerOf(`Noted.\n\n${notice.replace('approve a renewed activation record', 'disable the stop')}`)).toThrow();
+});
 
 it.each([['bounded', 0, false], ['oversized', 5000, false], ['forum', 0, true]])('polls status at the call cap and %s Jev response follows the byte bound', async (_name, padding, forum) => {
   const world = successiveWorld(), root = join(world.directory, 'status-cap-journal');
