@@ -27,6 +27,7 @@ it.each(cuts)('A2-E2E A2-R6-01-BOUNDARIES P13-NF-24 P13-NF-28 P13-NF-38 P13-NF-3
   expect(seeded.signal, `${cut}: ${seeded.stderr}`).toBe('SIGKILL');
   const reader = await worker(script, ['reader', root]);
   expect(reader.status, `${cut}: ${reader.stderr}`).toBe(0);
+  expect(JSON.parse(reader.stdout).observations).toHaveLength(3);
   expect(JSON.parse(reader.stdout).observations.every((row: { state: string }) => row.state === 'unknown'), cut)
     .toBe(true);
 }, 60_000);

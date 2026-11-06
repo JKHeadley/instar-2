@@ -21,3 +21,102 @@ Two runs recorded unhandled runner errors `[vitest-worker]: Timeout calling "onT
 **Repair and closure:** the owner (1) identifies the starving file or the host condition from the worker trace, (2) confirms the resolved vitest package is the worktree's intended version, not a sibling's, and (3) repairs the cause, for example by an async yield in a long synchronous file, lower worker count or a per-worktree install. Closure needs a full run with zero runner errors under the original conditions. If a later run shows the error again, this record reopens.
 
 **Multi-machine posture:** runner and host are machine-local. This record travels with the repository.
+
+## train-159 recurrence, 2026-10-26
+
+The supplied Studio gate excerpt for `66869f8ffc69a8c4c15ae52826e5901f9c68618a` records
+93 failed files, 148 failed tests and 61 `onTaskUpdate` errors over 8,494.84 seconds. Failures
+span independent synchronous owner matrices, bounded child launches, launcher polling and
+wall-time performance assertions. The desk starts each concurrent gate with a four-worker
+cap. The first reported case, the held/malformed/throwing reservation matrix, took 81,095 ms
+against its 30,000 ms ceiling; unchanged under one worker it took 3,125 ms (the entire file
+passed 10 tests in 9,182 ms). After building the package in the fresh checkout, the unchanged
+fixed-peer file passed all 13 cases in 10,598 ms, including refusal and crash boundaries.
+An earlier local attempt lacked `dist/` and failed with exit status 1; that setup failure is
+distinct from the gate's null subprocess status and is not evidence of a product regression.
+
+The source repair makes Vitest's existing serial file mode the default and bounds its pool
+to one worker, even with the desk's `INSTAR_TEST_MAX_WORKERS=4` and `VITEST_SERIAL_GATE=0`.
+This removes competition between files within each run without increasing deadlines,
+quarantining cases, swallowing errors or altering product code. The existing cap parser,
+fork isolation, priority reduction, IPC yield and child bounds remain. The worker-limit
+test checks unset, valid and invalid caps with both legacy serial settings, and an actual
+two-file runner probe uses an injected asynchronous delay instead of burning CPU.
+
+**Qualification remains open.** These targeted results establish large timing sensitivity
+and the scheduling contract, not a proof that every original failure had the same cause.
+They do not recreate the original host pressure or establish a faster full suite. The
+pipeline must rerun the complete gate; the original failures and all assertions remain.
+This change does not bound other programs on the host or cure a single test that blocks
+its own event loop beyond the RPC deadline. No new full-run result is asserted here.
+
+## Narrow scheduling repair, 2026-10-26
+
+The serial-all workaround also serialized the roughly thousand ordinary test files. The
+M5 Pro qualification report (`lanes/m5pro-slot-1025-PROGRESS.md`, desk record) observed only
+132 files completed in 65 minutes at d936c5c6. That workaround is replaced by the prior
+bounded parallel pool: half the available CPUs, at most six, lowered by
+`INSTAR_TEST_MAX_WORKERS`. `VITEST_SERIAL_GATE=1` remains an explicit serial comparator.
+
+Only the fourteen files named by the trace/timing evidence above are scheduled separately:
+`stage2-recovery`; the seven e2e `transport-loop-a1` files; e2e `register`; e2e harness
+adapter rounds 9 and 12; conversation `telegram.round24.integration`; assembly
+`provider-response-evidence` and `fixed-installation-peer`. The exact paths live in
+`serialFixtureFiles` in `vitest.config.ts`. They run after the ordinary parallel group,
+one file per ordered Vitest project. Each file retains a fresh isolated fork. This uses
+Vitest's existing sequence groups instead of introducing a lock, blocked worker queue or
+shared-process fixture state. Both platform splits retain every selected test exactly once.
+
+This list bounds the recorded heavy fixtures; it does not establish that the 61 unattributed
+train-159 RPC errors came from those files or that all timing-sensitive files share a lock.
+The earlier asynchronous child repairs, worker IPC yields, child deadlines, RAM scratch
+setup, priority reduction and host admission remain necessary. No assertion, case deadline,
+skip or product behavior is changed. Host admission limits concurrent suites; it is separate
+from this config's worker limit within one suite, as in 1.x's host semaphore/setup split.
+
+The regression runs the actual shipped scheduling configuration with asynchronous rendezvous
+fixtures: ordinary files must overlap, selected files must run successively, and all files
+must use different process ids. Discovery checks compare the actual runner inventory against
+all tracked test files in unsplit, macOS-only and non-macOS modes. Full-suite qualification
+and repeated real-fixture runs are recorded in the builder's absolute lanes progress record;
+this defect remains open until that evidence establishes zero runner errors.
+
+## train-181 recurrence, 2026-11-05
+
+The retained gate at b95fc4f6ad08e02d180ab476eb6e744a0ed1e53a reports one
+unattributed `onTaskUpdate` timeout, 11 failing assertions and 9,304 passing tests.
+No worker trace in the supplied bounded excerpt identifies its cause. This repair
+adds an event-loop yield between the integration peer test's twelve synchronous
+receiver restarts and forwards the selected transpile cache to those children.
+That removes a known starvation opportunity, not proof of attribution for this run.
+The defect remains OPEN with the existing desk owner and closure condition: trace
+any recurrence and qualify the final candidate with a full run reporting zero
+runner errors. No test is skipped, quarantined or relabelled; the retained run is RED.
+Only the desk runs that full qualification; targeted passing tests do not close it.
+
+## train-181 READY-gate register recurrence, 2026-11-05
+
+The subsequent eight-file READY run at 995b147a reports two register CLI case
+timeouts and one unattributed onTaskUpdate error (118 passed, two failed;
+797.73s). The bridge case still used synchronous children for four builds and
+two wiring checks; the earlier conversion had not covered it. All six remaining
+CLI/wiring call sites in tests/e2e/register.test.ts now use its existing async
+runNode/runChild path, including the malformed-source matrix. This closes that
+concrete starvation path, without claiming attribution of the untraced RPC error.
+The ten-build defaults case becomes three fresh groups of at most four builds;
+the bridge case becomes four fresh groups of at most two calls. Their 120s
+and 60s case bounds remain unchanged, and every prior assertion is retained.
+A real CLI preload waits for its parent worker to release a file barrier: the
+async path releases it and builds, while the unreleased neighbor refuses before
+the CLI runs. This demonstrates event-loop progress without artificial CPU load.
+The isolated original cases took 82.391s and 30.560s and passed; that rerun does
+not erase the retained READY failure. The existing desk owner and full-run
+closure condition remain in force; no case is quarantined.
+
+The first train-181 affected-file run also retained a 300.015s timeout in the nineteen-build malformed-source matrix. Its holder/deadline, colocated-construct and shape/anchor groups now own fresh fixtures, at most nine builds each, and the same 300s case bound. Async register children explicitly receive the enclosing case timeout, preserving a finite child duration formerly supplied by the synchronous-child wrapper. Neither observation attributes the desk's untraced RPC error to a particular child.
+
+That local run also timed out in the three-call ambient-wiring group at 60.442s. Clean and ambient wiring now each prepare their own committed output and run one wiring check (two CLI calls per group), keeping 60s and both assertions. The committed-clone comparison remains paired within one group.
+
+## train-187 cumulative wiring budget, 2026-11-05
+
+The imported 99db9a096 affected-file run retained one clean-wiring timeout at 60,008ms, with 14 tests passing in 770.58s and no reported RPC error. Both parent-release controls and current-time CLI replay passed. The existing owner 7b78ea242 already repairs the same two-scan fixture budget: its independent review measured valid wiring at 52,387ms and untracked wiring timing out at 60,013ms. Train-187 reuses that 120s cumulative case budget over the four isolated bridge groups, with each build/wiring child explicitly retaining its 60s SIGTERM bound. No assertion, scan, model ability or production latency contract changes. The old red remains and the defect stays OPEN for desk full-run qualification.
