@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:23e5994c626b4cf5d507ba7cb7216ef470022c34a792a88b5ba61dafaebefe3a",
-  "commit": "7914158931f51e138b031939fcc4001f7d128e65",
+  "generation": "sha256:d455555e000f1c34cd87e1cc189e143a326bfb7ca5ce696a6be39ec73fdbf97b",
+  "commit": "99b1da239e78c1a883885ca98c4c9013198117a9",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -33,7 +33,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -57,7 +57,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -179,7 +179,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -203,7 +203,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -325,7 +325,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -349,7 +349,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -471,7 +471,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -495,7 +495,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -617,7 +617,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -641,7 +641,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",

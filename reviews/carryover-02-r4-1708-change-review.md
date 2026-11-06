@@ -40,6 +40,8 @@ Historical comparison: map only whole exact summary lines; mutations, omissions,
 
 Recorded traversal: preserve self-description updates 840342287/840342414, negative 840342355 and K11 live 6232224/6232229/6232231. Reuse train-183's actual delivered 715675677 shape through current sourcePacket, renderCapabilityReply and renderCapabilityRevision, preserving its historical FAIL and rejecting altered provenance. Existing default-root replay uses recorded 715672779/715672853 and room-two summary/answer shapes. These are offline consumer replays, not fresh model judgments; the desk owns any new semantic proof. No provider or Telegram call is authorized by this record.
 
+Publication: Existing desk rehash and repin changed zero pins. Shape-only register replay uses source 99b1da239e78c1a883885ca98c4c9013198117a9 and generation sha256:d455555e000f1c34cd87e1cc189e143a326bfb7ca5ce696a6be39ec73fdbf97b. All five launcher inventories retain identical counts, ids, status and availability; only the two declared summary text fields differ.
+
 Verification: In progress; no READY, independent verdict or installed acceptance asserted. Whole row02 remains OPEN pending full/native/independent/installed/live qualification.
 
 ## Closing block
