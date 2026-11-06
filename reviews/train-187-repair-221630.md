@@ -26,7 +26,7 @@ Decision: train187-221630-pins | Refresh changed-source pins with the delegated 
 
 1.x comparison: Actual local JKHeadley/instar origin/main 028483097cb0a835a7d1264680a44dc4c2acb063; searched src/core, src/monitoring and docs/specs for process census, quiescence, SIGTERM, maxBuffer and concurrency. Read SessionWatchdog.ts shellExecAsync and test-runner-concurrency-bound.md, history e4b4d2bee, 618560b3e and c91b8780e, plus ONEX-LESSONS sections on sessions/recovery and section 6. Reuse asynchronous subprocess observation and bounded workers. Do not transplant its empty-on-query-failure behavior into authoritative cleanup: failed census remains unknown. The prior train-187 review documents the inherited ExternalHogProcTable compact census implementation. Exact fitting 2.0 repair owner is be9ab8e83.
 
-Verification: Targeted changed-file tests and typecheck; completion, logs, host limitations and final committed cheap gates are recorded in the cited report. No fresh full-run report is created or claimed. The supplied gate log is the before evidence. Crash cases retain real kill/reopen assertions; notice checks retain exact answers; recovery retains both unknown/held and proven/returned sides.
+Verification: Typecheck and build exited zero; register replay from 6ad5163a4624c4aa2bb22c58d6aa7aa60835133c succeeded. Targeted changed-file tests; completion, logs, host limitations and final committed cheap gates are recorded in the cited report. No fresh full-run report is created or claimed. The supplied gate log is the before evidence. Crash cases retain real kill/reopen assertions; notice checks retain exact answers; recovery retains both unknown/held and proven/returned sides.
 
 ## Closing block
 
