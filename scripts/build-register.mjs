@@ -173,7 +173,17 @@ export async function run(args, root = process.cwd()) {
   if (selectedModes.length > 1 || selectedModes.length && workflow?.mode && workflow.mode !== selectedModes[0][1]) throw new Error('ambiguous bootstrap/replay/normal workflow');
   const provider = flag('--provider') ? (await import(pathToFileURL(resolve(root, flag('--provider'))))).provider : undefined;
   const mode = selectedModes[0]?.[1] ?? workflow?.mode ?? (!workflow ? recorded.mode : undefined);
-  const result = build(root, commit, { mode, workflow, provider, ...(flag('--now') ? { now: Number(flag('--now')) } : {}) });
+  // A replay --check reconstructs historical, shape-only output. Its source
+  // commit supplies the default clock; it never certifies today's live map.
+  // New builds and authority-backed modes retain wall time, and explicit --now
+  // still exercises current/expired boundaries without a freshness exemption.
+  let now = flag('--now') === undefined ? undefined : Number(flag('--now'));
+  const historicalClock = now === undefined && check && mode === 'replay';
+  if (historicalClock) {
+    if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error('source commit is not an exact commit id');
+    now = Number(execFileSync('git', ['-C', root, 'show', '-s', '--format=%ct', commit], { encoding: 'utf8' }).trim()) * 1000;
+  }
+  const result = build(root, commit, { mode, workflow, provider, ...(now === undefined ? {} : { now }) });
   const tracked = execFileSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).trim().split('\n');
   const live = tracked.filter(p => Object.hasOwn(result.input.sources, p) || p.startsWith('docs/rules/') && p.endsWith('.md')
     || isDeclarationSource(p) || isActionSource(p) || p.startsWith('register-source/') && p.endsWith('.json')).sort();
@@ -195,7 +205,7 @@ export async function run(args, root = process.cwd()) {
     if (check) { if (!existsSync(path) || readFileSync(path, 'utf8') !== text) throw new Error(`P3-NF-01/P3-NF-09: generated ${name} differs`); }
     else writeFileSync(path, text);
   }
-  console.log(JSON.stringify({ generation: result.generation.id, commit, ...result.metrics, check, authority: 'shape-only', mode }));
+  console.log(JSON.stringify({ generation: result.generation.id, commit, ...result.metrics, check, authority: 'shape-only', mode, clock: historicalClock ? 'source-commit' : now === undefined ? 'wall' : 'explicit', ...(now === undefined ? {} : { checkedAt: now }) }));
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   run(process.argv.slice(2)).catch(error => { console.error(error.message); process.exitCode = 1; });

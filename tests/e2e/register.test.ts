@@ -34,6 +34,12 @@ function atFixtureClock(root: string) {
     writeFileSync(file, JSON.stringify(declarations, null, 2) + '\n');
   }
 }
+// Offline replay fixtures use the published source and its historical clock,
+// never whichever day this test happens to run. Live freshness is checked below.
+const replayCommit = (JSON.parse(readFileSync('generated/source.json', 'utf8')) as { commit: string }).commit;
+const replayNow = Number(execFileSync('git', ['show', '-s', '--format=%ct', replayCommit], { encoding: 'utf8' }).trim()) * 1000;
+const codexMap = JSON.parse(execFileSync('git', ['show', `${replayCommit}:src/assembly/production-codex-provider.declarations.json`], { encoding: 'utf8' }))[0].requiredFacts.models[0] as { verifiedAt: number; freshFor: number };
+const modelExpiry = codexMap.verifiedAt + codexMap.freshFor;
 // Emitted runtime is available when tests execute (after build), but a fresh
 // checkout must be typecheckable before dist exists.
 const emittedModule = '../../dist/index.js';
@@ -497,7 +503,7 @@ while (!existsSync(${JSON.stringify(permit)}) && Date.now() < deadline)
   await new Promise(resolve => setTimeout(resolve, 10));
 if (!existsSync(${JSON.stringify(permit)})) throw Error('parent release absent');
 `);
-      const pending = runNode(['--import', preload, resolve('scripts/build-register.mjs'), '--replay', '--out', out]);
+      const pending = runNode(['--import', preload, resolve('scripts/build-register.mjs'), '--replay', '--commit', replayCommit, '--now', String(replayNow), '--out', out]);
       if (release) {
         const deadline = Date.now() + 10000;
         while (!existsSync(entered) && Date.now() < deadline) await new Promise(done => setTimeout(done, 10));
@@ -508,16 +514,41 @@ if (!existsSync(${JSON.stringify(permit)})) throw Error('parent release absent')
       else { expect(result.status).not.toBe(0); expect(result.stderr).toContain('parent release absent'); expect(existsSync(out)).toBe(false); }
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 60000);
+  it.each([0, 1])('the shipped replay check retains model-map freshness at expiry + %s ms', async beyond => {
+    const result = await runNode(['scripts/build-register.mjs', '--check', '--now', String(modelExpiry + beyond)]);
+    if (beyond === 0) {
+      expect(result.status, result.stderr).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ clock: 'explicit', checkedAt: modelExpiry });
+    } else {
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('model map stale for preview-subscription-codex');
+    }
+  }, 60_000);
+  it('a new replay build still refuses an expired wall-clock model map', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'instar-register-current-clock-'));
+    try {
+      const preload = join(root, 'future-clock.mjs'), out = join(root, 'out');
+      writeFileSync(preload, `Date.now = () => ${modelExpiry + 1};\n`);
+      const result = await runNode(['--import', preload, 'scripts/build-register.mjs', '--replay', '--commit', replayCommit, '--out', out]);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('model map stale for preview-subscription-codex');
+      expect(existsSync(out)).toBe(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 60_000);
   it('P3-NF-01 P3-NF-07 P3-NF-09 actual CLI reproduces committed outputs and rejects edited output', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-e2e-'));
     try {
+      const future = join(root, 'future-clock.mjs');
+      writeFileSync(future, `Date.now = () => ${modelExpiry + 365 * 86400000};\n`);
       const run = async (...args: string[]) => {
-        const result = await runNode(['scripts/build-register.mjs', '--replay', '--out', root, ...args]);
+        const result = await runNode(['--import', future, 'scripts/build-register.mjs', '--replay', '--commit', replayCommit, '--out', root, ...args]);
         expect(result.status, result.stderr).toBe(0); return result.stdout;
       };
-      const first = JSON.parse(await run()) as { rules: number; entries: number; generation: string; authority: string };
+      const first = JSON.parse(await run('--now', String(replayNow))) as { rules: number; entries: number; generation: string; authority: string };
       expect(first.rules).toBe(121); expect(first.entries).toBeGreaterThan(121); expect(first.authority).toBe('shape-only');
-      const before = readFileSync(join(root, 'register.json'), 'utf8'); await run('--check'); await run();
+      const before = readFileSync(join(root, 'register.json'), 'utf8');
+      expect(JSON.parse(await run('--check'))).toMatchObject({ clock: 'source-commit', checkedAt: replayNow });
+      await run('--now', String(replayNow));
       expect(readFileSync(join(root, 'register.json'), 'utf8')).toBe(before);
       expect(readFileSync(join(root, 'capabilities.md'), 'utf8')).toContain('register-tooling');
       expect(readFileSync(join(root, 'rules.md'), 'utf8').split('\n').some(line => /[ \t]+$/.test(line))).toBe(false);
