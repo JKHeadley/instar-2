@@ -34,3 +34,5 @@ Decision: train184-host-check-scope | Keep the unchanged Studio intake child tim
 simplestRobustRoute: Step back after repeated repair cycles: merge the requested live history, use the existing evidence resolver and delegated regeneration, and preserve accepted aggregate deadlines and assertions. No new product machinery.
 80/20: One declaration conflict plus derived publications and this review. All other authored changes arrive from the requested live merge. Preserve the previous full-run failure honestly: intake.test.ts child ETIMEDOUT, one failed file/test; 1025 files and 9377 tests passed, 19 files and 248 tests skipped. Those numbers qualify only the old SHA.
 VERDICT: author submission; no independent verdict or fresh full/native/live qualification is asserted.
+
+Derived publication: delegated refresh changed zero owner/grounding pins; replay generation binds source eea274297896c483430ad0447ba952941e011cf9 with 299 entries, 122 rules and 34 terms. Shape-only replay grants no runtime authority.
