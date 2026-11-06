@@ -37,6 +37,8 @@ Decision: train-188-C | No genuine product conflict arose; no merge was aborted 
 Decision: train-188-D | Run on macOS with the existing shared dependencies, no dependency writes, no serving logins and no live-provider opt-ins. Report gated live checks as unrun; the driver owns full combined proof and switch. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-188-PROGRESS.md
 Decision: train-188-desk | Follow /Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L37-PROGRESS.md: repin (0), build, owner rehash (0), build-register --replay at committed source. Retain the 23,459-byte fixed-prompt guard unchanged. Regenerated outputs are shape-only, never release or authority evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-188-PROGRESS.md
 
+Decision: train-188-review-metadata | Reopen two inherited frozen records whose generated-output subject changed; normalize the member Convergence field, restore its closing block position, and route its decisions to this absolute train report, which cites the original Studio reports. No production bytes, test assertions or independent verdicts change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-188-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merges of the two exact reviewed heads, a canonical combined anchor pin, and existing repin/build/rehash/replay generators. No integration runtime mechanism is added. Entry requires the exact live base; exit requires candidate checks and publication; resource, ownership and cancellation bounds stay unchanged. This author submission claims no unattended live-release acceptance.

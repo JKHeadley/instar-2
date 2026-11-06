@@ -1,8 +1,8 @@
 # Change review — browser bridge on current live resource recovery
 
 Subject base: 47b9c8234e85856ca3aeee322927621139af4342
-Review state: frozen
-Reviewed content: sha256:094316dfd656ab51b6d7663e4bd9207c62d4593c8a3e743493d748b4dfe47228
+Review state: open
+Reviewed content: none
 Outcome: Merge the independently reviewed bounded owner GitHub read sequence onto the answering resource-recovery build, retaining its worker-slot repair. The only merge conflicts were generated register outputs; regenerate those against the merged source commit. The later connector file ACL and Claude-compatible MCP schema repairs are reviewed separately in browser-mcp-worker-read-1104-change-review.md; this combined record covers the updated exact content.
 Affected rules: 1, 4, 18, 28, 34, 36, 42, 44, 49, 55, 57, 60, 61, 62, 63, 66, 74, 78, 84, 95, 100, 101, 103, 111, 113, 116
 Affected floors: secrets — owner-side fixed DOM projection and scrub stay in place; spend cap — no model budget change; stop — the same claim and deadline bound every read; no duplicate sends — read-only operation admits no send or write; durable intake — existing effect preparation and exact grant remain prerequisites.
@@ -27,6 +27,12 @@ Decision: BROWSER-MERGE-1104-1 | Merge reviewed 24194ed8 onto live 47b9c823; ret
 Decision: BROWSER-MERGE-1104-2 | Reopen the copied resource-recovery review whose generated-register subject changed in the combination; cover the exact combined content here and require independent review again before release. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 
 ## Closing block
+
+Integration record repair: train-188 explicitly reopens this inherited frozen record because regenerated combined outputs changed its subject digest. The old frozen bytes and review history remain in git; this is not a new independent acceptance claim. The train review covers the exact combined candidate.
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:9 | not-a-deferral=Exact main text restored by the train; actual reviewed deadline declarations unchanged.
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:10 | not-a-deferral=Exact main text restored by the train; actual reviewed deadline declarations unchanged.
+Deferral: generated/conversion.json:1 | not-a-deferral=Regenerated governing text, not a new commitment.
+Deferral: generated/register.json:1 | not-a-deferral=Regenerated governing text, not a new commitment.
 
 simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
 80/20: The two browser test files and register lifecycle test passed 31/31 on the combined branch. Full exact-head suite, independent combination review and a real signed-in multi-step group task remain required before release. No new browser service or credential custody path.
