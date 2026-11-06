@@ -26,6 +26,8 @@ Decision: t186merge-history | Preserve both defect narratives and historical rev
 
 Deferral: generated/register.json:1 | not-a-deferral=Generated rule text preserves existing obligations; this merge postpones no implementation.
 
+Register replay: after the merge ae6790d97ae1fd0fb06c14ca7175224e8ce117ac, both delegated owner/support scripts reported zero changed pins. The existing replay rebuilt seven generated outputs (301 entries, 122 rules, 34 terms); this record covers the generated publication as well as the merge. The retained live conformance certificate requires Studio re-certification of merged composition bytes; it is not re-declared here.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: merge the existing complementary corrections, preserving assertions and histories, and regenerate derived metadata. No new runner, guard or product mechanism is needed. Existing child bounds, fixture cleanup and admission checks remain; no autonomous shipped-path completion is claimed.
