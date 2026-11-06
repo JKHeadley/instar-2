@@ -60,7 +60,7 @@ it.each(['stale', 'tainted', 'withdrawn', 'differently-bound', 'changed observat
       // This matrix tests assessment identity, not transport expiry. Inject a slow
       // response beyond the old 100ms fixture budget without loading the host.
       http.delay(150);
-      const f = providerFixture({ ...http, admittedTimeout: 2000 }), { request } = f.prepare();
+      const f = providerFixture({ ...http, invocationTimeoutMs: 2000 }), { request } = f.prepare();
       const observation = value(await f.api.dispatch(request, f.fence));
       const receipt = JSON.parse(value(f.captures.read(observation.capture as Parameters<typeof f.captures.read>[0])));
       expect(receipt.state).toBe('complete');
