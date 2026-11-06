@@ -21,6 +21,10 @@ Convergence: none
 Prompt review: No model-facing text or runtime judgment changes; exact existing owner test-reader patch only.
 Deferral: generated/register.json:1 | not-a-deferral=canonical replay of existing rule text, no new deferral
 
+Deferral: docs/evidence/train-192-notice-owner/constitution-attributed-statements-change-review.md:29 | not-a-deferral=verbatim historical review quotes an old deadline refusal; preserving that evidence adds no new deferred work
+Deferral: docs/evidence/train-192-notice-owner/constitution-one-constitution-change-review.md:30 | not-a-deferral=verbatim historical review quotes an old deadline refusal; preserving that evidence adds no new deferred work
+Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md:29 | not-a-deferral=verbatim historical review quotes an old deadline refusal; preserving that evidence adds no new deferred work
+
 simplestRobustRoute: Preserve original approval as exact historical evidence and open this bounded publication round at its real integration base. This uses the existing review mechanism; no new gate or machinery. Exact source and independent desk qualification remain the end guards.
 80/20: Portable controls and cheap checks verify source; Studio owns physical launcher/full/independent/native/install/live gates.
 VERDICT: author submission; no independent convergence claimed

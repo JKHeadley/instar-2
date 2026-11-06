@@ -30,6 +30,10 @@ Verification: Build/typecheck and both captured controls pass. Selected canary w
 
 Deferral: generated/register.json:1 | not-a-deferral=canonical replay re-emits existing rule text; no new deferral
 
+Deferral: docs/evidence/train-192-notice-owner/constitution-attributed-statements-change-review.md:29 | not-a-deferral=verbatim historical review quotes an old deadline refusal; preserving that evidence adds no new deferred work
+Deferral: docs/evidence/train-192-notice-owner/constitution-one-constitution-change-review.md:30 | not-a-deferral=verbatim historical review quotes an old deadline refusal; preserving that evidence adds no new deferred work
+Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md:29 | not-a-deferral=verbatim historical review quotes an old deadline refusal; preserving that evidence adds no new deferred work
+
 simplestRobustRoute: This is the simplest robust route: exact existing shared test reader patch plus its captured controls and original owner attribution. No mechanism or acceptance broadening. Exact base/patch guard entry; captured positive and negative checks guard results; existing desk gates own release acceptance and all five floors remain held.
 80/20: Bounded source-only repair, no broad suite, pin test sweep, test timeout change or speculative host repair. Historical Cartographer b2 all14 launcher plus2 controls PASS is only the supplied historical counterpart, not this head's result.
 VERDICT: author submission; no independent convergence claimed
