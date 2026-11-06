@@ -1,15 +1,15 @@
 # Change review — reconcile duplicate native renewal publication
 
-Subject base: e784fc69286211dc8562eb9069914551479bcaae
+Subject base: e02cabed087793a452c0c5690a9230f684d77ddd
 Review state: open
 Reviewed content: none
 Outcome: Preserve the already published native renewal and record why the rejected duplicate needs no source or certificate change.
 Affected rules: 26, 37, 49, 70, 74, 95, 101, 111, 112, 113, 116.
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake retain their existing enforcement; executable code and agent capabilities are unchanged.
 Operator questions: none
-Suggested tier: ordinary
-Declared tier: ordinary
-Tier rationale: Evidence-only reconciliation of a publication race; no runtime or governance change.
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Covers the inherited native declaration and generated publication from their original base, plus this evidence-only reconciliation; the repair itself changes no runtime or governance behavior.
 Side effects: Adds this review record; native declaration and generated publication retain the successful renewal's bytes and provenance.
 Undo and recovery: Revert this review-only commit if its account needs correction; preserve the native renewal and published ancestry.
 Multi-machine posture: The fetched remote branch is the shared publication state. Local scratch attempts remain evidence, not competing authority to overwrite that branch.
