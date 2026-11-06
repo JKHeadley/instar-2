@@ -32,6 +32,8 @@ Subject (7 paths): scripts/production-boot-io.mjs, tests/assembly/production-pro
 
 Publication: Existing desk repin chain changed zero inventory hashes; desk owner rehash updated one preview test pin. Generated current-source publication is shape-only. Architecture requires the exempt native macOS self-host certificate renewal; no declaration is altered to hide it. Build/typecheck and 17 signature cases passed; two cache binding/refusal cases and two notice controls passed. One subscription dispatch assertion and nine launcher exit assertions failed and remain failed; original logs and exact commands are retained in the repair report.
 
+Derived publication: Replay generation sha256:e785cf9a2057c0f421a8567fd0d471475002fd4e9f0b99b53a9c05ef4824eb20 from bbf971da1701e77f3fcc1f8cac6822d624fac87f; 298 entries, 121 rules, shape-only. All thirteen owner-equality checks and three ancestry checks passed. No captured historical data or native declaration changed.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the two named patches without whole branch ancestry, broader exceptions or new mechanisms. Schema, path, identity, managed policy, hook, stop and effect guards remain; finite captured positive/negative cases validate source. Full/native/installed/live acceptance remains with the desk.
