@@ -16,6 +16,7 @@ Multi-machine posture: Deliberately host-local test expectations; no ownership, 
 Layer below: tests/preview/credential-reminders.ts credentialNotices; tests/preview/credential-reminders.test.ts activation reminder cases; supplied fast-train-184-6ba08adb failure bytes; the existing answerOf exact-answer checks in both test consumers; 1.x comparison below.
 Bug class: unit
 Bug evidence: reproducer=tests/preview/journal-agent.test.ts
+Deferral: generated/register.json:1 | not-a-deferral=Generated register replay preserves existing rule and prerequisite text; only generation/source references and the test-source owner pin changed. No work is newly deferred.
 Hook bypass: none
 Convergence: none
 Prompt review: No prompt, model parser or runtime accept/escalate/refuse logic changed. The captured gate notice is replayed against both test matchers, with unrelated-prose negative neighbors.
