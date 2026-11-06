@@ -100,8 +100,10 @@ async function drive(s: Scenario) {
   const reply = s.answer ?? FALSE_CREDIT;
   const ports = (): PreviewPorts => ({ now: () => 1790000000000, stopped: () => false, prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', 9999999999999), model: async () => reply,
     checkOutbound: () => {}, send: async input => { sends.push(input.expectedText); return sends.length; },
-    ...(s.mode ? { attribution: { mode: s.mode, judge: async ({ packet }) => {
+    ...(s.mode ? { attribution: { mode: s.mode, judge: async ({ id, packet }) => {
       judged++; packets.push(packet);
+      // The real launcher records this row before the answer is read; refusing it turns every answer into UNKNOWN (found live, 2026-11-06).
+      journal.append({ kind: 'call-outcome', id, role: 'reply-review', at: 1790000000000, outcome: { exitCode: 0, localLimit: null, elapsedMs: 1, type: 'result', subtype: 'success', isError: false, outputTokens: 1, promptBytes: 1 } as never });
       if (s.judge === 'throw') throw Error('timeout');
       if (s.judge === 'junk') return { value: 'not json' };
       const text = (JSON.parse(packet) as { packet: { text: string } }).packet.text;

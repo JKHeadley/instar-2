@@ -3250,6 +3250,7 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
       || row.id.endsWith(':reply-review') && !!view.turns.get(row.id.slice(0, -13))?.reviewReserved
       || row.id.endsWith(':reply-revision') && !!view.turns.get(row.id.slice(0, -15))?.revisionReserved
       || row.id.endsWith(':revision-review') && !!view.turns.get(row.id.slice(0, -16))?.revisionReviewReserved
+      || row.id.endsWith(':attribution-check') && !!view.attribution?.some(item => item.id === row.id.slice(0, -18) && item.cause === 'interrupted')
     : /^retrospective:\d+(?::rerun:\d+|:duties)?$/u.test(row.id) ? view.retroPasses.some(pass => pass.state === undefined
       && (`retrospective:${String(pass.pass)}` === row.id || (pass.reruns ?? []).some(run => run.state === undefined
         && `retrospective:${String(pass.pass)}:rerun:${String(run.index)}` === row.id)
