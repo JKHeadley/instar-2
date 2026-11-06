@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:3994890edd277f253316cecc4a202a5cf1b737187f8ecb797fb864a13d9f4848",
-  "commit": "9bc1f1b2cf25e21d0ad15d09e8dccc2d23286b22",
+  "generation": "sha256:f134478396c5510739c6462d731fb3d7e85bc623eed576bfb41f0106c1644b61",
+  "commit": "90fba6e226376677aca0e32d6ce8cfad43aed544",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -9,7 +9,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files with bounded admission; refused downloads keep the message."
       },
       {
         "id": "harness-doorway-parity",
@@ -33,7 +33,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "Track and acknowledge items on the authenticated dashboard; both survive handoff."
+        "text": "Track/acknowledge items via authenticated dashboard across handoff."
       },
       {
         "id": "preview-collaboration-hub",
@@ -41,7 +41,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "One silent collaboration hub; authenticated parent links and unknown effects stay in the journal."
+        "text": "Silent hub; authenticated parent links; unknown effects retained."
       },
       {
         "id": "preview-conversation",
@@ -155,7 +155,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files with bounded admission; refused downloads keep the message."
       },
       {
         "id": "harness-doorway-parity",
@@ -179,7 +179,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "Track and acknowledge items on the authenticated dashboard; both survive handoff."
+        "text": "Track/acknowledge items via authenticated dashboard across handoff."
       },
       {
         "id": "preview-collaboration-hub",
@@ -187,7 +187,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "One silent collaboration hub; authenticated parent links and unknown effects stay in the journal."
+        "text": "Silent hub; authenticated parent links; unknown effects retained."
       },
       {
         "id": "preview-conversation",
@@ -301,7 +301,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files with bounded admission; refused downloads keep the message."
       },
       {
         "id": "harness-doorway-parity",
@@ -325,7 +325,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "Track and acknowledge items on the authenticated dashboard; both survive handoff."
+        "text": "Track/acknowledge items via authenticated dashboard across handoff."
       },
       {
         "id": "preview-collaboration-hub",
@@ -333,7 +333,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "One silent collaboration hub; authenticated parent links and unknown effects stay in the journal."
+        "text": "Silent hub; authenticated parent links; unknown effects retained."
       },
       {
         "id": "preview-conversation",
@@ -447,7 +447,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files with bounded admission; refused downloads keep the message."
       },
       {
         "id": "harness-doorway-parity",
@@ -471,7 +471,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "Track and acknowledge items on the authenticated dashboard; both survive handoff."
+        "text": "Track/acknowledge items via authenticated dashboard across handoff."
       },
       {
         "id": "preview-collaboration-hub",
@@ -479,7 +479,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "One silent collaboration hub; authenticated parent links and unknown effects stay in the journal."
+        "text": "Silent hub; authenticated parent links; unknown effects retained."
       },
       {
         "id": "preview-conversation",
@@ -593,7 +593,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files with bounded admission; refused downloads keep the message."
       },
       {
         "id": "harness-doorway-parity",
@@ -617,7 +617,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "Track and acknowledge items on the authenticated dashboard; both survive handoff."
+        "text": "Track/acknowledge items via authenticated dashboard across handoff."
       },
       {
         "id": "preview-collaboration-hub",
@@ -625,7 +625,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "One silent collaboration hub; authenticated parent links and unknown effects stay in the journal."
+        "text": "Silent hub; authenticated parent links; unknown effects retained."
       },
       {
         "id": "preview-conversation",

@@ -39,6 +39,12 @@ const currentChannelNote = (text: string) => compactRecordedNote(text.replace(re
     'keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.')
   .replace('In the code but switched off here, so not available:', 'Code switched off here:')
   .replace('telegram-conversation-adapter.', 'telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).');
+// The old captures contain neither of these newly declared inventory entries.
+// Compare their historical subset only; never attribute their judge PASS to hub/attention.
+const newHubLine = '- Silent hub; authenticated parent links; unknown effects retained.\n';
+const historicalInventory = (text: string) => text
+  .replace(`Capabilities:\n${newHubLine}`, 'Capabilities:\n')
+  .replace('Code switched off here: preview-attention-queue, ', 'Code switched off here: ');
 const renderedNote = (text: string) => currentChannelNote(text).replace(`- ${toolsBriefing(0)}`, CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
   .replace(` ${SIGN_OFF}`, '');
 const currentNote = (text: string) => renderedNote(text
@@ -119,15 +125,26 @@ it('maps only the declared concise descriptions and preserves unrelated or alter
   expect(conciseRecordedNote('- invented ability grants unrestricted writes.')).toBe('- invented ability grants unrestricted writes.');
 });
 
+it('separates the newly declared hub and disabled attention inventory from historical judgment scope', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));
+  const current = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text;
+  expect(current).toContain(`Capabilities:\n${newHubLine}`);
+  expect(current).toContain('Code switched off here: preview-attention-queue, ');
+  expect(capture.note).not.toContain('preview-attention-queue');
+  expect(capture.note).not.toContain(newHubLine);
+  expect(historicalInventory(current.replace('unknown effects retained.', 'unknown effects repeated.'))).not.toBe(historicalInventory(current));
+  expect(historicalInventory(current.replace('preview-attention-queue, ', 'unreviewed-ability, '))).not.toBe(historicalInventory(current));
+});
+
 it('translates only the exact retired inventory entry and retains unrelated capability drift', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.note.split(retiredStepCheck)).toHaveLength(2);
   const current = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text;
-  expect(renderedNote(capture.note)).toBe(current);
-  expect(renderedNote(capture.note.replace(retiredStepCheck, ''))).toBe(current);
+  expect(renderedNote(capture.note)).toBe(historicalInventory(current));
+  expect(renderedNote(capture.note.replace(retiredStepCheck, ''))).toBe(historicalInventory(current));
   // Changed retirement wording and drift in a retained capability must still fail equality.
-  expect(renderedNote(capture.note.replace('changes nothing.', 'changes everything.'))).not.toBe(current);
-  expect(renderedNote(capture.note.replace('faithfulness-checked', 'unchecked'))).not.toBe(current);
+  expect(renderedNote(capture.note.replace('changes nothing.', 'changes everything.'))).not.toBe(historicalInventory(current));
+  expect(renderedNote(capture.note.replace('faithfulness-checked', 'unchecked'))).not.toBe(historicalInventory(current));
   expect(capture.note).toContain(retiredStepCheck);
 });
 
@@ -137,10 +154,10 @@ it('replays preswitch update 840342287 with current self-description and the unc
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text;
   // This base retains its harness-specific tool label; no tool or authority changed.
   const restoreBaseToolLabel = (text: string) => compactRecordedNote(currentNote(text.replace('tools: full built-in set', 'tools: full Claude Code set')));
-  expect(restoreBaseToolLabel(capture.replayNote).replace(capture.replayNote.split('\n')[0], SELF_IDENTITY)).toBe(note);
+  expect(restoreBaseToolLabel(capture.replayNote).replace(capture.replayNote.split('\n')[0], SELF_IDENTITY)).toBe(historicalInventory(note));
   expect(currentInstructions(capture.replayInstructions).replace(capture.replayNote.split('\n')[0], SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Translate identity/authority guidance and remove internal model framing; actual capabilities and limits stay intact.
-  expect(restoreBaseToolLabel(capture.originalNote).split('\n').slice(1)).toEqual(note.split('\n').slice(1));
+  expect(restoreBaseToolLabel(capture.originalNote).split('\n').slice(1)).toEqual(historicalInventory(note).split('\n').slice(1));
   const frame = JSON.parse(capture.replayStdout);
   expect(frame.is_error).toBe(false);
   const reading = readAnswer(frame.result, { wrapped: 'accept' });
@@ -162,7 +179,7 @@ it('binds the repaired answer and its explicitly reviewed identity and standing 
   const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   expect(capture.question).toBe('What can you do for me here?');
-  expect(renderedNote(capture.note)).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
+  expect(renderedNote(capture.note)).toBe(historicalInventory(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text));
   expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Preserve historical prompt bytes; requested-step guidance is covered by act-first.test.ts.
   expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
@@ -264,7 +281,7 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   expect(currentNote(current.note.replace(oldConversation, currentConversation)
     .replace(internalHeading, internalHeading + mediaAdmission)
     .replace(oldRequests, recurringRequests)
-    .replace("This is Instar in the operator's direct Telegram chat and its topics.", SELF_IDENTITY))).toBe(note);
+    .replace("This is Instar in the operator's direct Telegram chat and its topics.", SELF_IDENTITY))).toBe(historicalInventory(note));
   // Preserve the captured prompt; the act-first fixture separately replays the new wording.
   expect(current.system.split(" In this turn you have the harness's full built-in tool set")).toHaveLength(2);
   expect(current.system).not.toContain(READ_BEFORE_ANSWER);
@@ -356,7 +373,7 @@ it('replays five recorded answers with the rendered paragraph verbatim and diges
     // Source-generation metadata remains the authentic generation each call received;
     // the capability record and rendered paragraph match this checkout; the five
     // historical instruction prose lines are translated explicitly above.
-    expect(currentChannelNote(run.capabilityNote.text)).toBe(note.text);
+    expect(currentChannelNote(run.capabilityNote.text)).toBe(historicalInventory(note.text));
     expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe(note.renderedCapabilitySha256);
     const reading = readAnswer(run.raw, { wrapped: 'accept' });
     expect(reading.ok).toBe(true);
@@ -395,7 +412,7 @@ it('binds every unchanged-question capability replay and its PASS or FAIL judgme
   for (const run of capture.runs) {
     expect(run.userMessage).toEqual(capture.recordedUserMessage);
     expect(run.inputSha256).toMatch(/^[a-f0-9]{64}$/u);
-    expect(currentChannelNote(run.capabilityNote.text)).toBe(note.text);
+    expect(currentChannelNote(run.capabilityNote.text)).toBe(historicalInventory(note.text));
     expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe(note.renderedCapabilitySha256);
     const reading = readAnswer(run.raw, { wrapped: 'accept' });
     expect(reading.ok).toBe(true);

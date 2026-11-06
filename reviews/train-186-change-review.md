@@ -63,6 +63,10 @@ Decision: train186-replay | Declare exact source-proven concise-description comp
 
 Replay meaning assessment: compare pre-repair source 7a2603e91 tests/preview/README.md with current README. Conversation retains operator chat/topics, encrypted photos/audio/files and text descriptions; memory retains encrypted local messages/summaries/facts, restart survival, correction/forgetting; status retains both exact queries and no model call; requests retain explicit timing, once/daily/weekdays, cancellation and no new message; media retains bounded admission and message retention on refused download. Full Details remain unchanged. Only these five exact full descriptions translate; changed or unrelated lines remain mismatches. Tool/outbound authority paragraph and digest remain exact. This is source compatibility plus recorded output consumer traversal, not a new model judgment. Independent current-input acceptance remains gate-owned.
 
+Historical inventory boundary: old captures lack the newly declared hub and disabled attention inventory. Compare only their historical subset by removing those exact current entries from the comparison, with altered-entry negative controls and explicit current-inventory assertions. This does not certify new abilities with an old PASS. Current hub evidence is the six separately hash-bound private captures and actual consumer tests.
+
+Final publication: source90fba6e226376677aca0e32d6ce8cfad43aed544, generation f134478396c5510739c6462d731fb3d7e85bc623eed576bfb41f0106c1644b61. Default floor 6/6; no-tools answer23166/summary23416/review29254 bytes, tool answer26578/summary26865/review29461 bytes. Guard23459 unchanged; both packets retain governingConstraints. Historical replay13/13 after explicit source compatibility and inventory-scope tests. Additional subject: tests/preview/selfdesc-abilities.test.ts (immutable capture compatibility only).
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges and existing desk repin/build/rehash/replay. No new runtime mechanism. Boundaries remain current authority, stopped owners, retained unknown effects and verified results.
