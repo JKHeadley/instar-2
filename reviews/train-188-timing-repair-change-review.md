@@ -30,6 +30,8 @@ Verification: All three complete touched files passed with nice -n 10 and --maxW
 
 Publication: The initial cheap gate correctly refused stale owner-reference pins for the changed test. The delegated desk rehash and repin refreshed two preview source pins and their chain. Register publication is regenerated from committed source with the existing replay builder; no pin is edited by hand.
 
+Published source: 8a31fca49a8dba0e1af8fc586052e046744d47af; generated register sha256:bafcc5ed97ef766f179d2094494f7d1b2cc5611c674d508c4507ecb55f662b4f (298 entries, 121 rules, shape-only replay). Typecheck and build passed.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: use the existing nonblocking runner and independent finite fixture budgets. The credible failure is event-loop starvation and boot/reconciliation consuming the wrong test interval. Existing launch limits, stop, real census evidence, retained debits and exact crash-state assertions hold. No production subsystem or autonomous capability is added; this is a tested source handoff, not live runtime acceptance.
