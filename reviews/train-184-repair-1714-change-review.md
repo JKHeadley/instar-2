@@ -24,6 +24,8 @@ Prompt review: Model instructions, output parsers and judgments are unchanged. R
 
 Decision: train184-cache-reuse | Apply exact six-file owner patch without unrelated train-175 history; rebind only copied review metadata and preserve source/test/fixture bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-184-repair-1714-PROGRESS.md
 Decision: train184-cache-host | Preserve original D and every observed failure. The physical positive case returned transport uncertainty with zero synthetic commands, while preflight identity/digest assertions passed; local /bin/sh rejects ulimit -u. Correct-host native/full/independent/answer/install/live evidence remains required. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-184-repair-1714-PROGRESS.md
+Decision: train184-cache-publication | Regenerate the stale source publication from committed 9c104f199fa1e2a42438f67393af861abd869e8f using build-register --replay. Delegated inventory and owner-manifest scripts changed zero hashes. Native certification remains with Studio. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-184-repair-1714-PROGRESS.md
+Deferral: generated/register.json:1 | not-a-deferral=Existing generated governance text is retained; publication updates source references only and introduces no deferred work.
 
 Verification: Portable signatures 17/17. Changed provider cases 2 passed, 1 failed, 102 unselected; a single diagnostic repeated the physical failure (transport, zero commands). Typecheck passed. Full gate outcomes and final publication checks are recorded in the report. Temporary diagnostic removed; no timeout, guard or certificate altered.
 
