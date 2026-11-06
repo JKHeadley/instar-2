@@ -11,7 +11,7 @@ Suggested tier: ordinary
 Declared tier: ordinary
 Tier rationale: Two test-consumer expressions, explanatory comments and captured-notice positive/negative regression cases; no product change.
 Side effects: The delegated desk scripts refresh the test-source owner pin and regenerate the register from the committed source. A due activation reminder no longer masks the answer/review assertions. The new alternative fixes the activation label and renewal action exactly; it does not accept arbitrary appended prose or change runtime generation.
-Undo and recovery: Revert this repair commit; the previous exact expectations return. No migration or persistent data change.
+Undo and recovery: Revert this repair commit; the previous exact expectations return. No migration or runtime persistent data change; regenerate generated/ if reverting the source pin.
 Multi-machine posture: Deliberately host-local test expectations; no ownership, replication, transport or authority changes. The Studio reruns its full gate; this WSL builder runs only targeted checks.
 Layer below: tests/preview/credential-reminders.ts credentialNotices; tests/preview/credential-reminders.test.ts activation reminder cases; supplied fast-train-184-6ba08adb failure bytes; the existing answerOf exact-answer checks in both test consumers; 1.x comparison below.
 Bug class: unit
@@ -29,6 +29,6 @@ Decision: train184-repair-pins | Recompute the stale owner pin using the supplie
 
 ## Closing block
 
-simplestRobustRoute: This is the simplest robust route: extend the two stale test expectations to the already shipped activation notice. No new helper, runtime mechanism, state, gate or authority. Start with the recorded failing notice; finish with targeted checks and the ordinary desk gate; retain all production floors.
+simplestRobustRoute: This is the simplest robust route: extend the two stale test expectations to the already shipped activation notice. No new helper, runtime mechanism, state, gate or authority. The existing register was replayed from committed source 510b816472da48cf85ba253a2e8794ed45928e22. Start with the recorded failing notice; finish with targeted checks and the ordinary desk gate; retain all production floors.
 80/20: Repair the exact mismatch, keep unrelated prose rejected, run the changed test files and cheap checks, and report host-dependent evidence at its actual tier.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
