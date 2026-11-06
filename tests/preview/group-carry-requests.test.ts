@@ -1,6 +1,7 @@
 import { sendFormattedText } from './telegram-markdown.mjs';
 import { isGroupReviewFinalNotice, GROUP_REVIEW_FINAL_NOTICE } from './reply-check.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
+import { replyFormatting } from './journal.js';
 // Execution ownership of the operator's open dated requests moves from the private root to the group root exactly
 // once (Rules 52, 57, 93): the predecessor records the transfer first and never fires them again, including when it
 // is resumed for rollback; the group fires each once, can withdraw it, and holds it while disclosure fails.
@@ -292,7 +293,7 @@ it.each([true, false])('shipped send delivers answers and terminal notices when 
     const outcomes: string[] = [], phases: string[] = [];
     const send = Function('sendFormattedText', 'journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared',
       'GROUP_DISCLOSURE_HOLD_NOTICE', 'isGroupReviewFinalNotice', 'requireGroupDisclosure', 'physical', 'secretRef',
-      'token', 'classifyTelegramSend', 'g', 'typing', `return (${sendFunction});`)(sendFormattedText,
+      'token', 'classifyTelegramSend', 'g', 'typing', 'replyFormatting', `return (${sendFunction});`)(sendFormattedText,
       { verifyOutbound: () => true, view: { expires: friday9 + 1000, stop: false } },
       { value: false }, () => false, '/test/stop', () => friday9, () => true,
       { admit: async () => { expect(admitted).toBe(1); return null; },
@@ -312,7 +313,7 @@ it.each([true, false])('shipped send delivers answers and terminal notices when 
           chat: { id: Number(body.chat_id) }, text: body.text, message_thread_id: body.message_thread_id, message_id: 7 } }) };
       } }, (x: string) => x, () => 'TEST', classifyTelegramSend, { forum: true }, { stop: (chat: string, thread: number) => {
         expect(chat).toBe(scope.chat); expect(thread).toBe(3); typingStops++;
-      } });
+      } }, replyFormatting);
     expect(await send({ text, expectedText: text, chat: scope.chat, thread: 3, replyTo: 6,
       target: 'TEST-reply', provenance: {}, admit: () => { admitted++; },
       observeSendPhase: (phase: string) => { phases.push(phase); } })).toEqual({ kind: 'accepted', message: 7 });
@@ -331,7 +332,7 @@ it.each(['copy', 'ordinary', 'bad-primary', 'bad-fallback', 'foreign-chat', 'sto
     let admitted = 0;
     const send = Function('sendFormattedText', 'journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared',
       'GROUP_DISCLOSURE_HOLD_NOTICE', 'isGroupReviewFinalNotice', 'requireGroupDisclosure', 'physical', 'secretRef',
-      'token', 'classifyTelegramSend', 'g', 'typing', `return (${sendFunction});`)(sendFormattedText,
+      'token', 'classifyTelegramSend', 'g', 'typing', 'replyFormatting', `return (${sendFunction});`)(sendFormattedText,
       { verifyOutbound: (signature: string, subject: { thread?: number; body: string }) => {
         verified.push(subject); return signature === subject.body && subject.thread === 3;
       }, append: (row: unknown) => retained.push(row), view: { expires: friday9 + 1000, stop: false,
@@ -345,7 +346,7 @@ it.each(['copy', 'ordinary', 'bad-primary', 'bad-fallback', 'foreign-chat', 'sto
         return { kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result: {
           chat: { id: Number(chat) }, text: body.text, message_id: 7,
           ...(body.message_thread_id === undefined ? {} : { message_thread_id: body.message_thread_id }) } }) };
-      } }, (x: string) => x, () => 'TEST', classifyTelegramSend, { chat: '7654321', forum: !copied }, { stop: () => {} });
+      } }, (x: string) => x, () => 'TEST', classifyTelegramSend, { chat: '7654321', forum: !copied }, { stop: () => {} }, replyFormatting);
     const result = await send({ text: '<b>Done</b>', expectedText: 'Done', chat, thread: 3, target: 'TEST-reply',
       provenance: mode === 'bad-primary' ? 'forged' : '<b>Done</b>',
       formatting: { fallback: { text: 'Done', provenance: mode === 'bad-fallback' ? 'forged' : 'Done' } },
@@ -389,10 +390,10 @@ it.each([['model', false], ['subscription', false], ['send', false], ['model', t
   const shared = { admit: async () => {
     expect(activeJournal.view.order.find(t => t.requestedAction)?.intent).toBeDefined(); claims++; return null;
   }, outcome: async () => {} };
-  const send = Function('sendFormattedText', 'journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared', 'GROUP_DISCLOSURE_HOLD_NOTICE', 'isGroupReviewFinalNotice', 'requireGroupDisclosure', 'physical', 'secretRef', 'token', 'classifyTelegramSend', 'g', 'typing', `return (${sendFunction});`)(sendFormattedText,
+  const send = Function('sendFormattedText', 'journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared', 'GROUP_DISCLOSURE_HOLD_NOTICE', 'isGroupReviewFinalNotice', 'requireGroupDisclosure', 'physical', 'secretRef', 'token', 'classifyTelegramSend', 'g', 'typing', 'replyFormatting', `return (${sendFunction});`)(sendFormattedText,
     journalProxy, { value: false }, () => false, '/test/stop', () => friday9, () => true, shared,
     GROUP_DISCLOSURE_HOLD_NOTICE, isGroupReviewFinalNotice, requireAt('send'), { invoke: () => { expect(claims).toBe(1); networkSends++; return {}; } },
-    (x: string) => x, () => 'TEST', () => ({ kind: 'accepted', message: 1 }), w.destination.view.genesis, { stop: () => {} });
+    (x: string) => x, () => 'TEST', () => ({ kind: 'accepted', message: 1 }), w.destination.view.genesis, { stop: () => {} }, replyFormatting);
   const bindings = { now: () => friday9, stopped: () => false, timeZone: 'America/Los_Angeles',
     ...(host.includes('      sendAdmits: true,') ? { sendAdmits: true as const } : {}), checkOutbound: () => {}, groupDisclosure: async () => true, prepareModel: (input: Input) => JSON.stringify({ messages: [{ role: 'context', content: input.context }, { role: 'user', content: input.question }] }), model, send };
   await createJournalWorker(w.destination, bindings).sendRequested();
