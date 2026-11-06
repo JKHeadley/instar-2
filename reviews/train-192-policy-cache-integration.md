@@ -27,7 +27,7 @@ Decision: train-192-repair-owner | Cherry-pick only 0c1d832a4816aeb21891e5a89242
 Decision: train-192-repair-checks | Run only signature tests and exact restrictive-cache dispatch case, serial nice 10 maxWorkers 1, build/typecheck and cheap checks. Preserve red output and leave native/full/install/live acceptance to Studio. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-192-repair-2136-PROGRESS.md
 Decision: train-192-repair-replay | Apply existing desk rehash/repin tools with specified Linux sed adaptation; replay register from committed source. Constitution and model evidence remain exact. Native certificate renewal stays desk-owned. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-192-repair-2136-PROGRESS.md
 
-Verification: Launcher report retains command outputs, source comparison and outstanding acceptance checks. The desk synchronizes Studio-local reports before its check.
+Verification: Build/typecheck and 17 signature tests pass. The selected dispatch assertion remains red (expected complete, got uncertain at line 438); a traced rerun records /bin/sh rejecting ulimit -u and exiting 125 before the synthetic CLI. No source/test changed to hide it. Architecture reports only the native macOS composition certificate. Desk repin/rehash changed zero pins. Register replay from committed 4c439af634baeb9ad122ce8b826b002368b3e4b0 produced generation sha256:7336f35a327cdb89813a3b3c6b052f574354c4dcd7781c20a9a7558042accf04 (298 entries, 121 rules, 34 terms, 113 prerequisites). The launcher report retains all outputs and remaining checks; Studio synchronizes its local reports before its check.
 
 ## Closing block
 
