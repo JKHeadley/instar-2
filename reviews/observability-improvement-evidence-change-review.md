@@ -25,7 +25,7 @@ The current-clock replay failed with `P3-NF-24` for pre-existing overdue `deferr
 
 ## Refresh onto the next approved rule
 
-Merged origin/main aa8cbc934 (Rule122) without changing that rule or its declaration. The topic139374 amendment becomes draft changelog revision22. Only Rule39 differs semantically from current main. Prior121-rule publication evidence above remains historical evidence for its named source commit, not the current count. The closing block is restored to the last three lines as required by REVIEW-NF-01. Current build/replay and final-head review are still pending.
+Merged origin/main aa8cbc934 (Rule122) without changing that rule or its declaration. The topic139374 amendment becomes draft changelog revision22. Only Rule39 differs semantically from current main. Prior121-rule publication evidence above remains historical evidence for its named source commit, not the current count. The closing block is restored to the last three lines as required by REVIEW-NF-01. Source commit5d8211e9c1b0af718c94e8184ba86488529c8a40 builds and regenerates122rules with only Rule39 changed against aa8cbc934. Shape-only replay and check pass using the same explicitly historical Oct17clock; current-clock check still refuses the existing Slack Rule36deadline.52focused review/pairing/declaration/generator tests pass after the closing-block repair. Final-head constitutional review and operator approval remain pending.
 
 ## Closing block
 
