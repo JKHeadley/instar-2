@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:c647d5e782baa51707268c33eb16e4bd2b6f50995b95d6ecbd18b634d87ec4a0",
-  "commit": "c0f8e4661e7cf633cefff69450fb3ab3f7298554",
+  "generation": "sha256:37b0608acb0bb430db84efc8953574f29347ebdaa6a512e709da8dba160439d1",
+  "commit": "8da26bf94c58bc3f2c5b8ef5cd3314a64ecf8d90",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -33,7 +33,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -57,7 +57,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -90,6 +90,22 @@
         "availability": "not-loaded",
         "userFacing": false,
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+      },
+      {
+        "id": "process-control",
+        "status": "dark",
+        "module": "src/effects",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark partial support: admitted exact-process signals, durable claims and independent settlement; installed recovery unproven."
+      },
+      {
+        "id": "process-control-kernel",
+        "status": "dark",
+        "module": "src/assembly",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery unproven."
       },
       {
         "id": "register-tooling",
@@ -163,7 +179,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -187,7 +203,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -220,6 +236,22 @@
         "availability": "not-loaded",
         "userFacing": false,
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+      },
+      {
+        "id": "process-control",
+        "status": "dark",
+        "module": "src/effects",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark partial support: admitted exact-process signals, durable claims and independent settlement; installed recovery unproven."
+      },
+      {
+        "id": "process-control-kernel",
+        "status": "dark",
+        "module": "src/assembly",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery unproven."
       },
       {
         "id": "register-tooling",
@@ -293,7 +325,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -317,7 +349,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -350,6 +382,22 @@
         "availability": "not-loaded",
         "userFacing": false,
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+      },
+      {
+        "id": "process-control",
+        "status": "dark",
+        "module": "src/effects",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark partial support: admitted exact-process signals, durable claims and independent settlement; installed recovery unproven."
+      },
+      {
+        "id": "process-control-kernel",
+        "status": "dark",
+        "module": "src/assembly",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery unproven."
       },
       {
         "id": "register-tooling",
@@ -423,7 +471,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -447,7 +495,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -480,6 +528,22 @@
         "availability": "not-loaded",
         "userFacing": false,
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+      },
+      {
+        "id": "process-control",
+        "status": "dark",
+        "module": "src/effects",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "dark partial support: admitted exact-process signals, durable claims and independent settlement; installed recovery unproven."
+      },
+      {
+        "id": "process-control-kernel",
+        "status": "dark",
+        "module": "src/assembly",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery unproven."
       },
       {
         "id": "register-tooling",
@@ -553,7 +617,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in chat/topics; saves photos, audio and files encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -577,7 +641,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "answers explicit timed requests once, daily or weekdays until cancelled, without a new message."
       },
       {
         "id": "preview-status-command",
@@ -610,6 +674,22 @@
         "availability": "available",
         "userFacing": false,
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+      },
+      {
+        "id": "process-control",
+        "status": "dark",
+        "module": "src/effects",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark partial support: admitted exact-process signals, durable claims and independent settlement; installed recovery unproven."
+      },
+      {
+        "id": "process-control-kernel",
+        "status": "dark",
+        "module": "src/assembly",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery unproven."
       },
       {
         "id": "register-tooling",

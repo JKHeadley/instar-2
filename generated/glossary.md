@@ -1,7 +1,7 @@
 # Generated glossary
 
-Register generation: sha256:c647d5e782baa51707268c33eb16e4bd2b6f50995b95d6ecbd18b634d87ec4a0
-Source commit: c0f8e4661e7cf633cefff69450fb3ab3f7298554
+Register generation: sha256:37b0608acb0bb430db84efc8953574f29347ebdaa6a512e709da8dba160439d1
+Source commit: 8da26bf94c58bc3f2c5b8ef5cd3314a64ecf8d90
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -230,14 +230,14 @@ Used by: rule:33, rule:35, rule:40, rule:7
 
 Where does a person meet it, if anywhere?
 
-Used by: rule:102, rule:105, rule:62, rule:8, rule:80, rule:87
+Used by: rule:102, rule:105, rule:120, rule:62, rule:8, rule:80, rule:87
 
 ## user
 
 A principal the agent serves — any standing. Every operator is a user; a user with only
 requester standing is a user the agent works *for* but does not take *binding* decisions from.
 
-Used by: rule:114, rule:14, rule:2, rule:28, rule:35, rule:52, rule:54, rule:62, rule:76, rule:77, rule:78, rule:83, rule:85, rule:87, rule:95
+Used by: rule:114, rule:14, rule:2, rule:28, rule:35, rule:52, rule:54, rule:62, rule:72, rule:76, rule:77, rule:78, rule:83, rule:85, rule:87, rule:95
 
 ## user-facing
 
