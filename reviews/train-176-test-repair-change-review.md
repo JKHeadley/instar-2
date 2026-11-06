@@ -15,7 +15,7 @@ Undo and recovery: Revert the test repair if rejected; no installed or live stat
 Multi-machine posture: Machine-local targeted tests use one worker. No ownership or replication changes; the desk retains full-suite qualification.
 Layer below: Actual JKHeadley/instar main 22463d0b6a372aedb33f5f1b756e13bae89ab807 was searched in src/ and docs/specs/ for expiry, cleanup, test timeouts and exact failure strings. Inspected src/core/hostTestRunnerSemaphore.ts, docs/specs/test-runner-concurrency-bound.md and history 1f90fa1a9/618560b3e/c91b8780e/681f86543; src/monitoring/MissingLoginSessionDetector.ts and history ff8344b4b/ab26b7ca3. Bounded test execution and separately tracked diagnostic notices fit; the exact activation wording and committed-register bridge/RPC fixtures are specific to 2.0 (exact-string search found no match). Read ONEX-LESSONS.md section 6. Reuse 2.0 tests/e2e/async-child.ts, whose existing purpose is preventing synchronous child RPC starvation, and current credentialNotices/displayLabel output. No new semaphore or production feature is needed.
 Bug class: integration
-Bug evidence: reproducer=Supplied train-176 gate excerpts show eight exact notice mismatches, one dependency cleanup hook exceeding 10 seconds, and one four-build bridge fixture exceeding 60 seconds with worker onTaskUpdate starvation; the changed files retain those real launcher/install/CLI reproductions and their negative controls.
+Bug evidence: reproducer=tests/e2e/register.test.ts
 Hook bypass: none
 Convergence: none
 Prompt review: No prompt or model-facing path changes. Added fixed notice text is assertion evidence from the supplied gate, never a model trigger or dispatch rule.
