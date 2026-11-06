@@ -20,12 +20,12 @@ Hook bypass: none
 Convergence: none
 Prompt review: No prompt or model-facing path changes. Added fixed notice text is assertion evidence from the supplied gate, never a model trigger or dispatch rule.
 
-Subject (5 paths): tests/e2e/register.test.ts, tests/preview/journal-agent.test.ts, tests/preview/mcp-setup.test.ts, tests/preview/review-layers-canary.test.ts, register-source/owner-references/preview.json
+Subject (12 paths): tests/e2e/register.test.ts, tests/preview/journal-agent.test.ts, tests/preview/mcp-setup.test.ts, tests/preview/review-layers-canary.test.ts, register-source/owner-references/preview.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 Decision: T176-R1 | Match only the current activation reminder and its exact renewal action, retaining exact answers and rejecting unrelated appended text. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-176-repair-PROGRESS.md
 Decision: T176-R2 | Await large cleanup and reuse the asynchronous child helper for the bridge fixture; use the adjacent multi-build fixture's finite budget without weakening its assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-176-repair-PROGRESS.md
 
-Publication: The delegated desk rehash tool refreshed exactly the journal-agent test artifact hash in register-source/owner-references/preview.json; the inventory repin tool changed no paths. Generated publication will be replayed from this committed source. No hand-edited pins.
+Publication: The delegated desk rehash tool refreshed exactly the journal-agent test artifact hash in register-source/owner-references/preview.json; the inventory repin tool changed no paths. Generated publication was replayed from d465cc295a952094de66f5b4110dab5de7c73c46: generation sha256:93be6c6bbea654e0842383d4c3172c98544ec5d917a50886e2d6eb5326787af7, 298 entries, 121 rules, 34 terms; authority remains shape-only with 48 warnings and 113 prerequisites. No hand-edited pins.
 
 The existing source behavior is preserved: reminders remain visible, an ambient bridge still cannot satisfy the committed graph, a committed bridge still resolves identically in a fresh clone, and an extra untracked source still refuses wiring. The MCP test still exercises production npm installation and migration. This record does not supersede the independent integration review, its live acceptance obligations, or CB6-MF-A / CB7-R90 / CB1-MF5.
 
