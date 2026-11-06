@@ -9,7 +9,7 @@
       "models": [
         {
           "id": "gpt-5.6-sol",
-          "verifiedAt": 1791051039970,
+          "verifiedAt": 1793940056846,
           "freshFor": 2885119381
         }
       ],
@@ -17,7 +17,7 @@
       "subsidy": {
         "ratio": 1,
         "basis": "estimated",
-        "updatedAt": 1791051039970,
+        "updatedAt": 1793940056846,
         "freshFor": 2885119381
       }
     },
