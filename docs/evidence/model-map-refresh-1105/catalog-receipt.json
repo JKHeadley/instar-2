@@ -1,0 +1,19 @@
+{
+  "observedAt": "2026-11-05T20:08:37.027837-08:00",
+  "source": "installed Codex authenticated models cache, captured after model catalog refresh",
+  "catalogFetchedAt": "2026-11-06T04:08:23.047610Z",
+  "clientVersion": "0.167.0",
+  "catalogSha256": "32c065be4926ac88017f0af50204a906f43e804f75b8c2ba89d9bd669c93f7eb",
+  "model": {
+    "slug": "gpt-5.6-sol",
+    "display_name": "GPT-5.6-Sol",
+    "description": "Older generation workhorse model.",
+    "visibility": "list",
+    "supported_in_api": true,
+    "context_window": 272000
+  },
+  "identityOmitted": true,
+  "boundary": "model listing evidence only, not a production model invocation, account-identity proof or measured pricing",
+  "existingBilling": "subscription; verify current normal Codex login-status subscription classification before using this fact",
+  "subsidy": "existing ratio1 basisestimated; do not relabel measured or imply fresh price evidence. Re-evaluate existing estimated default explicitly or hold if source authority insufficient."
+}
