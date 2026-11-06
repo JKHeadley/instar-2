@@ -29,7 +29,7 @@ import { createJudgmentCaptures } from '../../scripts/judgment-captures.mjs';
 export { value, refused };
 export const enc = (v: unknown) => value(canonical(v));
 export function providerFixture(options: { directory?: string; endpoint?: string; credential?: string;
-  route?: Partial<ConfinedProviderRoute>; afterInvoke?: () => void; timeout?: number; maxTokens?: number } = {}) {
+  route?: Partial<ConfinedProviderRoute>; afterInvoke?: () => void; timeout?: number; timeoutSignal?: (ms: number) => AbortSignal; maxTokens?: number } = {}) {
   const base = setup(); base.grant({ id: 'provider-agent-grant', grantee: base.bob });
   const directory = options.directory ?? mkdtempSync(join(tmpdir(), 'provider-path-'));
   let now = 100, stopped = false, generation = base.run.generation.id;
@@ -151,7 +151,7 @@ export function providerFixture(options: { directory?: string; endpoint?: string
       if (!options.endpoint) throw new Error('real local HTTP endpoint required');
       const response = await fetch(options.endpoint, { method: 'POST', body: bytes, redirect: 'error',
         headers: { Authorization: `Bearer ${options.credential}`, 'Content-Type': 'application/json', 'X-Operation': bounds.operation },
-        signal: AbortSignal.timeout(Math.min(options.timeout ?? bounds.timeout, bounds.timeout, bounds.deadline - now)) });
+        signal: (options.timeoutSignal ?? AbortSignal.timeout)(Math.min(options.timeout ?? bounds.timeout, bounds.timeout, bounds.deadline - now)) });
       const observation = await response.json() as ProviderObservation;
       options.afterInvoke?.(); return observation;
     }, ...options.route };

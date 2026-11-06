@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setImmediate as yieldWorker } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { createFixedPeerReplication } from '../../src/assembly/production-replication.js';
 import { canonical } from '../../src/index.js';
@@ -18,7 +19,7 @@ import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const root = () => { const p = realpathSync(mkdtempSync(join(tmpdir(), 'instar-peer-local-'))); roots.push(p); return p; };
-function setup(maxDiskBytes = 100000, capturePrefixes: readonly string[] = [], hashIntent = false, escapeHeavy = false) {
+function setup(maxDiskBytes = 100000, capturePrefixes: readonly string[] = [], hashIntent = false, escapeHeavy = false, startupDelayMs = 0) {
   const base = root(), f = factsFixture(), intent = hashIntent ? f.intentInput() : null;
   const baseContext = hashIntent ? { ...f.ctx, schemas: [{ ...f.schema, optional: ['intent'], fields: { ...f.schema.fields,
     intent: { kind: 'constitutional' as const, type: 'Intent' as const } } }] }
@@ -39,7 +40,8 @@ function setup(maxDiskBytes = 100000, capturePrefixes: readonly string[] = [], h
   const authInfo = join(base, 'ssh-user-auth'), clientPublicKey = 'ssh-ed25519 VEVTVEtFWQ==';
   writeFileSync(authInfo, `publickey ${clientPublicKey}\n`, { mode: 0o600 });
   const fixtureURL = pathToFileURL(join(process.cwd(), 'tests/facts/fixtures.ts')).href;
-  const source = `import { factsFixture } from ${JSON.stringify(fixtureURL)};\n`
+  const source = `await new Promise(resolve => setTimeout(resolve, ${startupDelayMs}));\n`
+    + `import { factsFixture } from ${JSON.stringify(fixtureURL)};\n`
     + `import { decodeMeasurement, consumeResult } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'dist/index.js')).href)};\n`
     + `import { hashBytes } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'dist/facts/index.js')).href)};\n`
     + `export function openFixedPeerConfiguration() { const f = factsFixture(); ${hashIntent ? 'f.intentInput();' : ''}\n`
@@ -58,9 +60,13 @@ function setup(maxDiskBytes = 100000, capturePrefixes: readonly string[] = [], h
   const call = (request: PeerRequest, options: { timeout?: number; dropResponse?: boolean } = {}) => {
     const child = spawnSync(process.execPath, ['--loader', join(process.cwd(), 'scripts/slice-ts-loader.mjs'),
       join(process.cwd(), 'scripts/fixed-installation-peer.mjs')], { input: JSON.stringify(request),
-      encoding: 'utf8', timeout: options.timeout ?? 3000, maxBuffer: 10000,
-      env: { PATH: '/usr/bin:/bin', INSTAR_FIXED_PEER_CONFIG: config, INSTAR_FIXED_PEER_CONFIG_DIGEST: pin,
+      // This outer bound includes cold module loading; the peer retains its own 3000ms work deadline.
+      encoding: 'utf8', timeout: options.timeout ?? 15000, maxBuffer: 10000,
+      env: { PATH: '/usr/bin:/bin',
+        ...(process.env.INSTAR_SLICE_TS_CACHE ? { INSTAR_SLICE_TS_CACHE: process.env.INSTAR_SLICE_TS_CACHE } : {}),
+        INSTAR_FIXED_PEER_CONFIG: config, INSTAR_FIXED_PEER_CONFIG_DIGEST: pin,
         SSH_USER_AUTH: authInfo, SSH_ORIGINAL_COMMAND: 'instar-fixed-peer-v1', INSTAR_FIXED_PEER_TEST_PROOF: '1' } });
+    if (child.status === null) throw Error(`peer process did not finish: ${child.error?.message ?? child.signal}`);
     if (child.status !== 0) throw Error(`peer process refused ${child.status}`);
     if (options.dropResponse) throw Error('acknowledgment lost after peer fsync');
     return JSON.parse(child.stdout);
@@ -79,6 +85,14 @@ function setup(maxDiskBytes = 100000, capturePrefixes: readonly string[] = [], h
     context: f.c, io: productionStorageIO }));
   return { f, first, second, descriptor, config, authInfo, storeRoot, context, captures, call, make, disk, setCut };
 }
+it('separates cold startup from the peer work deadline and never calls a killed child a semantic refusal', () => {
+  const h = setup(100000, [], false, false, 3100);
+  let captured: PeerRequest | undefined;
+  const peer = h.make({ transformRequest: request => { captured = request; return request; } });
+  expect(value(peer.durability.ensure([h.first, h.second]))).toHaveLength(2);
+  expect(h.descriptor.limits.timeoutMs).toBe(3000);
+  expect(() => h.call(captured!, { timeout: 1 })).toThrow('peer process did not finish');
+}, 30000);
 it('R3 local-process encrypted Laptop stand-in retains full prefix and captures across receiver restart', () => {
   const h = setup(), a = h.make();
   expect(value(a.durability.ensure([h.first, h.second]))).toHaveLength(2);
@@ -184,7 +198,7 @@ it('R3 local-process immutable identity collision and corrupt capture/frame neve
     .durability.ensure([h.first, h.second]), 'peer process refused');
   const retained = h.disk(); expect(retained.segment.read()).toHaveLength(2); retained.close();
 });
-it('R3 repeated invalid envelopes retain the admitted prefix without orphan captures across restarts', () => {
+it('R3 repeated invalid envelopes retain the admitted prefix without orphan captures across restarts', async () => {
   const h = setup(100000, ['orphan:']);
   value(h.make().durability.ensure([h.first, h.second]));
   const third = h.f.next(h.second), orphanBytes = 'x'.repeat(9000);
@@ -197,6 +211,7 @@ it('R3 repeated invalid envelopes retain the admitted prefix without orphan capt
         { reference: `orphan:${i}`, hash: hashBytes(orphanBytes), bytes: orphanBytes }] };
     } });
     refused(bad.durability.ensure([h.first, h.second, third]), 'peer process refused');
+    await yieldWorker(); // Permit worker RPC between independent receiver processes.
   }
   const reopened = h.disk();
   expect(reopened.segment.read()).toHaveLength(2);

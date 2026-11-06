@@ -116,7 +116,9 @@ it('two runners, one conversation: one reply; the peer goes away and the reply i
 }, 180000);
 
 it('the owner machine is lost: the other machine takes over WITH the history, holds its reply until the peer is back, and nothing is sent twice', async () => {
-  const t = await twoMachines();
+  // Use the shipped 30s term, as in the stale-owner test below. A 6s test term
+  // leaves only 1s beyond the admitted 5s transport, before synchronous journal work.
+  const t = await twoMachines(30000);
   const studio = t.start('studio', ['--journal-lineage', 'seed']);
   await until('the seeded machine serves', () => studio.output.stderr.includes('owner: epoch 1'));
   const laptop = t.start('laptop');

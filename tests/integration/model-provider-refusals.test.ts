@@ -22,12 +22,11 @@ const pending = (f: Fixture) => {
   expect(f.all().filter(f => f.kind === 'run-transition').at(-1)?.body).not.toMatchObject({ record: { id: 'provider-accepted' } });
 };
 it('MODEL-PROVIDER-PATH integration provider timeout captures uncertainty; unknown charge never releases, retries or advances', async () => {
-  const http = await localProvider();
+  const timeout = new AbortController(), bounds: number[] = [];
+  // Advance the injected timeout only after the real HTTP server records dispatch.
+  const http = await localProvider(() => timeout.abort(new DOMException('Injected timeout', 'TimeoutError')));
   try {
-    // The driver timeout stays under the admitted 100ms bound, with enough room that a stalled
-    // shared event loop cannot abort the call before it reaches the provider at all.
-    http.delay(450);
-    const f = providerFixture({ ...http, timeout: 90 }), { request, prepared } = f.prepare();
+    const f = providerFixture({ ...http, timeout: 90, timeoutSignal: ms => { bounds.push(ms); return timeout.signal; } }), { request } = f.prepare();
     const observation = value(await f.api.dispatch(request, f.fence));
     const receipt = JSON.parse(value(f.captures.read(observation.capture as Parameters<typeof f.captures.read>[0])));
     expect(receipt.state).toBe('uncertain'); expect(receipt.usage.charge).toBeNull();
@@ -37,6 +36,7 @@ it('MODEL-PROVIDER-PATH integration provider timeout captures uncertainty; unkno
     expect(reservation).toMatchObject({ state: 'consumed', charge: 20 });
     pending(f); refused(await f.api.dispatch(request, f.fence));
     expect(value(f.graph.read(f.id)).pending).toHaveLength(1); expect(http.requests).toHaveLength(1);
+    expect(bounds).toEqual([90]);
   } finally { await http.close(); }
 });
 it('MODEL-PROVIDER-PATH integration unknown charge despite proved occurrence retains maximum exposure and pending Five step', async () => {
@@ -150,15 +150,31 @@ it('MODEL-PROVIDER-PATH integration late independent charge proof renews Nine as
   } finally { await http.close(); }
 });
 it('MODEL-PROVIDER-PATH integration the admitted timeout bound cannot be widened by driver defaults', async () => {
-  const http = await localProvider();
+  const timeout = new AbortController(), bounds: number[] = [];
+  const http = await localProvider(() => timeout.abort(new DOMException('Injected timeout', 'TimeoutError')));
   try {
-    http.delay(200);
-    const f = providerFixture({ ...http, timeout: 2000 }), { request } = f.prepare();
+    const f = providerFixture({ ...http, timeout: 2000, timeoutSignal: ms => { bounds.push(ms); return timeout.signal; } }), { request } = f.prepare();
     expect(request.payload.timeout).toBe(100);
     const observation = value(await f.api.dispatch(request, f.fence));
     const receipt = JSON.parse(value(f.captures.read(observation.capture as Parameters<typeof f.captures.read>[0])));
     expect(receipt).toMatchObject({ state: 'uncertain', bytes: null, usage: { charge: null }, limitation: { kind: 'transport-threw' } });
     refused(await f.api.dispatch(request, f.fence));
     expect(http.requests).toHaveLength(1); expect(value(f.graph.read(f.id)).pending).toHaveLength(1);
+    expect(bounds).toEqual([100]);
+  } finally { await http.close(); }
+});
+
+it('MODEL-PROVIDER-PATH timeout before HTTP arrival also retains exposure without retry', async () => {
+  const http = await localProvider();
+  try {
+    const f = providerFixture({ ...http, timeoutSignal: () => AbortSignal.abort(new DOMException('Injected timeout', 'TimeoutError')) });
+    const { request } = f.prepare();
+    const observation = value(await f.api.dispatch(request, f.fence));
+    refused(f.api.settle(observation.operation, value(f.api.assess(observation.operation))));
+    refused(await f.api.dispatch(request, f.fence));
+    expect(http.requests).toHaveLength(0);
+    expect(value(f.six.inspect()).filter(r => r.record.type === 'AdmissionReservation').at(-1)!.record)
+      .toMatchObject({ state: 'consumed', charge: 20 });
+    pending(f); expect(value(f.graph.read(f.id)).pending).toHaveLength(1);
   } finally { await http.close(); }
 });

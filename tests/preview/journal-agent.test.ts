@@ -10,7 +10,7 @@ import { openPreviewJournal, UNKNOWN_SEND_NOTICE } from './journal.js';
 // The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride an answer as its own line. The answer itself stays exact,
 // and nothing else may be appended.
-const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
+const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Reminder: your activation expires in [^.]+\. Smallest step for you: approve a renewed activation record\.|Model route check: .+\.)$/u;
 const answerOf = (text: string) => {
   const [answer, ...notices] = text.split('\n\n');
   for (const notice of notices) {
@@ -19,6 +19,13 @@ const answerOf = (text: string) => {
   }
   return answer;
 };
+
+it('accepts the activation reminder while refusing unrelated or altered appended text', () => {
+  const notice = 'Reminder: your activation expires in 6 days 20 h. Smallest step for you: approve a renewed activation record.';
+  expect(answerOf(`Understood.\n\n${notice}`)).toBe('Understood.');
+  expect(() => answerOf('Understood.\n\nUnreviewed extra answer.')).toThrow();
+  expect(() => answerOf(`Understood.\n\n${notice.replace('approve', 'ignore')}`)).toThrow();
+});
 
 it.each([['bounded', 0, false], ['oversized', 5000, false], ['forum', 0, true]])('polls status at the call cap and %s Jev response follows the byte bound', async (_name, padding, forum) => {
   const world = successiveWorld(), root = join(world.directory, 'status-cap-journal');
@@ -142,12 +149,22 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
       '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','100000','--max-poll-seconds','1'];
-    child = spawn(process.execPath,args,{cwd:process.cwd(),stdio:['ignore','pipe','pipe'],env:{...process.env,
+    // Exercise startup slower than the old 10s poll deadline without host load.
+    const startup = join(world.directory, 'slow-startup.mjs');
+    writeFileSync(startup, 'await new Promise(resolve => setTimeout(resolve, 11000));');
+    const launchArgs = signal === 'SIGTERM' ? ['--import', pathToFileURL(startup).href, ...args] : args;
+    child = spawn(process.execPath,launchArgs,{cwd:process.cwd(),stdio:['ignore','pipe','pipe'],env:{...process.env,
       INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`}});
     let stderr=''; child.stderr.on('data',data=>{stderr+=String(data);});
+    // Cold module/owner initialization is not an idle-poll or signal-response measurement.
+    const startupDeadline = Date.now()+30000;
+    while ((!existsSync(log) || !readFileSync(log,'utf8').includes('getUpdates'))
+      && child.exitCode === null && child.signalCode === null && Date.now()<startupDeadline)
+      await new Promise(done=>setTimeout(done,20));
+    expect(existsSync(log) && readFileSync(log,'utf8').includes('getUpdates'), stderr).toBe(true);
     const deadline = Date.now()+10000;
     while ((!existsSync(log) || readFileSync(log,'utf8').split('getUpdates').length < 4) && Date.now()<deadline)
       await new Promise(done=>setTimeout(done,20));
@@ -206,7 +223,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
         INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`}});
     expect(refused.status).not.toBe(0);
   } finally { child?.kill('SIGKILL'); endpoint.kill('SIGTERM'); }
-},30000);
+},90000);
 
 it.each([['echo', 0], ['drop-thread', 1]])('the real launcher answers a topic from the main chat and replies into that topic (endpoint %s; a result without the thread stays UNKNOWN)', async (mode, unknown) => {
   const world = successiveWorld(), root = join(world.directory, 'topic-journal');
