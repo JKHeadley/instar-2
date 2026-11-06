@@ -25,7 +25,7 @@ Prompt review: No authored prompt, dispatch, model parser or acceptance-rule cha
 Decision: train190m-preserve | Preserve live's complete register test file, which already incorporates the candidate async owner repair plus smaller intake groups and independently bounded bridge children; retain both defect histories without rewriting earlier observations. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-190-repair-071328-PROGRESS.md
 Decision: train190m-publication | Retain live's existing native conformance certificate and regenerate owner/publication evidence through delegated scripts; no manual pin editing or new certificate declaration. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-190-repair-071328-PROGRESS.md
 
-Verification: Final commands, exact results and file inventory are recorded in the report cited above. Full-suite results remain the Studio gate's responsibility; this record claims no full-run pass or independent convergence.
+Verification: npm ci, typecheck, build and architecture passed. Delegated rehash/repin changed zero pins. Register replay from 03da9aaca3b7bdbec696a356127872799c3d7040 produced generation sha256:b3c9743f2a06bf299f091c18d78b553155908bfb5e6b8ffbe47c17515bd573ff (299 entries, 122 rules). Final commands, exact results and file inventory are recorded in the report cited above. Full-suite results remain the Studio gate's responsibility; this record claims no full-run pass or independent convergence.
 
 ## Closing block
 
