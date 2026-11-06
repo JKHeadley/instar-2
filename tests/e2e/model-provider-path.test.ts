@@ -19,7 +19,7 @@ it.each(['before-receipt', 'before-assessment', 'before-settlement', 'before-acc
       child.on('error', error => { clearTimeout(watchdog); reject(error); }); child.on('exit', (_code, signal) => { clearTimeout(watchdog); resolve({ signal, output }); });
     });
     expect(killed.output).toContain('provider-invoked'); expect(killed.signal).toBe('SIGKILL'); expect(http.requests).toHaveLength(1);
-    const rebuilt = providerFixture({ directory, ...http });
+    const rebuilt = providerFixture({ directory, ...http, admittedTimeout: 2000 });
     const { prepared, request } = rebuilt.prepare();
     refused(await rebuilt.api.dispatch(request, rebuilt.fence), 'uncertain');
     const reservation = value(rebuilt.six.inspect()).filter(r => r.record.type === 'AdmissionReservation').at(-1)!;

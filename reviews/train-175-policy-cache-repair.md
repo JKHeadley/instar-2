@@ -1,6 +1,7 @@
 # Change review — keep reviewed subscription profiles usable after cache refresh
 
 Subject base: 75b3d2a67d5deeb45d18c3921da0856052bfecbb
+Historical live integration base: 428b6287201846c206e76be32f066a6b538333e3 (preserved from add5d758; the subject base above retains candidate coverage).
 Review state: open
 Reviewed content: none
 Outcome: The ordinary tool route can construct its subscription provider after Claude Code writes signed policy-cache metadata or first populates its restrictive cache. The saved turn remains available; no effect is replayed by this repair.
@@ -27,6 +28,10 @@ Decision: train-175-cache | Reuse the existing bounded cache inspector; recogniz
 Decision: train-175-enrollment | A digest enrolled before any cache already permits the baseline: arrival of a cache that only restricts it cannot widen authority. Preserve that digest only after every cache check succeeds. Preserve stricter cache-bound enrollment when it exists. No new grant or profile mutation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-175-repair-PROGRESS.md
 
 Historical owner verification (0c1d832a; current train-187 verification is in its integration review): tsc and build pass. Both changed test files pass (122 tests); recorded host profile matches its existing identity and managed digest with hooks enabled. Architecture reports only the charter-exempt native macOS self-host composition certificate. Source pins and register are regenerated with the delegated desk tools. The automatic Studio answer/full-test gate remains outstanding.
+
+Register replay: regenerated seven generated/ outputs from source commit 0c1d832a4816aeb21891e5a89242497d12c76fc1 using the existing replay command (297 entries, 120 rules). The owner rehash and support-source repin scripts completed with zero changes. This record covers the generated commit as well as the source repair.
+
+Deferral: generated/register.json:1 | not-a-deferral=Regenerated full-line register retains existing rule wording; no implementation is postponed.
 
 ## Closing block
 

@@ -102,6 +102,19 @@ The inventory regression exercises ordinary and serial files, both CLI spellings
 and the positive Studio selection, proving an exact disjoint union with the full
 inventory. No test is quarantined and no assertion or product ability is removed.
 
+## train-181 recurrence, 2026-11-05
+
+The retained gate at b95fc4f6ad08e02d180ab476eb6e744a0ed1e53a reports one
+unattributed `onTaskUpdate` timeout, 11 failing assertions and 9,304 passing tests.
+No worker trace in the supplied bounded excerpt identifies its cause. This repair
+adds an event-loop yield between the integration peer test's twelve synchronous
+receiver restarts and forwards the selected transpile cache to those children.
+That removes a known starvation opportunity, not proof of attribution for this run.
+The defect remains OPEN with the existing desk owner and closure condition: trace
+any recurrence and qualify the final candidate with a full run reporting zero
+runner errors. No test is skipped, quarantined or relabelled; the retained run is RED.
+Only the desk runs that full qualification; targeted passing tests do not close it.
+
 ## train-181 READY-gate register recurrence, 2026-11-05
 
 The subsequent eight-file READY run at 995b147a reports two register CLI case
