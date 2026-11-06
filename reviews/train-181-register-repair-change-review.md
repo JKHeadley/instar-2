@@ -19,6 +19,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/e2e/register.test.ts; other=docs/defects/vitest-worker-rpc-timeouts.md
 Hook bypass: none
 Convergence: none
+Prompt review: The merged subject includes tests/preview/journal-agent.mjs and tests/preview/operator-dashboard.ts. Reviewed the fixture-trigger and neutral-dispatch boundary: the journal merge adds dashboard machine/activity projection while retaining the candidate commitment and delivery-recovery wiring; dashboard text is rendered operator status, not a new model judgment prompt. No fixture answer, expected verdict or trigger phrase is added to a model instruction, and no dispatch is given an expected conclusion. Existing prompt behavior and its parent evidence remain unchanged by this merge.
 Decision: t181g-async | use the existing async child helper at all six remaining CLI/wiring sites, including the malformed-source matrix, so completed child work cannot freeze the worker reporting channel | reported=docs/release-evidence/train-181-register-repair-report.md
 Decision: t181g-groups | split the defaults, bridge and malformed-source assertions into isolated fresh groups while retaining each deadline and every original assertion, avoiding a growing batch beneath one timer | reported=docs/release-evidence/train-181-register-repair-report.md
 Decision: t181g-handshake | use an actual CLI preload awaiting a parent-written permit, with a refusing unreleased neighbor, to demonstrate event-loop progress without host load | reported=docs/release-evidence/train-181-register-repair-report.md
