@@ -57,6 +57,8 @@ Floor publication: replay source 9bc1f1b2cf25e21d0ad15d09e8dccc2d23286b22, gener
 
 Floor refinement: first concise replay restored governingConstraints in tool packets, but the summary remained 47 bytes above its allowance. Further shorten only the new hub/attention descriptions and the inbound-media summary; retain authenticated parents/dashboard, unknown effects, handoff, bounded admission and refused-message retention. Full Details remain unchanged.
 
+Final byte adjustment: remove redundant One from the hub description; keep the unchanged fixed prompt guard. Verify historical self-description compatibility separately; old judgments cannot certify this wording.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges and existing desk repin/build/rehash/replay. No new runtime mechanism. Boundaries remain current authority, stopped owners, retained unknown effects and verified results.

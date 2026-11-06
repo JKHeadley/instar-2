@@ -15,10 +15,10 @@ authority, store or outbound path.
 
 ## Capabilities
 
-- `preview-collaboration-hub`: One silent hub; authenticated parent links; unknown effects retained.
+- `preview-collaboration-hub`: Silent hub; authenticated parent links; unknown effects retained.
   Details: The journal launcher exposes retained hub binding at the authenticated PIN/CSRF /dashboard/collaboration page. Its effect consumer uses the existing role/policy check, shared claim, Telegram bridge and sender; authorized message intents reserve existing replies. The optional production composition joins authenticated Threadline intake, canonical delegated work and the bounded hub model route. The concrete installation boundary is documented below; actual serving installation and independent live acceptance remain pending. Method availability is not authority.
 
-- `preview-attention-queue`: Track/acknowledge items on authenticated dashboard across handoff.
+- `preview-attention-queue`: Track/acknowledge items via authenticated dashboard across handoff.
   Details: Tracking state and pending acknowledgements survive journal replay and replica handoff; actual independent installation and live acceptance remain pending. When the existing independent passkey surface is configured, a status change opens a distinct signed tracking request there. Its existing private store retains the exact request across owner-outbox absence, and the returning owner rechecks installation, revision, expiry, signature and stop before applying it. Tracking never approves an effect. Independent-machine availability still requires a separately installed authorized operator surface/custody path and its proof.
 
 The journal runner's capability briefing is generated from these lines and the feature declarations beside the shipped sources; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
