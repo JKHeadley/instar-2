@@ -1,5 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, symlinkSync, realpathSync, accessSync, constants } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync, symlinkSync, realpathSync, accessSync, constants } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -16,7 +17,12 @@ import { migrations } from '../../scripts/update-release.mjs';
 import { updateRoot } from '../../scripts/update.mjs';
 const roots: string[] = [];
 const root = () => { const p = mkdtempSync(join(tmpdir(), 'mcp-setup-')); roots.push(p); return p; };
-afterEach(() => roots.splice(0).forEach(p => rmSync(p, { recursive: true, force: true })));
+// The real npm fixture owns an installed release and an isolated cache. Removing
+// both exceeded the default 10s hook budget in the M5Pro gate. Await cleanup with
+// the install case's finite budget, yielding I/O instead of blocking worker IPC.
+afterEach(async () => {
+  for (const p of roots.splice(0)) await rm(p, { recursive: true, force: true });
+}, 120000);
 const bytes = (p: string) => readFileSync(join(p, 'mcp.json'), 'utf8');
 
 it('installs the 1.x default through the real reader and repeats without writing', () => {
