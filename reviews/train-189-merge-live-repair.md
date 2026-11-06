@@ -28,6 +28,10 @@ Decision: train189-merge-checks | Use foreground nice-10 single-worker targeted 
 
 Verification: TypeScript and build passed. Architecture passed. Native tuple has complete 275-file closure with declared=computed sha256:20556b44f00de49c7b3d806d410796d941f478001607eaf8bbae037ea747006e. Canonical owner rehash and support-source repin found zero stale pins. Targeted results and final publication are recorded in the absolute progress record; no full-run report fetched or invented.
 
+Register publication: canonical replay from source commit 71048c28f9f96b61ec10ad8c338a1fc5c9714407 produced generation sha256:2f53a94dd3a7c81edbf371b23d1d9e1e2f5f93cd082d68b700519bad14cb4f08 (299 entries, 122 rules). This record covers both the merge and derived publication.
+
+Deferral: generated/register.json:1 | not-a-deferral=Regenerated existing constitutional wording; no implementation is postponed.
+
 ## Closing block
 
 simplestRobustRoute: Ordinary merge, explicit preservation of the three conflicting intents and existing committed-source register replay are the simplest robust route. No new machinery, timeout extension, quarantine, weakened gate or reduced ability is introduced.
