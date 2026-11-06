@@ -30,6 +30,8 @@ Decision: train175-register-publication | Commit source, use canonical repin/reg
 
 Evidence: docs/release-evidence/train-181-register-repair-report.md remains the owner's historical evidence, not this head's result. docs/release-evidence/train-187-codex-catalog-2026-11-05.json records the observed catalog at 2026-11-06T03:40:55.257112Z. Current validation and publication outputs are retained in the absolute train-175-repair-PROGRESS.md. No full-suite or saved-report result is fabricated.
 
+Canonical regeneration: delegated owner/inventory repin reported no stale pins. `node scripts/build-register.mjs --replay --commit fc59bc2781552c86b08cc13093ae1b95489142c1` succeeded with generation `sha256:b3ee4fb9e057d321021ee600b7f91e2c01bb876406ab06d39a3e1eb3511a126a`; seven generated artifacts retain that committed source. `nice -n 10 npx tsc --noEmit` passed on the integrated source. Final-head test and check outputs are recorded in the absolute progress record.
+
 ## Closing block
 
 simplestRobustRoute: Reuse the two existing owners and extend their fixture grouping only for the additional named failure. No new runner, production cache, quarantine, longer case deadline, freshness extension or capability restriction.
