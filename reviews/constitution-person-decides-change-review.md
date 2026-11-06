@@ -1,37 +1,26 @@
-# Change review — The Person Decides; the Agent Does the Rest
+# Renewed review round — constitution-person-decides publication on train-192
 
-Subject base: 567d0c49e9ad30bc2d620025d1a6311cadb9cd66
-Review state: frozen
-Reviewed content: sha256:4c1b5cbfe985041d6190c8db4a9f2ab25ac1ca5f26b4cde2fa9b3f8fe16233e4
-Outcome: Record the operator's 2026-11-03 direction as Rule 120: an Instar agent does all research, account management and operation; the person only approves or declines, asks for changes, or supplies a credential; whose accounts are used is the person's choice, and the agent never recommends against full account management. A new rule in Needs building, because neither of its checks exists yet. Same wording as the earlier draft numbered 119 (PR 190), renumbered to 120 after Rule 119, One Constitution, Two Books Aligned, merged first.
-Affected rules: 18, 23, 78, 82 (scope boundary: they cover acting inside a role, when to escalate, automatic capture and how to ask; 120 states the person's whole part) and new 120. 119 applies to this change: it names its 1.x counterpart. Purpose unchanged. History preserves prior revisions; Rule 120 stays a coverage gap until its checks are built.
-Affected floors: secrets — no custody or revelation changes; spend cap — no provider calls or budget changes; stop — no cancellation changes; no duplicate sends — no dispatch changes; durable intake — no journal or admission changes.
+Subject base: c7e322e50cb5834af8cf41f7367e9f6f86541420
+Review state: open
+Reviewed content: none
+Outcome: Renew the generated-publication portion of this review on the train-192 notice repair without claiming the historical constitution approval covers the new combined head.
+Affected rules: 26, 37, 49, 74, 101, 102, 107, 109, 111, 112, 113, 116
+Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake are unchanged; only test assertions and mechanically derived publication change.
 Operator questions: none
 Suggested tier: critical
-Declared tier: critical
-Tier rationale: Changes the governing constitution, even though the implementation is editorial.
-Side effects: The rule inventory grows to 120; the replay anchor, its pin, the generated register and the end-to-end rule-count assertion follow it. No model-facing excerpt changes (Rule 120 is not in the briefing source pins). No runtime path changes.
-Undo and recovery: Revert this amendment together with its anchor, pin, count assertion and generated outputs; preserve the governing history through a corrective revision if already approved.
-Multi-machine posture: Machine-independent: the rule is about the person's part, not placement. No replication or machine-local state is introduced.
-Layer below: The full rule book, Rules 18, 23, 78, 82 and 119 for overlap; scripts/register-source.mjs parser and bootstrap declarations; scripts/build-register.mjs replay anchor and approvedConversion pin; src/rulegraph/graph.ts bootstrap-rule matching (all 119 recorded rule hashes reproduced unchanged, one added for 120); tests/e2e/register.test.ts rule-count consumer; the 1.x registry articles Agent Proposes, Operator Approves, No Manual Work (with The Agent Carries the Loop) and Self-Unblock Before Escalating, for the counterpart.
+Declared tier: ordinary
+Tier rationale: Generated output suggests critical; this round covers the bounded test-only repair and its publication. No constitutional obligation changes.
+Side effects: The generated source pointer and generation change. Historical review wording, base, approval digest and attribution are preserved byte-identically in docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md. This is a new open round, not a relabeling of historical approval.
+Undo and recovery: Revert the notice repair as a unit and regenerate publication; historical record remains in git and its exact evidence copy.
+Multi-machine posture: Source publication distributes through git; host-specific acceptance belongs to Studio. No new shared state.
+Layer below: Original record at c7e322e50 preserved verbatim in docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md; full constitution and normal register replay. Existing train-192-notice-repair-change-review.md owns the test repair, provenance, exact source replay and host refusal evidence.
 Bug class: none
 Bug evidence: none
 Hook bypass: none
 Convergence: none
-<!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
-Deferral: generated/conversion.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
-Deferral: generated/register.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
+Prompt review: No model-facing text or runtime judgment changes; exact existing owner test-reader patch only.
+Deferral: generated/register.json:1 | not-a-deferral=canonical replay of existing rule text, no new deferral
 
-Publication source: commit 6427ced9f on this branch, regenerated through scripts/build-register.mjs --replay --commit with --now 1792195200000 (2026-10-17), the same backdated clock as Rules 118 and 119, because the real clock refuses every replay build on main while overdue deadlines stand. The clock is not embedded in outputs: `node scripts/build-register.mjs --check --now 1792195200000` passes against these generated files with 120 rules. Rule 120 remains a coverage gap in the register rather than a fabricated holder.
-
-Counterpart (Rule 119): 1.x states parts of this obligation (the operator approves rather than authors; nothing, then an approval, then a credential; no manual work for the user) but not the person's whole part, never sending the person to a browser, provider site, command or steps, or the person's choice of whose accounts are used. So this change needs a 1.x counterpart, not "none". The PR body names it.
-
-Known red, outside this change: on the real clock `npm run register:check` and one case of tests/e2e/register.test.ts stop at "P3-NF-24: deadline passed for deferred:slack-intake-v1:36", the same refusal main gives. Separately, the checks job stops at scripts/check-change-review.mjs with "Cannot find module 'typescript'" because the workflow installs no dependencies; this change does not alter that step.
-
-Subject (14 paths): docs/01-the-rules.changelog.json, docs/01-the-rules.changelog.md, docs/01-the-rules.md, generated/capabilities.json, generated/capabilities.md, generated/conversion.json, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/bootstrap-anchor.json, scripts/build-register.mjs, tests/e2e/register.test.ts
-
-## Closing block
-
-simplestRobustRoute: This proposal is the simplest robust route: one new row in the existing rule table, its changelog entry, and the existing register regeneration. No new mechanism or gate is introduced here; the outbound check and live proofs are named for later building, as every Needs-building rule does.
-80/20: An independent read of the earlier draft returned YES, and its suggestion (state plainly what each account choice concedes) is in the rule; an independent pass on this exact tree is required.
-VERDICT: author submission; the independent verdict is recorded as a pass
+simplestRobustRoute: Preserve original approval as exact historical evidence and open this bounded publication round at its real integration base. This uses the existing review mechanism; no new gate or machinery. Exact source and independent desk qualification remain the end guards.
+80/20: Portable controls and cheap checks verify source; Studio owns physical launcher/full/independent/native/install/live gates.
+VERDICT: author submission; no independent convergence claimed
