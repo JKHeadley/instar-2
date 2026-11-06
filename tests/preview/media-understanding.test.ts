@@ -76,7 +76,8 @@ it('enforces output, timeout and stop through the existing resource owner', asyn
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
 
-it('admits a real local decode with Six allocation and refuses capacity before any decoder can spawn', { timeout: 30000 }, async () => {
+// The real decode allows 30s for ffmpeg and 90s for whisper; the outer bound includes cleanup.
+it('admits a real local decode with Six allocation and refuses capacity before any decoder can spawn', { timeout: 150000 }, async () => {
   const root = mkdtempSync(join(tmpdir(), 'media-allocation-'));
   try {
     const resources = createResourceOwner();
