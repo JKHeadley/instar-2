@@ -101,3 +101,26 @@ closure condition remain in force; no case is quarantined.
 The first train-181 affected-file run also retained a 300.015s timeout in the nineteen-build malformed-source matrix. Its holder/deadline, colocated-construct and shape/anchor groups now own fresh fixtures, at most nine builds each, and the same 300s case bound. Async register children explicitly receive the enclosing case timeout, preserving a finite child duration formerly supplied by the synchronous-child wrapper. Neither observation attributes the desk's untraced RPC error to a particular child.
 
 That local run also timed out in the three-call ambient-wiring group at 60.442s. Clean and ambient wiring now each prepare their own committed output and run one wiring check (two CLI calls per group), keeping 60s and both assertions. The committed-clone comparison remains paired within one group.
+
+## train-186 remaining cumulative batches, 2026-11-05
+
+The eight-file pinned gate on 6b60a7a46 retained three timeouts (127 passed,
+three failed, 1598.54s): normal/completion workflow 320.586s against 300s,
+holder/deadline matrix 300.014s against 300s, and intake matrix 120.008s
+against 120s. The first case also retained a 10s afterEach timeout. All four
+bridge groups and the actual output-reproduction case passed. The preceding
+isolated register run passed all 15 cases in 786.96s; it does not erase this red.
+
+Reuse intake owner fc59bc2781552c86b08cc13093ae1b95489142c1 whole: owner graph,
+decoder wiring and store context have independent fixtures with at most four
+CLI calls and the original 120s bound. Apply the existing 99db9a096 fresh-group
+pattern to the remaining batches: bootstrap, normal/completion and governed
+ingestion each retain the same 300s bound with at most seven full-graph builds;
+holders, deadlines and rungs own separate fixtures with at most four CLI calls
+and the same 300s bound. Every prior assertion remains. No deadline, child
+bound or production latency requirement changes; no case is quarantined.
+The observed hook timeout accompanies a timed-out asynchronous test body that
+can continue doing synchronous build work; smaller independent batches address
+that cumulative work before the timer expires. This does not attribute an
+untraced RPC error. Final qualification remains with the required pinned run
+and the existing pipeline-owned full-run closure condition.

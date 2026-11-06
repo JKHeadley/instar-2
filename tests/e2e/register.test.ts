@@ -60,7 +60,8 @@ describe('compiled register build adapter lifecycle', () => {
   // consecutive passing tests can otherwise starve Vitest's 60s reporting RPC.
   // The long multi-case test also yields between cases; no assertion is relaxed.
   afterEach(() => new Promise<void>(done => setImmediate(done)));
-  it('P3-NF-21 P3-NF-22 P3-NF-23 P3-NF-24 P3-NF-26 P3-NF-27 R1 normal extract and completion workflows invoke the provider and full graph ladder', async () => {
+  it.each(['bootstrap', 'normal and completion', 'governed ingestion'] as const)(
+    'P3-NF-21 P3-NF-22 P3-NF-23 P3-NF-24 P3-NF-26 P3-NF-27 R1 normal extract and completion workflows invoke the provider and full graph ladder (%s)', async group => {
     // Yield only between completed fixture/build phases; owner calls remain synchronous.
     const yieldToRunner = () => new Promise<void>(done => yieldImmediate(done));
     const root = mkdtempSync(join(tmpdir(), 'instar-register-normal-e2e-'));
@@ -104,27 +105,30 @@ describe('compiled register build adapter lifecycle', () => {
       const provider = { owner: 'part-two' as const, verifyExtract: (e: typeof parent.extract) => { calls.push('extract:' + e.vector.id); return reply({ owner: 'part-two', name: 'FactEnvelope', id: 'verified:fixture' } as FactReference); },
         enteringForce: () => { calls.push('force'); return reply(record); }, isCurrent: () => { calls.push('current'); return reply(true); },
         verifyShapeChange: () => { throw new Error('unchanged parent shape must not ask for approval'); }, types: s.f.ctx, separations: ownerSeparations };
-      expect(() => build(root, initial, { mode: 'bootstrap', now: 100 })).toThrow('phase verification');
-      expect(() => build(root, initial, { mode: 'bootstrap', provider, now: 100 })).toThrow('phase verification');
-      await yieldToRunner();
-      let phase: 'converted-unanchored' | 'anchored' = 'converted-unanchored';
-      const bootstrapProvider = { ...provider, verifyBootstrap: (binding: BootstrapBinding) => {
-        calls.push('bootstrap:' + binding.commit);
-        return reply({ phase, binding, fact: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: 'fixture:conversion-approval' } });
-      } };
-      // Conversion-phase approval is not approval of the later owner's contract.
-      expect(() => build(root, initial, { mode: 'bootstrap', provider: bootstrapProvider, now: 100 })).toThrow('lacks approved history');
-      expect(calls).toContain('bootstrap:' + initial);
-      await yieldToRunner();
-      phase = 'anchored';
-      expect(() => build(root, initial, { mode: 'bootstrap', provider: bootstrapProvider, now: 100 })).toThrow('already anchored');
-      await yieldToRunner();
-      phase = 'converted-unanchored';
-      expect(() => build(root, initial, { mode: 'bootstrap', now: 101, provider: { ...bootstrapProvider,
-        verifyBootstrap: binding => bootstrapProvider.verifyBootstrap({ ...binding, checkedAt: 100 }) } })).toThrow('stale/mismatched');
-      await yieldToRunner();
-      expect(() => build(root, initial, { mode: 'replay', provider: bootstrapProvider, now: 100 })).toThrow('offline shape verdict');
-      await yieldToRunner();
+      if (group === 'bootstrap') {
+        expect(() => build(root, initial, { mode: 'bootstrap', now: 100 })).toThrow('phase verification');
+        expect(() => build(root, initial, { mode: 'bootstrap', provider, now: 100 })).toThrow('phase verification');
+        await yieldToRunner();
+        let phase: 'converted-unanchored' | 'anchored' = 'converted-unanchored';
+        const bootstrapProvider = { ...provider, verifyBootstrap: (binding: BootstrapBinding) => {
+          calls.push('bootstrap:' + binding.commit);
+          return reply({ phase, binding, fact: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: 'fixture:conversion-approval' } });
+        } };
+        // Conversion-phase approval is not approval of the later owner's contract.
+        expect(() => build(root, initial, { mode: 'bootstrap', provider: bootstrapProvider, now: 100 })).toThrow('lacks approved history');
+        expect(calls).toContain('bootstrap:' + initial);
+        await yieldToRunner();
+        phase = 'anchored';
+        expect(() => build(root, initial, { mode: 'bootstrap', provider: bootstrapProvider, now: 100 })).toThrow('already anchored');
+        await yieldToRunner();
+        phase = 'converted-unanchored';
+        expect(() => build(root, initial, { mode: 'bootstrap', now: 101, provider: { ...bootstrapProvider,
+          verifyBootstrap: binding => bootstrapProvider.verifyBootstrap({ ...binding, checkedAt: 100 }) } })).toThrow('stale/mismatched');
+        await yieldToRunner();
+        expect(() => build(root, initial, { mode: 'replay', provider: bootstrapProvider, now: 100 })).toThrow('offline shape verdict');
+        await yieldToRunner();
+        return;
+      }
       const workflow = { mode: 'normal', branch: 'fixture', conversion, parent: { register: parent, generation },
         extract: { ...s.extract, rows: ownerRows, vector: { owner: 'part-two', name: 'FactPositionVector', id: 'fixture:mirrored' } },
         runs: [], catalog: { fixtures: [], probes: [], sentinels: [], semanticReviews: [] }, landedParts: [], references: [],
@@ -150,11 +154,13 @@ describe('compiled register build adapter lifecycle', () => {
       expect(result.register.extract.vector.id).toBe('fixture:mirrored');
       expect(calls).toContain('extract:fixture:mirrored'); expect(calls).toContain('force'); expect(calls).toContain('current');
       await yieldToRunner();
-      const source = workflow.conversion.sources.find(s => s.declaration.requiredFacts.number === uncovered[0]!.requiredFacts.number)!;
-      source.declaration.requiredFacts.deadline = 99;
-      expect(() => build(root, commit(), { mode: 'normal', workflow, provider, now: 100 })).toThrow('deadline passed');
-      await yieldToRunner();
-      source.declaration.requiredFacts.deadline = 1000;
+      if (group === 'normal and completion') {
+        const source = workflow.conversion.sources.find(s => s.declaration.requiredFacts.number === uncovered[0]!.requiredFacts.number)!;
+        source.declaration.requiredFacts.deadline = 99;
+        expect(() => build(root, commit(), { mode: 'normal', workflow, provider, now: 100 })).toThrow('deadline passed');
+        await yieldToRunner();
+        source.declaration.requiredFacts.deadline = 1000;
+      }
       const machine = s.f.principal('landing', 'system');
       // Enter the emitted package's boundary: its nominal decoder session is
       // distinct from the source-module test session, just as for a real provider.
@@ -168,18 +174,21 @@ describe('compiled register build adapter lifecycle', () => {
       Object.assign(s.f.ctx.register.actions, actionRegistry(Object.fromEntries(git('ls-files', '*.actions.json').trim().split('\n')
         .filter(Boolean).map(path => [path, readFileSync(join(root, path), 'utf8')]))));
       s.f.grant({ id: 'landing:grant', grantee: machine, standing: 'delegate', actions, expiresAt: 1000 });
-      const completedExtract = { ...workflow.extract, rows: result.register.entries.map(({ declaration }) => {
-        const { declaredBy: _site, ...authored } = declaration;
-        return ownerRows.find(r => r.id === declaration.id) ?? { id: declaration.id, version: 'v:' + declaration.id, status: 'live', since: revision, supersedes: [],
-          approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:approval' }, landedIn: revision, base: revision, contentHash: hash(authored) };
-      }) };
-      const completion = { ...workflow, mode: 'completion', pending: result.register, extract: completedExtract };
-      writeFileSync(join(root, 'register-source/completion.json'), JSON.stringify(completion)); git('add', '.'); git('commit', '-qm', 'fixture extract mirror');
-      const completed = build(root, git('rev-parse', 'HEAD').trim(), { mode: 'completion', workflow: completion, now: 100,
-        provider: { ...provider, types: s.f.ctx, landingStanding: { principal: compiledMachine, grants: s.f.grants, revocations: [], scope: s.f.scope, now: s.f.now } } });
-      expect(completed.register.commit).toBe(revision);
-      expect(completed.register.entries.every(e => !('state' in e.approvedIn))).toBe(true);
-      await yieldToRunner();
+      if (group === 'normal and completion') {
+        const completedExtract = { ...workflow.extract, rows: result.register.entries.map(({ declaration }) => {
+          const { declaredBy: _site, ...authored } = declaration;
+          return ownerRows.find(r => r.id === declaration.id) ?? { id: declaration.id, version: 'v:' + declaration.id, status: 'live', since: revision, supersedes: [],
+            approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:approval' }, landedIn: revision, base: revision, contentHash: hash(authored) };
+        }) };
+        const completion = { ...workflow, mode: 'completion', pending: result.register, extract: completedExtract };
+        writeFileSync(join(root, 'register-source/completion.json'), JSON.stringify(completion)); git('add', '.'); git('commit', '-qm', 'fixture extract mirror');
+        const completed = build(root, git('rev-parse', 'HEAD').trim(), { mode: 'completion', workflow: completion, now: 100,
+          provider: { ...provider, types: s.f.ctx, landingStanding: { principal: compiledMachine, grants: s.f.grants, revocations: [], scope: s.f.scope, now: s.f.now } } });
+        expect(completed.register.commit).toBe(revision);
+        expect(completed.register.entries.every(e => !('state' in e.approvedIn))).toBe(true);
+        await yieldToRunner();
+        return;
+      }
       // R1.1: normal ingestion must bind the sidecar to a real function, then
       // derive its record read/decoder observations and check live separation.
       const guarded = { ...s.holder([]), requiredFacts: { ...withoutBasis(s.holder([]).requiredFacts), decidesAlone: 'governed-state', enforces: { record: 'store', decoder: 'decode:Profile' } } };
@@ -208,11 +217,11 @@ describe('compiled register build adapter lifecycle', () => {
         await yieldToRunner();
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
-  // Full-tree workflow measured 63.4s at six workers and 81.9s under CPU stress; 37s isolated and 125s inside
-  // the full Mama PC suite (2026-09-29, cb7-r90), past the old 120s. This is a fixture execution budget, not an
-  // owner/runtime latency requirement (docs/defects/full-suite-load-timeouts.md).
+  // The cumulative workflow reached 320.586s in train-186's pinned gate. Fresh
+  // bootstrap, completion and governed-ingestion groups perform at most seven
+  // full-graph builds each, keeping the 300s bound and every original assertion.
   }, 300_000);
-  it.each(['holders and deadlines', 'colocated constructs', 'shape and anchor'] as const)(
+  it.each(['holders', 'deadlines', 'rungs', 'colocated constructs', 'shape and anchor'] as const)(
     'P3-NF-09 P3-NF-13 P3-NF-19 P3-NF-24 P3-NF-26 R1/R3/R5 shipped CLI rejects invalid holders, deadlines, rungs and unbound shape changes (%s)', async group => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-repair-e2e-'));
     const script = resolve('scripts/build-register.mjs');
@@ -255,8 +264,9 @@ describe('compiled register build adapter lifecycle', () => {
       // A live alone-deciding site must be bound to its checkpoint (P3-NF-19), so each blocking-site case carries a
       // literal-id binding and reaches the check it tests; the other cases carry none (a binding needs a live site).
       const binding = join(root, 'src/repair-binding.ts');
-      if (group === 'holders and deadlines') {
-        for (const [d, error] of cases) {
+      if (group === 'holders' || group === 'deadlines' || group === 'rungs') {
+        const selected = group === 'holders' ? cases.slice(0, 3) : group === 'deadlines' ? cases.slice(3, 7) : cases.slice(7);
+        for (const [d, error] of selected) {
           writeFileSync(join(root, 'src/README.md'), (d as { kind: string }).kind === 'features'
             ? `${readme}\n## Capabilities\n\n- \`fixture-feature\`: a test-only feature for the deadline cases.\n` : readme);
           if ((d as { kind: string }).kind === 'blocking sites') writeFileSync(binding, "import { bindBlockingSite } from './register/governance.js';\n"
@@ -319,11 +329,12 @@ describe('compiled register build adapter lifecycle', () => {
         await new Promise<void>(done => setImmediate(done));
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
-  // The old nineteen-build batch hit 300s in the train-181 repair run. Keep its
-  // case bound; fresh independent groups now contain at most nine CLI builds.
-  // This is a fixture execution budget, not an owner/runtime latency requirement.
+  // The remaining nine-build holder/deadline batch also reached 300s in the
+  // train-186 pinned gate. Fresh holder, deadline and rung groups keep at most
+  // four of those calls together; the 300s case and child bounds remain intact.
   }, 300_000);
-  it('P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring', async () => {
+  it.each(['owner graph', 'decoder wiring', 'store context'] as const)(
+    'P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring (%s)', async group => {
     const root = mkdtempSync(join(tmpdir(), 'instar-intake-cli-'));
     try {
       for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
@@ -335,31 +346,34 @@ describe('compiled register build adapter lifecycle', () => {
         git('add', '.'); git('commit', '-qm', 'intake owner source');
         return runNode([script, '--replay', '--now', '100', '--commit', git('rev-parse', 'HEAD'), '--out', join(root, 'out')], root);
       };
-      const good = await run(); expect(good.status, good.stderr).toBe(0);
-      const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
-      expect(source.authority).toBe('shape-only'); expect(source.authorityPrerequisites).toHaveLength(10);
-      expect(source.authorityPrerequisites.filter((p: { record: string }) => p.record === 'intake.contract')).toHaveLength(5);
+      if (group === 'owner graph') {
+        const good = await run(); expect(good.status, good.stderr).toBe(0);
+        const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
+        expect(source.authority).toBe('shape-only'); expect(source.authorityPrerequisites).toHaveLength(10);
+        expect(source.authorityPrerequisites.filter((p: { record: string }) => p.record === 'intake.contract')).toHaveLength(5);
+        const manifestPath = join(root, 'register-source/owner-references/part-four.json');
+        const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')); manifest.owner = 'part-five'; writeFileSync(manifestPath, JSON.stringify(manifest));
+        const wrongOwner = await run(); expect(wrongOwner.status).not.toBe(0); expect(wrongOwner.stderr).toContain('owner');
+        return;
+      }
       const path = join(root, 'src/intake/port.ts'), original = readFileSync(path, 'utf8');
-      for (const [from, to] of [
+      const mutations = [
         ["readEnforcedRecord('intake.dedup', 'intake.contract', 'readProjection', register, ctx);", ''],
         ["'intake.contract', 'readProjection'", "'intake.contract', 'authorAndAppend'"],
         ['prepareSnapshot(read(), ctx)', 'prepareSnapshot([], ctx)'],
         ['ownedBodies: [work]', 'ownedBodies: []'],
         ['export function dedup()', 'read = () => [];\nexport function dedup()'],
         ['export function admission()', 'context = () => ({ ...base, ownedBodies: [] });\nexport function admission()'],
-      ]) {
+      ];
+      for (const [from, to] of mutations.slice(group === 'decoder wiring' ? 0 : 2, group === 'decoder wiring' ? 2 : undefined)) {
+        expect(original.replace(from!, to!)).not.toBe(original);
         writeFileSync(path, original.replace(from!, to!)); const bad = await run();
         expect(bad.status).not.toBe(0); expect(bad.stderr).toContain('P3-NF-26');
       }
-      writeFileSync(path, original);
-      const manifestPath = join(root, 'register-source/owner-references/part-four.json');
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')); manifest.owner = 'part-five'; writeFileSync(manifestPath, JSON.stringify(manifest));
-      const wrongOwner = await run(); expect(wrongOwner.status).not.toBe(0); expect(wrongOwner.stderr).toContain('owner');
     } finally { rmSync(root, { recursive: true, force: true }); }
-  // Eight repository-building CLI runs took 56.6s isolated on WSL and hit the old 60s
-  // execution budget beside another serial test runner. This is a fixture hang bound,
-  // not a product latency assertion; retain every acceptance/refusal check.
-  // Evidence: docs/defects/register-intake-cli-wsl-budget.md.
+  // Apply the owning repair's fresh-group pattern to the remaining eight-build
+  // intake matrix named by train-175's gate: at most four calls, unchanged 120s.
+  // Every original owner/prerequisite/consumer assertion remains.
   }, 120_000);
   // Fresh repositories keep these independent groups isolated. At most four CLI
   // builds share the unchanged 120s case bound, instead of ten.
