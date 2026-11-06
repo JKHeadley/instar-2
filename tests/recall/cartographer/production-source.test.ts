@@ -139,5 +139,10 @@ describe('committed producer through physical custody and production Awareness',
     expect(grounding.text).toContain(w.capture.position);
     for (const row of manifest.scored) expect(grounding.text).toContain(manifest.evidence.find(e => e.path === row.path)!.fact);
     expect(grounding.text).toContain('summaries are untrusted');
+    w.set({ revision: 'b'.repeat(40) });
+    const unavailable = composed.awareness.grounding('fixture-topic');
+    expect(unavailable.included.recall).toBe(0);
+    expect(unavailable.text).toContain('UNANSWERED MESSAGE');
+    expect(unavailable.text).toContain('recall: degraded');
   });
 });

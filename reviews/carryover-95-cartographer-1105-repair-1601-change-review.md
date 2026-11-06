@@ -38,6 +38,9 @@ originals while bounding projections and require evidence at the actual consumer
 The original server.ts:17327–17515 producer and routes.ts:8984–9333 consumer remain
 in the pinned wiring excerpts. No missing full-feature behavior is claimed retired.
 
+Consumer failure neighbor: when the captured revision becomes unavailable, real Awareness
+grounding retains the unanswered user message and reports degraded recall with zero items.
+
 ## Closing block
 
 simplestRobustRoute: Adapt the original pinned Git identity reader and use the existing exact persistence, mediated custody, signed observation and Awareness owners. This is that route; no private service, grant registry or second memory truth.
