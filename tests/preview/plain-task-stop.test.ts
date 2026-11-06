@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { createJournalWorker, openPreviewJournal, LEGACY_UNKNOWN_ANSWER_NOTICE, unknownAnswerNotice,
   continuityDisclosure, type ReplyGrounding } from './journal-test-worker.js';
 import { HOLDING_REPLY, parseJevResponse, parseReplyReviewVerdict } from './reply-check.js';
@@ -35,7 +36,7 @@ it('the observer excerpt and old source composition fail the same plain-stop con
   expect(captured.workerFinding).toContain('workspace full');
 });
 
-for (const receipt of [1, null]) it(`recorded task and uncertain outcome produce a plain notice; receipt=${receipt} never replays`, async () => {
+for (const basis of ['summary', 'set-aside'] as const) for (const receipt of [1, null]) it(`recorded task and uncertain outcome produce a plain notice; ${basis}, receipt=${receipt} never replays`, async () => {
   const root = mkdtempSync(join(tmpdir(), 'plain-task-stop-')), path = join(root, 'journal');
   let journal = openPreviewJournal(path, key, genesis), calls = 0;
   const sent: string[] = [];
@@ -57,7 +58,7 @@ for (const receipt of [1, null]) it(`recorded task and uncertain outcome produce
     journal.append({ kind: 'sent', id: before, message: 756, at: 1000 });
     worker.intake([update(captured.update, captured.request)]);
     const grounding: ReplyGrounding = { packetSha256: 'recorded-shape-offline', summaryThrough: captured.summaryThrough,
-      compactedThrough: captured.summaryThrough, history: [], recalled: [], people: [], commitments: [], channelItems: [],
+      ...(basis === 'summary' ? { compactedThrough: captured.summaryThrough } : { setAsideThrough: captured.summaryThrough }), history: [], recalled: [], people: [], commitments: [], channelItems: [],
       corrections: [], memoryChanges: [], memoryCandidates: [] };
     journal.append({ kind: 'reserve', id: current, grounding, prompt: JSON.stringify({ messages: [
       { role: 'user', content: captured.request },
@@ -66,7 +67,8 @@ for (const receipt of [1, null]) it(`recorded task and uncertain outcome produce
     await worker.drain(); await worker.drain();
     expect(sent).toHaveLength(1); assertPlainStop(sent[0]!);
     expect(sent[0]).toContain(captured.request);
-    expect(sent[0]).toContain('Earlier conversation is now summarized for me.');
+    expect(sent[0]).toContain(basis === 'summary' ? 'Earlier conversation is now summarized for me.'
+      : 'Earlier conversation no longer fits in my view; it is saved and searchable, but not summarized.');
     expect(sent[0]).toContain('Your previous request is still open; no finished answer is confirmed.');
     const turn = journal.view.turns.get(current)!;
     expect(turn.answer).toBeUndefined();
@@ -113,5 +115,36 @@ for (const toolChecks of [undefined, 6]) it(`keeps historical notice bytes and c
     expect(journal.view.order[0]?.intent).toBe(historical);
     expect(JSON.parse(context).history[0]).toMatchObject({ answer: null, notice: historical,
       outcome: 'loss notice delivered; model UNKNOWN' });
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+for (const fault of ['none', 'ordinary-answer', 'wording', 'basis', 'digest', 'capture'] as const)
+it(`plain continuity retains exact journal checks: ${fault}`, () => {
+  const root = mkdtempSync(join(tmpdir(), 'plain-stop-account-')), path = join(root, 'journal');
+  const journal = openPreviewJournal(path, key, genesis);
+  const sha = (text: string) => createHash('sha256').update(text).digest('hex');
+  try {
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => 'unused', checkOutbound: () => {}, send: async () => 1 });
+    worker.intake([update(1, 'An earlier request'), update(2, 'The current request')]);
+    journal.append({ kind: 'reserve', id: id(2), grounding: { packetSha256: 'p', summaryThrough: 1,
+      compactedThrough: 1, history: [], recalled: [], people: [], commitments: [], channelItems: [],
+      corrections: [], memoryChanges: [], memoryCandidates: [] }, at: 1000 });
+    if (fault === 'ordinary-answer') journal.append({ kind: 'answer', id: id(2), text: 'An answer.', state: 'complete', at: 1000 });
+    else {
+      journal.append({ kind: 'model-uncertain', id: id(2), state: 'uncertain', at: 1000 });
+      journal.append({ kind: 'notice', id: id(2), noticeClass: 'unknown-answer', at: 1000 });
+    }
+    const disclosure = fault === 'wording' ? 'Everything has been completed.'
+      : 'Earlier conversation is now summarized for me. Your previous request is still open; no finished answer is confirmed.';
+    const text = `${disclosure} ${unknownAnswerNotice({ text: 'The current request' })}`;
+    const append = () => journal.append({ kind: 'intent', id: id(2), text, chat: genesis.chat, update: 2,
+      grant: genesis.grant, at: 1000, continuity: { prePauseInbound: id(1),
+        capture: fault === 'capture' ? 'wrong' : sha(journal.view.order[0]!.raw), summarizedThrough: 1,
+        grounding: 'p', disposition: 'pending', reference: 'no reply from me yet', disclosure,
+        ...(fault === 'basis' ? { basis: 'set-aside' as const } : {}),
+        replyDigest: fault === 'digest' ? 'wrong' : sha(text) } });
+    if (fault === 'none') expect(append).not.toThrow();
+    else expect(append).toThrow('continuity account refused');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
