@@ -18,6 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/telegram-files.test.ts
 Hook bypass: none
 Convergence: none
+Deferral: generated/register.json:1 | not-a-deferral=Mechanical register replay reproduces existing governing text; this repair introduces no deferred work.
 
 1.X FIRST: searched actual JKHeadley/instar main snapshot
 9b5790e8105f94c8ad6f13243d063e7c7efd23b6 in src/ and docs/specs/ for process probes,
