@@ -38,6 +38,13 @@ Deferral: docs/evidence/train-192-notice-owner/constitution-attributed-statement
 Deferral: docs/evidence/train-192-notice-owner/constitution-one-constitution-change-review.md:30 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
 Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md:29 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
 
+Prompt finding: 0725f0150c56 | protocol-literal | The role and tool-refusal sentence is fixed prompt prologue text in conversationSessionPrompt; the regression uses it only to normalize historical packets for digest comparison, and no gate or model verdict keys on this phrase; read at both ends, unchanged by this merge.
+Prompt finding: 27d7720e7977 | protocol-literal | Fixed prologue sentence; the regression splits on it as the boundary of the prologue under byte comparison, and it is not a model decision trigger; read at both ends, unchanged by this merge.
+Prompt finding: 4106b49fff07 | protocol-literal | Fixed obligation-decision clause; replacedClause needs its exact text to swap in the tool-route wording, and the test checks that delivered guidance rather than supplying a verdict; unchanged by this merge.
+Prompt finding: 849db3a6296a | protocol-literal | The agent's own fixed reply for an empty memory list, produced without a model; the startsWith branch recognizes that exact own output, never a person's words or a meaning; unchanged by this merge.
+Prompt finding: 85544c20941f | protocol-literal | Fixed infrastructure outage sentence sent with no model call; the test checks the actual notice, and the replay pattern matches only that own notice; unchanged by this merge.
+Prompt finding: e8708c7fea24 | protocol-literal | Fixed sourceLabel attribution instruction in delivered guidance; the regression checks the instruction is delivered, not a desired semantic answer; unchanged by this merge.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: extend the existing inspector for observed metadata and restrictive first-fetch compatibility. It prevents deterministic refusal before any model launch without a retry loop, new verifier or reauthorization ceremony. Existing malformed-policy, identity, hook, cap, stop, durable-intake and effect guards remain. The desk's new answer check supplies unattended shipped-path acceptance; this record claims no live answer yet.
