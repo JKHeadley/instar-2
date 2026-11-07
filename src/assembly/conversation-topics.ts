@@ -131,7 +131,9 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
             if (!lease) return null;
             // Physical admission can wait too. Measure after its final retry,
             // before this lease becomes a worker. Resident turns keep their context.
-            if (config.capacity) {
+            // Rule 15: headroom decides additional workers. With none live, the agent stays
+            // reachable; the resource owner's physical ceilings above still hold.
+            if (config.capacity && active.size > 0) {
               let admitted = false;
               try {
                 let room = await config.capacity();
