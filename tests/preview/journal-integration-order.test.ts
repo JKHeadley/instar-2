@@ -1,3 +1,4 @@
+import { unknownAnswerNotice } from './journal.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -53,7 +54,7 @@ it('sends a later loss notice while an earlier ordinary turn is held for a pendi
     // undecided. Its answer also ended uncertain, so the fixed incomplete-answer notice takes
     // precedence over a memory acknowledgement; the unresolved memory state remains durable.
     expect(journal.view.order[2]).toMatchObject({ memoryPending: true, memoryUndecided: true });
-    expect(journal.view.order[2]?.intentBody).toBe(UNKNOWN_ANSWER_NOTICE);
+    expect(journal.view.order[2]?.intentBody).toBe(unknownAnswerNotice({ text: 'Actually, the cedar trail starts at West Pier.' }));
     expect(sends.filter(item => item.update === 3 && item.text.includes(UNKNOWN_ANSWER_NOTICE))).toHaveLength(1);
     expect(sends.filter(item => item.text.includes(UNKNOWN_ANSWER_NOTICE))).toHaveLength(2);
   } finally { journal?.close(); rmSync(root, { recursive: true, force: true }); }

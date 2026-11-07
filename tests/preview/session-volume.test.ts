@@ -10,10 +10,13 @@ import { attachSessionVolume, detachSessionVolume } from './tool-turn.mjs';
 
 const darwin = process.platform === 'darwin';
 const mounts: string[] = [], roots: string[] = [];
+// A case mounts at most three volumes and each forced detach may take its full 60 s bound, so this cleanup needs more
+// than vitest's 10 s hook default: the Studio full run of 59ed6fc24 failed a passing case on that default alone.
+const CLEANUP_BUDGET_MS = 3 * 60_000 + 60_000;
 afterEach(() => {
   for (const mount of mounts.splice(0)) detachSessionVolume(mount);
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+}, CLEANUP_BUDGET_MS);
 
 it.runIf(darwin)('bounds the sum of a session\'s writes at its volume, keeps ordinary multi-file work, and persists across a remount', () => {
   // On the ordinary disk, as the runner root is (a RAM-disk test temporary refuses disk-image attachment).

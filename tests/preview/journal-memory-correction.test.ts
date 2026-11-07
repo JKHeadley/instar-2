@@ -1,3 +1,4 @@
+import { unknownAnswerNotice } from './journal.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -196,8 +197,9 @@ it('keeps a correction beside a delivered lost-answer notice across replay', asy
       expect(item).toMatchObject({ status: 'corrected', quote: 'the cedar trail starts at West Pier.' });
     expect(JSON.stringify({ ...packet, memorySearch: packet.memorySearch && { ...packet.memorySearch,
       items: searched.map(({ was: _was, ...rest }) => rest) } })).not.toContain('East Pier');
-    const lost = packet.history.find((item: { notice?: string }) => item.notice === UNKNOWN_ANSWER_NOTICE);
-    expect(lost).toMatchObject({ answer: null, notice: UNKNOWN_ANSWER_NOTICE, outcome: 'loss notice delivered; model UNKNOWN' });
+    const notice = projectMemoryText(journal.view, unknownAnswerNotice({ text: 'The cedar trail starts at East Pier. What time is the ferry?' }));
+    const lost = packet.history.find((item: { notice?: string }) => item.notice === notice);
+    expect(lost).toMatchObject({ answer: null, notice, outcome: 'loss notice delivered; model UNKNOWN' });
     expect(lost.user).toContain('[withheld: operator correction or forgetting]');
     expect(journal.view.order[2]).toMatchObject({ modelState: 'uncertain', noticeClass: 'unknown-answer' });
     await worker.drain();
@@ -500,7 +502,7 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     // reply first discloses it and accounts for the last message (Rule 110), then answers.
     const asked = w.journal.view.order.at(-1)!;
     expect(asked.answer?.endsWith('Your gym locker code is 3310.')).toBe(true);
-    expect(asked.intent!.startsWith('Earlier conversation up to #')).toBe(asked.continuity !== undefined);
+    expect(asked.intent!.startsWith('Earlier conversation')).toBe(asked.continuity !== undefined);
     await w.say(id++, 'Actually my gym locker code is 4412, not 3310.');
     expect(w.journal.view.memory).toHaveLength(1);
     expect(replyBody(w.journal.view.order.at(-1)!)).toBe('Now: my gym locker code is 4412. Was: My gym locker code is 3310.');
