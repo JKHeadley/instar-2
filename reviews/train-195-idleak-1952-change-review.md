@@ -30,6 +30,9 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged source-labe
 Decision: train-195-idleak-plain | Use the existing plain formatter for every reply and admit it in persisted ordinary accounts; retain historical reader compatibility and exact internal evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-195-idleak-1952-PROGRESS.md
 Decision: train-195-idleak-pending | Keep no finished answer is confirmed: accurate for undelivered, held or failed ordinary turns, without claiming a stopped task. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-195-idleak-1952-PROGRESS.md
 
+Deferral: generated/register.json:1 | not-a-deferral=Existing prerequisite descriptions are republished unchanged; no work is deferred.
+Generated publication: Existing replay generator from committed source 325be822f8da3bf734fd4aa1561f5d62fa9070bc, generation sha256:de3ce6338c476286e3c4bc995d6cd491bb4ff0e5350a579318be10e9b48fc203. No authority declarations or native certificates changed.
+
 Decision: train-195-idleak-pins | Refresh existing owner artifact hashes and generated register publication with the desk tools; no grant or native conformance declaration changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-195-idleak-1952-PROGRESS.md
 
 ## Closing block
