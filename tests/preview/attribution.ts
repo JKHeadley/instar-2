@@ -14,7 +14,9 @@ export interface SourceRecord { by: string; strength: SourceStrength; at: number
 export type AttributionRefusal = 'malformed-marker' | 'cannot-be-shown' | 'date-mismatch' | 'no-quote' | 'quote-not-in-record'
   | 'unsourced' | 'unsourced-rule' | 'promoted-unsourced' | 'relayed' | 'overstated';
 export interface AttributionFinding { reason: AttributionRefusal; span: string; why: string; person?: string; ref?: string }
-export interface MarkerFact { index: number; marker: string; ref: string | null; quote: string | null; record: SourceRecord | null; refusal: AttributionRefusal | null }
+/** Text offsets: from the opening of the quote a marker backs (or the marker, when it has none) to the marker's end. */
+export interface TextSpan { start: number; end: number }
+export interface MarkerFact extends TextSpan { index: number; marker: string; ref: string | null; quote: string | null; record: SourceRecord | null; refusal: AttributionRefusal | null }
 /** `unchecked` is never a pass: no verdict exists (timeout, unreadable answer, no call allowance). It is counted. */
 export type AttributionVerdict = 'pass' | 'refuse' | 'unchecked';
 /** What the row keeps of each credit it saw, passed or refused: the later wording a trace reads back. */
@@ -38,25 +40,26 @@ export const normalizeWords = (text: string) => text.normalize('NFKC').replace(/
 
 /** The quote a marker backs: the last quoted words since the previous marker, closing on the marker's own line. A person's
  * words can run over several lines; the marker that claims them cannot sit lines away. */
-function quoteBefore(text: string, from: number, at: number): string | null {
+function quoteBefore(text: string, from: number, at: number): { words: string; start: number } | null {
   const last = [...text.slice(from, at).matchAll(/"([^"]+)"|\u201c([^\u201d]+)\u201d/gu)].at(-1);
   if (!last || text.slice(from + last.index + last[0].length, at).includes('\n')) return null;
-  return (last[1] ?? last[2])!;
+  return { words: (last[1] ?? last[2])!, start: from + last.index };
 }
 
-/** The exact facts. No model is asked about any of these, and a failed one is a refusal on its own. */
-export function markerFacts(text: string, resolve: (ref: string) => SourceRecord | null): MarkerFact[] {
+/** The exact facts. No model is asked about any of these, and a failed one is a refusal on its own. Markers from `upto` on
+ * are left out and their sources never looked up. */
+export function markerFacts(text: string, resolve: (ref: string) => SourceRecord | null, upto = text.length): MarkerFact[] {
   let from = 0;
-  return [...text.matchAll(MARKER)].map((match, index) => {
-    const marker = match[0], parsed = parseMarker(marker), start = from;
-    from = match.index + marker.length;
-    if (!parsed) return { index, marker, ref: null, quote: null, record: null, refusal: 'malformed-marker' as const };
-    const quote = quoteBefore(text, start, match.index), record = resolve(parsed.ref);
+  return [...text.matchAll(MARKER)].filter(match => match.index < upto).map((match, index) => {
+    const marker = match[0], parsed = parseMarker(marker), previous = from, end = match.index + marker.length;
+    from = end;
+    if (!parsed) return { index, marker, start: match.index, end, ref: null, quote: null, record: null, refusal: 'malformed-marker' as const };
+    const found = quoteBefore(text, previous, match.index), quote = found?.words ?? null, record = resolve(parsed.ref);
     const refusal: AttributionRefusal | null = !record ? 'cannot-be-shown'
       : new Date(record.at).toISOString().slice(0, 10) !== parsed.date ? 'date-mismatch'
         : quote === null ? 'no-quote'
           : !normalizeWords(record.text).includes(normalizeWords(quote)) ? 'quote-not-in-record' : null;
-    return { index, marker, ref: parsed.ref, quote, record, refusal };
+    return { index, marker, start: found?.start ?? match.index, end, ref: parsed.ref, quote, record, refusal };
   });
 }
 
@@ -94,28 +97,43 @@ export const ATTRIBUTION_TEXT_MAX = 16_384;
 /** Rule 60: one text takes at most this many judge calls (128 KiB of prose). Past it the rest is recorded unchecked, never dropped. */
 export const ATTRIBUTION_CHUNK_LIMIT = 8;
 
-/** 1.x AttributionJudge.chunkForJudge: split at paragraph boundaries, each chunk within the call's input bound, so the whole
- * text is read. A paragraph longer than the bound is cut at its last line or sentence end inside it when there is one, so
- * a marker stays on the line of the quote it backs. */
-export function chunkForJudge(text: string, max = ATTRIBUTION_TEXT_MAX): string[] {
-  if (text.length <= max) return [text];
-  const chunks: string[] = [];
-  let current = '';
-  for (const paragraph of text.split(/\n{2,}/u)) {
-    let rest = paragraph;
-    while (rest.length > max) {
-      if (current) { chunks.push(current); current = ''; }
-      const window = rest.slice(0, max), end = Math.max(window.lastIndexOf('\n'), window.lastIndexOf('. ') + 1);
-      const cut = end > max / 2 ? end + 1 : max;
-      chunks.push(rest.slice(0, cut));
-      rest = rest.slice(cut);
-    }
-    if (current && current.length + rest.length + 2 > max) { chunks.push(current); current = ''; }
-    current = current ? `${current}\n\n${rest}` : rest;
+/** Where to end the chunk starting at `at`: a paragraph, line or sentence end past half the bound, and never inside a kept
+ * span. When the bound falls inside one that fits in a chunk, the chunk ends before it (at a boundary if there is one), so
+ * a credit reaches the judge whole. A span longer than a chunk is cut at the bound. */
+function chunkEnd(text: string, at: number, limit: number, keep: readonly TextSpan[]): number {
+  const near = keep.filter(span => span.end > at && span.start < limit);
+  const clear = (cut: number) => near.every(span => cut <= span.start || cut >= span.end);
+  const held = near.find(span => span.start < limit && limit < span.end);
+  const fits = held && held.start > at && held.end - held.start <= limit - at;
+  const ceiling = fits ? held.start : limit, floor = fits ? at : at + (limit - at) / 2;
+  for (const separator of ['\n\n', '\n', '. ']) {
+    for (let found = text.lastIndexOf(separator, ceiling - separator.length); found >= 0 && found + separator.length > floor; found = found ? text.lastIndexOf(separator, found - 1) : -1)
+      if (clear(found + separator.length)) return found + separator.length;
   }
-  if (current) chunks.push(current);
+  return ceiling;
+}
+
+/** 1.x AttributionJudge.chunkForJudge: every character is in exactly one chunk, each within the call's input bound, split at
+ * paragraph boundaries first. `keep` (markerFacts' spans) marks what a cut must stay out of. */
+export function chunkForJudge(text: string, max = ATTRIBUTION_TEXT_MAX, keep: readonly TextSpan[] = []): string[] {
+  const chunks: string[] = [];
+  let at = 0;
+  while (text.length - at > max) {
+    const end = chunkEnd(text, at, at + max, keep);
+    chunks.push(text.slice(at, end));
+    at = end;
+  }
+  chunks.push(text.slice(at));
   return chunks;
 }
+
+/** The whole text's facts one chunk answers for, numbered within the chunk as its packet numbers them. 1.x kept this split
+ * too: the model counts markers within its chunk, the caller's exact facts belong to the whole text. */
+export const factsInChunk = (facts: readonly MarkerFact[], start: number, end: number): MarkerFact[] => facts
+  .filter(fact => fact.end - fact.marker.length >= start && fact.end - fact.marker.length < end).map((fact, index) => ({ ...fact, index }));
+/** True when a chunk edge falls inside a span, which only an attribution longer than one check can make happen. */
+export const chunkCutsSpan = (spans: readonly TextSpan[], start: number, end: number) => spans
+  .some(span => (span.start < start && start < span.end) || (span.start < end && end < span.end));
 
 /** The packet for one chunk. The caller chunks with chunkForJudge, so text is never cut here. */
 export function attributionPacket(input: { text: string; surface: AttributionSurface; facts: readonly MarkerFact[]; conversation?: readonly { from: string; text: string }[] }): string {

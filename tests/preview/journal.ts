@@ -55,8 +55,8 @@ import { evaluateMinimalPath, minimalResponse } from '../../src/operator/live.js
 import type { IndependentSurfaceVerifierPort, InstalledShape, MinimalDependency, SurfaceChallenge, VerifiedSurfaceProof } from '../../src/operator/contracts.js';
 import { authenticateTelegramSender, principalBoundToUpdate, systemWriters, verifiedAtIntake, TELEGRAM_ADAPTER, testOriginWriter, writerBoundToRaw, writerRecord, type SystemMethod, type WriteOrigin, type WriterRecord } from './intake-principal.js';
 import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
-import { ATTRIBUTION_CHUNK_LIMIT, ATTRIBUTION_OBJECTION, attributionDigest, chunkForJudge, mergeAttribution, attributionReason, decideAttribution, markerFacts, parseAttributionAnswer, worthJudging,
-  attributionPacket, type AttributionFinding, type AttributionMode, type AttributionResult, type AttributionSurface, type AttributionVerdict, type CreditedSpan, type SourceRecord } from './attribution.js';
+import { ATTRIBUTION_CHUNK_LIMIT, ATTRIBUTION_OBJECTION, ATTRIBUTION_TEXT_MAX, attributionDigest, chunkCutsSpan, chunkForJudge, factsInChunk, mergeAttribution, attributionReason, decideAttribution, markerFacts, parseAttributionAnswer, worthJudging,
+  attributionPacket, type AttributionFinding, type AttributionMode, type AttributionResult, type AttributionSurface, type AttributionVerdict, type CreditedSpan, type MarkerFact, type SourceRecord } from './attribution.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type SettledSendOutcome, type Speaker } from './outbound-provenance.js';
 import { acceptedMemoryFailure, memoryFailureOffer, memoryFailures, memoryLearningLine, memoryLessons, validStoredMemoryFailure, withLearnedCues,
   MEMORY_FAILURE_DECISION, type MemoryFailureProposal } from './memory-learning.js';
@@ -6941,15 +6941,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** One check of exact text, recorded once. The same text is never judged twice, and a call a crash interrupted stays
    * unchecked: its reservation is the record, so it is not replayed. Null when no check ran. */
-  const attributionStep = async (id: string, text: string, surface: AttributionSurface, conversation?: { from: string; text: string }[]): Promise<AttributionResult | null> => {
+  const attributionStep = async (id: string, text: string, surface: AttributionSurface, facts: readonly MarkerFact[], splitCredit: boolean, conversation?: { from: string; text: string }[]): Promise<AttributionResult | null> => {
     const port = ports.attribution;
     if (!port) return null;
     const digest = attributionDigest(text);
     const prior = journal.view.attribution?.find(row => row.id === id && row.digest === digest);
     if (prior) return prior;
     const names = [operatorName(journal.view), ...journal.view.people.map(person => person.name)].filter((name): name is string => Boolean(name));
-    if (!worthJudging(text, names)) return null;
-    const started = ports.now(), facts = markerFacts(text, attributionSource);
+    if (!facts.length && !worthJudging(text, names)) return null;
+    const started = ports.now();
     const record = (result: AttributionResult, usage?: ModelUsage) => {
       journal.append({ kind: 'attribution-check', id, digest, surface, mode: port.mode, verdict: result.verdict, findings: result.findings,
         claims: result.claims, ...(result.spans?.length ? { spans: result.spans } : {}), ...(result.cause === undefined ? {} : { cause: result.cause }), latencyMs: Math.max(0, ports.now() - started),
@@ -6958,6 +6958,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     };
     // A failed exact fact needs no reading: nothing a model says can put the words in the record.
     if (facts.some(fact => fact.refusal)) return record(decideAttribution(text, surface, facts, []));
+    // A judge shown part of a credit would read it as unsourced. The exact facts above held; the reading did not happen.
+    if (splitCredit) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'attribution longer than one check' });
     if (halted() || journal.view.calls >= journal.view.limits.maxCalls)
       return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'call cap' });
     gate();
@@ -6973,16 +6975,22 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
   };
   /** The whole text, chunked as 1.x did: every chunk is its own recorded check under the same call cap and stop, and the
-   * first keeps the plain id so a short text is recorded exactly as before. Past ATTRIBUTION_CHUNK_LIMIT the rest is
-   * recorded `unchecked` with no call, so an unread tail is counted, never silently dropped. */
+   * first keeps the plain id so a short text is recorded exactly as before. The exact facts come from the whole text, so a
+   * cut can never change one. Past ATTRIBUTION_CHUNK_LIMIT the rest is recorded `unchecked` with no call and no source
+   * lookup, so an unread tail is counted, never silently dropped. */
   const attributionOf = async (id: string, text: string, surface: AttributionSurface, conversation?: { from: string; text: string }[]) => {
-    const chunks = chunkForJudge(text), results: AttributionResult[] = [];
-    for (const [index, chunk] of chunks.slice(0, ATTRIBUTION_CHUNK_LIMIT).entries()) {
-      const result = await attributionStep(index === 0 ? id : `${id}#${String(index)}`, chunk, surface, conversation);
+    if (!ports.attribution) return null;
+    const spans = markerFacts(text, () => null), chunks = chunkForJudge(text, ATTRIBUTION_TEXT_MAX, spans), results: AttributionResult[] = [];
+    const read = chunks.slice(0, ATTRIBUTION_CHUNK_LIMIT), facts = markerFacts(text, attributionSource, read.join('').length);
+    let start = 0;
+    for (const [index, chunk] of read.entries()) {
+      const end = start + chunk.length;
+      const result = await attributionStep(index === 0 ? id : `${id}#${String(index)}`, chunk, surface, factsInChunk(facts, start, end), chunkCutsSpan(spans, start, end), conversation);
       if (result) results.push(result);
+      start = end;
     }
-    if (chunks.length > ATTRIBUTION_CHUNK_LIMIT && ports.attribution) {
-      const tailId = `${id}#${String(ATTRIBUTION_CHUNK_LIMIT)}`, tail = chunks.slice(ATTRIBUTION_CHUNK_LIMIT).join('\n\n'), digest = attributionDigest(tail);
+    if (chunks.length > ATTRIBUTION_CHUNK_LIMIT) {
+      const tailId = `${id}#${String(ATTRIBUTION_CHUNK_LIMIT)}`, tail = chunks.slice(ATTRIBUTION_CHUNK_LIMIT).join(''), digest = attributionDigest(tail);
       const prior = journal.view.attribution?.find(row => row.id === tailId && row.digest === digest);
       const result: AttributionResult = prior ?? { verdict: 'unchecked', findings: [], claims: 0, cause: `text past ${String(ATTRIBUTION_CHUNK_LIMIT)} checks` };
       if (!prior) journal.append({ kind: 'attribution-check', id: tailId, digest, surface, mode: ports.attribution.mode, verdict: 'unchecked', findings: [],

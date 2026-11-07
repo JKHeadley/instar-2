@@ -108,7 +108,7 @@ describe('the verdict', () => {
 });
 
 const FALSE_CREDIT = 'Sam told me never to spawn on the laptop.', HONEST = 'I would avoid the laptop; that is my own view.', KEPT = 'The build is done.';
-interface Scenario { mode?: AttributionMode; answer?: string; judge?: 'refuse' | 'pass' | 'throw' | 'junk' | 'partial'; revised?: string; crash?: string; maxCalls?: number; note?: string; imported?: { account: string; id: string; from: string; text: string; conversation: string } }
+interface Scenario { mode?: AttributionMode; answer?: string; judge?: 'refuse' | 'pass' | 'throw' | 'junk' | 'partial' | 'relayed'; revised?: string; crash?: string; maxCalls?: number; note?: string; ask?: string; imported?: { account: string; id: string; from: string; text: string; conversation: string } }
 async function drive(s: Scenario) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'attribution-'))); roots.push(root);
   const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(23), sends: string[] = [], packets: string[] = [];
@@ -125,6 +125,8 @@ async function drive(s: Scenario) {
       if (s.judge === 'throw') throw Error('timeout');
       if (s.judge === 'junk') return { value: 'not json' };
       if (s.judge === 'partial') return { value: JSON.stringify({ claims: [{ span: (JSON.parse(packet) as { packet: { text: string } }).packet.text.split(' [source')[0], marker: 0 }] }) };
+      if (s.judge === 'relayed') { const seen = JSON.parse(packet) as { packet: { markers: { index: number; quote: string }[] } }, last = seen.packet.markers.at(-1);
+        return { value: JSON.stringify({ claims: last ? [{ span: last.quote, person: 'Sam', kind: 'statement', marker: last.index, labelled: false, stillCredits: false, recap: false, ownWords: 'relayed', faithful: true, why: 'pasted' }] : [] }) }; }
       const text = (JSON.parse(packet) as { packet: { text: string } }).packet.text;
       const refuse = (s.judge ?? 'refuse') === 'refuse' && text.includes('Sam told me');
       return { value: JSON.stringify({ claims: refuse ? [{ span: 'Sam told me never to spawn on the laptop', person: 'Sam', kind: 'rule', marker: null, labelled: false, stillCredits: false, recap: false, ownWords: null, faithful: null, why: 'no record' }] : [] }) };
@@ -139,7 +141,7 @@ async function drive(s: Scenario) {
   let journal = open(true), worker = createJournalWorker(journal, ports());
   try {
     if (s.imported) importChannelItems(journal, [{ source: 'conversation', at: 1789000000000, ...s.imported }], s.imported.account, 1790000000000);
-    worker.intake([{ update_id: 1, message: { message_id: 1, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'Where should builds run?' } }]);
+    worker.intake([{ update_id: 1, message: { message_id: 1, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: s.ask ?? 'Where should builds run?' } }]);
     if (s.crash) { await expect(worker.drain()).rejects.toThrow('TEST crash'); journal.close(); journal = open(false); worker = createJournalWorker(journal, ports()); }
     await worker.drain();
     const note = s.note === undefined ? undefined : await worker.attributionOfNote('toolu_1', s.note);
@@ -258,6 +260,64 @@ describe('imported records resolve, and prove less than a live turn', () => {
   it('a live turn resolves by its journal id and as verified', async () => {
     const result = await drive({ mode: 'record', answer: KEPT, judge: 'pass', note: `Sam: "Where should builds run?" [source: telegram 7654321/1 ${new Date(1790000000000).toISOString().slice(0, 10)}]` });
     expect(JSON.parse(result.packets[0]!).packet.markers[0]).toMatchObject({ record: { strength: 'verified' } });
+  });
+});
+
+describe('a long note never turns a true credit into a refusal (review round 2: the cut fell inside the quote)', () => {
+  const quote = 'The build is green. Please ship it after the final test.', date = new Date(1789000000000).toISOString().slice(0, 10);
+  const marker = `[source: telegram 52075/84421 ${date}]`, imported = (text = quote) => ({ account: 'echo:telegram', id: 'telegram:52075:84421', from: 'telegram:7654321', text, conversation: 'Telegram topic 52075' });
+  const before = (offset: number) => 'The build is complete. '.repeat(1600).slice(0, offset);
+  const packetText = (packet: string) => (JSON.parse(packet) as { packet: { text: string } }).packet.text;
+  it.each([16000, 16280, 16340, 16360, 16375])('true words at offset %s clear, and the judge reads the quote and marker whole', async offset => {
+    const credit = `Sam said: "${quote}" ${marker}`, result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', imported: imported(), note: `${before(offset)}\n${credit}` });
+    expect(result.note).toBeNull(); expect(result.rows.filter(row => row.verdict === 'refuse')).toEqual([]);
+    expect(result.packets.filter(packet => packetText(packet).includes(quote) && packetText(packet).includes(marker))).toHaveLength(1);
+    expect(result.packets.filter(packet => packetText(packet).includes('The build is green') && !packetText(packet).includes(quote))).toEqual([]);
+  });
+  it.each([16000, 16280, 16340])('words not in the record at offset %s are still refused by code', async offset => {
+    const result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', imported: imported(), note: `${before(offset)}\nSam said: "Never ship. Not even on Monday." ${marker}` });
+    expect(result.note).toContain('Rule 121'); expect(result.rows.flatMap(row => row.findings.map(finding => finding.reason))).toEqual(['quote-not-in-record']);
+  });
+  it('a marker with no quoted words is still refused wherever the cut falls', async () => {
+    const result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', imported: imported(), note: `${before(16340)}\nSam said this ${marker}` });
+    expect(result.note).toContain('Rule 121'); expect(result.rows.flatMap(row => row.findings.map(finding => finding.reason))).toEqual(['no-quote']);
+  });
+  it('a marker the bound would have cut stays whole, and is not called malformed', async () => {
+    const result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', imported: imported(), note: `${before(16384 - `\nSam said: "${quote}" [source: telegr`.length)}\nSam said: "${quote}" ${marker}` });
+    expect(result.note).toBeNull(); expect(result.rows.filter(row => row.verdict === 'refuse')).toEqual([]);
+  });
+  it('a quote running over a paragraph break keeps its marker', async () => {
+    const words = 'Ship it.\n\nThen tell me.', result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', imported: imported(words), note: `${'A line.\n'.repeat(2046)}\n"Ship it.\n\nThen tell me." ${marker}` });
+    expect(result.note).toBeNull(); expect(result.rows.filter(row => row.verdict === 'refuse')).toEqual([]);
+  });
+  it('each chunk numbers its own markers, so a judged claim in a later chunk finds its record', async () => {
+    const credit = `Sam said: "${quote}" ${marker}`, note = `${credit}\n${before(16340)}\n${credit}`;
+    const result = await drive({ mode: 'enforce', answer: KEPT, judge: 'relayed', imported: imported(), note });
+    const packets = result.packets.map(packet => (JSON.parse(packet) as { packet: { markers: { index: number }[] } }).packet.markers.map(item => item.index));
+    expect(packets.length).toBeGreaterThan(1); expect(packets.at(-1)).toEqual([0]);
+    expect(result.rows.flatMap(row => row.findings).map(finding => [finding.reason, finding.ref])).toEqual(packets.map(() => ['relayed', 'telegram 52075/84421']));
+  });
+  it('an attribution longer than one check has its exact facts proved and its reading recorded unchecked, never a refusal', async () => {
+    const long = 'The build is green. '.repeat(1000), day = new Date(1790000000000).toISOString().slice(0, 10);
+    const result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', ask: long, note: `Sam said: "${long}" [source: telegram 7654321/1 ${day}]` });
+    expect(result.note).toBeNull(); expect(result.judged).toBe(0);
+    expect(result.rows.length).toBeGreaterThan(0); expect(result.rows.every(row => row.verdict === 'unchecked' && row.cause === 'attribution longer than one check')).toBe(true);
+  });
+  it('an attribution longer than one check with words not in the record is refused by code', async () => {
+    const long = 'The build is green. '.repeat(1000), result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', imported: imported(quote), note: `Sam said: "${long}" ${marker}` });
+    expect(result.note).toContain('Rule 121'); expect(result.judged).toBe(0);
+    expect(result.rows.flatMap(row => row.findings.map(finding => finding.reason))).toEqual(['quote-not-in-record']);
+  });
+  it('no cut falls inside a kept span, every character stays in order, and each chunk keeps the bound', () => {
+    const credit = `Sam: "${quote}" ${marker}`, text = `${before(16300)}\n${credit}\n${before(16350)}\n${credit}\n${before(9000)}`, spans = markerFacts(text, () => null);
+    const chunks = chunkForJudge(text, ATTRIBUTION_TEXT_MAX, spans);
+    expect(chunks.join('')).toBe(text); expect(chunks.every(chunk => chunk.length <= ATTRIBUTION_TEXT_MAX)).toBe(true);
+    expect(chunks.filter(chunk => chunk.includes(marker)).every(chunk => chunk.includes(quote))).toBe(true);
+    expect(chunks.join('').split(marker)).toHaveLength(3); expect(spans).toHaveLength(2);
+  });
+  it('a span no check can hold is cut at the bound, so the loop always advances', () => {
+    const text = 'x'.repeat(40000), chunks = chunkForJudge(text, 16384, [{ start: 0, end: 40000 }]);
+    expect(chunks.map(chunk => chunk.length)).toEqual([16384, 16384, 7232]);
   });
 });
 
