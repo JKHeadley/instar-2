@@ -68,18 +68,26 @@ setTimeout(() => process.exit(0), Number(process.argv[4]));`);
   expect(over.localLimit === 'processes' || forked.some(pid => !Number.isSafeInteger(pid))).toBe(true);
   await settle(200);
   expect(forked.filter(pid => Number.isSafeInteger(pid)).filter(alive)).toEqual([]);
-  // Within the ceiling it completes normally.
+  // Within the ceiling it completes normally. The kernel limit is the user ID's (its census at
+  // launch plus the ceiling), never the tree's: under the tight ceiling of 4 above, a parallel
+  // suite's same-user churn between that census and this launch's one fork spends the room, the
+  // fork is refused (a pid-less spawn, an uncaught child error: exit 1, not limited), and a
+  // launch within its own ceiling reads as failed. That is the over case's accepted bound, not
+  // this neighbor's claim: it asserts completion, membership and cleanup, so it runs under this
+  // file's roomy ceiling as the header says (one worker, 39/39; five workers, flipped once).
+  const roomy = createResourceOwner(ceilings());
+  await roomy.attach({});
   writeFileSync(pids, '');
   // The killed tree's cleanup may itself reclaim a member still exiting under load: count this launch only.
-  const leakedBefore = owner.snapshot().counters.leakedDescendants;
-  expect(await owner.execute(input(root, fork, [pids, '1', '600']), 'maintenance'))
+  const leakedBefore = roomy.snapshot().counters.leakedDescendants;
+  expect(await roomy.execute(input(root, fork, [pids, '1', '600']), 'maintenance'))
     .toMatchObject({ code: 0, limited: false, localLimit: null });
   // ...and the sleeper it left behind (a leaked descendant) is reclaimed as a repair.
   const left = Number(readFileSync(pids, 'utf8').trim());
   await settle(200);
   expect(alive(left)).toBe(false);
-  expect(owner.snapshot().counters.leakedDescendants - leakedBefore).toBe(1);
-  expect(owner.snapshot().outcomes.map((o: { kind: string }) => o.kind)).toContain('leaked-descendants');
+  expect(roomy.snapshot().counters.leakedDescendants - leakedBefore).toBe(1);
+  expect(roomy.snapshot().outcomes.map((o: { kind: string }) => o.kind)).toContain('leaked-descendants');
 });
 
 it('enforces the OS CPU-time and handle ceilings per launch', { timeout: 30000 }, async () => {

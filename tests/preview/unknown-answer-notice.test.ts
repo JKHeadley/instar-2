@@ -20,6 +20,7 @@ const key = new Uint8Array(32).fill(42);
 
 it('preserves the historical notice and actual recorded Jev and full-context review judgments', () => {
   expect(LEGACY_UNKNOWN_ANSWER_NOTICE).toBe(capture.notice);
+  expect(UNKNOWN_ANSWER_NOTICE).toContain('Completion of your request is unconfirmed.');
   expect(capture.provenance.update).toBe(969390396);
   expect(interpretJev(parseJevResponse(capture.recordedJevOutput), 193)).toMatchObject({ verdict: 'unsure', ruleIds: ['parks_on_user'] });
   expect(interpretJev(parseJevResponse(capture.freshJevOutput), 201).verdict).toBe('pass');

@@ -36,6 +36,8 @@ export function createSessionConversationAdapter(config: Readonly<{
         digest: input.digest, incarnation: input.incarnation });
       return { state: 'accepted', evidence: take(receipt) };
     },
+    notDispatched: async input => driver.notDispatched ? take(driver.notDispatched({ operation: input.operation,
+      processIdentity: input.launch, intake: input.operation, digest: input.digest, incarnation: input.incarnation })) : false,
     observe: async input => {
       ensure(Number.isSafeInteger(input.cursor) && input.cursor >= 0 && input.cursor <= 2 && input.limit >= 1 && input.limit <= 64,
         'bounded observation cursor and batch required');
