@@ -23,8 +23,8 @@ const usage = { inputTokens: 0, inputComplete: true as const, outputTokens: 0, c
 
 // Execute the shipped launcher conversion, not a hand-written substitute for its rejected-result branch.
 const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
-const conversion = host.split('      if (result.state === \'uncertain\') return')[1]!.split("      if (result.state !== 'complete')")[0]!;
-const convert = Function('result', `if (result.state === 'uncertain') return${conversion}`);
+const conversion = host.split('      const providerFailure = result.failure ?')[1]!.split("      if (result.state !== 'complete')")[0]!;
+const convert = Function('result', `const providerFailure = result.failure ?${conversion}`);
 function limit(stdout = session, overrides: object = {}) {
   return convert({ state: 'rejected', bytes: null, usage,
     failure: classifyProviderFailure({ code: 1, limited: false, stdout, now: 1000 }), ...overrides }) as Awaited<ReturnType<PreviewPorts['model']>>;
