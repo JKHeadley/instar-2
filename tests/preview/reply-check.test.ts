@@ -384,7 +384,7 @@ it.each([
     expect(turn.revision).toEqual({ state: 'complete', text: BILL_REVISION });
     expect(turn.revisionReview).toEqual(verdict === 'violation' ? { verdict, ruleIds: ['defers_work'],
       reason: 'promises to follow up tonight with no tracked commitment' }
-      : verdict === 'unavailable' ? { verdict, ruleIds: [] } : undefined);
+      : verdict === 'unavailable' ? expect.objectContaining({ verdict, ruleIds: [], cause: 'other' }) : undefined);
     expect(turn.revisionReviewReserved).toBe(maxCalls === 3 ? undefined : true);
     expect(journal.view.calls).toBe(maxCalls === 3 ? 3 : 4);
     expect(reviewed).toEqual(maxCalls === 3 || crashAt ? [`${BILL_ANSWER}`]
