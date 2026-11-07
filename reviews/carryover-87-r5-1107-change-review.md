@@ -25,6 +25,12 @@ Decision: c87r5-stop | Pass stop signals to the owner only while a launch runs, 
 Decision: c87r5-cleanup | Report an unconfirmed cleanup on stderr without failing the update or refusing on a failed census, adding no refusal 1.x did not have. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-87-r5-1107-PROGRESS.md
 Decision: c87r5-bound | Keep the feature's unbounded label: bounded needs a governed construct in core code, which a scripts-side probe cannot supply, and moving the updater into core is not a small change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-87-r5-1107-PROGRESS.md
 
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:9 | not-a-deferral=Existing text brought in by the live merge; this change adds no commitment.
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:10 | not-a-deferral=Existing text brought in by the live merge; this change adds no commitment.
+Deferral: docs/evidence/train-192-notice-owner/constitution-attributed-statements-change-review.md:29 | not-a-deferral=Copied historical evidence brought in by the live merge, preserved verbatim.
+Deferral: docs/evidence/train-192-notice-owner/constitution-one-constitution-change-review.md:30 | not-a-deferral=Copied historical evidence brought in by the live merge, preserved verbatim.
+Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md:29 | not-a-deferral=Copied historical evidence brought in by the live merge, preserved verbatim.
+
 ## Closing block
 
 simplestRobustRoute: Reuse the owner composition setup already ships, deleting the spawnSync path. The alternatives were a production Six allocation for one finite command, which needs signing authority the command has no claim to, or a request to the running agent, which fails when no agent runs and updating is how a broken agent is repaired. This is the simplest robust route; the only added code is the stop passthrough, which prevents a stop leaving npm running in its detached group.
