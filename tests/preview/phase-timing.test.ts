@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, UNKNOWN_SEND_NOTICE, REFUSED_SEND_NOTICE, type PreviewPorts } from './journal-test-worker.js';
 import { checkPhaseTiming, recordPhaseTiming, retainedIdleAudienceTimings, isIdleAudienceTiming, type PhaseTiming } from './phase-timing.js';
+import { TTL_MS } from './delivery-recovery.js';
 import { createGroupAudienceCache } from './group-disclosure.js';
 import { membership, scope } from './group-carry-fixture.js';
 
@@ -53,10 +54,11 @@ it.each([{ late: 0, audience: 5700 }, { late: 5700, audience: 0 }])(
 
 it.each(['unknown', 'not-sent'] as const)('records %s without widening the send retry rule', async kind => {
   const root = mkdtempSync(join(tmpdir(), 'phase-outcome-'));
-  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, expires: at + 2 * TTL_MS });
+  let now = at;
   const sent: { target: string | undefined; text: string }[] = [];
   try {
-    const worker = createJournalWorker(journal, { now: () => at, stopped: () => false, checkOutbound: () => {},
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {},
       model: async () => '42', send: async input => {
         sent.push({ target: input.target, text: input.expectedText });
         return { kind, reason: 'injected outcome' };
@@ -66,6 +68,13 @@ it.each(['unknown', 'not-sent'] as const)('records %s without widening the send 
     const answer = { target: `reply:${turn.id}`, text: '42' };
     const notice = { target: `delivery-notice:${turn.id}`,
       text: kind === 'unknown' ? UNKNOWN_SEND_NOTICE : REFUSED_SEND_NOTICE };
+    if (kind === 'not-sent') {
+      // The immediate retry is bounded; a pending durable recovery is not a terminal loss.
+      expect(sent).toEqual([answer, answer]);
+      expect(journal.view.sendOutcomes.find(row => row.target === answer.target)?.recovery).toBeDefined();
+      now += TTL_MS;
+      await worker.drain(); await worker.drain();
+    }
     expect(sent).toEqual(kind === 'unknown' ? [answer, notice] : [answer, answer, notice, notice]);
     const rows = journal.view.phaseTimings!.filter(row => row.phase === 'send');
     expect(rows.map(row => ({ target: row.id, attempt: row.measurements.attempt,

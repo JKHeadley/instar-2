@@ -1,3 +1,5 @@
+// @ts-expect-error Physical host adapter.
+import { PROCESS_CENSUS_COLUMNS } from '../../scripts/process-census-query.mjs';
 // Part Thirteen §9 (docs/17-harness-adapters), the preview tool rule, runner side: the call cap reserves a tool turn's whole liability
 // before dispatch (MF4) and retains it; a short allowance answers without tools; the trace closes exactly one
 // reserved turn; the workspace is private, on a fixed-size volume that refuses writes past its size and keeps its files between turns;
@@ -264,7 +266,7 @@ writeFileSync(${JSON.stringify(pids)}, JSON.stringify({ harness: process.pid, ch
   const owner = createResourceOwner();
   let stop = false, delayed = false;
   await owner.attach({ query: async (file: string, args: string[]) => {
-    if (stop && !delayed && args.includes('pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=')) {
+    if (stop && !delayed && args.includes(PROCESS_CENSUS_COLUMNS)) {
       delayed = true;
       await new Promise(resolve => setTimeout(resolve, 3500));
     }

@@ -8,6 +8,11 @@ import { effectCommit } from './effect-pin.mjs';
 const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', effectCommit, 'src/effects'],
   { encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL' }).trim().split('\n').filter(p => p.endsWith('.ts'));
 const files = new Map(paths.map(path => [resolve(path), execFileSync('git', ['show', `${effectCommit}:${path}`], { encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL' })]));
+// The historical settlement slice predates worker-input. Current assembly imports
+// that independent action through Eight's barrel; retain its real current exports
+// without replacing any pinned settlement declarations or their nominal identity.
+const index = resolve('src/effects/index.ts');
+files.set(index, files.get(index) + "\nexport * from './worker-input.js';\n");
 const seam = resolve('src/settlement-owner-typecheck.ts');
 files.set(seam, `
 import { createTransportAuthority, registerTransportBodies } from './transport/index.js';

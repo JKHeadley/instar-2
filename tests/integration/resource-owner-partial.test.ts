@@ -1,3 +1,5 @@
+// @ts-expect-error Physical host adapter.
+import { PROCESS_CENSUS_COLUMNS } from '../../scripts/process-census-query.mjs';
 // Rules 26/42/60: partial observation cannot certify absence, but must not prevent
 // reclaiming a child whose ownership is already established. No host load is generated.
 import { spawn } from 'node:child_process';
@@ -16,7 +18,7 @@ it.each(['gone', 'unreadable', 'failed', 'partial'] as const)('reclaims known me
   const signals: number[] = [];
   const owner = createResourceOwner({ ...RESOURCE_CEILINGS, sampleMs: 60000 });
   await owner.attach({ query: async (file: string, args: string[]) => {
-    if (file === '/bin/ps' && args.includes('pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=')) {
+    if (file === '/bin/ps' && args.includes(PROCESS_CENSUS_COLUMNS)) {
       censuses++;
       if (mode === 'failed') return null;
       const real = await hostQuery(file, args);
@@ -60,7 +62,7 @@ it('rotates the bounded live window so later detached candidates are observed', 
   let releasing = false;
   const owner = createResourceOwner({ ...RESOURCE_CEILINGS, sampleMs: 50, candidateLimit: 64 });
   await owner.attach({ query: async (file: string, args: string[]) => {
-    if (file === '/bin/ps' && args.includes('pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=')) {
+    if (file === '/bin/ps' && args.includes(PROCESS_CENSUS_COLUMNS)) {
       const real = await hostQuery(file, args);
       return real === null ? null : real + rows + '\n';
     }

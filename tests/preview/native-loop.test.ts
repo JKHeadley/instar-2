@@ -1,3 +1,5 @@
+// @ts-expect-error Physical host adapter.
+import { PROCESS_CENSUS_COLUMNS } from '../../scripts/process-census-query.mjs';
 // Rule 115, the native tool rule (Part Thirteen §9 in docs/17-harness-adapters): Instar's own agent loop. Each step is a model
 // call (a stub here, real in tests/integration/native-loop-live.test.ts); every proposed call goes through the SAME admission
 // hook executable, call slots and record a harness tool turn uses; admitted calls run inside the turn's workspace and the shell
@@ -64,7 +66,7 @@ it('the tree-limit fixture isolates the UID allowance while retaining census, id
   expect(calls).toEqual([]);
   const observations: Array<[string, string[]]> = [
     ['/bin/ps', ['-U', String((process.getuid?.() ?? 0) + 1), '-o', 'pid=']],
-    ['/bin/ps', ['-U', String(process.getuid?.()), '-ww', '-o', 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=']],
+    ['/bin/ps', ['-U', String(process.getuid?.()), '-ww', '-o', PROCESS_CENSUS_COLUMNS]],
     ['/bin/ps', ['-o', 'lstart=', '-p', '123']],
     ['/usr/bin/python3', ['-c', 'sandbox-reader', '1', '/scratch', '123']],
     ['/usr/sbin/lsof', ['-a', '-d', 'cwd', '-p', '123', '-Fpn', '-w']],
@@ -570,7 +572,7 @@ child.unref(); process.stdout.write(String(child.pid));`;
     // 400 MiB on the Studio. setup-qualification separately exercises real RSS at a 1-byte ceiling.
     await small.attach({ query: treeLimitQuery(async (file: string, args: string[]) => {
       const result = await hostQuery(file, args);
-      if (result === null || !args.includes('pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=')) return result;
+      if (result === null || !args.includes(PROCESS_CENSUS_COLUMNS)) return result;
       return result.split('\n').map((line: string) => {
         const fields = line.trim().split(/\s+/u);
         if (daemon > 1 && Number(fields[0]) === daemon) { fields[4] = String(400 * 1024); sampledDaemon = true; return fields.join(' '); }

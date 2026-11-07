@@ -183,7 +183,8 @@ it.each(['unresolved', 'late'])('retains the host renewal refusal beside a %s re
 });
 
 it.each([false, true])('waits for the persisted instant across restart, then dispatches once (UNKNOWN=%s)', async unknown => {
-  const record = records.find(row => row.update === 840342823)!, h = make(record, undefined, unknown);
+  // The next-day deduplication probe must remain inside the installation's trial.
+  const record = records.find(row => row.update === 840342823)!, h = make(record, undefined, unknown, 2 * 86400_000);
   try {
     h.intake(); await h.worker.drain();
     const instant = record.intakeAt + 60_000;
