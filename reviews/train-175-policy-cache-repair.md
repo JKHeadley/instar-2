@@ -49,6 +49,12 @@ Prompt finding: 849db3a6296a | protocol-literal | The agent's own fixed reply fo
 Prompt finding: 85544c20941f | protocol-literal | Fixed infrastructure outage sentence sent with no model call; the test checks the actual notice, and the replay pattern matches only that own notice; unchanged by this merge.
 Prompt finding: e8708c7fea24 | protocol-literal | Fixed sourceLabel attribution instruction in delivered guidance; the regression checks the instruction is delivered, not a desired semantic answer; unchanged by this merge.
 
+Deferral: tests/preview/held-result-delivery.test.ts:86 | not-a-deferral=Product guidance or regression data about durable pending work; no builder deferral (as dispositioned in reviews/train-200-change-review.md)
+Deferral: tests/preview/held-result-delivery.test.ts:101 | not-a-deferral=Product guidance or regression data about durable pending work; no builder deferral (as dispositioned in reviews/train-200-change-review.md)
+Deferral: tests/preview/journal.ts:2750 | not-a-deferral=product guidance text telling the model an undecided report stays owed; it describes durable pending work, no builder deferral (held-result-delivery-1106)
+Deferral: tests/preview/journal.ts:2761 | not-a-deferral=product code comment describing the runner line for a result given in the agent's own words; no builder deferral (held-result-delivery-1106)
+Deferral: tests/preview/plain-task-stop.test.ts:29 | not-a-deferral=line carried verbatim from merged input aa570994, whose own record dispositions it
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: extend the existing inspector for observed metadata and restrictive first-fetch compatibility. It prevents deterministic refusal before any model launch without a retry loop, new verifier or reauthorization ceremony. Existing malformed-policy, identity, hook, cap, stop, durable-intake and effect guards remain. The desk's new answer check supplies unattended shipped-path acceptance; this record claims no live answer yet.
