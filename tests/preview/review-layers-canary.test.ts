@@ -12,9 +12,12 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, 
 const operatorText = 'Please always answer briefly.';
 const reply = 'Understood.';
 const fenced = value => `\`\`\`json\n${value}\n\`\`\``;
-// The launcher runs on the real clock against a fixed fixture expiry, so the due activation reminder or a
+// The launcher uses the real clock with a fixed fixture expiry. A due activation reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride the answer as its own line, as in journal-agent.test.ts.
 // The answer itself stays exact, and nothing else may be appended.
+// Each physical launch gets the existing status-cap fixture's 30-second startup budget.
+// Awaiting it keeps Vitest IPC responsive; multi-launch cases budget each stage separately.
+const CHILD_TIMEOUT = 30_000;
 const NOTICE_LINE = /^(?:Reminder: your activation expires in [^.]+\. Smallest step for you: approve a renewed activation record\.|Model route check: .+\.)$/u;
 const answerOf = text => {
   const [answer, ...notices] = text.split('\n\n');
@@ -24,6 +27,17 @@ const answerOf = text => {
   }
   return answer;
 };
+
+it.each([
+  ['Reminder: your activation expires in 6 days 18 h. Smallest step for you: approve a renewed activation record.', true],
+  ['Reminder: your activation expires in 1 h. Smallest step for you: approve a renewed activation record.', true],
+  ['Reminder: your activation expires in 1 h. Smallest step for you: run a command.', false],
+  ['Reminder: your activation expires in 1 h. Smallest step for you: approve a renewed activation record. Extra text.', false],
+  ['Unrelated appended text.', false],
+])('checks the activation notice shape: %s', (notice, accepted) => {
+  if (accepted) expect(answerOf(`Understood.\n\n${notice}`)).toBe('Understood.');
+  else expect(() => answerOf(`Understood.\n\n${notice}`)).toThrow();
+});
 
 it('keeps the answer exact beside the recorded activation notice and rejects unrelated additions', () => {
   const notice = 'Reminder: your activation expires in 6 days 21 h. Smallest step for you: approve a renewed activation record.';
@@ -130,8 +144,10 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         '--login-profile', profile, '--model', world.model,
         '--bot-username', world.configuration.botUsername, '--max-cycles',
         mode === 'summary-contradiction' ? '1' : '3', '--max-poll-seconds', '1'],
-      { cwd: process.cwd(), timeout: 30000, env });
-      expect(run.status, run.stderr).toBe(0);
+      { cwd: process.cwd(), timeout: CHILD_TIMEOUT, env });
+      const runsPath = join(root, 'runs.jsonl');
+      const launchEvidence = existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : 'no launch record';
+      expect(run.status, `${run.stderr}\n${launchEvidence}`).toBe(0);
       const rows = readFileSync(calls, 'utf8').trim().split('\n').map(line => JSON.parse(line));
       const roles = rows.map(row => row.role);
       expect(roles).toEqual(mode === 'summary-contradiction'
@@ -163,7 +179,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`, 'utf8').trim().split('\n').map(JSON.parse) : [];
       const status = await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
         'tests/preview/journal-agent.mjs', 'status', '--root', root],
-      { cwd: process.cwd(), timeout: 30000, env });
+      { cwd: process.cwd(), timeout: CHILD_TIMEOUT, env });
       expect(status.status, status.stderr).toBe(0);
       const view = JSON.parse(status.stdout);
       expect(view.calls).toBe(mode === 'reply-contradiction' ? 5 : 4);
@@ -232,4 +248,4 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         }
       }
     } finally { endpoint.kill('SIGTERM'); }
-  }, 65000);
+  }, 3 * CHILD_TIMEOUT);
