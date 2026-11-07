@@ -2714,7 +2714,8 @@ async function main() {
             }
           },
           maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
-          readyTimeoutMs: 30000, protectedSessions: [],
+          // Each adapter owns its startup defaults and protocol request bound.
+          protectedSessions: [],
           ...(conversationSession ? { requireTurnHook: true, inboxDirectory: binding.physical().inboxDirectory,
             compactGroundingFile: contextGrounding(), hookScript: layout ? lifecycleHookPath(harnessHookPath()) : fileURLToPath(new URL('../../scripts/session-hooks/stop.mjs', import.meta.url)) } : {}),
           ...(conversationSession ? { continuationRequired: () => handoff?.continuing ?? false, continuation: ({ operation, reason, pendingDigest }) => {

@@ -91,3 +91,18 @@ it('a different start stamp closes the old identity without signaling its live P
     await fresh.close();
   } finally { writeFileSync(path, original); }
 });
+
+it('carryover 08 reads exact bounded captures after reconstruction and refuses a live closed-capture claim', async () => {
+  const f = fixture(), worker = await f.io.open(f.launch);
+  await worker.request('initialize', {});
+  const target = { claim: 'claim', incarnation: 'inc', launch: worker.identity };
+  const next = createSessionProtocolIO(f.root);
+  expect(next.capture!(target)).toEqual(expect.arrayContaining([expect.objectContaining({ direction: 'request' })]));
+  expect(() => next.capture!({ ...target, incarnation: 'other' })).toThrow('identity');
+  expect(() => next.capture!({ ...target, requireClosed: true })).toThrow('still alive');
+  await worker.close();
+  expect(next.capture!({ ...target, requireClosed: true }).length).toBeGreaterThan(0);
+  const capture = readdirSync(f.root).find(name => name.endsWith('.jsonl'))!;
+  writeFileSync(join(f.root, capture), '{"direction":"request"}');
+  expect(() => next.capture!(target)).toThrow('incomplete');
+});

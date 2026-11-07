@@ -274,12 +274,27 @@ backpressure at 64 pending inputs, 4096 retained inputs and 1 MiB per input, pre
 all already accepted records. A queued input remains queued after a proved non-dispatch;
 a dispatched but unresolved input becomes uncertain on restart and is never replayed.
 A repeated exact input returns its recorded outcome; conflicting bytes refuse.
+Terminal startup preserves the 1.x 90-second fresh and 120-second resume waits.
+A resumed process that dies before input gets one fresh start with complete agent-owned
+context through the existing continuation path. Live menus, uncertain retirement, stop,
+missing context and failure of that fresh start refuse; restoration still uses the
+original admission and model allowance. Explicit readiness overrides remain bounded
+by the host admission lifetime; structured protocol RPC keeps its own request timeout.
 Waiting messages use the largest arrival-order prefix whose serialized delivery fits
 1 MiB; the suffix stays queued and a lone message uses its ordinary prompt. On restart,
-a completed batch may be recovered from its correlated adapter receipt and the existing
-journal's process and completed child edges, even when the old admission gate is gone.
+a completed single input or batch may be recovered from its correlated adapter receipt
+and the existing journal's process and completed child edges, even when the old
+admission gate is gone. Recovery checks the exact worker, original delivery bytes,
+nonempty reply and completed turn before atomically recording results and cursors.
 Missing or invalid evidence retires the old worker and records uncertainty without
-replaying its tools or preventing later messages from draining.
+replaying its tools or preventing later messages from draining. After confirmed retirement,
+an adapter may positively prove a dispatching input never crossed its send boundary.
+Only that input returns to the queue, with its original envelope and batch membership,
+at most three existing dispatch attempts and bounded backoff. A new worker still passes
+normal admission using the original parent deadline and remaining allowance. Absent or
+ambiguous evidence, accepted input, failed retirement and exhausted attempts never
+authorize this retry. Terminal drivers prove a prepared, never-started send; protocol
+workers require a bound submission and a complete capture with no turn request.
 
 Each OS process gets a fresh claim and incarnation, its own 64-input/one-hour ceiling,
 and only the unused portion of the original 128-call reservation. Every process deadline

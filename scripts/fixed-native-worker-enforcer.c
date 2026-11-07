@@ -89,13 +89,20 @@
 #define CLIENT_TIMEOUT_MS 1000
 #define LAPSE_MS 250                 /* mirrors WORKER_CHANNEL_LIMITS.lapseMs */
 #define HEARTBEAT_MS 50
-/* The stated owner bound: from the owner's last successful authority check to the
- * worker's termination being initiated. The supervisor stops beating after LAPSE_MS,
- * the guard ends the worker LAPSE_MS after its last beat, and the supervisor itself
- * kills its own guard (and so, through the kernel, the traced worker) at this bound
- * if the guard has not reported by then. Two serial 250 ms timers are 500 ms, not 250. */
+/* Normal guard timing budget from the owner's last successful authority check:
+ * the supervisor stops beating after LAPSE_MS and the guard ends the worker
+ * LAPSE_MS after its last beat, plus beat slack. This is not a hard termination
+ * bound: scheduling and termination latency apply. */
 #define OWNER_TERMINATION_MS (2 * LAPSE_MS + 2 * HEARTBEAT_MS)
-#define DEADLINE_BACKSTOP_MS LAPSE_MS /* the supervisor's own kill after the immutable deadline */
+/* The supervisor's owner-loss backstop threshold is 850 ms (600 + 250), with
+ * enforcement requested only beyond it. The extra interval allows reap/report
+ * progress but also extends enforcement when the guard stalls BEFORE killing:
+ * guard_backstop has no evidence that the worker has ended. Scheduling and
+ * termination latency apply after the threshold too. The deadline arm gets the
+ * same 250 ms interval; a stopped guard is handled immediately on observation.
+ * Without a guard report the slot's terminal stays unknown. */
+#define DEADLINE_BACKSTOP_MS LAPSE_MS
+#define OWNER_BACKSTOP_MS (OWNER_TERMINATION_MS + DEADLINE_BACKSTOP_MS)
 #define RESTART_CAP 5                /* consecutive unstable supervisor starts before terminal failure */
 #define RELAY_BUDGET (2u * 1048576u) /* 2 x WORKER_CHANNEL_LIMITS.bytes, both directions */
 #define SERVICE_TIMEOUT_MS 5000
@@ -405,7 +412,7 @@ static int guard_backstop(int guard_stopped, uint64_t now_ticks, uint64_t deadli
                           int owner_attached, uint64_t now, uint64_t last_progress) {
   if (guard_stopped) return BACKSTOP_STOPPED;
   if (now_ticks >= deadline_ticks + ms_to_ticks(DEADLINE_BACKSTOP_MS)) return BACKSTOP_DEADLINE;
-  if (owner_attached && now - last_progress > OWNER_TERMINATION_MS) return BACKSTOP_OWNER;
+  if (owner_attached && now - last_progress > OWNER_BACKSTOP_MS) return BACKSTOP_OWNER;
   return BACKSTOP_NONE;
 }
 
@@ -484,6 +491,13 @@ static int role_guard(int argc, char **argv) {
   /* A SIGKILL sent to a trace-stopped process stays pending until the tracer
    * resumes it, so the kill is also delivered as the resume signal. If the
    * bounded wait still fails, this guard exits and the kernel kills its tracee. */
+  /* Test builds only: an injected scheduler stall between the worker's end and the
+   * guard's report, so the supervisor's backstop grace is proven load-independently. */
+  #ifdef INSTAR_TEST_GUARD_REPORT_STALL_MS
+  #define TEST_REPORT_STALL() usleep((useconds_t)INSTAR_TEST_GUARD_REPORT_STALL_MS * 1000u)
+  #else
+  #define TEST_REPORT_STALL() ((void)0)
+  #endif
   #define END(code) do { \
     kill(w, SIGKILL); \
     uint64_t stop = now_ms() + 2000; \
@@ -493,6 +507,7 @@ static int role_guard(int argc, char **argv) {
       if ((y == w && !WIFSTOPPED(st)) || now_ms() >= stop) break; \
       usleep(1000); \
     } \
+    TEST_REPORT_STALL(); \
     guard_report("T %d %d 0\n", (code), st); return (code); } while (0)
   char r = 0;
   if (read_exact(ready[0], &r, 1, now_ms() + 2000) != 0 || r != 'R') END(END_REFUSED);
@@ -541,6 +556,7 @@ static int role_guard(int argc, char **argv) {
     }
   }
   #undef END
+  #undef TEST_REPORT_STALL
 }
 
 /* A guard with its own link and the worker's channel, spawned by a supervisor. */
@@ -956,12 +972,14 @@ static int feasibility(const char *which, const char *profile, const char *scrat
              && guard_backstop(0, t, d, 0, 0, 0) == BACKSTOP_NONE
              && guard_backstop(0, d + grace - 1, d, 0, 0, 0) == BACKSTOP_NONE
              && guard_backstop(0, d + grace, d, 0, 0, 0) == BACKSTOP_DEADLINE
-             && guard_backstop(0, t, d, 1, 10000 + OWNER_TERMINATION_MS, 10000) == BACKSTOP_NONE
-             && guard_backstop(0, t, d, 1, 10001 + OWNER_TERMINATION_MS, 10000) == BACKSTOP_OWNER
+             && guard_backstop(0, t, d, 1, 10000 + OWNER_BACKSTOP_MS, 10000) == BACKSTOP_NONE
+             && guard_backstop(0, t, d, 1, 10001 + OWNER_BACKSTOP_MS, 10000) == BACKSTOP_OWNER
              && guard_backstop(0, t, d, 0, 99999, 0) == BACKSTOP_NONE;
     failures += report("guard-backstop", VERDICT(table),
-      "supervisor kills its own guard when stopped, %dms past the deadline, or %dms after the last owner "
-      "authority check once attached; not before", DEADLINE_BACKSTOP_MS, OWNER_TERMINATION_MS);
+      "supervisor requests its own guard kill when stopped, %dms past the deadline, or beyond %dms after the last owner "
+      "authority check once attached (%dms normal guard budget plus %dms; also extends enforcement before worker termination); "
+      "scheduling and termination latency apply",
+      DEADLINE_BACKSTOP_MS, OWNER_BACKSTOP_MS, OWNER_TERMINATION_MS, DEADLINE_BACKSTOP_MS);
   }
   if (all || !strcmp(which, "nowrite")) {
     char *p1[] = { self_path, "probe", "write", (char *)scratch, NULL };

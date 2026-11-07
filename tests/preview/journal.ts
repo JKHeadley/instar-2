@@ -326,7 +326,12 @@ export const WAITING_PROGRESS = "Still on your earlier message; I'll get to this
 export const REFUSED_SEND_NOTICE = 'I could not send my complete answer. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
 export const UNKNOWN_SEND_NOTICE = 'My answer may not have arrived. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
 export const SAFETY_CEILING_NOTICE = 'Instar halted this work because its safety limit was reached. This was not an operator stop or a decision by the agent to finish. Unfinished work and any uncertain actions remain recorded; nothing is automatically retried.';
-export const UNKNOWN_ANSWER_NOTICE = 'The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.';
+/** Historical delivered bytes remain a loss notice when replayed; never rewrite an old send intent. */
+const LEGACY_UNKNOWN_ANSWER_NOTICE = 'The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.';
+export const UNKNOWN_ANSWER_NOTICE = 'Completion of your request is unconfirmed. No verified answer was recorded for this attempt. '
+  + 'Work may have changed files or external services; those results are not confirmed by this notice. '
+  + 'Your request and this attempt remain in the conversation record. This attempt is not automatically retried. '
+  + 'Before resuming, the recorded work and current external state need to be checked so completed actions are not repeated.';
 /** Counts completed tool attempts, never successful checks or task completion. */
 function unknownAnswerNotice(turn: Pick<Turn, 'safetyCeiling' | 'toolChecks'>): string {
   if (turn.safetyCeiling) return SAFETY_CEILING_NOTICE;
@@ -7303,7 +7308,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }).slice(0, 2);
   };
   // The label follows the text actually intended: review can replace the notice with a holding reply.
-  const lostNotice = (item: Turn) => item.noticeClass !== undefined && [item.toolChecks === undefined ? UNKNOWN_ANSWER_NOTICE : unknownAnswerNotice(item), 'I lost my answer to that message. Please send it again.'].includes(sentText(item) ?? '');
+  const lostNotice = (item: Turn) => item.noticeClass !== undefined && [unknownAnswerNotice(item), item.toolChecks === undefined ? LEGACY_UNKNOWN_ANSWER_NOTICE
+    : `${LEGACY_UNKNOWN_ANSWER_NOTICE} ${item.toolChecks} tool checks returned results, but those results were not verified into an answer. The requested result remains unverified; no tool work was automatically repeated.`,
+    'I lost my answer to that message. Please send it again.'].includes(sentText(item) ?? '');
   const modelFailure = (item: Turn) => item.answer === MODEL_FAILURE_REPLY
     && (item.failureClass !== undefined || item.modelState === 'rejected');
   const sizeRefused = (item: Turn) => item.noticeClass === 'too-long-input';

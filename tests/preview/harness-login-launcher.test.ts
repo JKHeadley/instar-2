@@ -1,7 +1,8 @@
 // @ts-nocheck -- real launcher, authority resolver, provider adapter and encrypted journal;
 // only physical Telegram, harness identity and CLI IO are replaced. No Shared mutation/model spend.
 import { expect, it } from 'vitest';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { runChild } from '../e2e/async-child.js';
 import { cpSync, existsSync, readFileSync, renameSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -10,6 +11,8 @@ import { encoded } from './stage2-provider.js';
 import { CREDENTIAL_SHAPE_NOTICE, openPreviewJournal } from './journal.js';
 import { harnessLoginPath, storeHarnessLogin } from './harness-user.mjs';
 
+// Two installations, run, status and withdrawal each retain their 30s child ceiling.
+// Leave room for all five and cleanup; awaited children keep worker IPC responsive.
 it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', 'imported', 'missing-custody', 'missing-custody-secret', 'intact-custody-secret', 'renamed', 'copied', 'lost-build'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
   const world = successiveWorld(), directory = world.directory;
   let root = join(directory, 'pool-runner');
@@ -112,7 +115,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
         for (const [flag, value] of [['--login-profile', row.profile], ['--activation-record', row.activation], ['--authority-record', row.authority]])
           installArgs[installArgs.indexOf(flag) + 1] = value;
         if (mode === 'imported') installArgs.push('--login-pool', manifest);
-        const installed = spawnSync(process.execPath, installArgs, { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
+        const installed = await runChild(process.execPath, installArgs, { cwd: process.cwd(), timeout: 30000, env });
         expect(installed.status, installed.stderr).toBe(0);
       }
       const registry = JSON.parse(readFileSync(join(root, 'harness-logins.json'), 'utf8'));
@@ -147,8 +150,8 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       }
       for (const flag of ['--login-profile', '--activation-record', '--authority-record']) args.splice(args.indexOf(flag), 2);
     }
-    const run = () => spawnSync(process.execPath, args, { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
-    const first = run(); expect(first.status, first.stderr + (existsSync(join(root, 'runs.jsonl')) ? readFileSync(join(root, 'runs.jsonl'), 'utf8') : '')).toBe(0);
+    const run = () => runChild(process.execPath, args, { cwd: process.cwd(), timeout: 30000, env });
+    const first = await run(); expect(first.status, first.stderr + (existsSync(join(root, 'runs.jsonl')) ? readFileSync(join(root, 'runs.jsonl'), 'utf8') : '')).toBe(0);
     if (!existsSync(calls)) {
       const observed = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
       const detail = observed.view.order.map(turn => ({ id: turn.id, held: turn.held, failure: turn.failureClass, state: turn.modelState }));
@@ -201,7 +204,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     } else { expect(failed).toHaveLength(0); expect(completed).toHaveLength(3); }
     journal.close();
     const statusArgs = args.map(value => value === 'run' ? 'status' : value);
-    const status = spawnSync(process.execPath, statusArgs, { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
+    const status = await runChild(process.execPath, statusArgs, { cwd: process.cwd(), timeout: 30000, env });
     expect(status.status, status.stderr).toBe(0);
     const report = JSON.parse(status.stdout);
     if (pooled) {
@@ -212,11 +215,11 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     const before = readFileSync(calls, 'utf8');
     // Primary withdrawal stops restart before any call. Secondary failure is isolated above.
     writeFileSync(logins[0].authority, '{}');
-    const withdrawn = run(); expect(withdrawn.status).not.toBe(0); expect(withdrawn.stderr).toContain('refused to start or continue');
+    const withdrawn = await run(); expect(withdrawn.status).not.toBe(0); expect(withdrawn.stderr).toContain('refused to start or continue');
     expect(readFileSync(calls, 'utf8')).toBe(before);
   } finally {
     endpoint.kill('SIGTERM');
     await new Promise(resolve => endpoint.once('exit', resolve));
     rmSync(directory, { recursive: true, force: true });
   }
-}, 45000);
+}, 180000);
