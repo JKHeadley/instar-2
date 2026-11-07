@@ -88,6 +88,29 @@ describe('test worker limit', () => {
     }
   });
 
+  it('honors CLI host exclusions in ordinary and serial projects without losing any other file', async () => {
+    // These three files are assigned to Studio by the remote gate. They need its
+    // decoder weights, harness account or installed Codex, not just macOS.
+    const excluded = ['tests/preview/media-understanding.test.ts', 'tests/preview/telegram-files.test.ts',
+      'tests/preview/trust-setup.test.ts', 'tests/e2e/register.test.ts'];
+    const expected = execFileSync('git', ['ls-files', 'tests'], { encoding: 'utf8' }).trim().split('\n')
+      .filter(file => file.endsWith('.test.ts')).sort();
+    const macos = readFileSync('tests/platform/macos-only.txt', 'utf8').split('\n')
+      .map(line => line.replace(/#.*/, '').trim()).filter(Boolean);
+    for (const split of ['', 'only-macos', 'exclude-macos']) {
+      const result = await runChild(process.execPath, ['node_modules/vitest/vitest.mjs', 'list',
+        '--filesOnly', '--json', '--maxWorkers', '1',
+        ...excluded.slice(0, 3).flatMap(file => ['--exclude', file]),
+        '--exclude=tests/e2e/registe*.test.ts'], { timeout: 20_000,
+        env: { ...process.env, INSTAR_TEST_PLATFORM_SPLIT: split } });
+      expect(result.status, result.stderr).toBe(0);
+      const files = JSON.parse(result.stdout) as { file: string }[];
+      const selected = expected.filter(file => !excluded.includes(file)
+        && (split === '' || (split === 'only-macos') === macos.includes(file)));
+      expect(files.map(row => relative(process.cwd(), row.file)).sort()).toEqual(selected);
+    }
+  });
+
   it('the shipped projects overlap ordinary files but serialize each heavy fixture in a fresh process', async () => {
     const root = mkdtempSync(join(process.cwd(), '.worker-limit-'));
     try {
