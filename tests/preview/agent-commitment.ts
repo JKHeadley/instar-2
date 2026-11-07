@@ -10,6 +10,8 @@ import { parseDatedItem, type DatedItem } from './dated-memory.js';
 export type AgentPromise = CoreAgentPromise<DatedItem>;
 export interface PromiseProposal { quote: string; when?: string }
 export interface FulfillmentProposal { id: number; quote: string }
+/** One waiting result the reply gives in the agent's own words, with the exact words of the reply that give it. */
+export interface CarriedReport { key: string; quote: string }
 export const AGENT_PROMISE_LIMIT = 5;
 
 /** A fulfilment quote is bounded by the reply it must appear in, not by the sentence bound a promise
@@ -70,6 +72,18 @@ export function fulfillmentProposals(value: unknown, reply: string,
       || !exactClause(item.quote, reply, REPLY_EXCERPT_LIMIT)
       || !supported({ id: item.id as number, quote: item.quote as string })) return undefined;
     if (!found.some(saved => saved.id === item.id)) found.push({ id: item.id as number, quote: item.quote as string });
+  }
+  return found;
+}
+/** The own-words results a reply declares: each names one result and quotes the reply's own words for it. Whether those
+ * words give the result is the model's reading (Rule 10); code keeps only exact quotes. An entry without one is no
+ * declaration, so the result it names stays undecided and owed. */
+export function carriedProposals(value: unknown, reply: string): CarriedReport[] {
+  if (!Array.isArray(value)) return [];
+  const found: CarriedReport[] = [];
+  for (const item of value as { key?: unknown; quote?: unknown }[]) {
+    if (!item || typeof item !== 'object' || typeof item.key !== 'string' || !exactClause(item.quote, reply, REPLY_EXCERPT_LIMIT)) continue;
+    if (!found.some(saved => saved.key === item.key)) found.push({ key: item.key, quote: item.quote as string });
   }
   return found;
 }
