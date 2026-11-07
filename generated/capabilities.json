@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:6fdf25b1ce51a44c1c92e8fc4f09caa6b4c5ab5d6182c5e0dfc94741071bbcd5",
-  "commit": "27924471fa6e10fe77d67ef0b2864ab6a42f77e0",
+  "generation": "sha256:76cc70250c91690fbd11e7a1d1ccd5775f5d9ec4a38c79b24629be9468ebaf8e",
+  "commit": "9f3beb341be4b1f75175e7ea32a6333fcbebb1b1",
   "launchers": {
     "bin/instar2.mjs": [
       {
@@ -17,7 +17,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+        "text": "binds supported harnesses and doorways to certified code; others are marked unproven."
       },
       {
         "id": "installed-update-verification",
@@ -25,7 +25,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "installs a release, repairs known stale defaults and restarts safely, keeping the current release on any failure."
+        "text": "updates itself, repairs stale defaults; failure keeps the current release."
       },
       {
         "id": "intake-slice",
@@ -33,7 +33,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+        "text": "captures every inbound message before work; an uncertain arrival is kept."
       },
       {
         "id": "preview-conversation",
@@ -89,7 +89,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "checks each reply against remembered earlier turns without a model call."
+        "text": "checks replies against remembered turns without a model call."
       },
       {
         "id": "preview.rolling-summary",
@@ -105,7 +105,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+        "text": "generates the register, rule book, glossary and this briefing from declarations."
       },
       {
         "id": "rungraph-core",
@@ -155,7 +155,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+        "text": "binds supported harnesses and doorways to certified code; others are marked unproven."
       },
       {
         "id": "installed-update-verification",
@@ -163,7 +163,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "installs a release, repairs known stale defaults and restarts safely, keeping the current release on any failure."
+        "text": "updates itself, repairs stale defaults; failure keeps the current release."
       },
       {
         "id": "intake-slice",
@@ -171,7 +171,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+        "text": "captures every inbound message before work; an uncertain arrival is kept."
       },
       {
         "id": "preview-conversation",
@@ -227,7 +227,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks each reply against remembered earlier turns without a model call."
+        "text": "checks replies against remembered turns without a model call."
       },
       {
         "id": "preview.rolling-summary",
@@ -243,7 +243,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+        "text": "generates the register, rule book, glossary and this briefing from declarations."
       },
       {
         "id": "rungraph-core",
@@ -293,7 +293,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+        "text": "binds supported harnesses and doorways to certified code; others are marked unproven."
       },
       {
         "id": "installed-update-verification",
@@ -301,7 +301,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "installs a release, repairs known stale defaults and restarts safely, keeping the current release on any failure."
+        "text": "updates itself, repairs stale defaults; failure keeps the current release."
       },
       {
         "id": "intake-slice",
@@ -309,7 +309,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+        "text": "captures every inbound message before work; an uncertain arrival is kept."
       },
       {
         "id": "preview-conversation",
@@ -365,7 +365,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks each reply against remembered earlier turns without a model call."
+        "text": "checks replies against remembered turns without a model call."
       },
       {
         "id": "preview.rolling-summary",
@@ -381,7 +381,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+        "text": "generates the register, rule book, glossary and this briefing from declarations."
       },
       {
         "id": "rungraph-core",
@@ -431,7 +431,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+        "text": "binds supported harnesses and doorways to certified code; others are marked unproven."
       },
       {
         "id": "installed-update-verification",
@@ -439,7 +439,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "installs a release, repairs known stale defaults and restarts safely, keeping the current release on any failure."
+        "text": "updates itself, repairs stale defaults; failure keeps the current release."
       },
       {
         "id": "intake-slice",
@@ -447,7 +447,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+        "text": "captures every inbound message before work; an uncertain arrival is kept."
       },
       {
         "id": "preview-conversation",
@@ -503,7 +503,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks each reply against remembered earlier turns without a model call."
+        "text": "checks replies against remembered turns without a model call."
       },
       {
         "id": "preview.rolling-summary",
@@ -519,7 +519,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+        "text": "generates the register, rule book, glossary and this briefing from declarations."
       },
       {
         "id": "rungraph-core",
@@ -569,7 +569,7 @@
         "module": "src/assembly",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+        "text": "binds supported harnesses and doorways to certified code; others are marked unproven."
       },
       {
         "id": "installed-update-verification",
@@ -577,7 +577,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "installs a release, repairs known stale defaults and restarts safely, keeping the current release on any failure."
+        "text": "updates itself, repairs stale defaults; failure keeps the current release."
       },
       {
         "id": "intake-slice",
@@ -585,7 +585,7 @@
         "module": "src/intake",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+        "text": "captures every inbound message before work; an uncertain arrival is kept."
       },
       {
         "id": "preview-conversation",
@@ -641,7 +641,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks each reply against remembered earlier turns without a model call."
+        "text": "checks replies against remembered turns without a model call."
       },
       {
         "id": "preview.rolling-summary",
@@ -657,7 +657,7 @@
         "module": "src/register",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+        "text": "generates the register, rule book, glossary and this briefing from declarations."
       },
       {
         "id": "rungraph-core",
@@ -707,7 +707,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+        "text": "binds supported harnesses and doorways to certified code; others are marked unproven."
       },
       {
         "id": "installed-update-verification",
@@ -715,7 +715,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "installs a release, repairs known stale defaults and restarts safely, keeping the current release on any failure."
+        "text": "updates itself, repairs stale defaults; failure keeps the current release."
       },
       {
         "id": "intake-slice",
@@ -723,7 +723,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+        "text": "captures every inbound message before work; an uncertain arrival is kept."
       },
       {
         "id": "preview-conversation",
@@ -779,7 +779,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "checks each reply against remembered earlier turns without a model call."
+        "text": "checks replies against remembered turns without a model call."
       },
       {
         "id": "preview.rolling-summary",
@@ -795,7 +795,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+        "text": "generates the register, rule book, glossary and this briefing from declarations."
       },
       {
         "id": "rungraph-core",
