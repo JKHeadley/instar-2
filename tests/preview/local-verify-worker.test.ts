@@ -40,7 +40,7 @@ it('uses HTTP POST {pr} and preserves capacity/standby refusals', async () => {
 it('does not treat a different head or missing record as passing verification', async () => {
   const calls: string[] = [];
   const fetcher = async (url: string) => { calls.push(url);
-    if (url.includes('/commits/')) return new Response(JSON.stringify({ statuses: [{ context: 'instar/local-verify', state: 'pending', description: 'awaiting-verify' }] }));
+    if (url.includes('/commits/')) return new Response(JSON.stringify({ statuses: [null, { context: 'instar/local-verify', state: 'pending', description: 'awaiting-verify' }] }));
     if (url.includes('/record?')) return new Response(JSON.stringify({ error: 'no record' }), { status: 404 });
     return new Response(JSON.stringify({ queue: [{ pr, headSha: 'b'.repeat(40) }], inFlight: null })); };
   expect(await localVerifyCall(cfg, 'status', { pr, head, base }, fetcher)).toMatchObject({ head, verification: { state: 'unknown' }, github: { state: 'pending' } });

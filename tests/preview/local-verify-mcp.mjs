@@ -59,7 +59,7 @@ export async function localVerifyCall(config, name, input, fetcher = fetch) {
     machine: text(entry.remote?.machineId), held: entry.held ?? null };
   if (matches(snapshot?.inFlight)) verification = { state: 'running', machine: origin, baseConfirmed: false };
   const status = github.httpStatus === 200 && Array.isArray(github.result?.statuses)
-    ? github.result.statuses.find(row => row.context === 'instar/local-verify') : null;
+    ? github.result.statuses.find(row => row?.context === 'instar/local-verify') : null;
   return { repo: config.repo, pr, head, base, observedAt: new Date().toISOString(), verification,
     github: status && ['pending','success','failure','error'].includes(status.state)
       ? { context: 'instar/local-verify', state: status.state, description: text(status.description) } : { state: 'unknown' },

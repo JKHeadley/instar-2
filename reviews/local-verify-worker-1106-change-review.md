@@ -10,12 +10,13 @@ Operator questions: none
 Suggested tier: significant
 Declared tier: significant
 Tier rationale: New external-tool surface; retains the installed effect boundary and verifier implementation.
+Validation: Ten connector tests pass, including real HTTP transport, MCP stdio discovery and refusal, immutable worker launch selection, captured 503 and recorded-model-shape replay. Null GitHub status entries are ignored. The discovery control fails on the assigned base. Native worker identity/live conversation proof belongs to the Studio gate.
 Side effects: A request can start the existing verifier and its already-authorized follow-on behavior. This client grants no new merge or send authority. Status reads are bounded point-in-time observations.
 Undo and recovery: Remove this connector from the installation's MCP configuration; existing verification jobs and their records remain with the verifier. A lost POST reply remains unknown and requires a read before retry.
 Multi-machine posture: Configured verifier origin owns queue/execution; its peer machine is reported separately. GitHub status belongs to the exact head. The client adds no store or local scheduler.
 Layer below: Read 1.x request eligibility, queue deduplication, head/base record identity, peer sending versus accepted states, and status projection. Reuse 2.0 readRootMcp, installMcp, prepareMcpLaunch and effect admission. The existing content-addressed hook installer copies the connector for the separate worker identity; launch rewrites only the shipped exact path.
 1.x reference: JKHeadley/instar cedba8f3abb9e9619257394106952199f093702e; src/localVerify/localVerifyRoutes.ts, LocalVerifyService.ts, peer.ts, record.ts, statusProjection.ts and StatusReconciler.ts; docs/specs/local-verify-merge-authority.md section 2 and local-verify-capacity.md; history 8c2a16e67 and 2ae9dc186. Reuse POST {pr}, exact-head/base records, queue and instar/local-verify; the existing server retains the whole tuned runner and merge policy. ONEX-LESSONS section 6 informed bounds and consumer verification.
-Bug class: live-path
+Bug class: integration
 Bug evidence: reproducer=tests/preview/local-verify-worker.test.ts; control=the same discovery test fails on the assigned base because the connector does not exist
 Hook bypass: none
 Convergence: none
