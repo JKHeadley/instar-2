@@ -22,6 +22,7 @@ Convergence: none
 Decision: held-decide-every-report | Require one declared decision per offered result through the existing single re-ask, instead of leaving omission as silent waiting. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/held-result-delivery-1106-PROGRESS.md
 Decision: held-keep-t1-floor | Do not attach on omission: tests/preview/t1-verified-answer.test.ts pins that a stored report cannot append without a current selection, so a model that stays undecided after the re-ask appends nothing and the result stays visibly owed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/held-result-delivery-1106-PROGRESS.md
 Decision: held-carried-marker | Add carriedReports with a fixed runner marker line, so own-words delivery is the model's declaration, settles once at the accepted send, repeats no result, and needs no wording comparison. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/held-result-delivery-1106-PROGRESS.md
+Decision: held-register-replay | Refresh the generated register in replay mode from the pushed source commit 03f80e4ed, as earlier units did, so lint and register:check pass on this head. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/held-result-delivery-1106-PROGRESS.md
 Prompt review: The answering mind still judges each report from its own packet; no keyword or wording test decides support or delivery, and exact offered keys only admit its declaration. Recorded room-four reply bytes, the recorded hi answer reason and status counters are replayed; the raw model declarations were not in the evidence, so the declarations are labelled stand-ins and no fresh real-model run is claimed.
 Prompt finding: 4106b49fff07 | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"
 Prompt finding: 849db3a6296a | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
@@ -31,7 +32,7 @@ Deferral: tests/preview/held-result-delivery.test.ts:57 | not-a-deferral=Product
 Deferral: tests/preview/held-result-delivery.test.ts:72 | not-a-deferral=Product guidance or regression data about durable pending work; no builder deferral.
 Deferral: tests/preview/journal.ts:2709 | not-a-deferral=Product guidance or regression data about durable pending work; no builder deferral.
 
-Subject (4 paths): tests/preview/README.md, tests/preview/fixtures/held-result-delivery-1106.json, tests/preview/held-result-delivery.test.ts, tests/preview/journal.ts
+Subject (11 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/README.md, tests/preview/fixtures/held-result-delivery-1106.json, tests/preview/held-result-delivery.test.ts, tests/preview/journal.ts
 
 ## Closing block
 
