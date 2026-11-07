@@ -1,6 +1,6 @@
 # Change review — reply checks and reviews record why they read unavailable
 
-Subject base: aa8cbc934351f78e52d4ecebc3714648981ece0f
+Subject base: e8c2a0b156ae412bcdcb4e020dd2cd6ef4d9098d
 Review state: open
 Reviewed content: none
 Outcome: every reply check or review that reads unavailable now records a bounded cause and fixed-token detail in the journal, for the jev, subscription and holding paths, the after-send review and the review of a revised reply; inspect shows them per reply and status and inspect count them by path and cause. Nothing about retries, gating or what is sent changes.
