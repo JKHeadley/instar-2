@@ -310,7 +310,10 @@ claim/incarnation control; cleanup waits for late resource admission.
 
 The adapter returns distinct reply and turn-end observations from the bounded result
 capture and correlated Stop receipt. Repeated file bytes and pane-idle text cannot end a
-conversation turn. The installed lifecycle hook is copied beside the readable admitted
+conversation turn. A Stop that reports running background work, in the harness's own
+`background_tasks` list, does not end a turn with no result: each finished task wakes the
+session, and the Stop with none left closes it, so the runner reads a result the agent
+writes in a later turn. The installed lifecycle hook is copied beside the readable admitted
 hook; its inbox is shared only with the worker identity. A hook is worker lifecycle evidence,
 not proof of tool completion, reply delivery, or independent authenticity against a malicious
 worker. The existing tool and outward effect owners still decide those facts.
