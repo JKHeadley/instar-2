@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, UNKNOWN_ANSWER_NOTICE, SAFETY_CEILING_NOTICE } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, UNKNOWN_ANSWER_NOTICE, SAFETY_CEILING_NOTICE, unknownAnswerNotice } from './journal-test-worker.js';
 
 // Exact selected journal projection supplied by the desk, not invented raw frames.
 const capture = JSON.parse(readFileSync(new URL('./fixtures/session-result-notice-969390679.json', import.meta.url), 'utf8'));
@@ -27,10 +27,11 @@ for (const row of recorded) it(`replays recorded result ${row.update} through du
     worker.intake([update(row.update)]); await worker.drain(); await worker.drain();
     expect(calls).toBe(1);
     if (row.modelState === 'uncertain') {
-      expect(sent).toEqual([UNKNOWN_ANSWER_NOTICE]);
+      expect(sent).toEqual([unknownAnswerNotice({ text: update(row.update).message.text })]);
+      expect(sent[0]).toContain(UNKNOWN_ANSWER_NOTICE);
       expect(sent[0]).toContain('Completion of your request is unconfirmed');
       expect(sent[0]).toContain('Work may have changed files or external services');
-      expect(sent[0]).toContain('This attempt is not automatically retried');
+      expect(sent[0]).toContain('This attempt will not be repeated automatically');
       expect(sent[0]).toContain('Before resuming, the recorded work and current external state need to be checked');
       expect(sent[0]).not.toMatch(/2750|ENOSPC|merged|picking back up|retry queued|nothing changed|delivered successfully/i);
       expect(journal.view.turns.get(row.id)).toMatchObject({ modelState: 'uncertain', noticeClass: 'unknown-answer' });
@@ -78,6 +79,7 @@ it('preserves the explicit safety halt instead of inventing a retry or a result'
       model: async () => ({ state: 'uncertain', safetyCeiling: 'deadline' }), checkOutbound: () => {},
       send: async input => { sent.push(input.expectedText); return 1; } });
     worker.intake([update(1)]); await worker.drain();
-    expect(sent).toEqual([SAFETY_CEILING_NOTICE]);
+    expect(sent).toHaveLength(1); expect(sent[0]!.startsWith(SAFETY_CEILING_NOTICE)).toBe(true);
+    expect(sent[0]).not.toMatch(/reason is unknown|will retry|retry queued/i);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
