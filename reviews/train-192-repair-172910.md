@@ -37,6 +37,8 @@ Actual JKHeadley/instar origin/main 40a131d93eafc15fd7714a7c383d0a802aa1e847: se
 Decision: train192-172910-merge | Preserve both parents with a normal merge; keep both notice regression sets, the owner activation matcher and live async child waits. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-192-repair-172910-PROGRESS.md
 Decision: train192-172910-publication | Preserve both review reopening histories, regenerate owner pins and register with delegated tools, and submit native qualification to Studio. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-192-repair-172910-PROGRESS.md
 
+Register publication: Replay from merge bac6fd530 via the delegated generator; owner test pin refreshed, grounding inventory unchanged. Both parents remain ancestors. Final checks and host exceptions are recorded in the named progress report.
+
 ## Closing block
 
 simplestRobustRoute: Normal history-preserving merge, union regression coverage and review dispositions, and existing generators for derived artifacts. No new machinery or reduced capability.
