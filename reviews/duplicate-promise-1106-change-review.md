@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: a model-declared fulfillment closes an agent-owned reply promise whether captured by the answer, an open loop or a summary. Delivery of the request's result and fulfillment of its reply promise can settle together, leaving no duplicate owed result. Distinct promises stay owed unless explicitly fulfilled.
 Affected rules: 4/10 semantic judgment; 8/83 owned follow-through; 26/36/70 evidence and recorded-shape provenance; 74/102/113 review and shared state; 101 no bypass; 116 reuse.
-Affected floors: secrets, spend cap, stop, durable intake and send identity are unchanged. Closure still requires a complete accepted reply receipt, an exact delivered excerpt and no unfinished completion items.
+Affected floors: secrets, spend cap, stop, durable intake and no duplicate sends are unchanged. Closure still requires a complete accepted reply receipt, an exact delivered excerpt and no unfinished completion items.
 Operator questions: none
 Suggested tier: significant
 Declared tier: significant
