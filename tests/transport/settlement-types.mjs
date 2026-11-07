@@ -7,19 +7,19 @@ import { effectCommit } from './effect-revision.mjs';
 // surrogate EffectSettlement interface can accidentally make this seam typecheck.
 const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', effectCommit, 'src/effects'],
   { encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL' }).trim().split('\n').filter(p => p.endsWith('.ts'));
-// Give the historical producer its own virtual sibling of the built modules.
-// Replacing src/effects would also replace it for current assembly callers,
-// which require newer exports. The normal build supplies the actual current
-// declarations; no handwritten substitute or unrelated source compilation.
-const files = new Map(paths.map(path => [resolve(path.replace('src/effects/', 'dist/pinned-effects/')),
+// Compile historical producer source against the normal build's actual current
+// declarations. Keep one effects module identity for its private ownership brand;
+// a sibling copy would be a different owner. Do not compile newer assembly source
+// against this old producer: that is not the six/eight seam under examination.
+const files = new Map(paths.map(path => [resolve(path.replace('src/', 'dist/')),
   execFileSync('git', ['show', `${effectCommit}:${path}`], { encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL' })]));
 const seam = resolve('dist/settlement-owner-typecheck.ts');
 files.set(seam, `
 import { createTransportAuthority, registerTransportBodies } from './transport/index.js';
 import type { TransportHost, TransportSpine, FenceToken } from './transport/index.js';
 import type { BoundaryContext } from './index.js';
-import { consumeEffectSettlement } from './pinned-effects/index.js';
-import type { EffectSettlement, EffectComposition } from './pinned-effects/index.js';
+import { consumeEffectSettlement } from './effects/index.js';
+import type { EffectSettlement, EffectComposition } from './effects/index.js';
 declare const host: TransportHost, spine: TransportSpine, c: BoundaryContext, fence: FenceToken, settlement: EffectSettlement;
 const api = createTransportAuthority(host, spine, c, consumeEffectSettlement);
 registerTransportBodies(host, c, consumeEffectSettlement);
