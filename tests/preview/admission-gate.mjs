@@ -21,7 +21,7 @@ import { OWNER_BROWSER_TOOL, ownerBrowserRequest, ownerBrowserRefused } from './
 import { createHash, randomBytes } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
-import { nestedSessionWorkClose, nestedSessionWorkEdge, sessionWorkEffect } from '../../src/assembly/production-session-work.js';
+import { nestedSessionWorkClose, nestedSessionWorkEdge, nestedSessionWorkFailure, sessionWorkEffect } from '../../src/assembly/production-session-work.js';
 import { doorwayRecord, HELD_CHECK_MAX_BYTES, heldRefusal } from './tool-admission.mjs';
 
 /** Where each harness's model calls go after admission: fixed, so this server can never be used to reach anything else. */
@@ -146,6 +146,15 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       if (call.phase === 'post') {
         const open = state.delegations.get(id);
         if (open?.open) {
+          // The harness's own failure completion (PostToolUseFailure) names this exact call: the helper returned no result and
+          // the parent received the error. The edge closes failed, so the parent's own result is not held uncertain over a
+          // helper it already saw fail (1.x HelperWatchdog helper-failed, carried as a durable close; row 16). Only the
+          // classified reason is recorded, never the failure text.
+          if (call.failed === true) {
+            append(nestedSessionWorkFailure(open.edge, id, typeof call.error_excerpt === 'string' ? call.error_excerpt : null, now()));
+            open.open = false;
+            return { decision: 'allow', reason: 'delegation failed: its edge is closed failed' };
+          }
           // An asynchronous spawn returns the child's handle, not its result: the edge stays open, holding the handle,
           // until the harness's wait reports the child finished (or the parent closes it as uncertain).
           if (ASYNC_SPAWN_TOOLS.includes(tool) || call.background === true) {

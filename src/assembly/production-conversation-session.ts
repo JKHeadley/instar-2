@@ -289,9 +289,12 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
               && record.id === `${state.claim}:process` && record.child === state.claim
               && record.parent === state.edge?.id && record.drawsOn === state.edge?.id && record.authority === state.authority);
             ready = admittedEdge !== undefined && records.filter((record): record is SessionWorkEdge =>
-              record.type === 'SessionWorkEdge' && record.parent === admittedEdge.id).every(child =>
-              records.some(record => record.type === 'SessionWorkEdgeClose' && record.edge === child.id
-                && record.child === child.child && record.state === 'complete'));
+              record.type === 'SessionWorkEdge' && record.parent === admittedEdge.id).every(child => {
+              // Exactly one settled close per helper (row 16): a returned result, or a harness-reported failure the parent
+              // received. A second close, an uncertain one or none leaves the batch unrecovered; no automatic replay.
+              const closes = records.filter((record): record is SessionWorkEdgeClose => record.type === 'SessionWorkEdgeClose' && record.edge === child.id);
+              return closes.length === 1 && closes[0]!.child === child.child && (closes[0]!.state === 'complete' || closes[0]!.state === 'failed');
+            });
           }
         } catch { /* Unreadable evidence must not wedge other work or authorize replay. */ }
         if (!ready) continue;
@@ -588,7 +591,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       const result: SessionWorkEdgeClose = freeze({ type: 'SessionWorkEdgeClose', schemaVersion: 1, id: `${processEdge}:host-close:${state.epoch}`, edge: processEdge,
         child: null, state: problems.length ? 'uncertain' : 'complete', detail: problems.join('; ') || 'conversation closed',
         evidence: state.edge.id, resultBytes: null, closedAt: config.now(), calls: used, reserved: config.maxCalls });
-      config.append(result); persist({ close: result }); return result;
+      // An edge the journal refused at the cap (reservation never confirmed) has no durable edge to close there; the
+      // port's own record still carries the close. A second journal close for the same edge would be refused (row 16).
+      if (state.reserved) config.append(result);
+      persist({ close: result }); return result;
     };
     const maintain = async () => {
       if (state.halt) { await close(); return; }
