@@ -24,6 +24,23 @@ Decision: train-200-A | Preserve all reviewed member and live-base behaviour; no
 Decision: train-200-B | Create the separate train-200 checkout directly at 5a5fdc9176676196fca2735740f19388ea2ef40b and preserve ancestry; other trains and live roots stay untouched. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-200-PROGRESS.md
 Decision: train-200-D | Name host-dependent checks instead of repairing them; the 5a5fdc91 limit shim is unchanged here and dash refuses ulimit -u, and the launcher, Telegram bridge and native tests stay with the Studio gate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-200-PROGRESS.md
 Decision: train-200-desk | Run the existing repin, build, owner rehash and register replay chain at b17fd149baa0ed2940955da675c4543cd79104da as reviews/train-197-cint-L37-evidence.txt preserves it; repin 0, rehash 0, register check true. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-200-PROGRESS.md
+Prompt finding: 0abb3dc96311 | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts
+Prompt finding: 5b486d8bd247 | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts
+Prompt finding: 5fa1a20c4031 | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts
+Prompt finding: 7c45ffbe90ad | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts
+Prompt finding: 85544c20941f | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-conversation-session.test.ts
+Prompt finding: aef7d91bef51 | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts
+Prompt finding: b288d6ef1604 | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts
+Prompt finding: e769ca9dd959 | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts
+Prompt finding: f6d7f3274c85 | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts
+Prompt finding: feadb66b8ad1 | protocol-literal | Unchanged protocol shared with recorded fixtures, not a semantic trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts
+Deferral: tests/preview/held-result-delivery.test.ts:101 | not-a-deferral=Product guidance or regression data about durable pending work; no builder deferral.
+Deferral: tests/preview/held-result-delivery.test.ts:86 | not-a-deferral=Product guidance or regression data about durable pending work; no builder deferral.
+Deferral: tests/preview/journal.ts:2713 | not-a-deferral=Product guidance or regression data about durable pending work; no builder deferral.
+Deferral: tests/preview/journal.ts:2724 | not-a-deferral=Product guidance or regression data about durable pending work; no builder deferral.
 
 ## Closing block
 
