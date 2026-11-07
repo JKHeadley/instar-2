@@ -34,10 +34,14 @@ Subject (40 paths): docs/implementation/carryover-16-helper-failure-1104.md, gen
 
 Actual JKHeadley/instar origin/main 40a131d93eafc15fd7714a7c383d0a802aa1e847: searched src/, docs/specs/ and git history; read src/core/LLMConflictResolver.ts and docs/specs/honest-merge-base-verification.eli16.md, with history a34adbc8 and 38d25dee. Reuse intent preservation and honest verification state. This merge needs no runtime resolver carryover. ONEX-LESSONS section 6 informs bounded test concurrency and evidence matched to the landing workflow.
 
-Decision: train192-172910-merge | Preserve both parents with a normal merge; keep both notice regression sets, the owner activation matcher and live async child waits. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-192-repair-172910-PROGRESS.md
-Decision: train192-172910-publication | Preserve both review reopening histories, regenerate owner pins and register with delegated tools, and submit native qualification to Studio. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-192-repair-172910-PROGRESS.md
+Decision: train192-172910-merge | Preserve both parents with a normal merge; keep both notice regression sets, the owner activation matcher and live async child waits. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-192-repair-210405-PROGRESS.md
+Decision: train192-172910-publication | Preserve both review reopening histories, regenerate owner pins and register with delegated tools, and submit native qualification to Studio. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-192-repair-210405-PROGRESS.md
+Decision: train192-210405-deferral-lines | The merge moved both browser records' last commit, so their range now takes in three archived review copies under docs/evidence/train-192-notice-owner; declare those lines as not deferrals rather than change the checker or the copies. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-192-repair-210405-PROGRESS.md
+Decision: train192-210405-publish-existing-merge | Keep the unpushed merge from the stopped 172910 run after rechecking both parents, each conflict resolution and the cheap gates; a redo would only repeat it, and its decisions now report to this run. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-192-repair-210405-PROGRESS.md
 
 Register publication: Replay from merge bac6fd530 via the delegated generator; owner test pin refreshed, grounding inventory unchanged. Both parents remain ancestors. Final checks and host exceptions are recorded in the named progress report.
+
+1.x recheck: origin/main fe1b0f41a0b4a5f428c6fa07478ae0aad0c19b23 still carries src/core/LLMConflictResolver.ts and docs/specs/honest-merge-base-verification.eli16.md, last touched by a34adbc8e; the comparison above stands.
 
 ## Closing block
 
