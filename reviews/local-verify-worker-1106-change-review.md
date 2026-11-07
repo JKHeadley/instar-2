@@ -10,6 +10,7 @@ Operator questions: none
 Suggested tier: significant
 Declared tier: significant
 Tier rationale: New external-tool surface; retains the installed effect boundary and verifier implementation.
+Publication: Regenerated the seven shape-only register outputs against source commit 20abac9b38429774da87432ad846a4b6f4282ee5. Owner-reference rehash and grounding-chain checks changed no pins.
 Validation: Ten connector tests pass, including real HTTP transport, MCP stdio discovery and refusal, immutable worker launch selection, captured 503 and recorded-model-shape replay. Null GitHub status entries are ignored. The discovery control fails on the assigned base. Native worker identity/live conversation proof belongs to the Studio gate.
 Side effects: A request can start the existing verifier and its already-authorized follow-on behavior. This client grants no new merge or send authority. Status reads are bounded point-in-time observations.
 Undo and recovery: Remove this connector from the installation's MCP configuration; existing verification jobs and their records remain with the verifier. A lost POST reply remains unknown and requires a read before retry.
