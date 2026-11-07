@@ -8,7 +8,7 @@ import { harnessGate, harnessLoginPath, migrateHarnessLogin, readHarnessLogin, s
 import { createClaudePoolQuota } from '../../scripts/claude-pool-quota.mjs';
 import { classifyProviderFailure } from '../../src/assembly/provider-failure.js';
 import { loginOutageReply } from './journal.js';
-import { lastReplySentAt, openReplyNotices, validAnswerNotices } from './credential-reminders.js';
+import { openReplyNotices } from './credential-reminders.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -33,7 +33,7 @@ function fixture(names = ['serving-a', 'serving-b'], changes = {}) {
 }
 const limit = { state: 'uncertain', failure: { failureClass: 'limit', resetAt: null } };
 
-it('replays the captured weekly limit: A fails, next call uses B, switch is durable and notice is offered once', () => {
+it('replays the captured weekly limit: A fails, next call uses B, switch is durable and status-only (no reply line)', () => {
   const f = fixture(), calls = [];
   const a = f.pool.select(); calls.push(a.profile.reference);
   const stdout = readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8');
@@ -50,77 +50,61 @@ it('replays the captured weekly limit: A fails, next call uses B, switch is dura
   expect(calls).toEqual(['serving-a', 'serving-b']);
   expect(reopened.state.switches).toEqual([{ from: 'serving-a', to: 'serving-b', reason: 'provider-limit', at: f.clock.at, sequence: 1 }]);
   expect(JSON.parse(readFileSync(f.settings.statePath, 'utf8')).active).toBe(1);
-  const notices = reopened.notices(); expect(notices).toHaveLength(1);
-  expect(notices[0].line).toContain('next approved login');
-  expect(validAnswerNotices(notices, notices[0].line)).toBe(true);
-  expect(openReplyNotices([], notices, 'turn:2')).toEqual(notices);
-  expect(openReplyNotices([{ id: 'turn:2', answerNotices: notices, sent: 2 }], notices, 'turn:3')).toEqual([]);
+  // stale-login-line-1107 (Rules 87/88): a successful switch needs no operator action, so no reply carries it;
+  // it stays in durable history and on the status pull surface.
+  expect(reopened.notices()).toEqual([]);
+  expect(openReplyNotices([], reopened.notices(), 'turn:2')).toEqual([]);
+  expect(reopened.status()).toContain(`Last switch: serving-a to serving-b, provider-limit, at ${f.clock.at}.`);
   expect(createHarnessLoginPool(f.settings).state.switches).toHaveLength(1);
 });
 
 // stale-login-line-1107: live reply on 11-07 carried this line about 36 hours after switch 28 of 11-05 19:43 PST.
 const SWITCH_28 = Date.UTC(2026, 10, 6, 3, 43);
+const LINE = 'The model login reached its configured usage threshold. I switched to the next approved login for this runner.';
 const switchHistory = (f, count, last) => {
   const refs = ['serving-a', 'serving-b'];
   return { ...f.pool.state, active: count % 2, switches: Array.from({ length: count }, (_, index) => ({ from: refs[index % 2], to: refs[(index + 1) % 2],
     reason: 'usage-threshold', at: last - (count - 1 - index) * 3_600_000, sequence: index + 1 })) };
 };
 
-it('adds nothing for a switch long ago, whether or not its old line was ever spent, and keeps old records unchanged', () => {
+it('adds no reply line for a switch long ago, whether or not an old line was ever spent, and keeps old records unchanged', () => {
   const f = fixture();
   const old = switchHistory(f, 28, SWITCH_28);
   writeFileSync(f.settings.statePath, JSON.stringify(old));
   const pool = createHarnessLoginPool(f.settings);
   expect(pool.state).toEqual(old); // An old record loads as written; nothing is migrated.
-  const line = 'The model login reached its configured usage threshold. I switched to the next approved login for this runner.';
   const key = sequence => `doorway:harness-login:${old.identity}:${sequence}`;
   // A reply went out after the switch and spent an older key from the backlog: switch 28 itself is still unspent.
-  const turns = [{ id: 'after', intent: `Done.\n\n${line}`, sent: 700, sentAt: SWITCH_28 + 3_600_000, answerNotices: [{ key: key(27), line }] }];
-  const offered = openReplyNotices(turns, pool.notices(lastReplySentAt(turns)), 'task-on-11-07');
-  expect(offered).toEqual([]);
-  // Already noticed: spent key, and no reply since would still not repeat it.
-  const noticed = [{ id: 'first', intent: line, sent: 1, sentAt: SWITCH_28 - 1, answerNotices: [{ key: key(28), line }] }];
-  expect(openReplyNotices(noticed, pool.notices(lastReplySentAt(noticed)), 'next')).toEqual([]);
+  const turns = [{ id: 'after', intent: `Done.\n\n${LINE}`, sent: 700, sentAt: SWITCH_28 + 3_600_000, answerNotices: [{ key: key(27), line: LINE }] }];
+  expect(openReplyNotices(turns, pool.notices(), 'task-on-11-07')).toEqual([]);
+  expect(openReplyNotices([], pool.notices(), 'first-ever')).toEqual([]);
+  expect(pool.status()).toContain(`Last switch: serving-b to serving-a, usage-threshold, at ${SWITCH_28}.`);
   expect(pool.state).toEqual(old);
 });
 
-it('notices a fresh switch once on the following reply, and several switches between replies as one line', () => {
+it('adds no reply line for a fresh switch either, while switch history and status keep it', () => {
   const f = fixture();
   const old = switchHistory(f, 3, SWITCH_28);
   writeFileSync(f.settings.statePath, JSON.stringify(old));
   const pool = createHarnessLoginPool(f.settings);
   const before = [{ id: 'before', intent: 'Earlier.', sent: 1, sentAt: SWITCH_28 - 1 }];
-  const first = openReplyNotices(before, pool.notices(lastReplySentAt(before)), 'following');
-  expect(first).toHaveLength(1);
-  expect(first[0].key).toBe(`doorway:harness-login:${old.identity}:3`); // The historic key shape is unchanged.
-  expect(validAnswerNotices(first, first[0].line)).toBe(true);
-  // The following reply delivered it, and a reply whose receipt is unknown spends it too: neither repeats.
-  for (const carried of [{ sent: 2, sentAt: SWITCH_28 + 1 }, {}]) {
-    const turns = [...before, { id: 'following', intent: first[0].line, answerNotices: first, ...carried }];
-    expect(openReplyNotices(turns, pool.notices(lastReplySentAt(turns)), 'later')).toEqual([]);
-  }
-  // A later switch is a new event and gets its own single line.
-  const newer = [...before, { id: 'following', intent: first[0].line, sent: 2, sentAt: SWITCH_28 + 1, answerNotices: first }];
+  expect(openReplyNotices(before, pool.notices(), 'following')).toEqual([]);
+  // A later switch is recorded as a new event, and still adds no line.
   writeFileSync(f.settings.statePath, JSON.stringify(switchHistory(f, 4, SWITCH_28 + 2)));
   const reopened = createHarnessLoginPool(f.settings);
-  expect(openReplyNotices(newer, reopened.notices(lastReplySentAt(newer)), 'later').map(item => item.key))
-    .toEqual([`doorway:harness-login:${old.identity}:4`]);
+  expect(reopened.state.switches.map(event => event.sequence)).toEqual([1, 2, 3, 4]);
+  expect(openReplyNotices(before, reopened.notices(), 'later')).toEqual([]);
+  expect(reopened.status()).toContain(`Last switch: serving-b to serving-a, usage-threshold, at ${SWITCH_28 + 2}.`);
 });
 
-it('replays the recorded live replies that each repeated the line: only the first reply after the switch may carry it', () => {
+it('replays the recorded live replies that each repeated the line: none of them is offered it now', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/session-result-notice-969390679.json', import.meta.url), 'utf8'));
-  const line = 'The model login reached its configured usage threshold. I switched to the next approved login for this runner.';
-  const carrying = capture.neighbors.filter(turn => turn.intent.includes(line));
+  const carrying = capture.neighbors.filter(turn => turn.intent.includes(LINE));
   expect(carrying.map(turn => turn.update)).toEqual([969390675, 969390676, 969390677, 969390678]);
   const f = fixture();
-  const switchAt = carrying[0].at + 1;
-  writeFileSync(f.settings.statePath, JSON.stringify(switchHistory(f, 4, switchAt)));
+  writeFileSync(f.settings.statePath, JSON.stringify(switchHistory(f, 4, carrying[0].at + 1)));
   const pool = createHarnessLoginPool(f.settings);
-  const offered = carrying.map((turn, index) => {
-    const prior = carrying.slice(0, index);
-    return openReplyNotices(prior, pool.notices(lastReplySentAt(prior)), turn.id).length;
-  });
-  expect(offered).toEqual([1, 0, 0, 0]);
+  expect(carrying.map((turn, index) => openReplyNotices(carrying.slice(0, index), pool.notices(), turn.id).length)).toEqual([0, 0, 0, 0]);
 });
 
 it('binds every custody record to its profile reference, account, org and plan, with no singleton fallback', () => {
@@ -510,11 +494,10 @@ it('build B keeps build A selection, holds, history and spent notice keys with d
   expect(openReplyNotices([{ id: 'sent', answerNotices: notices, sent: 2 }], reopened.notices(), 'next')).toEqual([]);
 });
 
-it.each([false, true])('adopts old path-hashed state losslessly with stable historic notice keys (new paths=%s)', newPaths => {
+it.each([false, true])('adopts old path-hashed state losslessly, keeping its historic notice identity (new paths=%s)', newPaths => {
   const f = fixture(); f.pool.observe(f.pool.select(), limit); f.pool.select();
   const old = { ...f.pool.state, identity: f.configuration.legacyIdentity };
   writeFileSync(f.settings.statePath, JSON.stringify(old));
-  const notices = [{ key: `doorway:harness-login:${old.identity}:1`, line: f.pool.notices()[0].line }];
   let configuration = f.configuration;
   if (newPaths) {
     const next = join(f.root, 'new-build.json');
@@ -526,8 +509,7 @@ it.each([false, true])('adopts old path-hashed state losslessly with stable hist
   expect(pool.state).toMatchObject({ active: old.active, holds: old.holds, switches: old.switches,
     identity: configuration.identity, noticeIdentity: old.identity });
   expect(pool.state.migrations).toHaveLength(1);
-  expect(pool.notices()).toEqual(notices);
-  expect(openReplyNotices([{ id: 'sent', answerNotices: notices, sent: 2 }], pool.notices(), 'next')).toEqual([]);
+  expect(pool.notices()).toEqual([]); // stale-login-line-1107: an adopted switch adds no reply line either.
   expect(createHarnessLoginPool({ ...f.settings, configuration }).state).toEqual(pool.state);
 });
 
@@ -548,7 +530,8 @@ it('excludes an unavailable member without renumbering holds/history, records on
   expect(pool.status()).toContain('serving-b (active); unavailable (missing authority)');
   expect(pool.status()).toContain('switching only after a typed limit reply');
   expect(pool.status()).toContain('Last switch: serving-a to serving-b, provider-limit');
-  const notices = pool.notices(); expect(notices).toHaveLength(2);
+  const notices = pool.notices(); // The unavailable member is actionable; the earlier successful switch adds no line.
+  expect(notices.map(notice => notice.key)).toEqual([`doorway:harness-login:${f.configuration.identity}:unavailable:1`]);
   expect(openReplyNotices([{ id: 'sent', answerNotices: notices, sent: 2 }], pool.notices(), 'next')).toEqual([]);
   f.clock.at += 1;
   const reading = capacity(f);

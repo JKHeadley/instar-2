@@ -75,11 +75,6 @@ export function openReplyNotices(turns: readonly NoticeTurn[], candidates: reado
   return candidates.filter(notice => !spent.has(notice.key));
 }
 
-/** When the latest whole reply was delivered, from the journal's durable turns; -Infinity before any. */
-export function lastReplySentAt(turns: readonly NoticeTurn[]): number {
-  return turns.reduce((latest, turn) => wholeReplySent(turn) ? Math.max(latest, wholeReplySentAt(turn) ?? latest) : latest, -Infinity);
-}
-
 /** Keys a sent reply actually delivered (every message of it accepted, Rule 42), with the last message's send time. */
 export function deliveredNotices(turns: readonly NoticeTurn[]): Map<string, number> {
   const delivered = new Map<string, number>();
