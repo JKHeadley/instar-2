@@ -4,7 +4,7 @@ Subject base: aab071e1614edba7be99acafb5f0e7c57d61210e
 Review state: open
 Reviewed content: none
 Outcome: Combine the live build aab071e1 with the reviewed head session-turn-background-1107 ad821489, so a turn that ends with background helpers still running and no result stays open and the result written later is delivered once. This train adds no behaviour of its own: one ordinary merge, the desk chain and this record.
-Affected rules: 26, 30, 34, 37, 49, 66, 69, 74, 77, 90, 101, 102, 105, 111, 113, 114, 115, 116
+Affected rules: 12, 26, 27, 30, 34, 37, 49, 66, 69, 74, 77, 90, 101, 102, 105, 111, 113, 114, 115, 116
 Affected floors: secrets — no credential path changes and a time value and a count are all the member adds; spend cap — no model call or reservation changes; stop — stop authority is still checked first; no duplicate sends — the member's single-delivery cursor is unchanged by the merge; durable intake — no row kind or field changes.
 Operator questions: none
 Suggested tier: critical
@@ -25,6 +25,7 @@ Prompt review: No model prompt, output parser or verdict boundary is authored he
 Decision: train203-merge-stb | Merged session-turn-background-1107 at exactly ad821489 with one ordinary merge (29276ccb); member report session-turn-background-1107-PROGRESS.md; the only conflicts were in generated/. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-203-PROGRESS.md
 Decision: train203-desk | Took generated/ from the live side for the merge commit, then re-ran the desk chain (repin 0, build, rehash 0) and replayed the register at 29276ccb (b12856b3); nothing in generated/ was hand-merged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-203-PROGRESS.md
 Decision: train203-keep-both | Desk decision A: both parents' behaviour is kept whole, since no source or test file changed on both sides. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-203-PROGRESS.md
+Decision: train203-prompt-dispositions | The merge commit's diff against its member parent brings two open live records into the change scope, so their four existing fixture-phrase findings each became due; added the established protocol-literal lines to reviews/resource-census-stream-1105-change-review.md and reviews/train-175-policy-cache-repair.md, with no prompt or test text changed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-203-PROGRESS.md
 Decision: train203-live-base | Desk decision B: built directly on the live build aab071e1, whose ancestry holds origin/main, leaving its accepted behaviour and the native declaration chain as the member renewed them. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-203-PROGRESS.md
 
 Deferral: generated/register.json:1 | not-a-deferral=Regenerated governing text, not a new commitment.
