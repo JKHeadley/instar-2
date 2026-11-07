@@ -1,0 +1,44 @@
+# Change review — train-198: renew activation through December and deliver a durable closing notice
+
+Subject base: 8258974660cadac50e9a4988c050cf14764e8dc3
+Review state: open
+Reviewed content: none
+Outcome: Renew the shipped end to 2026-12-12 21:40 UTC (1797111600000), keeping 2026-11-12 as the predecessor. Deliver a single durable closing notice per effective end, including while an answer waits on a model. Keep calendar passage from expiring historical test fixtures.
+Affected rules: 1/4/56 fixed governed end and predecessor admission; 25/34/37 fixture clock and boundary proofs; 28/52/87/89 operator-bound action notice with signed infrastructure provenance; 44/45 replay and predecessor renewal; 74/102/111/113/116 review, decisions, foundation and simplest robust route.
+Affected floors: secrets — existing outbound check and signature, no credential handling added; spend cap — no model call or authority grant added; stop — existing gate checks before dispatch and no send at or after expiry; no duplicate sends — per-end durable intent, UNKNOWN never repeated, receipt and snapshot replay; durable intake — unchanged admission and journal, no cursor or capture rewrite.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Changes the governed activation end and adds an irreversible outbound incident through the existing intent/dispatch doorway.
+Side effects: The new build admits the November predecessor only while the journal still ends there; after a renewal it requires the December record. Each effective end gets at most one notice. The test clock applies only inside Vitest and inherited node children; explicit boundary clocks win. The historical November fixture anchor is deliberately independent of the new product end.
+Undo and recovery: Revert before renewing any root. After renewal, an older build refuses the December record; retain a build supporting December or recover through the desk-approved root procedure. Never repeat an UNKNOWN closing send. No live root, renewal script, authority record or login was changed.
+Multi-machine posture: Existing conversation ownership and disclosure admission still gate sends. The closing intent and receipts live in the existing journal and survive replay/compaction on the owner. This adds no independently writable notice store or new poller. Test clock is machine-local test infrastructure only.
+Layer below: Read subscriptionActivationEndAllowed, validateSubscriptionActivation, activationMatchesJournal, checkExpiry/renewJournalExpiry, dispatch/admit/provenance, snapshot retention, minimal loop and launcher expiry. Reuse cbb9659f18f83a2476ea45d74ba11c9982d60873 renewal shape. 1.x main 6d3b9a23acba41c32ce2f4eb314d957391e31a3a: inspected src/, docs/specs/ and history; 8dfc872853ca80eb378a269902b71e742104ff74, docs/specs/fix-expiring-throughput-fixture.eli16.md, tests/e2e/throughput-series-live.test.ts and src/server/throughputRoutes.ts fix a calendar-expiring fixture while preserving the measured interval. Reuse that principle, adapting it to real child launchers via a test-only inherited clock. Activation-name searches produced no matching governed subscription end, so the 2.0 predecessor mechanism is reused rather than unrelated 1.x activation machinery. ONEX-LESSONS areas 5/6: time grounding, bounded test concurrency, observable production assembly and fixture isolation.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/closing-notice.test.ts; detail=the draft notice ran only after the ordinary drain, could be delayed by a pending model, accepted arbitrary suffixes, suppressed all future renewed-end notices and ignored the reply allowance every other fixed notice keeps. Real launcher with controlled clock and delayed model, plus signed journal boundary tests, exercise these failures.
+Hook bypass: none
+Convergence: none
+
+Prompt review: No model prompt, output parser or judgment criterion changed. The closing notice is a fixed infrastructure incident, checked for exact bytes and dispatched through existing signed intent. Existing recorded-answer renewal tests replay operator-yes-live-2026-10-02.json renew-ask and yes-applied through the real extraction and launcher. Historical fixtures are retained byte-for-byte. No claim of live-room proof; the desk owns that gate.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing unchanged protocol/fixed-notice wording; the renewal adds no model instruction — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"
+Prompt finding: 849db3a6296a | protocol-literal | Existing unchanged protocol/fixed-notice wording; the renewal adds no model instruction — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
+Prompt finding: 85544c20941f | protocol-literal | Existing unchanged protocol/fixed-notice wording; the renewal adds no model instruction — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-conversation-session.test.ts: "your messages are kept and i'll answer them then; you don't need to resend them."
+Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged protocol/fixed-notice wording; the renewal adds no model instruction — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
+
+Subject (15 paths): docs/product-run.md, src/assembly/subscription-window.ts, tests/preview/README.md, tests/preview/agentready.test.ts, tests/preview/closing-notice-boundary.test.ts, tests/preview/closing-notice.test.ts, tests/preview/journal.ts, tests/preview/renew-activation.test.ts, tests/preview/renew-ask-live.test.ts, tests/preview/yes-batch-live.test.ts, tests/setup/test-clock-env.ts, tests/setup/test-clock.mjs, tests/unit/test-clock-process.test.ts, tests/unit/test-clock.test.ts, vitest.config.ts
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: change the existing two end constants; reuse the journal intent, receipt, signature, snapshot and minimal-loop mechanisms for the closing message; inherit one test-only wall-clock shift across workers/children. A per-end slot prevents the next renewal suppressing its own warning, an in-flight promise prevents concurrent minimal/drain duplicate attempts, and exact text validation prevents arbitrary content under an infrastructure notice. No renewal scripts or new service. Start guard is a live journal inside the five-minute window with an accepted operator turn; end guard is durable once-per-end intent; stop, expiry, ownership and disclosure remain enforced.
+80/20: Author submission for independent review. Targeted boundary/process tests and required checks are recorded in the builder report. Studio-owned macOS self-host certificate and live release gates remain explicitly separate from this code build.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+
+Decision: renewal-dec12-window | Use the existing current/predecessor predicate; changing code alone grants no renewal and writes no live state. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/renewal-dec12-1106-r2-PROGRESS.md
+
+Decision: renewal-dec12-clock | Keep the historical November fixture end as the test anchor, so a later product renewal cannot age old literals into failure; preserve explicit clocks and advancing timers. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/renewal-dec12-1106-r2-PROGRESS.md
+
+Decision: renewal-dec12-closing | Use exact signed infrastructure text with a durable slot per end, run through the minimal path while models wait, and deduplicate concurrent calls and UNKNOWN outcomes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/renewal-dec12-1106-r2-PROGRESS.md
+
+Decision: renewal-dec12-wording | Omit draft claims that a ready approval request exists or that reinstalling is proven recovery; only state the enforced end and renewal cutoff. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/renewal-dec12-1106-r2-PROGRESS.md
+
+Decision: renewal-dec12-closing-allowance | Keep the closing notice inside the reply allowance with the same last-reply reserve as the other fixed notices, and drop it through the send path's existing current check when an acknowledgement, stop or the end lands during admission, so the minimal pass never fails on it. At the reserve the person gets the limit notice instead. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/renewal-dec12-1106-r2-PROGRESS.md
