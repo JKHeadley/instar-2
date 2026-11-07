@@ -474,8 +474,16 @@ export function noteText(tool, input) {
   }
   const patch = name === 'apply_patch' ? input?.input ?? input?.command ?? input?.patch : undefined;
   if (typeof patch !== 'string' || !patchPaths(patch)?.some(prose)) return null;
-  const added = patch.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++')).map(line => line.slice(1)).join('\n');
-  return added.trim() ? added : null;
+  // Only the added lines of the prose targets: a code file in the same patch stays out of scope.
+  let target = null;
+  const added = [];
+  for (const line of patch.split('\n')) {
+    const section = /^\*\*\* (Add File|Update File|Delete File|Move to): (.+)$/u.exec(line);
+    if (section) target = section[1] === 'Delete File' ? null : section[2].trim();
+    else if (line.startsWith('*** End Patch')) target = null;
+    else if (prose(target) && line.startsWith('+') && !line.startsWith('+++')) added.push(line.slice(1));
+  }
+  return added.join('\n').trim() ? added.join('\n') : null;
 }
 export function outwardText(tool, input) {
   const name = String(tool ?? '');

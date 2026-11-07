@@ -89,11 +89,37 @@ export const ATTRIBUTION_QUESTION = [
   'Answer with only this JSON on one line: {"claims":[{"span":string,"person":string|null,"kind":"statement"|"rule"|"decision"|"preference"|"instruction"|"rule-refusal","marker":number|null,"labelled":boolean,"stillCredits":boolean,"recap":boolean,"ownWords":"own"|"relayed"|"unclear"|null,"faithful":boolean|null,"why":string}]}. why is one short sentence. No credit at all is {"claims":[]}.',
 ].join('\n');
 
-/** Bounded so one long note cannot take the whole call. Longer text is checked in chunks by the caller's surface. */
+/** One call reads at most this much text. Longer text is split by chunkForJudge and every chunk is checked. */
 export const ATTRIBUTION_TEXT_MAX = 16_384;
+/** Rule 60: one text takes at most this many judge calls (128 KiB of prose). Past it the rest is recorded unchecked, never dropped. */
+export const ATTRIBUTION_CHUNK_LIMIT = 8;
 
+/** 1.x AttributionJudge.chunkForJudge: split at paragraph boundaries, each chunk within the call's input bound, so the whole
+ * text is read. A paragraph longer than the bound is cut at its last line or sentence end inside it when there is one, so
+ * a marker stays on the line of the quote it backs. */
+export function chunkForJudge(text: string, max = ATTRIBUTION_TEXT_MAX): string[] {
+  if (text.length <= max) return [text];
+  const chunks: string[] = [];
+  let current = '';
+  for (const paragraph of text.split(/\n{2,}/u)) {
+    let rest = paragraph;
+    while (rest.length > max) {
+      if (current) { chunks.push(current); current = ''; }
+      const window = rest.slice(0, max), end = Math.max(window.lastIndexOf('\n'), window.lastIndexOf('. ') + 1);
+      const cut = end > max / 2 ? end + 1 : max;
+      chunks.push(rest.slice(0, cut));
+      rest = rest.slice(cut);
+    }
+    if (current && current.length + rest.length + 2 > max) { chunks.push(current); current = ''; }
+    current = current ? `${current}\n\n${rest}` : rest;
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+/** The packet for one chunk. The caller chunks with chunkForJudge, so text is never cut here. */
 export function attributionPacket(input: { text: string; surface: AttributionSurface; facts: readonly MarkerFact[]; conversation?: readonly { from: string; text: string }[] }): string {
-  return JSON.stringify({ packet: { surface: input.surface, text: input.text.slice(0, ATTRIBUTION_TEXT_MAX),
+  return JSON.stringify({ packet: { surface: input.surface, text: input.text,
     markers: input.facts.map(fact => ({ index: fact.index, marker: fact.marker, quote: fact.quote,
       record: fact.record && { sender: fact.record.by, strength: fact.record.strength, text: fact.record.text } })),
     ...(input.surface === 'send' && input.conversation ? { conversation: input.conversation } : {}) } });
@@ -105,10 +131,14 @@ interface JudgedClaim { span: string; person: string | null; kind: string; marke
 export function parseAttributionAnswer(value: string): JudgedClaim[] {
   const start = value.indexOf('{'), end = value.lastIndexOf('}');
   const parsed = JSON.parse(start < 0 ? value : value.slice(start, end + 1)) as { claims?: unknown };
-  if (!Array.isArray(parsed.claims)) throw Error('attribution: answer has no claims list');
+  if (!Array.isArray(parsed.claims)) throw SyntaxError('attribution: answer has no claims list');
   return parsed.claims.map(raw => {
-    const claim = raw as Partial<JudgedClaim>;
-    if (typeof claim.span !== 'string' || !claim.span) throw Error('attribution: claim has no span');
+    const claim = (raw ?? {}) as Partial<JudgedClaim>;
+    if (typeof claim.span !== 'string' || !claim.span) throw SyntaxError('attribution: claim has no span');
+    // 1.x AttributionJudge.support: a sourced claim is judged only on both answers. A missing one is no verdict, never a pass.
+    if (Number.isSafeInteger(claim.marker) && claim.labelled !== true
+      && (!['own', 'relayed', 'unclear'].includes(claim.ownWords as string) || typeof claim.faithful !== 'boolean'))
+      throw SyntaxError('attribution: a sourced claim lacks ownWords or faithful');
     return { span: claim.span, person: typeof claim.person === 'string' ? claim.person : null, kind: String(claim.kind ?? 'statement'),
       marker: Number.isSafeInteger(claim.marker) ? claim.marker! : null, labelled: claim.labelled === true, stillCredits: claim.stillCredits === true,
       recap: claim.recap === true, ownWords: typeof claim.ownWords === 'string' ? claim.ownWords : null,
@@ -117,6 +147,16 @@ export function parseAttributionAnswer(value: string): JudgedClaim[] {
 }
 
 /** Turns the facts and the reading into a verdict. A span the model invented is dropped, as in 1.x. */
+/** One text's result from its chunks' results: any refusal refuses, else any unchecked part leaves it unchecked. */
+export function mergeAttribution(results: readonly AttributionResult[]): AttributionResult | null {
+  if (!results.length) return null;
+  if (results.length === 1) return results[0]!;
+  const findings = results.flatMap(result => result.findings), spans = results.flatMap(result => result.spans ?? []);
+  const unchecked = results.find(result => result.verdict === 'unchecked');
+  return { verdict: findings.length ? 'refuse' : unchecked ? 'unchecked' : 'pass', findings, claims: results.reduce((sum, result) => sum + result.claims, 0),
+    ...(spans.length ? { spans } : {}), ...(!findings.length && unchecked?.cause !== undefined ? { cause: unchecked.cause } : {}) };
+}
+
 export function decideAttribution(text: string, surface: AttributionSurface, facts: readonly MarkerFact[], claims: readonly JudgedClaim[]): AttributionResult {
   const findings: AttributionFinding[] = facts.filter(fact => fact.refusal).map(fact => ({ reason: fact.refusal!, span: fact.marker,
     why: REFUSAL_WHY[fact.refusal!], ...(fact.ref ? { ref: fact.ref } : {}) }));

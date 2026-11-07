@@ -10,7 +10,7 @@ import { createJournalWorker, openPreviewJournal, type PreviewPorts } from './jo
 import { importChannelItems } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { JEV_MODEL, jevQuestions } from './reply-check.js';
-import { attributionPacket, attributionSummary, attributionTrace, ATTRIBUTION_OBJECTION, decideAttribution, markerFacts, normalizeWords, parseAttributionAnswer, parseMarker, worthJudging,
+import { ATTRIBUTION_CHUNK_LIMIT, ATTRIBUTION_TEXT_MAX, attributionPacket, attributionSummary, chunkForJudge, attributionTrace, ATTRIBUTION_OBJECTION, decideAttribution, markerFacts, normalizeWords, parseAttributionAnswer, parseMarker, worthJudging,
   type AttributionMode, type SourceRecord } from './attribution.js';
 import { LIVE_JUDGMENTS } from './model-call-boundary.js';
 // @ts-expect-error the hook's decision stays plain JavaScript
@@ -90,11 +90,25 @@ describe('the verdict', () => {
   it('an unreadable answer throws, so the caller records unchecked', () => {
     expect(() => parseAttributionAnswer('no json here')).toThrow(); expect(() => parseAttributionAnswer('{"claims":[{}]}')).toThrow();
   });
+  it('a sourced claim missing who wrote it or whether it is faithful is no verdict, never a pass (1.x support)', () => {
+    expect(() => parseAttributionAnswer(JSON.stringify({ claims: [{ span: sourced, marker: 0 }] }))).toThrow(SyntaxError);
+    expect(() => parseAttributionAnswer(claim({ ownWords: 'maybe' }))).toThrow(SyntaxError);
+    expect(() => parseAttributionAnswer(claim({ faithful: 'yes' }))).toThrow(SyntaxError);
+    // An unsourced or labelled claim answers neither question, so neither is required of it.
+    expect(parseAttributionAnswer(claim({ marker: null, ownWords: null, faithful: null }))).toHaveLength(1);
+    expect(parseAttributionAnswer(claim({ labelled: true, ownWords: null, faithful: null }))).toHaveLength(1);
+  });
+  it('chunks long text as 1.x did: every character is in some chunk, each within the bound', () => {
+    const text = `${'The build is complete. '.repeat(800)}\n\n${'Para.\n'.repeat(4000)}${FALSE_CREDIT}`, chunks = chunkForJudge(text);
+    expect(chunks.length).toBeGreaterThan(1); expect(chunks.every(chunk => chunk.length <= ATTRIBUTION_TEXT_MAX)).toBe(true);
+    expect(chunks.join('').replace(/\s/gu, '')).toBe(text.replace(/\s/gu, '')); expect(chunks.at(-1)).toContain(FALSE_CREDIT);
+    expect(chunkForJudge(sourced)).toEqual([sourced]);
+  });
   it('is a registered judgment with a signal authority', () => { expect(LIVE_JUDGMENTS['attribution-check'].authority).toBe('signal'); });
 });
 
 const FALSE_CREDIT = 'Sam told me never to spawn on the laptop.', HONEST = 'I would avoid the laptop; that is my own view.', KEPT = 'The build is done.';
-interface Scenario { mode?: AttributionMode; answer?: string; judge?: 'refuse' | 'pass' | 'throw' | 'junk'; revised?: string; crash?: string; maxCalls?: number; note?: string; imported?: { account: string; id: string; from: string; text: string; conversation: string } }
+interface Scenario { mode?: AttributionMode; answer?: string; judge?: 'refuse' | 'pass' | 'throw' | 'junk' | 'partial'; revised?: string; crash?: string; maxCalls?: number; note?: string; imported?: { account: string; id: string; from: string; text: string; conversation: string } }
 async function drive(s: Scenario) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'attribution-'))); roots.push(root);
   const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(23), sends: string[] = [], packets: string[] = [];
@@ -110,6 +124,7 @@ async function drive(s: Scenario) {
         { maxTokens: 2048, maxOutputBytes: 16384 }, id, (row: never) => journal.append(row), { elapsed: () => 1, at: () => 1790000000000 }).execute({ stdin: 'x' });
       if (s.judge === 'throw') throw Error('timeout');
       if (s.judge === 'junk') return { value: 'not json' };
+      if (s.judge === 'partial') return { value: JSON.stringify({ claims: [{ span: (JSON.parse(packet) as { packet: { text: string } }).packet.text.split(' [source')[0], marker: 0 }] }) };
       const text = (JSON.parse(packet) as { packet: { text: string } }).packet.text;
       const refuse = (s.judge ?? 'refuse') === 'refuse' && text.includes('Sam told me');
       return { value: JSON.stringify({ claims: refuse ? [{ span: 'Sam told me never to spawn on the laptop', person: 'Sam', kind: 'rule', marker: null, labelled: false, stillCredits: false, recap: false, ownWords: null, faithful: null, why: 'no record' }] : [] }) };
@@ -190,6 +205,22 @@ describe('the write check (stub judge: wiring only)', () => {
     const result = await drive({ mode: 'enforce', answer, judge: 'throw', note: FALSE_CREDIT });
     expect(result.note).toBeNull(); expect(result.rows).toMatchObject([{ verdict: 'unchecked' }]);
   });
+  it('a false credit after a long run of plain text is still judged and refused (review 2026-11-07 tail case)', async () => {
+    const result = await drive({ mode: 'enforce', answer, note: `${'The build is complete. '.repeat(800)}${FALSE_CREDIT}` });
+    expect(result.note).toContain('source unknown');
+    expect(result.rows.filter(row => row.id.startsWith('note:')).map(row => row.verdict)).toContain('refuse');
+  });
+  it('text past the check bound is recorded unchecked with no call, never silently dropped, and the note is still written', async () => {
+    const filler = `${'The build is complete.\n'.repeat(700)}\n\n`.repeat(ATTRIBUTION_CHUNK_LIMIT + 1);
+    const result = await drive({ mode: 'enforce', answer, note: `${filler}${FALSE_CREDIT}` });
+    expect(result.note).toBeNull(); expect(result.judged).toBe(0);
+    expect(result.rows).toMatchObject([{ id: `note:toolu_1#${String(ATTRIBUTION_CHUNK_LIMIT)}`, verdict: 'unchecked', cause: `text past ${String(ATTRIBUTION_CHUNK_LIMIT)} checks` }]);
+  });
+  it('a partial answer on a sourced claim records unchecked, never pass', async () => {
+    const note = `Sam: "Where should builds run?" [source: telegram 7654321/1 ${new Date(1790000000000).toISOString().slice(0, 10)}]`;
+    const result = await drive({ mode: 'enforce', answer, judge: 'partial', note });
+    expect(result.note).toBeNull(); expect(result.rows).toMatchObject([{ verdict: 'unchecked', cause: 'unreadable answer' }]);
+  });
   it('a recap is never exempt in a note: no conversation reaches the judge', async () => {
     const result = await drive({ mode: 'record', answer, note: FALSE_CREDIT });
     expect(JSON.parse(result.packets[0]!).packet.conversation).toBeUndefined();
@@ -200,6 +231,10 @@ describe('the write check (stub judge: wiring only)', () => {
     expect(noteText('Write', { file_path: 'a.ts', content: 'x' })).toBeNull();
     expect(noteText('apply_patch', { input: '*** Begin Patch\n*** Update File: a.md\n@@\n-old\n+new\n*** End Patch' })).toBe('new');
     expect(noteText('apply_patch', { input: '*** Begin Patch\n*** Update File: a.ts\n@@\n+new\n*** End Patch' })).toBeNull();
+    // A prose file in the same patch does not bring the code file's added lines with it.
+    expect(noteText('apply_patch', { input: `*** Begin Patch\n*** Add File: a.md\n+The build is complete.\n*** Update File: a.ts\n@@\n+// ${FALSE_CREDIT}\n*** End Patch` }))
+      .toBe('The build is complete.');
+    expect(noteText('apply_patch', { input: '*** Begin Patch\n*** Update File: a.ts\n*** Move to: b.md\n@@\n+moved\n*** Delete File: c.md\n*** End Patch' })).toBe('moved');
   });
 });
 

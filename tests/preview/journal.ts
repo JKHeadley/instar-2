@@ -55,7 +55,7 @@ import { evaluateMinimalPath, minimalResponse } from '../../src/operator/live.js
 import type { IndependentSurfaceVerifierPort, InstalledShape, MinimalDependency, SurfaceChallenge, VerifiedSurfaceProof } from '../../src/operator/contracts.js';
 import { authenticateTelegramSender, principalBoundToUpdate, systemWriters, verifiedAtIntake, TELEGRAM_ADAPTER, testOriginWriter, writerBoundToRaw, writerRecord, type SystemMethod, type WriteOrigin, type WriterRecord } from './intake-principal.js';
 import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
-import { ATTRIBUTION_OBJECTION, ATTRIBUTION_TEXT_MAX, attributionDigest, attributionReason, decideAttribution, markerFacts, parseAttributionAnswer, worthJudging,
+import { ATTRIBUTION_CHUNK_LIMIT, ATTRIBUTION_OBJECTION, attributionDigest, chunkForJudge, mergeAttribution, attributionReason, decideAttribution, markerFacts, parseAttributionAnswer, worthJudging,
   attributionPacket, type AttributionFinding, type AttributionMode, type AttributionResult, type AttributionSurface, type AttributionVerdict, type CreditedSpan, type SourceRecord } from './attribution.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type SettledSendOutcome, type Speaker } from './outbound-provenance.js';
 import { acceptedMemoryFailure, memoryFailureOffer, memoryFailures, memoryLearningLine, memoryLessons, validStoredMemoryFailure, withLearnedCues,
@@ -6972,14 +6972,33 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       return record({ verdict: 'unchecked', findings: [], claims: 0, cause: error instanceof SyntaxError ? 'unreadable answer' : 'judge failed' });
     }
   };
+  /** The whole text, chunked as 1.x did: every chunk is its own recorded check under the same call cap and stop, and the
+   * first keeps the plain id so a short text is recorded exactly as before. Past ATTRIBUTION_CHUNK_LIMIT the rest is
+   * recorded `unchecked` with no call, so an unread tail is counted, never silently dropped. */
+  const attributionOf = async (id: string, text: string, surface: AttributionSurface, conversation?: { from: string; text: string }[]) => {
+    const chunks = chunkForJudge(text), results: AttributionResult[] = [];
+    for (const [index, chunk] of chunks.slice(0, ATTRIBUTION_CHUNK_LIMIT).entries()) {
+      const result = await attributionStep(index === 0 ? id : `${id}#${String(index)}`, chunk, surface, conversation);
+      if (result) results.push(result);
+    }
+    if (chunks.length > ATTRIBUTION_CHUNK_LIMIT && ports.attribution) {
+      const tailId = `${id}#${String(ATTRIBUTION_CHUNK_LIMIT)}`, tail = chunks.slice(ATTRIBUTION_CHUNK_LIMIT).join('\n\n'), digest = attributionDigest(tail);
+      const prior = journal.view.attribution?.find(row => row.id === tailId && row.digest === digest);
+      const result: AttributionResult = prior ?? { verdict: 'unchecked', findings: [], claims: 0, cause: `text past ${String(ATTRIBUTION_CHUNK_LIMIT)} checks` };
+      if (!prior) journal.append({ kind: 'attribution-check', id: tailId, digest, surface, mode: ports.attribution.mode, verdict: 'unchecked', findings: [],
+        claims: 0, cause: result.cause!, latencyMs: 0, at: ports.now() });
+      results.push(result);
+    }
+    return mergeAttribution(results);
+  };
   /** The send check reads the turn's own authenticated conversation, so a recap of it needs no marker. */
-  const attributionOfReply = (turn: Turn, text: string) => attributionStep(turn.id, text, 'send',
+  const attributionOfReply = (turn: Turn, text: string) => attributionOf(turn.id, text, 'send',
     journal.view.order.filter(item => remembered(item) && item.update <= turn.update && !item.requestedAction).slice(-12)
       .map(item => ({ from: fromOperator(item) ? operatorName(journal.view) ?? 'the operator' : 'another Telegram user', text: item.text.slice(0, 1200) })));
   /** Rule 121 at write time: the agent's own note, before the file changes. Null clears it; a string refuses with the way through.
    * Record mode never refuses. Anything but a refusal clears: a note the judge could not read is counted, not lost. */
   const attributionOfNote = async (call: string, text: string): Promise<string | null> => {
-    const result = await attributionStep(`note:${call}`, text.slice(0, ATTRIBUTION_TEXT_MAX), 'write');
+    const result = await attributionOf(`note:${call}`, text, 'write');
     return ports.attribution?.mode === 'enforce' && result?.verdict === 'refuse' ? attributionReason(result) : null;
   };
   // Conservative identity for an exact restatement. A different value keeps a
