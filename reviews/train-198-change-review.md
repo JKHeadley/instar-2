@@ -27,12 +27,6 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged protocol/fi
 
 Subject (16 paths): docs/product-run.md, src/assembly/subscription-window.ts, tests/preview/README.md, tests/preview/agentready.test.ts, tests/preview/closing-notice-boundary.test.ts, tests/preview/closing-notice.test.ts, tests/preview/journal.ts, tests/preview/renew-activation.test.ts, tests/preview/renew-ask-live.test.ts, tests/preview/yes-batch-live.test.ts, tests/preview/yes-window.test.ts, tests/setup/test-clock-env.ts, tests/setup/test-clock.mjs, tests/unit/test-clock-process.test.ts, tests/unit/test-clock.test.ts, vitest.config.ts
 
-## Closing block
-
-simplestRobustRoute: This is the simplest robust route: change the existing two end constants; reuse the journal intent, receipt, signature, snapshot and minimal-loop mechanisms for the closing message; inherit one test-only wall-clock shift across workers/children. A per-end slot prevents the next renewal suppressing its own warning, an in-flight promise prevents concurrent minimal/drain duplicate attempts, and exact text validation prevents arbitrary content under an infrastructure notice. No renewal scripts or new service. Start guard is a live journal inside the five-minute window with an accepted operator turn; end guard is durable once-per-end intent; stop, expiry, ownership and disclosure remain enforced.
-80/20: Author submission for independent review. Targeted boundary/process tests and required checks are recorded in the builder report. Studio-owned macOS self-host certificate and live release gates remain explicitly separate from this code build.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
 Decision: renewal-dec12-window | Use the existing current/predecessor predicate; changing code alone grants no renewal and writes no live state. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/renewal-dec12-1106-r2-PROGRESS.md
 
 Decision: renewal-dec12-clock | Keep the historical November fixture end as the test anchor, so a later product renewal cannot age old literals into failure; preserve explicit clocks and advancing timers. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/renewal-dec12-1106-r2-PROGRESS.md
@@ -42,3 +36,9 @@ Decision: renewal-dec12-closing | Use exact signed infrastructure text with a du
 Decision: renewal-dec12-wording | Omit draft claims that a ready approval request exists or that reinstalling is proven recovery; only state the enforced end and renewal cutoff. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/renewal-dec12-1106-r2-PROGRESS.md
 
 Decision: renewal-dec12-closing-allowance | Keep the closing notice inside the reply allowance with the same last-reply reserve as the other fixed notices, and drop it through the send path's existing current check when an acknowledgement, stop or the end lands during admission, so the minimal pass never fails on it. At the reserve the person gets the limit notice instead. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/renewal-dec12-1106-r2-PROGRESS.md
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: change the existing two end constants; reuse the journal intent, receipt, signature, snapshot and minimal-loop mechanisms for the closing message; inherit one test-only wall-clock shift across workers/children. A per-end slot prevents the next renewal suppressing its own warning, an in-flight promise prevents concurrent minimal/drain duplicate attempts, and exact text validation prevents arbitrary content under an infrastructure notice. No renewal scripts or new service. Start guard is a live journal inside the five-minute window with an accepted operator turn; end guard is durable once-per-end intent; stop, expiry, ownership and disclosure remain enforced.
+80/20: Author submission for independent review. Targeted boundary/process tests and required checks are recorded in the builder report. Studio-owned macOS self-host certificate and live release gates remain explicitly separate from this code build.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
