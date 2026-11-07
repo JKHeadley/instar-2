@@ -7,9 +7,9 @@ Outcome: every reply check or review that reads unavailable now records a bounde
 Affected rules: 2, 9, 38, 39, 41, 42, 48, 49, 67, 73, 74, 77, 95, 102, 108, 113, 116
 Affected floors: secrets — cause is a closed set and detail must match a short token pattern built from typed failure fields or an error class name, so no exception message, URL or provider text is stored, and a forged tag is refused in a test; spend cap — no new call, reservation or retry; stop — unchanged; no duplicate sends — the send path is untouched and a durable test shows one send; durable intake — unchanged, the fields are optional on existing rows.
 Operator questions: none
-Suggested tier: standard
-Declared tier: standard
-Tier rationale: additive optional diagnostic fields on existing rows, with no decision reading them.
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: the paths are the reply-check and journal core, so the suggested tier stands, although the change only adds optional diagnostic fields that no decision reads.
 Side effects: reply-check rows and reply-revision-review rows gain optional cause and causeDetail. The rejected and uncertain internal subscription results gain providerFailure, which the answer path spreads but does not read or journal. Three existing test pins now expect the new fields. The reply lookup view that already returned the last check row also shows the new tokens. An exhausted login pool's error gains a reviewCause tag, with its message unchanged.
 Undo and recovery: revert this commit. Rows written with the fields still replay, because the older reader ignores them.
 Multi-machine posture: rows travel in the conversation journal as before; the classification happens on the machine that made the call, and no new state or machine-local store is added.
@@ -19,6 +19,19 @@ Bug evidence: reproducer=tests/preview/reply-review-cause.test.ts
 Hook bypass: none
 Convergence: none
 Prompt review: no prompt, parser or accept, escalate or refuse decision changes; no code branches on cause. Recorded shapes replayed: jev-admission-2026-10-12 (update 969390426), jev-unavailable-2026-10-11 and the group-audience live fixture's unavailable revision review.
+Prompt finding: 4106b49fff07 | protocol-literal | existing prompt wording, unchanged by this diff
+Prompt finding: 85544c20941f | protocol-literal | existing prompt wording, unchanged by this diff
+Prompt finding: e8708c7fea24 | protocol-literal | existing prompt wording, unchanged by this diff
+Prompt finding: 0abb3dc96311 | protocol-literal | existing prompt wording, unchanged by this diff
+Prompt finding: 5b486d8bd247 | protocol-literal | existing prompt wording, unchanged by this diff
+Prompt finding: 5fa1a20c4031 | protocol-literal | existing prompt wording, unchanged by this diff
+Prompt finding: 7c45ffbe90ad | protocol-literal | existing prompt wording, unchanged by this diff
+Prompt finding: aef7d91bef51 | protocol-literal | existing prompt wording, unchanged by this diff
+Prompt finding: b288d6ef1604 | protocol-literal | existing prompt wording, unchanged by this diff
+Prompt finding: e769ca9dd959 | protocol-literal | existing prompt wording, unchanged by this diff
+Prompt finding: f6d7f3274c85 | protocol-literal | existing prompt wording, unchanged by this diff
+Prompt finding: feadb66b8ad1 | protocol-literal | existing prompt wording, unchanged by this diff
+Prompt finding: 849db3a6296a | protocol-literal | existing prompt wording, unchanged by this diff
 Decision: rrc-1x-comparison | 1.x source JKHeadley/instar main 015fa6cb16add5552cba7e86b7c02a2c083e2579, src/core/MessagingToneGate.ts (DegradeReason, buildDegradedToneResult and its bounded paths list) and docs/specs/tone-gate-graceful-degradation.md; reused the closed reason carried on the result and audited, with finer classes because the 2.0 provider adapter already types them | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/reply-review-cause-1107-PROGRESS.md
 Decision: rrc-jev-cause-already-durable | Jev's cause already reaches the durable row, shown by jev-retry.test.ts and by recorded fixtures carrying cause, so jevCause was left as it is; the real gaps were the subscription, holding and revision rows and the missing counts; Jev gained only a detail for an admission refusal | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/reply-review-cause-1107-PROGRESS.md
 Decision: rrc-detail-is-tokens-not-text | the redacted detail is built from typed fields and error class names rather than a scrubbed message, because the existing floor forbids persisting exception messages and a token cannot carry provider text | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/reply-review-cause-1107-PROGRESS.md
