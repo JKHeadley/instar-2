@@ -34,6 +34,9 @@ Verification: tsc and build pass. Both changed test files pass (122 tests); reco
 Register replay: regenerated seven generated/ outputs from source commit 0c1d832a4816aeb21891e5a89242497d12c76fc1 using the existing replay command (297 entries, 120 rules). The owner rehash and support-source repin scripts completed with zero changes. This record covers the generated commit as well as the source repair.
 
 Deferral: generated/register.json:1 | not-a-deferral=Regenerated full-line register retains existing rule wording; no implementation is postponed.
+Deferral: docs/evidence/train-192-notice-owner/constitution-attributed-statements-change-review.md:29 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-one-constitution-change-review.md:30 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md:29 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
 
 ## Closing block
 

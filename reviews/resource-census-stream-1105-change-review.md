@@ -58,6 +58,9 @@ Deferral: docs/defects/rule-36-genuine-parser-captures.md:9 | not-a-deferral=Exa
 Deferral: docs/defects/rule-36-genuine-parser-captures.md:10 | not-a-deferral=Exact main text restored by the train; actual reviewed deadline declarations unchanged.
 Deferral: generated/conversion.json:1 | not-a-deferral=Regenerated governing text, not a new commitment.
 Deferral: generated/register.json:1 | not-a-deferral=Regenerated governing text, not a new commitment.
+Deferral: docs/evidence/train-192-notice-owner/constitution-attributed-statements-change-review.md:29 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-one-constitution-change-review.md:30 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md:29 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
 
 ## Closing block
 
