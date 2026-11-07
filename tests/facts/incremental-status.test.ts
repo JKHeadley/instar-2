@@ -2,7 +2,8 @@
 // facts' statuses. The full prepareSnapshot is the ORACLE: after every step of every sequence below
 // (append, concurrent revocation, capture loss, policy change, tamper) the store's snapshot must equal
 // a full rebuild byte for byte. The sweep holds the same comparison and refuses a divergence.
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+import * as envelope from '../../src/facts/envelope.js';
 import { performance } from 'node:perf_hooks';
 import { causalCone, conflictFactSchema, createFactStore, decodeEnvelope, factId, hashBytes, prepareSnapshot, registerOwnedBody, signEnvelope } from '../../src/facts/index.js';
 import { causalIndex, historyOf } from '../../src/facts/admission.js';
@@ -225,30 +226,52 @@ function history(size: number) {
   const kinds = ['note', 'work', 'owned', 'captured'];
   while (s.rows.length < size) s.append(kinds[s.rows.length % kinds.length]!);
   value(s.store.readForProjection());
-  const decodes: number[] = [], live: number[] = [], times: number[] = [];
+  const decodes: number[] = [], live: number[] = [], times: number[] = [], derivations: number[] = [];
   function turn() {
     const count = s.historicalDecodes(), origin = s.originDecodes(), started = performance.now();
-    s.append('owned'); value(s.store.readForProjection()); value(s.store.readForProjection());
+    s.append('owned');
+    // Count the envelope validation that starts each status derivation, above the historical
+    // body memo (an owned-decoder count alone cannot detect re-deriving already memoized facts).
+    const validations = vi.spyOn(envelope, 'decodeEnvelope');
+    try {
+      value(s.store.readForProjection()); value(s.store.readForProjection());
+      derivations.push(validations.mock.calls.length);
+    } finally { validations.mockRestore(); }
     times.push(performance.now() - started); decodes.push(s.historicalDecodes() - count);
     // The live owned decode is re-run for every owned fact on each derivation, plus the append's own.
     live.push(s.originDecodes() - origin - value(s.store.read()).filter(f => f.kind === 'owned').length);
   }
-  return { turn, decodes, live, times };
+  function rebuildDerivations() {
+    const facts = value(s.store.read()), validations = vi.spyOn(envelope, 'decodeEnvelope');
+    try {
+      value(prepareSnapshot(facts, s.ctx));
+      return validations.mock.calls.length;
+    } finally { validations.mockRestore(); }
+  }
+  return { turn, decodes, live, times, derivations, rebuildDerivations };
 }
 
 it('P2-OCC-07 per-turn work tracks the new facts, not the history size', () => {
-  // Each history runs its turns in turn (two live stores interleaved share decode state and change
-  // the counts). The fastest turn is each side's cost with the least outside interference: a load
-  // spike only ever slows a turn, and a median of five turns once read 3.2x on a busy gate host.
+  // Run each store separately: interleaving stores changes their shared decode context.
   const small = history(50);
   for (let i = 0; i < 9; i++) small.turn();
+  const smallRebuild = small.rebuildDerivations();
   const large = history(200);
   for (let i = 0; i < 9; i++) large.turn();
-  // Deterministic: a turn derives the new fact's full status once, whatever the history size
-  // (historical decodes of earlier facts are kept); only the live owned decode is linear.
+  const largeRebuild = large.rebuildDerivations();
+  // Measure actual status derivation work, independent of scheduling and GC pauses. A turn
+  // derives the new fact's full status once; only the required live owned refresh is linear.
+  expect(small.derivations).toEqual(Array(9).fill(1));
+  expect(large.derivations).toEqual(small.derivations);
+  expect(small.decodes.every(n => n > 0)).toBe(true);
   expect(large.decodes).toEqual(small.decodes);
   expect(large.live).toEqual(small.live);
-  // Ratio bound, not seconds: 4x the history costs under 3x per turn (measured ~1.8x; the kept
-  // per-read storage comparison is linear). Re-deriving every status per turn measured ~3.4x here.
-  expect(Math.min(...large.times) / Math.min(...small.times)).toBeLessThan(3);
+  // Negative control: the real full rebuild revalidates every old envelope. The same counter
+  // distinguishes that regression without relying on how fast either host runs.
+  expect(smallRebuild).toBe(59);
+  expect(largeRebuild).toBe(209);
+  // Elapsed time includes linear storage reads/live refresh and unrelated host interference.
+  // Keep it visible, but do not mistake a ratio of separately scheduled windows for work counts.
+  console.log('P2-OCC-07', { small: { derivations: small.derivations, decodes: small.decodes, live: small.live, ms: small.times, rebuild: smallRebuild },
+    large: { derivations: large.derivations, decodes: large.decodes, live: large.live, ms: large.times, rebuild: largeRebuild } });
 }, 120_000);

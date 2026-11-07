@@ -64,6 +64,7 @@ import { arch, cpus, hostname, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createProcessInventory, loadTenOwner } from './process-inventory.mjs';
+import { readProcessCensus, PROCESS_CENSUS_COLUMNS } from './process-census-query.mjs';
 
 const GiB = 1024 ** 3;
 /** Ceilings use the NativeLaunchLimits field names of the effect doorway. */
@@ -135,7 +136,9 @@ const measured = (kind, instance, unit, value, at) => ({ subject: { kind, instan
 
 /** Every observation resolves: a denied or failed query is `null` (unknown), never a rejection.
  * execFile throws synchronously when the host refuses to spawn (EPERM), so that is caught too. */
-export function hostQuery(file, args) {
+export function hostQuery(file, args, onFailure = () => {}) {
+  if (file === '/bin/ps' && args.includes(PROCESS_CENSUS_COLUMNS))
+    return readProcessCensus(file, args, { timeoutMs: QUERY_TIMEOUT_MS, maxBytes: 1024 * 1024, onFailure });
   return new Promise(resolve => {
     try {
       const settlementCwd = file === '/usr/bin/sudo' && args[0] === '-n' && args[1] === '/usr/sbin/lsof';
@@ -221,9 +224,12 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
    * ledger write carries it first, so storage that becomes writable again persists it. */
   const pendingEvidence = new Map();
   let sampling = false, sampler = null, pump = null, lastPersist = 0;
+  let completedRecovery = false, completedRetryAt = 0, completedBlocked = null;
   const query = (file, args) => {
     observer.queries++; observer.processesCreated++;
-    return ports.query(file, args).catch(() => null).then(text => {
+    const result = ports.query === hostQuery
+      ? hostQuery(file, args, failure => { observer.lastQueryFailure = failure; }) : ports.query(file, args);
+    return result.catch(() => null).then(text => {
       if (text === null) observer.failures++; else observer.bytesRead += Buffer.byteLength(text);
       return text;
     });
@@ -312,6 +318,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     }
   }
   function wake() {
+    if (waiters.length) void retryCompletedRows();
     waiters.sort((a, b) => Number(priorityOf(b.work) === 'critical') - Number(priorityOf(a.work) === 'critical') || a.order - b.order);
     for (const waiter of [...waiters]) {
       if (waiter.stopped?.() || ports.now() >= waiter.deadline) { settleWaiter(waiter, null); continue; }
@@ -338,6 +345,66 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     peak.launches = Math.max(peak.launches, launches.size);
     if (!sampler) sampler = setInterval(() => { void sample(); }, ceilings.sampleMs);
     return lease;
+  }
+  /** Admission pressure may re-observe this exact owner's completed rows. It never
+   * signals, touches an active launch, or treats elapsed time as quiescence. The
+   * existing waiter pump supplies opportunities; no new timer or status work. */
+  async function retryCompletedRows() {
+    // A sample captured before release can still discover a member afterward.
+    // Its pending durable carry must land before raw ledger absence can settle Six.
+    if (completedRecovery || sampling || !attached?.ledgerPath || !ports.allocation || !waiters.length
+      || ports.monotonic() < completedRetryAt) return;
+    completedRecovery = true;
+    completedRetryAt = ports.monotonic() + ceilings.sampleMs;
+    try {
+      const rows = readLedger(), owner = attached.owner;
+      const selected = Object.entries(rows).filter(([id, row]) => row?.cleanup === 'unresolved' && !launches.has(id) && !pendingEvidence.has(id)
+        && owner?.start && row.owner?.pid === owner.pid && startIdentity(row.owner.start) === owner.start);
+      if (!selected.length) return;
+      counters.cleanupRechecks = (counters.cleanupRechecks ?? 0) + 1;
+      const roots = selected.map(([id, row]) => ({ id, pid: row.pid, start: startIdentity(row.start),
+        known: new Map(Object.entries(row.members ?? {}).map(([pid, start]) => [Number(pid), startIdentity(start)])),
+        workingArea: row.workingArea ?? null, sandboxArea: row.sandboxArea ?? null }));
+      const seen = await joinRoots(roots, true);
+      const blocked = reason => {
+        if (completedBlocked !== reason) record({ kind: 'cleanup-blocked', reason, launches: selected.length });
+        completedBlocked = reason;
+      };
+      if (seen.state !== 'complete') { blocked('incomplete-census'); return; }
+      // A complete UID census alone cannot prove a recorded PID of another UID
+      // absent. Read all recorded incarnations in one bounded global metadata query.
+      const known = [...new Set(roots.flatMap(root => [root.pid, ...root.known.keys()]))];
+      if (known.some(pid => !Number.isSafeInteger(pid) || pid <= 1)) { blocked('invalid-member-evidence'); return; }
+      const text = await query('/bin/ps', ['-p', known.join(','), '-o', 'pid=,lstart=']);
+      if (text === null) { blocked('member-evidence-unavailable'); return; }
+      const current = new Map();
+      for (const line of text.split('\n').filter(line => line.trim())) {
+        const match = /^\s*(\d+)\s+(.+)$/.exec(line);
+        if (!match || !startIdentity(match[2])) { blocked('member-evidence-unreadable'); return; }
+        current.set(Number(match[1]), startIdentity(match[2]));
+      }
+      if (ports.monotonic() - seen.snapshot.monotonicAt > seen.snapshot.freshForMs) { blocked('stale-census'); return; }
+      const latest = readLedger(); let returned = 0;
+      for (const [id, row] of selected) {
+        if (sampling || pendingEvidence.has(id) || launches.has(id) || JSON.stringify(latest[id]) !== JSON.stringify(row)) continue;
+        const root = roots.find(root => root.id === id);
+        const members = new Map(root.known); members.set(root.pid, root.start);
+        if ([...members].some(([pid, start]) => typeof start !== 'string' || current.get(pid) === start)) continue;
+        if ([...seen.members].some(([pid, member]) => member.launch === id && !seen.rows.get(pid)?.zombie)) continue;
+        let closed = false;
+        try { closed = ports.allocation.close(row.allocation, `cleanup-reobserved-gone:${id}`)?.ok === true;
+          if (!closed) closed = ports.allocation.resume?.(row.allocation)?.ok === true; } catch { /* retain the row */ }
+        if (!closed) continue;
+        // Six's durable settlement precedes removal; a failed ledger write retries idempotently.
+        ledger(all => { if (JSON.stringify(all[id]) === JSON.stringify(row)) delete all[id]; });
+        returned++;
+      }
+      if (returned) {
+        counters.cleanupRecovered = (counters.cleanupRecovered ?? 0) + returned;
+        record({ kind: 'cleanup-reconciled', launches: returned, sourceSample: seen.snapshot.id, census: 'complete' }); completedBlocked = null;
+      } else blocked('live-or-unsettled-members');
+    } catch { record({ kind: 'cleanup-blocked', reason: 'reobservation-unavailable' }); }
+    finally { completedRecovery = false; persist(true); wake(); }
   }
   /** Local admission (count, answer reserve, priority brake), then the Six allocation: the launch's
    * resource set is committed across its domains and attached to its ordinary reservation. A Six
@@ -413,6 +480,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
   async function census(leases) { return joinRoots(leases.filter(l => l.pid).map(rootOf)); }
   /** The one membership join, shared by live cleanup and restart recovery: a recovered root carries the
    * same working-area and sandbox declarations its launch row recorded, so recovery joins exactly as live does. */
+  let candidateAfter = 0;
   async function joinRoots(roots, settlement = false) {
     let snapshot, ten;
     // An owner module that cannot load is a failed census (unknown), never an empty one.
@@ -424,40 +492,46 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     if (snapshot.status === 'failed') return { state: 'failed', snapshot, members: null, rows: null };
     const { members, candidates } = launchMembership(snapshot, roots, process.pid);
     const joined = new Map(members);
-    const read = candidates.slice(0, settlement ? censusLimit : ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
-    const cwds = read.length ? await source.workingDirectories(read) : new Map();
-    if (read.length) for (const [pid, member] of joinWorkingArea(snapshot, roots, read, cwds)) joined.set(pid, member);
-    // The sandbox join: a candidate the working-area join missed (it changed directory out of the area) is still a
-    // member of a sandboxed launch if the kernel says it is in that launch's sandbox instance. An unreadable reading is
-    // unknown, so a census holding one is never complete.
+    // Rotate the bounded live window: repeatedly reading the first 64 candidates can
+    // leave a later detached worker permanently unobserved. Settlement reads them all.
+    const ordered = [...candidates].sort((a, b) => a - b);
+    const rotating = [...ordered.filter(pid => pid > candidateAfter), ...ordered.filter(pid => pid <= candidateAfter)];
+    const read = settlement ? ordered : rotating.slice(0, ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
+    if (!settlement && read.length) candidateAfter = read.at(-1);
+    // Independent bounded observations run together. A slow directory probe must not serialize
+    // behind the sandbox probe, nor may either unavailable reading become negative evidence.
     const areas = [...new Set(roots.map(l => l.sandboxArea).filter(Boolean))];
-    const unjoined = read.filter(pid => !joined.has(pid));
-    let unboxed = 0;
-    if (areas.length && unjoined.length) {
-      const readings = typeof joinSandbox === 'function' ? await source.sandboxes(unjoined, areas) : new Map();
-      if (typeof joinSandbox === 'function') for (const [pid, member] of joinSandbox(snapshot, roots, unjoined, readings)) joined.set(pid, member);
-      unboxed = await unreadCandidates(snapshot, unjoined.filter(pid => readings.get(pid)?.state !== 'observed'), new Map());
-    }
+    const [cwds, boxes] = await Promise.all([
+      read.length ? source.workingDirectories(read) : new Map(),
+      areas.length && read.length && typeof joinSandbox === 'function' ? source.sandboxes(read, areas) : new Map(),
+    ]);
+    for (const [pid, member] of joinWorkingArea(snapshot, roots, read, cwds)) joined.set(pid, member);
+    if (areas.length && typeof joinSandbox === 'function')
+      for (const [pid, member] of joinSandbox(snapshot, roots, read, boxes)) joined.set(pid, member);
     const leftover = read.filter(pid => !joined.has(pid));
-    const unread = await unreadCandidates(snapshot, leftover.filter(pid => !harnessRow(snapshot, pid)), cwds) + unboxed;
-    // A harness-user process no join reached (its working directory is unreadable to this account): unknown now, and
-    // its launcher ends it, so cleanup waits for it to go rather than reading the census as complete or as failed.
-    const harnessUnread = await unreadCandidates(snapshot, leftover.filter(pid => harnessRow(snapshot, pid)), cwds);
+    const unknownCwd = leftover.filter(pid => cwds.get(pid)?.state !== 'observed');
+    const unknownBox = areas.length ? leftover.filter(pid => boxes.get(pid)?.state !== 'observed') : [];
+    // Revalidate all unavailable candidates in one census, not one subprocess per candidate.
+    // A failed/partial second census proves no absence. A different incarnation is not the
+    // candidate in the first census; it will be considered on the next observation.
+    const unknown = new Set([...unknownCwd, ...unknownBox]);
+    if (unknown.size) {
+      const next = await source.census();
+      if (next.status === 'complete') {
+        const current = new Map(next.processes.map(row => [row.pid, row]));
+        for (const pid of unknown) {
+          const row = current.get(pid);
+          if (!row || row.zombie || row.start !== snapshot.processes.find(p => p.pid === pid)?.start) unknown.delete(pid);
+        }
+      }
+    }
+    const unread = unknownBox.filter(pid => unknown.has(pid)).length
+      + unknownCwd.filter(pid => unknown.has(pid) && !harnessRow(snapshot, pid)).length;
+    const harnessUnread = unknownCwd.filter(pid => unknown.has(pid) && harnessRow(snapshot, pid)).length;
     const settled = snapshot.status !== 'partial' && read.length >= candidates.length && !unread;
     const state = settled && !harnessUnread ? 'complete' : 'partial';
     return { state, waiting: settled && harnessUnread > 0, snapshot, members: joined, rows: new Map(snapshot.processes.map(p => [p.pid, p])),
       examined: snapshot.examined, omitted: (snapshot.omitted ?? 0) + candidates.length - read.length };
-  }
-  /** Candidates whose working directory could not be read and that are still the same live
-   * incarnation: their membership is unknown, so a census holding one is never complete. */
-  async function unreadCandidates(snapshot, read, cwds) {
-    let unread = 0;
-    for (const pid of read) {
-      if (cwds.get(pid)?.state === 'observed') continue;
-      const now = await startEvidence(pid), row = snapshot.processes.find(p => p.pid === pid);
-      if (now === UNKNOWN || (now !== null && now === row?.start)) unread++;
-    }
-    return unread;
   }
   async function sample() {
     const roots = [...launches.values()].filter(l => l.pid && l.running);
@@ -564,10 +638,11 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       : { state: 'hard', subject: `uid:${uid}`, limit: listed.length + ceilings.launch.processCount };
   }
   /** This launch's live members in one census (recorded incarnations, group, ancestry and working
-   * area); `null` when the census failed or was partial: absence is then unproven. */
+   * area). Known members remain reclaimable in a partial census; only a complete census
+   * proves absence. A failed census supplies no membership evidence. */
   async function liveMembers(lease) {
     const seen = await joinRoots([...launches.values()].filter(l => l.pid).map(rootOf), true);
-    if (seen.state !== 'complete' && !seen.waiting) return null;
+    if (seen.state === 'failed') return null;
     const mine = [...seen.members].filter(([pid, member]) => member.launch === lease.id && !seen.rows.get(pid).zombie)
       .map(([pid]) => [pid, seen.rows.get(pid).start, seen.rows.get(pid).uid]);
     // A recorded incarnation still alive is ours even if no join reached it this time.
@@ -575,7 +650,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       const row = seen.rows.get(pid);
       if (row && row.start === start && !row.zombie && !mine.some(([p]) => p === pid)) mine.push([pid, start, row.uid]);
     }
-    return Object.assign(mine, { waiting: seen.waiting === true });
+    return Object.assign(mine, { waiting: seen.state !== 'complete' });
   }
   /** After the provider exits: every live member of this launch (one that left the group, and one
    * that detached before any sample but stayed in the private working area, included) is recorded

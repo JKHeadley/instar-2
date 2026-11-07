@@ -16,7 +16,7 @@ import { appendFileSync, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, r
 import { lookup } from 'node:dns/promises';
 import { connect, isIP } from 'node:net';
 import { join } from 'node:path';
-import { admitToolCall, CODEX_NETWORK_READ_TOOLS, DELEGATION_TOOLS, DELEGATION_WAIT_TOOLS, HELD_CHECK_MAX_BYTES, hookOutput, outwardText, OUTWARD_TOOLS,
+import { admitToolCall, noteText, CODEX_NETWORK_READ_TOOLS, DELEGATION_TOOLS, DELEGATION_WAIT_TOOLS, HELD_CHECK_MAX_BYTES, hookOutput, outwardText, OUTWARD_TOOLS,
   RECORD_EXCERPT_CHARS, SUBAGENT_TOOLS, webReadHost, permissionInputDigest, permissionPromptCandidate } from './tool-admission.mjs';
 
 const NETWORK_TOOLS = Object.freeze(['WebFetch', 'WebSearch', ...CODEX_NETWORK_READ_TOOLS]);
@@ -70,9 +70,17 @@ if (mode === 'post') {
     if (typeof call.tool_use_id !== 'string' || !call.tool_use_id || typeof call.tool_name !== 'string' || !call.tool_name
       || typeof call.error !== 'string') throw Error('invalid tool failure completion');
     // A failed invocation ended, but its external effect may still be uncertain. Record activity
-    // completion without sending the success-shaped checkpoint post or settling a child edge.
+    // completion without sending the success-shaped checkpoint post. An effect's record is never settled by a
+    // failure: its external outcome stays uncertain. A failed delegation is the one exception: the harness names the
+    // exact helper call that failed, so its edge closes failed at the checkpoint (row 16; 1.x HelperWatchdog
+    // helper-failed) instead of staying open until the parent settles it as uncertain. A report that cannot be made
+    // leaves the edge open for the parent.
     record({ phase: 'post-failure', id: call.tool_use_id, tool: call.tool_name, result: clip(call.error),
       ...(typeof call.agent_id === 'string' ? { agent: call.agent_id } : {}) });
+    if (DELEGATION_TOOLS.includes(String(call.tool_name)) && typeof config.gate === 'string') {
+      try { await ask({ phase: 'post', kind: 'delegation', failed: true, tool_name: call.tool_name, tool_use_id: call.tool_use_id,
+        error_excerpt: clip(call.error) }); } catch { /* settled by the parent */ }
+    }
     process.exit(0);
   }
   const agent = SUBAGENT_TOOLS.includes(call.tool_name) && typeof call.tool_response?.agentId === 'string' ? { agent: call.tool_response.agentId } : {};
@@ -162,10 +170,21 @@ if (target.host !== null && !isIP(target.host)) {
 // `exists` does not follow symlinks, so a dangling link is present and then refused as unresolvable (resolvedPath).
 const exists = path => { try { lstatSync(path); return true; } catch { return false; } };
 let decision = heldDecision ?? admitToolCall(call, config, n, { exists, realpath: realpathSync, addresses: () => addresses }, child, Date.now());
+// Rule 121: a note goes to the runner's attribution check once it is otherwise admitted. A check that cannot answer lets the
+// note through: failing closed would stop every memory write in an outage, and the runner records what it could not check.
+if (!permissionMode && decision.decision === 'allow' && typeof config.gate === 'string') {
+  const note = noteText(call.tool_name, call.tool_input);
+  if (note !== null) {
+    try {
+      const answer = await ask({ phase: 'pre', kind: 'attribution', tool_name: call.tool_name, tool_use_id: call.tool_use_id, text: note });
+      if (answer.decision !== 'allow') decision = { decision: 'deny', reason: answer.reason, kind: 'attribution' };
+    } catch { /* the checkpoint's own 'tool' ask below still decides whether this step may run */ }
+  }
+}
 if (permissionMode && (decision.decision !== 'allow' || decision.kind !== undefined || decision.doorway !== undefined
   || permissionInputDigest(decision.updatedInput ?? call.tool_input) !== permissionCandidate.effective))
   throw Error('current scope or exact effective input differs');
-if (heldDecision !== null) { /* refused before anything else was decided or done for it */ }
+if (heldDecision !== null || decision.kind === 'attribution') { /* refused before anything else was decided or done for it */ }
 else if (decision.decision === 'gate') {
   const kind = decision.kind;
   try { decision = { ...(await ask({ phase: 'pre', kind, tool_name: call.tool_name, tool_input: call.tool_input ?? null,

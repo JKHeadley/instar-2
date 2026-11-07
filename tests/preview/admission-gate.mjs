@@ -21,7 +21,7 @@ import { OWNER_BROWSER_TOOL, ownerBrowserRequest, ownerBrowserRefused } from './
 import { createHash, randomBytes } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
-import { nestedSessionWorkClose, nestedSessionWorkEdge, sessionWorkEffect } from '../../src/assembly/production-session-work.js';
+import { nestedSessionWorkClose, nestedSessionWorkEdge, nestedSessionWorkFailure, sessionWorkEffect } from '../../src/assembly/production-session-work.js';
 import { doorwayRecord, HELD_CHECK_MAX_BYTES, heldRefusal } from './tool-admission.mjs';
 
 /** Where each harness's model calls go after admission: fixed, so this server can never be used to reach anything else. */
@@ -100,7 +100,7 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
  * can stand in for the provider; production uses the fixed upstreams over TLS. `held` is the runner's held-secret check
  * (tool-turn.mjs heldVerdict) for `kind: 'held'`; absent, every such check refuses.
  */
-export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', ownerBrowser = null, upstreams = MODEL_UPSTREAMS, request = null }) {
+export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', note = async () => null, ownerBrowser = null, upstreams = MODEL_UPSTREAMS, request = null }) {
   const secret = randomBytes(16).toString('hex');
   const claims = new Map();
   const reply = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -146,6 +146,15 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       if (call.phase === 'post') {
         const open = state.delegations.get(id);
         if (open?.open) {
+          // The harness's own failure completion (PostToolUseFailure) names this exact call: the helper returned no result and
+          // the parent received the error. The edge closes failed, so the parent's own result is not held uncertain over a
+          // helper it already saw fail (1.x HelperWatchdog helper-failed, carried as a durable close; row 16). Only the
+          // classified reason is recorded, never the failure text.
+          if (call.failed === true) {
+            append(nestedSessionWorkFailure(open.edge, id, typeof call.error_excerpt === 'string' ? call.error_excerpt : null, now()));
+            open.open = false;
+            return { decision: 'allow', reason: 'delegation failed: its edge is closed failed' };
+          }
           // An asynchronous spawn returns the child's handle, not its result: the edge stays open, holding the handle,
           // until the harness's wait reports the child finished (or the parent closes it as uncertain).
           if (ASYNC_SPAWN_TOOLS.includes(tool) || call.background === true) {
@@ -206,13 +215,20 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       let body = '';
       req.setEncoding('utf8');
       req.on('data', chunk => { body += chunk; if (body.length > MAX_ADMIT_BYTES) req.destroy(); });
-      req.on('end', () => {
+      req.on('end', async () => {
         // Authority is read again now the whole request is here: a claim closed or a stop raised while the body was
         // arriving refuses, so nothing is admitted on a reading taken before the withdrawal.
         if (state.closed || claims.get(match[2]) !== state || stopped())
           return reply(res, 200, { decision: 'deny', reason: 'admission: this step is closed or a stop is held; nothing runs' });
         let verdict;
-        try { verdict = admit(state, JSON.parse(body)); } catch { verdict = { decision: 'deny', reason: 'admission: request unreadable or unrecordable' }; }
+        try {
+          const call = JSON.parse(body);
+          // Rule 121: the one admission that waits on a model. A refusal carries its way through; a failed check clears.
+          if (call.kind === 'attribution') {
+            const refused = await note(String(call.tool_use_id ?? ''), typeof call.text === 'string' ? call.text : '').catch(() => null);
+            verdict = refused === null ? { decision: 'allow', reason: 'attribution check: clear' } : { decision: 'deny', reason: refused };
+          } else verdict = admit(state, call);
+        } catch { verdict = { decision: 'deny', reason: 'admission: request unreadable or unrecordable' }; }
         reply(res, 200, verdict);
       });
       return undefined;

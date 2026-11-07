@@ -17,7 +17,7 @@ import { capabilityBriefing, capabilitySentence, CAPABILITY_SENTENCE_LABEL, TOOL
 // @ts-expect-error The runner side stays plain JavaScript.
 import { TOOL_HOOK_SCRIPT, TOOL_MCP_LAUNCHER, TOOL_NOTICE_MAX_BYTES, attachEgress, attachScratch, detachScratch, networkToolReads, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, unmountWithin, workspaceBytes } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
-import { createResourceOwner } from '../../scripts/resource-owner.mjs';
+import { createResourceOwner, hostQuery } from '../../scripts/resource-owner.mjs';
 
 const key = new Uint8Array(32).fill(7);
 const roots: string[] = [];
@@ -262,8 +262,14 @@ it('ends a live turn on stop by its own process group, descendants included, wit
 const child = spawn('/bin/sh', ['-c', 'while :; do /bin/sleep 1; done'], { stdio: 'ignore' });
 writeFileSync(${JSON.stringify(pids)}, JSON.stringify({ harness: process.pid, child: child.pid })); setInterval(() => {}, 1000);`);
   const owner = createResourceOwner();
-  await owner.attach({});
-  let stop = false;
+  let stop = false, delayed = false;
+  await owner.attach({ query: async (file: string, args: string[]) => {
+    if (stop && !delayed && args.includes('pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=')) {
+      delayed = true;
+      await new Promise(resolve => setTimeout(resolve, 3500));
+    }
+    return hostQuery(file, args);
+  } });
   const started = performance.now();
   const run = owner.execute({ executable: process.execPath, args: [harness], cwd: root, env: { PATH: '/usr/bin:/bin' }, stdin: '',
     timeout: 15000, maxBytes: 65536, stopped: () => stop }, 'answer');
@@ -272,12 +278,17 @@ writeFileSync(${JSON.stringify(pids)}, JSON.stringify({ harness: process.pid, ch
   const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
   expect(alive(harnessPid) && alive(child)).toBe(true);
   stop = true; const stoppedAt = performance.now();
-  const result = await run;
+  // The stop bound is on the live processes. A deliberately slow read-only cleanup
+  // census must not postpone signalling, and its eventual verification is checked separately.
+  while ((alive(harnessPid) || alive(child)) && performance.now() - stoppedAt < 3000)
+    await new Promise(resolve => setTimeout(resolve, 10));
   const ended = performance.now() - stoppedAt;
-  expect(result).toMatchObject({ limited: true, localLimit: null, stdout: '' });
   expect(alive(harnessPid)).toBe(false); expect(alive(child)).toBe(false);
-  // Declared bound: observed within one 25 ms poll, the group SIGKILLed at once, quiescence verified in ≤ 2 s.
   expect(ended).toBeLessThan(3000);
+  const result = await run;
+  expect(result).toMatchObject({ limited: true, localLimit: null, stdout: '', resources: { cleanup: 'verified' } });
+  expect(delayed).toBe(true);
+  expect(performance.now() - stoppedAt).toBeGreaterThanOrEqual(3500);
   expect(performance.now() - started).toBeLessThan(15000);
 });
 
@@ -609,11 +620,16 @@ it('a Codex tool turn runs only through the admission checkpoint: no checkpoint 
   const parent = { type: 'SessionWorkEdge', schemaVersion: 1, id: `tool-turn:${id}:0`, parent: id, child: `tool-turn:${id}`, scope: '/ws',
     owner: 'machine-a', authority: 'a', budget: { steps: 1, deadline: 5, maxResultBytes: 8, calls: 8, tokens: null }, exitTest: 'x',
     placement: 'p', transport: 't', resultDestination: 'r', openedAt: 1 } as SessionWorkEdge;
-  state = { ...state, openDelegations: [nestedSessionWorkEdge(parent, { id: 'call_lost', tool: 'collaborationspawn_agent' }, 2)] };
+  const lostEdge = nestedSessionWorkEdge(parent, { id: 'call_lost', tool: 'collaborationspawn_agent' }, 2);
+  state = { ...state, openDelegations: [lostEdge] };
   const lostRoot = dir(), lost = journalAt(lostRoot, 50), rows: { kind: string; record?: { type: string; state?: string } }[] = [];
+  // The real checkpoint journals the delegation's edge when it admits it (admission-gate.mjs); the journal closes only an
+  // edge it opened, so this fake records that step too.
+  lost.append({ kind: 'session-work', record: lostEdge, at: 2 });
   const spied = { get view() { return lost.view; }, append: (row: never) => { rows.push(row); return lost.append(row); } } as unknown as typeof lost;
   await expect(runToolTurn(base(spied, lostRoot, async () => 'answer'))).rejects.toThrow(/delegated agent did not return/u);
-  expect(rows.find(row => row.kind === 'session-work')?.record).toMatchObject({ type: 'SessionWorkEdgeClose', state: 'uncertain' });
+  expect(rows.find(row => row.kind === 'session-work')?.record).toMatchObject({ type: 'SessionWorkEdgeClose', state: 'uncertain', edge: lostEdge.id });
+  expect(lost.view.activeSessionWork?.[lostEdge.id]).toBeUndefined();
   // A model call refused at the allowance: the answer is refused.
   state = { calls: 8, refused: true, closed: false, openDelegations: [] };
   await expect(runToolTurn(base(journalAt(dir(), 50), dir(), async () => 'answer'))).rejects.toThrow(/reserved allowance was refused/u);

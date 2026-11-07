@@ -76,7 +76,7 @@ function launchResources(r) {
 /** Append the physical result before the adapter can classify or discard it. */
 export function observedSubscriptionIO(physicalIO, policy, operation, append,
   clock = { elapsed: () => performance.now(), at: () => Date.now() }, scrub = text => redact(text).text) {
-  const role = operation.endsWith(':reply-review') || operation.endsWith(':reply-revision')
+  const role = operation.endsWith(':reply-review') || operation.endsWith(':attribution-check') || operation.endsWith(':reply-revision')
     || operation.endsWith(':revision-review') || operation.endsWith(':held-notice-review') ? 'reply-review'
     : operation.startsWith('summary:') ? 'summary' : 'model';
   return { ...physicalIO, execute: async command => {
