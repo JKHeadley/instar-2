@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 // @ts-expect-error host adapter is JavaScript
-import { createTopicWorkerCapacity } from '../../scripts/topic-worker-capacity.mjs';
+import { createTopicWorkerCapacity, parseVmStatAvailable } from '../../scripts/topic-worker-capacity.mjs';
 import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
 
 it.each([
@@ -10,7 +10,7 @@ it.each([
   let ticks = 0;
   const capacity = createTopicWorkerCapacity(CONVERSATION_SESSION_LIMITS, {
     cpus: () => [{ times: { idle: ticks * Number(idle), user: ticks * (100 - Number(idle)) } }],
-    freemem: () => Number(free) * 1024 ** 3, totalmem: () => 16 * 1024 ** 3,
+    availableMemory: () => Number(free) * 1024 ** 3, totalmem: () => 16 * 1024 ** 3,
     wait: async () => { ticks++; },
   });
   expect(await capacity()).toEqual({ admit, memoryPressure });
@@ -23,8 +23,53 @@ it('unknown observations retain queued admission without pretending memory press
 
 it('a zero CPU interval is unknown and a proportional memory reserve holds on large hosts', async () => {
   const io = { cpus: () => [{ times: { idle: 1, user: 0 } }], wait: async () => {},
-    freemem: () => 4 * 1024 ** 3, totalmem: () => 64 * 1024 ** 3 };
+    availableMemory: () => 4 * 1024 ** 3, totalmem: () => 64 * 1024 ** 3 };
   expect(await createTopicWorkerCapacity(CONVERSATION_SESSION_LIMITS, io)()).toEqual({ admit: false, memoryPressure: true });
+});
+
+// Rule 36: real bytes from the Studio, 2026-11-07 07:44, during a refused worker wait: raw free pages 1.2 GiB
+// on a 64 GiB host, 12.7 GiB reclaimable. os.freemem() reported the first number and the reserve needs 6.4 GiB.
+const STUDIO_VM_STAT = `Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                                    79904.
+Pages active:                                 854094.
+Pages inactive:                               833713.
+Pages speculative:                             18269.
+Pages throttled:                                   0.
+Pages wired down:                             447987.
+Pages purgeable:                                 142.
+`;
+const reclaimedTo = (pages: number) => STUDIO_VM_STAT.replace('833713', String(pages));
+
+it('macOS available memory counts reclaimable pages, as a raw free-page count cannot', () => {
+  expect(parseVmStatAvailable(STUDIO_VM_STAT)).toBe((79904 + 833713 + 142) * 16384);
+  expect(() => parseVmStatAvailable('vm_stat: unavailable')).toThrow();
+});
+
+it.each([
+  [STUDIO_VM_STAT, { admit: true, memoryPressure: false }],
+  [reclaimedTo(100000), { admit: false, memoryPressure: true }],
+])('real vm_stat bytes decide memory pressure on both sides', async (bytes, expected) => {
+  let ticks = 0;
+  const capacity = createTopicWorkerCapacity(CONVERSATION_SESSION_LIMITS, {
+    cpus: () => [{ times: { idle: ticks * 80, user: ticks * 20 } }], wait: async () => { ticks++; },
+    availableMemory: () => parseVmStatAvailable(bytes), totalmem: () => 64 * 1024 ** 3,
+  });
+  expect(await capacity()).toEqual(expected);
+});
+
+it('a refusal leaves one record of its reason per change, and admission clears it', async () => {
+  let ticks = 0, idle = 5, memory = 32;
+  const lines: string[] = [];
+  const capacity = createTopicWorkerCapacity(CONVERSATION_SESSION_LIMITS, {
+    cpus: () => [{ times: { idle: ticks * idle, user: ticks * (100 - idle) } }], wait: async () => { ticks++; },
+    availableMemory: () => memory * 1024 ** 3, totalmem: () => 64 * 1024 ** 3,
+  }, (line: string) => lines.push(line));
+  await capacity(); await capacity();
+  expect(lines).toEqual(['worker capacity refused: CPU idle below floor']);
+  memory = 1; await capacity();
+  idle = 80; memory = 32; await capacity(); idle = 5; await capacity();
+  expect(lines).toEqual(['worker capacity refused: CPU idle below floor', 'worker capacity refused: available memory below reserve',
+    'worker capacity refused: CPU idle below floor']);
 });
 
 // Exercise the actual host owner's count gate, without starting a child or CPU load.

@@ -2890,7 +2890,7 @@ async function main() {
       }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(conversationSession ? sessionActivation : loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}${conversationSession ? ` bytes ${sha256(sessionBytes)}` : ''}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
         + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? config => createConversationTopicsPort({ ...config,
           maxSessions: sessionLimits.maxSessions, idleMs: sessionLimits.idleMs, topicConfig: topicConfiguration,
-          capacity: createTopicWorkerCapacity(sessionLimits),
+          capacity: createTopicWorkerCapacity(sessionLimits, undefined, line => process.stderr.write(`preview: ${line}\n`)),
           topicOf: operation => {
             // A repair inherits only its admitted parent's topic, never its execution identity.
             // The durable one-repair reservation is required; a suffix alone grants nothing.

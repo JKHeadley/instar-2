@@ -545,17 +545,20 @@ it('four journal topics dispatch concurrently and each sends exactly one reply t
 });
 
 it.each(['capacity', 'quota'] as const)('%s wait sends an honest acknowledgement, then collects one answer when available', async cause => {
-  const f = fixture(false, false, 8);
+  const f = fixture(false, false, 8, 'America/Los_Angeles', 600000);
   try {
-    f[cause](false); f.worker.intake([update(1, 'Please answer when you can.', 7)]);
-    await f.worker.drain(); expect(f.deliveries).toHaveLength(0);
+    // A resident worker: Rule 15 admits the first one without a headroom sample.
+    f.worker.intake([update(1, 'Keep this topic open.', 8)]); await f.worker.drain();
+    expect(f.deliveries).toHaveLength(1); f.sent.length = 0;
+    f[cause](false); f.worker.intake([update(2, 'Please answer when you can.', 7)]);
+    await f.worker.drain(); expect(f.deliveries).toHaveLength(1);
     expect(f.state().topics['7']!.inputs[0]!.state).toBe('queued');
-    expect(f.journal.view.order[0]!.reserved).toBe(true);
+    expect(f.journal.view.order[1]!.reserved).toBe(true);
     f.advance(7000); await f.worker.drain();
     expect(f.sent.map(row => row.text)).toEqual([REPLY_ACKNOWLEDGEMENT]);
     f[cause](true); await f.port.maintain(); await f.worker.drain(); await f.worker.drain();
     expect(f.sent).toHaveLength(2); expect(f.sent.every(row => row.thread === 7)).toBe(true);
-    expect(f.deliveries).toHaveLength(1);
+    expect(f.deliveries).toHaveLength(2);
   } finally { await f.close(); }
 });
 
