@@ -314,6 +314,13 @@ it('the continuing host consumes real driver Stop receipts through the public ad
 });
 
 /** The real driver and adapter under the host, with a scripted harness: each `step` is one poll's change to the world. */
+// Run the shipped journal IO bridge's result methods, not a copy: a method missing there is missing in production.
+type ResultIO = { readResult(path: string, maxBytes: number): string | null; clearResult(path: string): void; resultWrittenAt(path: string): number | null };
+function journalResultBridge(physical: ResultIO): ResultIO {
+  const host = readFileSync(new URL('../preview/journal-agent.mjs', import.meta.url), 'utf8');
+  const methods = host.split('        io: { readResult')[1]!.split('\n          modelCalls:')[0]!;
+  return Function('binding', `return { readResult${methods} };`)({ physical: () => physical }) as ResultIO;
+}
 async function backgroundTurn(steps: readonly ((world: { result(text: string): void; stop(background?: number): void; exit(): void }) => void)[]) {
   const { createSessionConversationAdapter } = await import('../../src/assembly/conversation-harness-adapter.js');
   const { createProductionSessionDriver } = await import('../../src/assembly/production-session-driver.js');
@@ -337,8 +344,9 @@ async function backgroundTurn(steps: readonly ((world: { result(text: string): v
       return { code: 0, stdout: '' };
     },
   };
-  const io = { ...f.config.io, clearResult: (value: string) => { path = value; files.delete(path); written.delete(path); },
-    readResult: (file: string) => files.get(file) ?? null, resultWrittenAt: (file: string) => written.get(file) ?? null, modelCalls: () => 1,
+  // The result methods reach the adapter through the shipped journal bridge, as they do in production.
+  const io = { ...f.config.io, ...journalResultBridge({ clearResult: value => { path = value; files.delete(path); written.delete(path); },
+    readResult: file => files.get(file) ?? null, resultWrittenAt: file => written.get(file) ?? null }), modelCalls: () => 1,
     wait: async (ms: number) => { now += ms; polls++; const step = steps[next++]; if (step) step(world); else now += 1000; } };
   const port = value(createConversationSessionPort({ ...f.config, io, now: () => now,
     createAdapter: resolveDelivery => createSessionConversationAdapter({ io, resolveDelivery,
