@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: the paths are the reply-check and journal core, so the suggested tier stands, although the change only adds optional diagnostic fields that no decision reads.
-Side effects: reply-check rows and reply-revision-review rows gain optional cause and causeDetail. The rejected and uncertain internal subscription results gain providerFailure, which the answer path spreads but does not read or journal. Three existing test pins now expect the new fields. The reply lookup view that already returned the last check row also shows the new tokens. An exhausted login pool's error gains a reviewCause tag, with its message unchanged.
+Side effects: reply-check rows and reply-revision-review rows gain optional cause and causeDetail. The rejected and uncertain internal subscription results gain providerFailure, which the answer path spreads but does not read or journal. Two existing test pins now expect the new fields. The reply lookup view that already returned the last check row also shows the new tokens. An exhausted login pool's error gains a reviewCause tag, with its message unchanged.
 Undo and recovery: revert this commit. Rows written with the fields still replay, because the older reader ignores them.
 Multi-machine posture: rows travel in the conversation journal as before; the classification happens on the machine that made the call, and no new state or machine-local store is added.
 Layer below: provider-failure.ts typed classes (limit, policy, timeout, transport, unknown), provider-invocation's copied failure field, the login pool's refusal, callJev's existing jevCause, and journal row replay.
