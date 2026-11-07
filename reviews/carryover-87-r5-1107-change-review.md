@@ -3,8 +3,8 @@
 Subject base: 683a87c38dcac9964b9db04c54766c2226008329
 Review state: open
 Reviewed content: none
-Outcome: Row 87. The standalone update command launches npm and the syntax check through an attached resource owner instead of an unowned spawnSync, and the periodic updater declares its repetition bounded by the live update-bound probe. Merges live e8c2a0b1 keeping both sides.
-Affected rules: 60/61 (one funnel: admission, ceilings, census and verified tree cleanup; the command is person-run, so it is not a self-action); 55 (repetition bounded by the live probe, with existing backoff and pause); 42/95 (a refused or stopped launch stays a failure and keeps the current release; change integrity fails closed); 2 (an unconfirmed cleanup is told to the person because no ledger keeps it); 34/70 (real-process tests, shown failing on the prior code); 7/32/113 (no new store; machine-local); 49/69/74/102 (provenance and review); 101 (ordinary commits); 116 (reuse of setup's composition).
+Outcome: Row 87. The standalone update command launches npm and the syntax check through an attached resource owner instead of an unowned spawnSync. Merges live e8c2a0b1 keeping both sides.
+Affected rules: 60/61 (one funnel: admission, ceilings, census and verified tree cleanup; the command is person-run, so it is not a self-action); 55 (existing backoff, pause and stop, observed by the live probe; the register label stays unbounded); 42/95 (a refused or stopped launch stays a failure and keeps the current release; change integrity fails closed); 2 (an unconfirmed cleanup is told to the person because no ledger keeps it); 34/70 (real-process tests, shown failing on the prior code); 7/32/113 (no new store; machine-local); 49/69/74/102 (provenance and review); 101 (ordinary commits); 116 (reuse of setup's composition).
 Affected floors: secrets — npm output stays unforwarded and the environment is passed as before; spend cap — no model call; stop — a stop during a launch now ends the whole tree, where before it left npm running; no duplicate sends — no send path; durable intake — untouched.
 Operator questions: none
 Suggested tier: significant
@@ -23,7 +23,7 @@ Prompt review: no prompt, model-output parser or accept/escalate/refuse selector
 Decision: c87r5-owner | Compose the real owner as setup's one-shot run does, with no ledger and no Six allocation, because the ledger exists to return a Six debit and this command holds none. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-87-r5-1107-PROGRESS.md
 Decision: c87r5-stop | Pass stop signals to the owner only while a launch runs, so a stop between launches behaves as before and the detached group is not orphaned. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-87-r5-1107-PROGRESS.md
 Decision: c87r5-cleanup | Report an unconfirmed cleanup on stderr without failing the update or refusing on a failed census, adding no refusal 1.x did not have. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-87-r5-1107-PROGRESS.md
-Decision: c87r5-bound | Declare the feature's repetition bounded by the existing live probe rather than unbounded. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-87-r5-1107-PROGRESS.md
+Decision: c87r5-bound | Keep the feature's unbounded label: bounded needs a governed construct in core code, which a scripts-side probe cannot supply, and moving the updater into core is not a small change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-87-r5-1107-PROGRESS.md
 
 ## Closing block
 

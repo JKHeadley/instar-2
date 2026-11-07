@@ -24,8 +24,7 @@
       "reach": "internal",
       "surface": "none",
       "repeats": {
-        "kind": "bounded",
-        "by": "preview.proofs.update-bound"
+        "kind": "unbounded"
       }
     },
     "standards": [

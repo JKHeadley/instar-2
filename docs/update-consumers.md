@@ -218,4 +218,4 @@ stop and outcome evidence. An `installedUpdate` observation launches no subproce
 schema incompatibility stops before migrations. Standalone CLI installation launches through
 its own attached resource owner (see `update.md`). The existing due-proof runner now records `P9-PREVIEW-update-bound` each minute,
 reading fresh durable pressure, actual timer state and resource-owner admission.
-The feature declares its repetition bounded by that probe. Existing three-failure pressure and stop/expiry remain in force.
+The feature still declares unbounded repetition, for the reason in `update.md`. Existing three-failure pressure and stop/expiry remain in force.

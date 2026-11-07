@@ -253,4 +253,7 @@ proof log retains both results. It performs no canary install, model call or sen
 controller recreation, including corrupted input and deliberately broken timer
 and capacity observations. These are build tests; the resource observations in
 the predicate tests are controlled inputs. They do not prove a live installation.
-The feature declares its repetition bounded by this probe.
+The feature still declares `unbounded` repetition. The register's `bounded` kind names a
+bound constructed in core code with governed context, and this probe and the updater live
+in `scripts/`. The brakes themselves are the carried backoff, pause and stop, which the
+probe observes.
