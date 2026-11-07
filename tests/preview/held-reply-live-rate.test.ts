@@ -1,3 +1,4 @@
+import { unknownAnswerNotice } from './journal.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -60,7 +61,7 @@ for (const fixture of captured.held) {
       expect(turn.modelState).toBe(unknownAnswer ? 'uncertain' : 'rejected');
       expect(turn.answer).toBe(unknownAnswer ? undefined : MODEL_FAILURE_REPLY);
       expect(turn.noticeClass).toBe(unknownAnswer ? 'unknown-answer' : undefined);
-      expect(sent).toEqual([unknownAnswer ? UNKNOWN_ANSWER_NOTICE : MODEL_FAILURE_REPLY]);
+      expect(sent).toEqual([unknownAnswer ? unknownAnswerNotice({ text: fixture.text }) : MODEL_FAILURE_REPLY]);
       expect(jevCalls).toBe(expectedReviews);
       if (fixture.reviewOutcome) {
         expect(fixture.reviewOutcome).toMatchObject({ role: 'reply-review', localLimit: 'output-cap',
@@ -108,7 +109,7 @@ it('sends the exact loss notice without calling an available full-context review
     await worker.drain();
     expect(journal.view.order[0]).toMatchObject({ modelState: 'uncertain', sent: 7 });
     expect(journal.view.order[0]?.held).toBeUndefined();
-    expect(sent).toBe(UNKNOWN_ANSWER_NOTICE);
+    expect(sent).toBe(unknownAnswerNotice({ text: captured.held[0]!.text }));
     expect(reviews).toBe(0);
     expect(journal.view.order[0]?.replyChecks).toEqual([expect.objectContaining({ verdict: 'pass', path: 'holding' })]);
     journal.close();

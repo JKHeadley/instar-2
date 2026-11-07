@@ -81,6 +81,25 @@ all tracked test files in unsplit, macOS-only and non-macOS modes. Full-suite qu
 and repeated real-fixture runs are recorded in the builder's absolute lanes progress record;
 this defect remains open until that evidence establishes zero runner errors.
 
+## train-177 targeted repair, 2026-11-05
+
+The supplied Studio gate at `1cdebb160e9bdc97690fee8043a25e227e4973a7` reports one
+unattributed `onTaskUpdate` timeout. In that run, the round-seven harness adapter
+boundary case took 66,411 ms against its 60,000 ms ceiling while making nineteen
+consecutive blocking child calls (nine cuts, nine readers, one control). This is
+an observed event-loop blocking path beyond the RPC deadline; the excerpt does
+not establish that it caused the unattributed error.
+
+`tests/e2e/harness-adapters-round7-regression.test.ts` now uses the existing
+`async-child.ts` helper throughout, preserving the 30-second child bounds. Each
+independent append cut and the uninterrupted control has its own test; all nine
+cuts, refusal checks, concurrent-reader checks and the twelve poison cases
+remain. The torn-state reconstructions and twelve poison combinations also have
+separate case bounds after the first targeted run exposed their aggregate deadlines.
+No child deadline, worker concurrency or product behavior is changed.
+Targeted verification covers the repaired file, not full-suite closure.
+The defect remains open pending the pipeline's full run with zero runner errors.
+
 ## train-181 recurrence, 2026-11-05
 
 The retained gate at b95fc4f6ad08e02d180ab476eb6e744a0ed1e53a reports one

@@ -1,0 +1,27 @@
+{
+  "provenance": {
+    "source": "Studio authorized lanes/pipeline/live-pending-969390680-1106 read-only snapshots",
+    "files": {
+      "live-pending-969390680-1106-diagnosis.md": "e3f9b8b41a3c27aa817872e91aa5ad3d0fee3aa879c42f2ac8325c67f24c751c",
+      "desk-send-verification-e254.json": "db6d554e0c79be35144bf66a2c658e1d699166d9639ff973290fb5b8368e2e96",
+      "workspace-df.txt": "4ba3074b715cc74cf13e686a2671f67e0c988ab074b1bd86c6c8c2d1330a75a1",
+      "worker-pane-redacted.txt": "9ad40d745ab9fb2e3e24a054c00a9dffa393f08f64f52f5268a342ba9f02f2f2",
+      "inspect-update.json": "65ecc38498c5ca41ed98ef20bf895d394a972b248c2a77d9e7fea5c7bdc53e82",
+      "status-compact.json": "a0633bf9c903395d692f499a5d5d77c19a29f4c12d131a476af11b9ca4c55ebc",
+      "exact-call-state.json": "c6c60cc12e30a1d1b2ef98f1b2cfa08c243093796b8bd08f9619d8a9fc3f739c",
+      "turn-state.json": "cceda867db8ecb54e33c729a21089ced0e742618db83e34c55f6cc4c3dae53a4",
+      "host-row.json": "b9522a48ff4fdf0e6823d3995411b58746bafa8e8a4f403d6bfe5a915a084e5c",
+      "incident-decision.json": "e7baa3d5a90da35a4668dc7268fcdd9444bb9c7a7f6ab12165f07f12eb6936b4"
+    },
+    "limits": "Recorded-shape fixture, not a live replay. Original request is verbatim; transport identities are redacted. Host outcome is recorded; worker terminal reason is NOT an input to the notice. Observer excerpt is not exact delivered bytes; no answer receipt for current task is supplied. Preceding notice shape comes from the observer excerpt, not an exact journal row."
+  },
+  "update": 969390680,
+  "request": "From Echo (the test account), not from Justin: a real Instar 1.x task for you. Issue 2184 on JKHeadley/instar: https://github.com/JKHeadley/instar/issues/2184 . When a session fails to start, the error sent back to the caller can contain a GitHub token in plain text. It is still open. Please take it as far as you can: confirm it still happens in the current code, make the smallest fix that stops the leak, test it, and open your own pull request. Tell me plainly what you did, how you checked it, and anything that stopped you.",
+  "hostOutcome": "uncertain",
+  "hostDetail": "turn ended without a complete reply",
+  "summaryThrough": 969390679,
+  "previousUpdate": 969390679,
+  "previousRequest": "From Echo (the test account), not from Justin.\n\nYesterday you opened pull request https://github.com/JKHeadley/instar/pull/2750 for issue #2243, and you told me its checks were not finished. It is still open. Please take it the rest of the way yourself: find out what is holding it now, deal with that, and get it merged. When it is merged, or if something truly stops you, tell me in plain words what happened and show me how you checked.",
+  "observerExcerpt": "Earlier conversation up to #969390679 is now summarized for me ... holding reply delivered in place of the loss notice; model UNKNOWN as Telegram message 756 ... The answer-writing step did not complete.",
+  "workerFinding": "existing 2GiB isolated workspace full; shell commands unavailable; no claimed task2184fix orPR creation. Terminal text is NOT a delivered answer."
+}

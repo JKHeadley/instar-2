@@ -1,3 +1,4 @@
+import { unknownAnswerNotice } from './journal.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -72,7 +73,7 @@ it('keeps a lost answer open and closes it only when a listed model decision is 
         return JSON.stringify({ reply: 'The launch plan is in the shared folder.', memory: [], closedQuestions: [listed] }); },
       send: async () => contexts.length, checkOutbound: () => {} });
     worker.intake([update(1, 'Where is the launch plan?')]); await worker.drain();
-    expect(journal.view.order[0]?.intent).toBe(`${UNKNOWN_ANSWER_NOTICE}`);
+    expect(journal.view.order[0]?.intent).toBe(unknownAnswerNotice({ text: 'Where is the launch plan?' }));
     expect(openQuestionCandidates(journal.view)).toHaveLength(1);
     worker.intake([update(2, 'I found a folder; can you answer the launch-plan question now?')]);
     await worker.drain();

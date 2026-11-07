@@ -209,13 +209,13 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
       expect(spoken[0]!.intent!.startsWith(`${spoken[0]!.continuity!.disclosure} `)).toBe(true);
       // One seam throughout, so no basis change was owed a second sentence; exactly one went out.
       expect(new Set(compacted.map(turn => turn.continuity!.basis ?? 'summary')).size).toBe(1);
-      expect(sent.filter(text => text.startsWith('Earlier conversation up to #'))).toHaveLength(1);
+      expect(sent.filter(text => text.startsWith('Earlier conversation '))).toHaveLength(1);
       // Each turn's own flag is what the predicate decides from the last sentence actually delivered.
       let delivered: ContinuityAccount | undefined;
       for (const turn of compacted) {
         const account = turn.continuity!;
         expect(account.spoken !== false).toBe(continuitySpoken(delivered,
-          { disposition: account.disposition, basis: account.basis ?? 'summary', disclosure: account.disclosure }, false));
+          { ...account, basis: account.basis ?? 'summary' }, false));
         if (account.spoken !== false && turn.sent !== undefined) delivered = account;
       }
       // Rule 2: nothing is lost by going quiet. Every compacted reply still records what it accounted for,
@@ -261,7 +261,7 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
       journal.append({ kind: 'summary', through: 29, text: 'The operator keeps a garden log.', at });
       let worker = createJournalWorker(journal, ports(at + 100_000));
       worker.intake([update(31, 'How is the garden?')]); await worker.drain();
-      expect(sent.at(-1)).toMatch(/^Earlier conversation up to #29 is now summarized for me;/u);
+      expect(sent.at(-1)).toMatch(/^Earlier conversation is now summarized for me\./u);
       journal.append({ kind: 'summary-reserve', through: 31, at: at + 1 });
       journal.append({ kind: 'summary', through: 31, text: 'The operator keeps a garden log and asked how it is.', at: at + 1 });
       journal.close();
@@ -288,9 +288,12 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
   }, 30000);
 
   it('both sides of each spoken condition, including the dispositions the room recorded', () => {
-    const summary = { disposition: 'addressed' as const, basis: 'summary' as const,
+    const summary = { prePauseInbound: 'update:31', capture: 'capture:31', reference: 'Telegram message 31',
+      disposition: 'addressed' as const, basis: 'summary' as const,
       disclosure: continuityDisclosure('#31, x', 29, 'addressed', 'Telegram message 31') };
-    const first = { disclosure: continuityDisclosure('#30, x', 29, 'addressed', 'Telegram message 30') };
+    const { basis: summaryBasis, ...sameAccount } = summary;
+    const first = { ...sameAccount, prePauseInbound: 'update:30', capture: 'capture:30', reference: 'Telegram message 30',
+      disclosure: continuityDisclosure('#30, x', 29, 'addressed', 'Telegram message 30') };
     // Nothing said yet: say it. Already said and the message is answered: do not say it again.
     expect(continuitySpoken(undefined, summary, false)).toBe(true);
     expect(continuitySpoken(first, summary, false)).toBe(false);
@@ -305,8 +308,8 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
       disclosure: continuityDisclosure('#31, x', 29, 'addressed', 'Telegram message 31', 'set-aside') }, false)).toBe(false);
     // A spoken disclosure whose send stayed UNKNOWN is said again: the operator may never have seen it.
     expect(continuitySpoken(first, summary, true)).toBe(true);
-    // Never the same words twice running, whatever else holds.
-    expect(continuitySpoken({ disclosure: summary.disclosure }, summary, true)).toBe(false);
+    // Repeating the exact same account stays quiet.
+    expect(continuitySpoken(sameAccount, { ...sameAccount, basis: summaryBasis }, true)).toBe(false);
 
     // The room's recorded accounts, replayed through the predicate against the one before them.
     const samples = recorded.disclosures.samples;
