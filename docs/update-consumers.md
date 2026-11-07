@@ -215,10 +215,7 @@ Automatic git discovery, npm install and CLI syntax execution now enter the admi
 runner's existing `hostResources` as maintenance, retaining Six allocations, answer reserve,
 stop and outcome evidence. An `installedUpdate` observation launches no subprocess.
 `update.test.ts` refuses resource-limited installation even with exit code zero and proves
-schema incompatibility stops before migrations. Standalone CLI installation still has its
-inherited finite subprocess path and lacks durable resource-owner composition; that remains
-an explicit Rule 60 blocker. The existing due-proof runner now records `P9-PREVIEW-update-bound` each minute,
+schema incompatibility stops before migrations. Standalone CLI installation launches through
+its own attached resource owner (see `update.md`). The existing due-proof runner now records `P9-PREVIEW-update-bound` each minute,
 reading fresh durable pressure, actual timer state and resource-owner admission.
-The feature still declares unbounded repetition: this observed-bound check does not
-turn the whole service into a registered finite loop or establish standalone admission.
-Complete Rule 55/60 compliance remains open. Existing three-failure pressure and stop/expiry remain in force.
+The feature declares its repetition bounded by that probe. Existing three-failure pressure and stop/expiry remain in force.

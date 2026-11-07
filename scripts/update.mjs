@@ -5,10 +5,11 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
 import { schemaVersion } from './update-release.mjs';
 import { assertAgentPaths } from './agent-paths.mjs';
+import { createResourceOwner } from './resource-owner.mjs';
 
+const STOP_SIGNALS = Object.freeze(['SIGINT', 'SIGTERM', 'SIGHUP']);
 const packageInfo = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 let candidateBinding;
 let runtimeBound = false;
@@ -43,18 +44,32 @@ function candidateIdentity(installed, release) {
     throw Error('Installed version does not match the requested release; current release retained');
   return pkg;
 }
-// The admitted runner supplies its existing resource owner. The standalone
-// installer retains its host invocation until that command has a durable owner.
-async function executeCommand(input, execute) {
-  if (execute) return execute(input);
-  const result = spawnSync(input.executable, input.args, { cwd: input.cwd, timeout: input.timeout,
-    maxBuffer: input.maxBytes, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  return { code: result.status, signal: result.signal, limited: Boolean(result.error), stdout: result.stdout };
+/** Every update launch goes through a resource owner: the running agent's, or a standalone one. */
+export function ownedUpdateExecutor(resources, stopped) {
+  return input => resources.execute({ ...input, env: process.env, stdin: '', stopped }, 'maintenance');
+}
+// A person runs this command outside the agent, so it holds no Six allocation to spend.
+// It composes the owner as setup's one-shot run does: admission, limits, census and
+// verified cleanup, with no durable ledger because there is no debit to return after a
+// crash. The owner launches in its own process group, which a terminal stop no longer
+// reaches, so a stop during a launch is passed to it. A stop between launches is unchanged.
+export function standaloneExecutor(resources) {
+  return async input => {
+    let stop = false;
+    const onStop = () => { stop = true; };
+    for (const name of STOP_SIGNALS) process.on(name, onStop);
+    try {
+      const result = await ownedUpdateExecutor(resources, () => stop)(input);
+      // No ledger keeps this row for a later recovery, so the person is told now.
+      if (result.resources?.cleanup === 'unresolved') process.stderr.write('A helper process from this update could not be confirmed gone.\n');
+      return result;
+    } finally { for (const name of STOP_SIGNALS) process.off(name, onStop); }
+  };
 }
 async function validateCandidate(installed, release, execute) {
   const pkg = candidateIdentity(installed, release);
-  const probe = await executeCommand({ executable: process.execPath, args: ['--check', join(installed, 'bin/instar2.mjs')],
-    cwd: installed, timeout: 10000, maxBytes: 1024 * 1024 }, execute);
+  const probe = await execute({ executable: process.execPath, args: ['--check', join(installed, 'bin/instar2.mjs')],
+    cwd: installed, timeout: 10000, maxBytes: 1024 * 1024 });
   if (probe.code !== 0 || probe.limited || probe.cancellationReason) throw Error('Installed CLI syntax check failed; current release retained');
   return pkg;
 }
@@ -70,8 +85,8 @@ async function install(root, release, source, execute) {
     mkdirSync(stage, { recursive: true, mode: 0o700 });
     // npm's own git installer; ignore lifecycle scripts so staging cannot mutate the root.
     // Output is intentionally not forwarded: git/npm diagnostics may contain credentials.
-    const result = await executeCommand({ executable: 'npm', args: ['install', '--prefix', stage, '--ignore-scripts', '--no-audit', '--no-fund', '--install-links', '--', source],
-      cwd: stage, timeout: 300000, maxBytes: 1024 * 1024 }, execute);
+    const result = await execute({ executable: 'npm', args: ['install', '--prefix', stage, '--ignore-scripts', '--no-audit', '--no-fund', '--install-links', '--', source],
+      cwd: stage, timeout: 300000, maxBytes: 1024 * 1024 });
     if (result.code !== 0 || result.limited || result.cancellationReason) throw Error('Release installation failed; current release retained');
     // 1.x validates in shadow-install.pending before promotion. Keep this same
     // ordering: a bad candidate must not poison the reusable release directory.
@@ -102,7 +117,15 @@ export async function updateRoot(directory, options = {}) {
   await initializeUpdateRuntime();
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const releaseLock = acquireUpdateLock(root);
-  try { return await apply(root, release, source, options.execute, options.fallbackSchemas); }
+  try {
+    let execute = options.execute;
+    if (!execute) {
+      const resources = createResourceOwner();
+      await resources.attach();
+      execute = standaloneExecutor(resources);
+    }
+    return await apply(root, release, source, execute, options.fallbackSchemas);
+  }
   finally { releaseLock(); }
 }
 export async function initializeUpdateRuntime() {

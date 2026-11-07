@@ -9,7 +9,7 @@ import { runTemplatesDriftVerifier } from './update-drift.mjs';
 import { LiveConfig } from './update-live-config.mjs';
 import { hostResources } from './resource-owner.mjs';
 import { readableSchemas } from './update-release.mjs';
-import { installedUpdate, readableUpdateRelease, UpdateSchemaRefused, readUpdateRuntime, writeUpdateRuntime, updateRoot, initializeUpdateRuntime } from './update.mjs';
+import { installedUpdate, ownedUpdateExecutor, readableUpdateRelease, UpdateSchemaRefused, readUpdateRuntime, writeUpdateRuntime, updateRoot, initializeUpdateRuntime } from './update.mjs';
 const versionOf = directory => JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')).version;
 const newer = (a, b) => {
   const aa = a.split('.').map(Number), bb = b.split('.').map(Number);
@@ -24,7 +24,7 @@ async function latestRelease(execute, root) {
   return versions.reduce((best, value) => !best || newer(value, best) ? value : best, null);
 }
 export function createProductUpdater(root, { runningVersion, stopped, readiness, discover, apply = updateRoot,
-  execute = input => hostResources.execute({ ...input, env: process.env, stdin: '', stopped }, 'maintenance') }) {
+  execute = ownedUpdateExecutor(hostResources, stopped) }) {
   const live = new LiveConfig(root);
   const handshake = new UpdateRestartHandshake(root);
   let selected = null;

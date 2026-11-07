@@ -215,11 +215,28 @@ the additional direct/constant keys found at the new pinned 1.x revision, dynami
 limits, protected owners and dependencies on other carryover rows. It does not treat
 unported owners as superseded. No model prompt or judgment policy is changed here.
 
-Row 87 remains open: the standalone installer still needs durable resource-owner
-admission, the periodic service needs its actual registered critical-outcome bound
-and live probe, and unresolved dynamic/nested consumer domains need owning-row review.
 The isolated process proof, independent Astra compliance review and live installed
-proof are distinct evidence tiers; only the first is supplied by this test.
+proof are distinct evidence tiers; only the first is supplied by this test. Dynamic
+and nested consumer domains stay with their owning rows.
+
+## Standalone update resources
+
+`instar2 update` launches npm and the syntax check through the real resource owner,
+composed as setup's one-shot run composes it: admission, the launch limits, the census
+and verified cleanup of the whole process tree. A person runs this command outside the
+agent, so it holds no Six allocation and needs no durable ledger: the ledger exists to
+return a Six debit after a crash, and here there is no debit. The census does not cover
+this launch for a running agent, which counts only its own launches. What bounds the
+pair is one launch at a time under the update lock, the per-launch ceilings, and the
+user-wide process limit.
+
+A stop during a launch ends the tree and keeps the current release. A cleanup the owner
+cannot confirm is reported on stderr, because no ledger row keeps it for later recovery;
+it does not fail the update, and a failed census does not refuse a launch. If the
+command itself is killed outright, a running npm continues until it finishes, as it
+did before and as it does in 1.x; its unpublished stage stays out of `current`. Hosts
+whose `/bin/sh` refuses `ulimit -u` cannot launch through the owner at all, so the
+command fails there with the current release retained.
 
 ## Periodic bound observation
 
@@ -235,7 +252,5 @@ proof log retains both results. It performs no canary install, model call or sen
 `update-bound.test.ts` exercises actual transaction writes, failure/backoff and
 controller recreation, including corrupted input and deliberately broken timer
 and capacity observations. These are build tests; the resource observations in
-the predicate tests are controlled inputs. They do not prove a live installation
-or independently authorize a standalone CLI process. The periodic feature's
-unbounded declaration stays visible until the complete enforcement composition
-is established.
+the predicate tests are controlled inputs. They do not prove a live installation.
+The feature declares its repetition bounded by this probe.

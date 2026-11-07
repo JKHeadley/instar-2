@@ -40,6 +40,8 @@ function fixture(version = '0.2.0', body = 'export const migrations = [];', sche
   writeFileSync(join(p, 'scripts/update-governance.mjs'), readFileSync('scripts/update-governance.mjs'));
   writeFileSync(join(p, 'scripts/update.declarations.json'), readFileSync('scripts/update.declarations.json'));
   writeFileSync(join(p, 'scripts/agent-paths.mjs'), readFileSync('scripts/agent-paths.mjs'));
+  for (const name of ['resource-owner.mjs', 'process-inventory.mjs', 'process-census-query.mjs'])
+    writeFileSync(join(p, 'scripts', name), readFileSync(join('scripts', name)));
   writeFileSync(join(p, 'scripts/slice-ts-loader.mjs'), readFileSync('scripts/slice-ts-loader.mjs'));
   writeFileSync(join(p, 'scripts/update-release.mjs'), `export const schemaVersion = ${schema};\nexport const readableSchemas = [1, ${schema}];\n${body}\n`);
   return `file:${p}`;
