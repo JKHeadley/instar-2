@@ -131,6 +131,10 @@ export interface SessionWorkIO {
   readResult(path: string, maxBytes: number): string | null;
   /** Removes a leftover result before the step runs. Throws when it cannot. */
   clearResult(path: string): void;
+  /** When the result file was last written, in whole host milliseconds; null when it does not exist. Read after
+   * `readResult`, so a rewrite in between only reports later. Ties a result to the Stop that existed when it was
+   * written, never to when the host first saw that Stop. */
+  resultWrittenAt?(path: string): number | null;
   /** How many model calls the child has made since `since`, counted from its own transcript;
    * null when that cannot be read. Accounting evidence, not the ceiling: the ceiling is the model-dispatch
    * checkpoint's, before each call. */
@@ -418,7 +422,8 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                 return settledAs('failed', `the turn closed with no result at the destination (${turnClosed})`, child);
               seen = present;
               if (turnClosed === null) {
-                const observation = take(driver.observe({ operation: request.operation, processIdentity: child, resultAvailable: present !== null }));
+                const observation = take(driver.observe({ operation: request.operation, processIdentity: child, resultAvailable: present !== null,
+                  resultWrittenAt: present !== null ? config.io.resultWrittenAt?.(resultPath) ?? null : null }));
                 if (observation.phase === 'output-observed') turnClosed = observation.detail;
                 else if (observation.phase === 'exit-observed')
                   return settledAs('uncertain', `the child ended before a result (${observation.detail})`, observation.evidence);

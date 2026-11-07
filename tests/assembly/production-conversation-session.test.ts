@@ -319,10 +319,11 @@ async function backgroundTurn(steps: readonly ((world: { result(text: string): v
   const { createProductionSessionDriver } = await import('../../src/assembly/production-session-driver.js');
   const f = fixture(); let now = 1000, live = false, path = '', next = 0, polls = 0;
   let journal: import('../../src/assembly/production-session-driver.js').SessionJournal = { sessions: [], deliveries: [], resumes: {} };
-  const files = new Map<string, string>();
+  const files = new Map<string, string>(), written = new Map<string, number>();
   const receipts: { kind: 'turn-closed'; sessionId: string; at: number; receiptId: string; background?: number }[] = [];
-  const world = { result: (text: string) => { files.set(path, text); }, exit: () => { live = false; },
-    stop: (background?: number) => { receipts.push({ kind: 'turn-closed', sessionId: '12345678-1234-1234-1234-123456789abc', at: now,
+  // Each event takes a millisecond, so events inside one poll keep their real order.
+  const world = { result: (text: string) => { now++; files.set(path, text); written.set(path, now); }, exit: () => { live = false; },
+    stop: (background?: number) => { now++; receipts.push({ kind: 'turn-closed', sessionId: '12345678-1234-1234-1234-123456789abc', at: now,
       receiptId: `receipt-${receipts.length}`, ...(background === undefined ? {} : { background }) }); } };
   const physical: import('../../src/assembly/production-session-driver.js').SessionIO = {
     exclusive: run => run(), load: () => journal, save: value => { journal = structuredClone(value); },
@@ -336,8 +337,8 @@ async function backgroundTurn(steps: readonly ((world: { result(text: string): v
       return { code: 0, stdout: '' };
     },
   };
-  const io = { ...f.config.io, clearResult: (value: string) => { path = value; files.delete(path); },
-    readResult: (file: string) => files.get(file) ?? null, modelCalls: () => 1,
+  const io = { ...f.config.io, clearResult: (value: string) => { path = value; files.delete(path); written.delete(path); },
+    readResult: (file: string) => files.get(file) ?? null, resultWrittenAt: (file: string) => written.get(file) ?? null, modelCalls: () => 1,
     wait: async (ms: number) => { now += ms; polls++; const step = steps[next++]; if (step) step(world); else now += 1000; } };
   const port = value(createConversationSessionPort({ ...f.config, io, now: () => now,
     createAdapter: resolveDelivery => createSessionConversationAdapter({ io, resolveDelivery,
@@ -386,6 +387,31 @@ it('a result from a turn still running waits for that turn to stop', async () =>
     world => { world.result(ANSWER); world.stop(0); }]);
   expect(run.outcome).toMatchObject({ state: 'complete', text: ANSWER });
   expect(run.consumed).toBe(4);
+});
+
+// Review probe 1: the background Stop and a later partial result both land between two polls. The host must tie the
+// result to the Stop that existed when it was written, not to the poll that first saw that Stop.
+it('a later result that arrives with its background Stop in one poll still waits for its own Stop', async () => {
+  const run = await backgroundTurn([
+    world => { world.stop(1); world.result('{"reply":"partial"}'); },
+    world => { world.result(ANSWER); world.stop(0); },
+  ]);
+  expect(run.outcome).toMatchObject({ state: 'complete', text: ANSWER });
+  expect(run.consumed).toBe(2);
+});
+
+// Review probe 2: a worker that exits after a held Stop has not closed its answering turn.
+it('worker exit cannot turn a held background Stop into completion evidence', async () => {
+  const run = await backgroundTurn([
+    world => world.stop(1),
+    world => { world.result('{"reply":"partial"}'); world.exit(); },
+  ]);
+  expect(run.outcome.state).toBe('uncertain');
+});
+
+it('worker exit keeps an answer written before its background Stop', async () => {
+  const run = await backgroundTurn([world => world.stop(2), world => { world.result(ANSWER); world.stop(1); world.exit(); }]);
+  expect(run.outcome).toMatchObject({ state: 'complete', text: ANSWER });
 });
 
 it('a later Stop after that result closes even while other work still runs', async () => {
