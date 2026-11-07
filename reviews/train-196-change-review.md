@@ -25,6 +25,8 @@ Decision: train196-publication | Recompute artifact hashes and regenerate source
 
 1.x FIRST: Inherit researched comparison from train-196 progress: actual JKHeadley/instar origin/main 1723950ceca23f0ae516e4cb9d3e675ae1c1eea3, src/core/SessionManager.ts terminal exit evidence, docs/specs/ownership-follows-live-work.md completion ownership lifecycle, docs/specs/forkbomb-prevention-simple.md physical-host resource scope, git history 2bd3882d, 0af416c4 and 4e38b9fd, and ONEX-LESSONS section 6. Retain candidates' existing 2.0 adaptations; no new carryover implementation is needed for this merge-only repair.
 
+Publication verification: Regenerated seven register outputs from committed source b3c84c302b1e17ab234d5db031e90ff1d923d709, generation sha256:0d05119f6631fb1ac632126010d16777d4880e6a0d4ba91e8692f85d9d354d7e. Build and all 97 conversation-topic tests pass, including the combined recovery matrix and recorded shapes. Direct controls in both notice helpers admit exact activation and refuse generic credential additions. Native R105 composition certification remains with Studio, unchanged. Final check outcomes are in the reported progress record.
+
 ## Closing block
 
 simplestRobustRoute: Ordinary merges with exact parent heads, explicit desk resolution of the only semantic conflict, preserved assertion unions and existing pin/register generation are the simplest robust route. No new machinery. Entry guards are exact ancestry and receipt bytes; exit guards are targeted checks and honest host-dependent reporting. No unattended product-completion claim.
