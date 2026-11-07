@@ -7,8 +7,8 @@ Outcome: Restore the ten named gate regressions' intended evidence without chang
 Affected rules: 26, 34, 37, 42, 45, 49, 60, 70, 74, 101, 102, 107, 111, 112, 113, 116
 Affected floors: secrets — temporary offline fixtures only; spend cap — no provider requests; stop — existing independent signal deadline assertions retained; no duplicate sends — exact send counts and UNKNOWN restart checks retained; durable intake — real encrypted journal and replay retained.
 Operator questions: none
-Suggested tier: standard
-Declared tier: standard
+Suggested tier: ordinary
+Declared tier: ordinary
 Tier rationale: Test fixture repairs only; no production source, prompt, authority, configuration or runtime behavior changes.
 Side effects: Census fixtures follow the actual compact query instead of silently losing injection. Timing checks now wait until recovery expires before demanding a terminal notice. Reminder deduplication crosses one day within a two-day fixture trial. The settlement compiler retains the original pinned Eight bodies and nominal identity while exposing the real independent worker-input module required by current assembly.
 Undo and recovery: Revert this repair commit; original gate evidence stays in the desk logs. No production migration or data rollback is needed.
