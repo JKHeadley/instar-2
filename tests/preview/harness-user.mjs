@@ -274,7 +274,9 @@ export function probeAccess(specs, { user = HARNESS_USER, launcher = HARNESS_LAU
     return null;
   }
   const rows = text.split('\n').filter(Boolean).map(line => { try { return JSON.parse(line); } catch { return null; } });
-  return rows.length === specs.length && rows.every(row => row && typeof row.ok === 'boolean') ? rows : null;
+  if (rows.length === specs.length && rows.every(row => row && typeof row.ok === 'boolean')) return rows;
+  process.stderr.write(`[harness-probe] incomplete rows=${String(rows.length)} expected=${String(specs.length)}\n`);
+  return null;
 }
 
 /**

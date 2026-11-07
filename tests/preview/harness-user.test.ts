@@ -427,6 +427,15 @@ describe('the launcher', () => {
     expect(rows.map(row => row.ok)).toEqual([true, true, false]);
     expect(rows[2].code).toBe('ENOENT');
   });
+  // The live failure (train-200 forum answer check, 2026-11-07): sudo's relay read the probe slowly on a busy Studio, the
+  // launcher exited before its pipe write finished, and readiness saw too few rows. A reader that waits before reading
+  // stands in for the busy relay; every row of a /private/tmp-sized probe must still arrive.
+  it('delivers every probe row to a slow reader', () => {
+    const specs = Array.from({ length: 9000 }, (_, i) => `r:/nonexistent/probe-entry-${String(i)}`);
+    const result = spawnSync('/bin/sh', ['-c', '"$@" | (sleep 1; wc -l)', 'sh', process.execPath, launcher, '--probe', ...specs], { encoding: 'utf8' });
+    expect(result.status).toBe(0);
+    expect(Number(result.stdout.trim())).toBe(specs.length);
+  });
 });
 
 describe('the census and cleanup of a harness-user tree', () => {
