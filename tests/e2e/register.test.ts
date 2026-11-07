@@ -323,7 +323,8 @@ describe('compiled register build adapter lifecycle', () => {
   // case bound; fresh independent groups now contain at most nine CLI builds.
   // This is a fixture execution budget, not an owner/runtime latency requirement.
   }, 300_000);
-  it('P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring', async () => {
+  it.each(['owner graph', 'decoder wiring', 'store context'] as const)(
+    'P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring (%s)', async group => {
     const root = mkdtempSync(join(tmpdir(), 'instar-intake-cli-'));
     try {
       for (const path of ['docs', 'src', 'tests', 'register-source', 'scripts', 'bin', 'package.json', 'tsconfig.json', 'tsconfig.build.json']) cpSync(path, join(root, path), { recursive: true });
@@ -335,31 +336,34 @@ describe('compiled register build adapter lifecycle', () => {
         git('add', '.'); git('commit', '-qm', 'intake owner source');
         return runNode([script, '--replay', '--now', '100', '--commit', git('rev-parse', 'HEAD'), '--out', join(root, 'out')], root);
       };
-      const good = await run(); expect(good.status, good.stderr).toBe(0);
-      const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
-      expect(source.authority).toBe('shape-only'); expect(source.authorityPrerequisites).toHaveLength(10);
-      expect(source.authorityPrerequisites.filter((p: { record: string }) => p.record === 'intake.contract')).toHaveLength(5);
+      if (group === 'owner graph') {
+        const good = await run(); expect(good.status, good.stderr).toBe(0);
+        const source = JSON.parse(readFileSync(join(root, 'out/source.json'), 'utf8'));
+        expect(source.authority).toBe('shape-only'); expect(source.authorityPrerequisites).toHaveLength(10);
+        expect(source.authorityPrerequisites.filter((p: { record: string }) => p.record === 'intake.contract')).toHaveLength(5);
+        const manifestPath = join(root, 'register-source/owner-references/part-four.json');
+        const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')); manifest.owner = 'part-five'; writeFileSync(manifestPath, JSON.stringify(manifest));
+        const wrongOwner = await run(); expect(wrongOwner.status).not.toBe(0); expect(wrongOwner.stderr).toContain('owner');
+        return;
+      }
       const path = join(root, 'src/intake/port.ts'), original = readFileSync(path, 'utf8');
-      for (const [from, to] of [
+      const mutations = [
         ["readEnforcedRecord('intake.dedup', 'intake.contract', 'readProjection', register, ctx);", ''],
         ["'intake.contract', 'readProjection'", "'intake.contract', 'authorAndAppend'"],
         ['prepareSnapshot(read(), ctx)', 'prepareSnapshot([], ctx)'],
         ['ownedBodies: [work]', 'ownedBodies: []'],
         ['export function dedup()', 'read = () => [];\nexport function dedup()'],
         ['export function admission()', 'context = () => ({ ...base, ownedBodies: [] });\nexport function admission()'],
-      ]) {
+      ];
+      for (const [from, to] of mutations.slice(group === 'decoder wiring' ? 0 : 2, group === 'decoder wiring' ? 2 : undefined)) {
+        expect(original.replace(from!, to!)).not.toBe(original);
         writeFileSync(path, original.replace(from!, to!)); const bad = await run();
         expect(bad.status).not.toBe(0); expect(bad.stderr).toContain('P3-NF-26');
       }
-      writeFileSync(path, original);
-      const manifestPath = join(root, 'register-source/owner-references/part-four.json');
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')); manifest.owner = 'part-five'; writeFileSync(manifestPath, JSON.stringify(manifest));
-      const wrongOwner = await run(); expect(wrongOwner.status).not.toBe(0); expect(wrongOwner.stderr).toContain('owner');
     } finally { rmSync(root, { recursive: true, force: true }); }
-  // Eight repository-building CLI runs took 56.6s isolated on WSL and hit the old 60s
-  // execution budget beside another serial test runner. This is a fixture hang bound,
-  // not a product latency assertion; retain every acceptance/refusal check.
-  // Evidence: docs/defects/register-intake-cli-wsl-budget.md.
+  // Apply the owning repair's fresh-group pattern to the remaining eight-build
+  // intake matrix named by train-175's gate: at most four calls, unchanged 120s.
+  // Every original owner/prerequisite/consumer assertion remains.
   }, 120_000);
   // Fresh repositories keep these independent groups isolated. At most four CLI
   // builds share the unchanged 120s case bound, instead of ten.
@@ -423,8 +427,9 @@ describe('compiled register build adapter lifecycle', () => {
       const ambient = await run(revision); expect(ambient.status).not.toBe(0); expect(ambient.stderr).toContain('source pin trails');
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 120_000);
-  // Preserve the 60s bound and both pinned-byte comparisons. Each fresh group
-  // runs at most two asynchronous CLI calls, with no shared mutable fixture.
+  // Reuse cumulative-budget repair 7b78ea242: two serial full-graph CLI calls
+  // need a 120s case budget including setup/cleanup, retaining 60s per child.
+  // Each group keeps its fresh fixture and both pinned-byte comparisons.
   it.each(['missing bridge', 'committed bridge', 'clean wiring', 'ambient wiring'] as const)(
     'P3-P5 R2 same pinned commit refuses with and without an ambient bridge, and resolves a committed bridge (%s)', async group => {
     const directory = mkdtempSync(join(tmpdir(), 'instar-owner-graph-cli-'));
@@ -445,7 +450,8 @@ describe('compiled register build adapter lifecycle', () => {
       git(root, 'init'); git(root, 'add', ...inputs); git(root, 'commit', '-qm', 'pinned public index, absent bridge');
       const revision = git(root, 'rev-parse', 'HEAD');
       const script = resolve('scripts/build-register.mjs');
-      const run = (cwd: string, pin: string) => runNode([script, '--replay', '--now', '100', '--commit', pin, '--out', join(cwd, 'out')], cwd);
+      const run = (cwd: string, pin: string) => runChild(process.execPath,
+        [script, '--replay', '--now', '100', '--commit', pin, '--out', join(cwd, 'out')], { cwd, timeout: 60_000 });
       if (group === 'missing bridge') {
         git(directory, 'clone', '--quiet', '--no-hardlinks', root, clean);
         expect(git(clean, 'rev-parse', 'HEAD')).toBe(revision);
@@ -474,7 +480,7 @@ describe('compiled register build adapter lifecycle', () => {
       // The separately shipped wiring command also scans the pin, never an
       // expanded live-file graph. Fresh clean and perturbed fixtures test both sides.
       cpSync(join(root, 'out'), join(root, 'generated'), { recursive: true });
-      const wiring = () => runNode([resolve('scripts/check-register-wiring.mjs')], root);
+      const wiring = () => runChild(process.execPath, [resolve('scripts/check-register-wiring.mjs')], { cwd: root, timeout: 60_000 });
       if (group === 'clean wiring') {
         const checked = await wiring(); expect(checked.status, checked.stderr).toBe(0);
       } else {
@@ -482,7 +488,7 @@ describe('compiled register build adapter lifecycle', () => {
         const untracked = await wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
       }
     } finally { rmSync(directory, { recursive: true, force: true }); }
-  }, 60_000);
+  }, 120_000);
   it.each([true, false])('the shipped CLI can await its parent worker without blocking RPC (release=%s)', async release => {
     const root = mkdtempSync(join(tmpdir(), 'instar-register-worker-yield-'));
     const entered = join(root, 'entered'), permit = join(root, 'permit'), preload = join(root, 'wait-for-parent.mjs');

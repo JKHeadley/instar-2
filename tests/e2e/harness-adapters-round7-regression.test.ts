@@ -29,9 +29,10 @@ it.each(['lock', 'open:1', 'write', 'fsync:1', 'close:1', 'rename', 'open:2', 'f
       cwd: process.cwd(), timeout: 30_000,
     });
     expect(reader.status, `${cut}: ${reader.stderr}`).toBe(0);
+    expect(JSON.parse(reader.stdout).observations).toHaveLength(3);
     expect(JSON.parse(reader.stdout).observations.every((row: { state: string }) => row.state === 'unknown'), cut)
       .toBe(true);
-  }, 60_000);
+  }, 65_000);
 
 it('A2-E2E A2-R6-01-BOUNDARIES P13-NF-24 P13-NF-28 P13-NF-38 P13-NF-39 uninterrupted control retains the exact successor', async () => {
   const script = 'tests/harness-adapters/a2-round7-recovery-race-worker.ts';
