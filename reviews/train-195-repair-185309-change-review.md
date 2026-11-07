@@ -4,7 +4,7 @@ Subject base: e8d374e690a865c7bc06f138ab3fecb3532a00af
 Review state: open
 Reviewed content: none
 Outcome: The repair lifecycle test recognizes the accepted plain stopped-task notice and verifies retained uncertainty, infrastructure provenance, and exactly one delivery across restart and replay.
-Affected rules: Rules 37/49/70/74/89/101/102/110/116.
+Affected rules: Rules 37/49/70/74/89/101/102/116.
 Affected floors: secrets — no runtime change; spend cap — no runtime change; stop — no runtime change; no duplicate sends — strengthened restart assertions; durable intake — retained uncertainty checked after reopening.
 Operator questions: none
 Suggested tier: ordinary
@@ -23,6 +23,8 @@ Decision: train195-test-pin-publication | Refresh the changed test owner-referen
 1.x comparison: Inherit the accepted plain-task-stop comparison; refreshed against actual JKHeadley/instar origin/main 1723950ceca23f0ae516e4cb9d3e675ae1c1eea3 after searching src/, docs/specs/ and git history and reading ONEX-LESSONS section 3. src/messaging/plainNoticeCheck.ts is a test-time signal, not runtime authority; src/monitoring/watchdog-notifications.ts reports interventions; docs/specs/wedge-recovery-message-loss.md separates delivered notices from answered work. Preserve those principles using the existing 2.0 notice and journal owner. Watchdog restart promises do not fit an uncertain attempt that will not retry. No new mechanism is needed.
 Prompt review: No model prompt, output parser, acceptance, escalation or refusal threshold changes. This tests the existing shipped bridge and journal. Recorded-shape checks in the same test file remain intact; fixture sends are not live delivery evidence.
 Prompt finding: 85544c20941f | protocol-literal | Unchanged login-outage fixture wording, unrelated to the repaired assertion; no prompt instruction changed.
+Generated publication: Replay from committed source 915fc2564903930efeee63d68b4146445ecd1738; generation sha256:b5cba1741cf313fcb7abd814aac2cb53fd04ef3971278a3dcbda37bf7d8d585f. Existing declarations and shape-only authority unchanged.
+Deferral: generated/register.json:1 | not-a-deferral=Existing prerequisite descriptions republished without adding or postponing work.
 Verification: Baseline reproduced exactly two uncertain/throw failures with the original assertion; scoped test file, typecheck and final cheap checks are recorded in the report. Full Studio suite remains desk-owned.
 
 ## Closing block
