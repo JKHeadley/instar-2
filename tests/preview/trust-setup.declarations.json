@@ -1,0 +1,12 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "trust-setup.configureTrust",
+    "kind": "stores", "status": "live",
+    "requiredFacts": {
+      "growth": "deletes", "holdsAgentMemory": "no",
+      "machineScope": { "kind": "machine-local", "reason": "The installation owner replaces the effective local effect-policy and MCP configuration through setup, revise, tighten or revoke. These mutable configuration projections are not a conversation-memory store." },
+      "agreesWith": []
+    },
+    "standards": [7, 32], "holds": []
+  }
+]

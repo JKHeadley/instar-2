@@ -291,6 +291,7 @@ export const DECLARED_OLD_STORE_READERS = Object.freeze({
 });
 /** Loads the static scanner cannot follow (a computed dynamic import), declared with what they load. */
 export const DYNAMIC_READERS = Object.freeze({
+  'scripts/update.mjs': { loads: ['scripts/update-release.mjs'], reason: 'release-owned migration manifest loaded from the validated installed package; current release manifest is inventoried, schema/worker/postconditions checked before publishing its pointer' },
   'scripts/production-boot.mjs': { loads: [], reason: 'the operator-installed host module named on the command line: outside this repository and bound by the installation record' },
   'tests/preview/self-host.mjs': { loads: [], reason: 'the installed local capability entrypoint, loaded by its content digest from the install root after staging' },
 });

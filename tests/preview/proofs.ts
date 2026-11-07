@@ -63,6 +63,8 @@ export interface ProofPorts {
   /** Rule 33: runs the declared cross-store comparisons (build 11's STORE_AGREEMENTS) that are due and returns every
    * declared comparison's last completed verdict with its source time. `agree: null` is unmeasurable, never agreement. */
   storeAgreements(): readonly AgreementReading[];
+  /** Fresh updater transaction replay and actual controller/resource-owner state. */
+  updateBound?(): Observed | null;
   /** At launch only: the options and capability versions this launch runs with, recorded by the startup proof. */
   readonly launch?: Observed;
 }
@@ -88,7 +90,7 @@ export interface ProofPlan {
   confirms(observed: Observed): boolean;
 }
 export const WITNESSES = ['telegram.bot-api', 'preview.durable-journal', 'model.provider', 'preview.reply-reviewer',
-  'preview.summary-reviewer', 'jev.step-supervisor'] as const;
+  'preview.summary-reviewer', 'jev.step-supervisor', 'host.update-observer'] as const;
 export type Witness = typeof WITNESSES[number];
 /** The register id of a plan's probe (the `probe`/`freshnessProbe` reference in capabilities.declarations.json). */
 export const probeId = (plan: string) => `P9-PREVIEW-${plan}`;
@@ -179,6 +181,27 @@ function agreementOutcome(readings: readonly AgreementReading[]): ProofOutcome {
 }
 
 export const PREVIEW_PROOF_PLANS: readonly ProofPlan[] = Object.freeze([
+  cadence('update-bound', 'critical-outcome', 'preview.proofs', 'host.update-observer', [26, 43, 55, 60, 61],
+    'fresh update transaction, actual retry timers and the existing host resource owner', MINUTE, 2 * MINUTE,
+    o => count(o.failures) && o.failures <= 3 && o.pressureMatches === true && count(o.nextAttemptAt)
+      && (o.failures === 0 || (count(o.lastFailureAt)
+        && o.nextAttemptAt >= o.lastFailureAt + Math.min(6 * HOUR, 30 * MINUTE * 2 ** (o.failures - 1))))
+      && typeof o.intervalMinutes === 'number' && o.intervalMinutes >= 1 && o.intervalMinutes <= 1440
+      && o.resourceAllocation === 'six' && count(o.activeLaunches) && count(o.launchCeiling)
+      && count(o.maintenanceLaunches) && count(o.answerReserve)
+      && o.activeLaunches <= o.launchCeiling && o.maintenanceLaunches <= o.launchCeiling - o.answerReserve
+      && (o.failures < 3 || count(o.pausedAt))
+      && (o.pausedAt === null || o.timers === 0)
+      && count(o.timers) && (o.stopped !== true || o.timers === 0)
+      && (o.pausedAt !== null || o.stopped === true || o.timers > 0), ports => {
+      let observed: Observed | null;
+      try { observed = ports.updateBound?.() ?? null; } catch { observed = null; }
+      if (!observed) return outcome('unknown', {}, 'updater or durable bound evidence unavailable', null);
+      const plan = PREVIEW_PROOF_PLANS.find(p => p.id === 'update-bound')!;
+      const holds = plan.confirms(observed);
+      return outcome(holds ? 'passed' : 'failed', observed,
+        holds ? 'observed updater pressure, timer and resource bounds hold' : 'observed updater bound does not hold', ports.now());
+    }),
   { id: 'startup', kind: 'startup', rules: [9, 26, 43], capability: 'preview.durable-intake', witness: 'telegram.bot-api', trigger: 'launch',
     observes: 'the authenticated bot identity answer and the replayed journal at launch', cadenceMs: 30 * DAY, freshnessMs: 30 * DAY,
     required: () => true, confirms: o => identityConfirmed(o) && count(o.cursor) && count(o.turns), probe: ports => {

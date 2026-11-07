@@ -1,0 +1,153 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "installed-update-verification",
+    "kind": "features",
+    "status": "live",
+    "requiredFacts": {
+      "metrics": [
+        "update-state.phase",
+        "update-state.steps.status",
+        "update-result.status",
+        "update-state.runtime.updater",
+        "update-state.runtime.handshake",
+        "update-state.runtime.templateScan",
+        "update-state.runtime.templateFindings"
+      ]
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "unbounded"
+      }
+    },
+    "standards": [
+      26,
+      34,
+      39,
+      42,
+      44,
+      45,
+      52,
+      55,
+      60,
+      61,
+      69,
+      78,
+      84,
+      87,
+      89,
+      95,
+      113,
+      116
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "update.save",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "yes",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Release files, root backups, lock ownership and migration transaction history describe this machine's installation. No shared intake or authority is restored from them."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      26,
+      32,
+      44,
+      45,
+      113
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "update.updateRoot",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "recorded-governed-state",
+      "criticality": "Refuse malformed or unverified recorded installation state: lock ownership, package identity and exact requested version, bounded CLI syntax, release schema and migration manifest, and actual migration postconditions. Installation success is not runtime health or activation authority.",
+      "failDirection": "closed",
+      "preservesInput": "Retain failed staging, current release bytes, malformed state and durable migration intent/backups. A failed verification does not publish the installed stamp or current pointer.",
+      "inspectedBy": "PREVIEW-UPDATE-POSTCONDITIONS"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      26,
+      42,
+      66,
+      95
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "update.writeUpdateRuntime",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "recorded-governed-state",
+      "criticality": "Preserve the existing update transaction and lock before recording updater failures, retry/stop decisions, installed-version requests, boot verification and template findings. Refuse malformed recorded state; update refusal must not deny existing admitted service. A healthy poll of the expected running version is necessary for handshake completion; installed bytes alone never qualify.",
+      "failDirection": "closed",
+      "preservesInput": "Preserve corrupt records, prior update steps, failed boot observations and unknown custom template bytes; never restore journal/authority from update backups.",
+      "inspectedBy": "PREVIEW-UPDATE-RUNTIME"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      7,
+      26,
+      32,
+      42,
+      55,
+      61,
+      66,
+      95,
+      113,
+      116
+    ],
+    "holds": []
+  }
+]

@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
+import { initializeUpdateRuntime, writeUpdateRuntime } from '../../scripts/update.mjs';
 import { readProofs } from './proof-log.js';
 import { offlineProfile, successiveWorld } from './successive-fixture.js';
 import { SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
@@ -229,4 +230,23 @@ it("records a requested action's live proof by the operator's request message, b
     expect(log).toMatchObject({ unreadable: 0, refused: [] });
     expect(log.liveProofs).toEqual([expect.objectContaining({ update: 1, capability: 'preview.reminders' })]);
   } finally { rmSync(root, { recursive: true, force: true }); }
+}, 60000);
+
+// This is host-state evidence through the real runner, not a package-install proof.
+it('P9-PREVIEW-update-bound records both a holding bound and refused backoff through the launcher', async () => {
+  await initializeUpdateRuntime();
+  for (const holding of [true, false]) {
+    const { harness } = setup();
+    harness.setUpdates([]);
+    mkdirSync(harness.liveRoot, { recursive: true });
+    writeUpdateRuntime(harness.liveRoot, 'updater', { lastCheck: '2026-09-27T12:00:00.000Z',
+      nextAttemptAt: fixtureNow + (holding ? 6 * 3600000 : 0),
+      failureState: { policy: { threshold: 3, windowMs: 86400000 }, lastAt: fixtureNow,
+        failures: Array.from({ length: 3 }, () => ({ at: fixtureNow, kind: 'failure' })), pausedAt: fixtureNow } });
+    const launched = harness.launchLive(20);
+    expect(launched.status, launched.stderr).toBe(0);
+    const proof = readProofs(join(harness.liveRoot, 'proofs.jsonl')).proofs.find(row => row.plan === 'update-bound');
+    expect(proof).toMatchObject({ disposition: holding ? 'passed' : 'failed',
+      observed: { failures: 3, resourceAllocation: 'six', pressureMatches: true } });
+  }
 }, 60000);

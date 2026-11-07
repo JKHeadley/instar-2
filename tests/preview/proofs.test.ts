@@ -45,7 +45,7 @@ async function world(options: { review?: boolean } = {}) {
 }
 const delivered = { attempts: 1, accepted: 1, latestAccepted: true, latestReceipt: 7 };
 /** An observation each plan's own `confirms` accepts: what a genuine passing probe retains. */
-const SAMPLE: Record<string, Observed> = { startup: { identity: 12345678, boundBot: 12345678, cursor: 0, turns: 0 },
+const SAMPLE: Record<string, Observed> = { 'update-bound': { failures: 0, pausedAt: null, nextAttemptAt: 0, pressureMatches: true, stopped: false, timers: 1, intervalMinutes: 30, resourceAllocation: 'six', activeLaunches: 0, launchCeiling: 9, answerReserve: 1, maintenanceLaunches: 0 }, startup: { identity: 12345678, boundBot: 12345678, cursor: 0, turns: 0 },
   'telegram-identity': { identity: 12345678, boundBot: 12345678 }, 'journal-restore': { sections: 30, cursor: 1, restored: true, differing: null },
   'reply-drain': { unfinished: 0, oldestUnfinishedAgeMs: null, backlogOverdue: false, inhibition: null },
   'reply-delivered': delivered, 'held-notice-delivered': delivered, 'reminder-delivered': delivered,
@@ -179,11 +179,12 @@ describe("posture and due work through Nine's decoders and derivations", () => {
   it('the executor takes one most-overdue cadence plan and never a launch plan', () => {
     expect(nextDuePlan(PREVIEW_PROOF_PLANS, [], 'g1', { supervisors }, T0)!.trigger).toBe('cadence');
     const everyCadence = PREVIEW_PROOF_PLANS.filter(p => p.trigger === 'cadence').map(p => run(p.id, T0, 'passed'));
-    expect(nextDuePlan(PREVIEW_PROOF_PLANS, everyCadence, 'g1', { supervisors }, T0 + MINUTE)).toBeNull();
-    expect(nextDuePlan(PREVIEW_PROOF_PLANS, everyCadence, 'g1', { supervisors }, T0 + 15 * MINUTE)!.id).toBe('reply-drain');
+    expect(nextDuePlan(PREVIEW_PROOF_PLANS, everyCadence, 'g1', { supervisors }, T0 + MINUTE - 1)).toBeNull();
+    expect(nextDuePlan(PREVIEW_PROOF_PLANS, everyCadence, 'g1', { supervisors }, T0 + MINUTE)!.id).toBe('update-bound');
+    expect(nextDuePlan(PREVIEW_PROOF_PLANS, [...everyCadence, run('update-bound', T0 + 15 * MINUTE, 'passed')], 'g1', { supervisors }, T0 + 15 * MINUTE)!.id).toBe('reply-drain');
     // A failed or unknown attempt is due again only after its cadence: no retry storm.
     expect(nextDuePlan(PREVIEW_PROOF_PLANS, PREVIEW_PROOF_PLANS.filter(p => p.trigger === 'cadence').map(p => run(p.id, T0, 'failed')),
-      'g1', { supervisors }, T0 + MINUTE)).toBeNull();
+      'g1', { supervisors }, T0 + MINUTE - 1)).toBeNull();
   });
   it('a probe that cannot observe is recorded unknown, never passed', () => {
     const broken = { ...plan('journal-restore'), probe: () => { throw Error('unreadable'); } };
