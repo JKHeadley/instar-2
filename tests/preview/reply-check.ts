@@ -368,11 +368,22 @@ export type ReplyCheckCause = JevUnavailableCause | ReviewUnavailableCause;
 const REVIEW_CAUSES: readonly unknown[] = ['timeout', 'rate-limited', 'provider-refused', 'no-account', 'malformed-output', 'process-exit'];
 const PROVIDER_CAUSES = new Map<unknown, ReviewUnavailableCause>([['limit', 'rate-limited'], ['policy', 'provider-refused'],
   ['timeout', 'timeout'], ['transport', 'process-exit']]);
-/** A fixed token the caller chose, or the error's class name. A message is never read (the same floor as Jev's cause). */
+// The provider adapter's failure classes (src/judgment/contracts.ts) and the launcher's own result classes.
+const PROVIDER_FAILURES = ['limit', 'policy', 'timeout', 'transport', 'unknown'] as const;
+/** The closed set of details: local tokens, built-in error class names, and the valid provider state/failure pairs.
+ * A shape filter would pass a token-shaped credential or identifier; only a value listed here is ever recorded. */
+const KNOWN_DETAILS: ReadonlySet<string> = new Set([
+  'budget', 'admission',
+  ...['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError'].map(name => `error:${name}`),
+  ...(['rejected', 'uncertain'] as const).flatMap(state => PROVIDER_FAILURES.map(failure => `${state}:${failure}`)),
+  'rejected:rejected', 'uncertain:none', 'complete:empty', 'complete:malformed', 'complete:rejected',
+]);
+/** A known token the caller chose, or a built-in error class name. A message is never read (the same floor as Jev's cause);
+ * an unknown detail or exception name is omitted, never recorded. */
 const causeDetailOf = (error: unknown): { causeDetail?: string } => {
   const value = error as { causeDetail?: unknown; name?: unknown } | null;
   const detail = typeof value?.causeDetail === 'string' ? value.causeDetail : `error:${String(value?.name)}`;
-  return /^[A-Za-z0-9:_-]{1,40}$/u.test(detail) ? { causeDetail: detail } : {};
+  return KNOWN_DETAILS.has(detail) ? { causeDetail: detail } : {};
 };
 /** The refusal for a provider result that gave no verdict, classified from the adapter's typed failure. */
 export function reviewResultFailure(result: { state: string; failureClass?: string; providerFailure?: string }): Error {

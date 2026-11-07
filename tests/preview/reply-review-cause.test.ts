@@ -64,6 +64,34 @@ describe('the shipped review path records why it read unavailable', () => {
     expect(JSON.stringify(forged)).not.toContain(SECRET);
   });
 
+  // M1: a token-shaped secret passes any character filter, so only a closed set of details is recorded.
+  it.each([
+    ['a token-shaped detail', { causeDetail: SECRET }],
+    ['a token-shaped error name', { name: SECRET }],
+    ['an identifier-shaped detail', { causeDetail: 'user:7654321' }],
+    ['a forged state pair', { causeDetail: `rejected:${SECRET}` }],
+  ])('%s is omitted, never recorded', async (_name, fields) => {
+    const rows = await reviewed(async () => { throw Object.assign(Error('x'), fields); });
+    expect(rows[0]).toMatchObject({ verdict: 'unavailable', cause: 'other' });
+    expect(rows[0]).not.toHaveProperty('causeDetail');
+    expect(JSON.stringify(rows)).not.toContain(SECRET);
+    expect(JSON.stringify(rows)).not.toContain('7654321');
+  });
+
+  it.each(['budget', 'admission', 'rejected:limit', 'uncertain:none', 'complete:empty'])('the known detail %s is still recorded', async detail => {
+    const rows = await reviewed(async () => { throw Object.assign(Error('x'), { causeDetail: detail }); });
+    expect(rows[0]).toMatchObject({ verdict: 'unavailable', cause: 'other', causeDetail: detail });
+  });
+  it('a token-shaped Jev detail is omitted too', async () => {
+    const rows: ReplyCheckResult[] = [];
+    await checkReply('reply', 'id', { elapsedMs: () => 0, record: row => rows.push(row), reserveJevRetry: () => false, reserveEscalation: () => false,
+      jev: async () => { throw Object.assign(Error('preview: Jev unavailable'), { causeDetail: SECRET }); },
+      escalate: async () => { throw Error('unused'); } });
+    expect(rows[0]).toMatchObject({ path: 'jev', cause: 'other' });
+    expect(rows[0]).not.toHaveProperty('causeDetail');
+    expect(JSON.stringify(rows)).not.toContain(SECRET);
+  });
+
   it('a second malformed verdict is malformed-output; the first re-ask is unchanged', async () => {
     let calls = 0;
     const rows = await reviewed(async () => { calls++; throw Error(REVIEW_MALFORMED); }, { reserveFormatRetry: () => true });
@@ -148,6 +176,26 @@ describe('durable journal', () => {
       expect(journal.view.order[0]?.revisionReview).toMatchObject({ verdict: 'unavailable', cause: 'rate-limited' });
       expect(replyCheckCauses(journal.view)).toMatchObject({ 'revision:rate-limited': 1 });
       journal.close();
+    });
+  });
+
+  it('a token-shaped secret detail never survives the durable review row (M1)', async () => {
+    await withJournal(async path => {
+      const sent: string[] = [];
+      const journal = openPreviewJournal(path, key, genesis);
+      const worker = createJournalWorker(journal, worldPorts(sent, {
+        escalate: async () => { throw Object.assign(Error('x'), { reviewCause: SECRET, causeDetail: SECRET, name: SECRET }); } }));
+      worker.intake([update]);
+      await worker.drain(); await worker.drain(); await worker.reviewReplies();
+      expect(sent).toEqual(['I set your reminder for Friday at 9.']);
+      journal.close();
+      const reopened = openPreviewJournal(path, key, genesis);
+      const checks = unavailableChecks(reopened.view.order[0]!);
+      expect(checks.at(-1)).toMatchObject({ path: 'subscription', cause: 'other' });
+      expect(checks.at(-1)).not.toHaveProperty('causeDetail');
+      expect(JSON.stringify(checks)).not.toContain(SECRET);
+      expect(JSON.stringify(reopened.view.order[0])).not.toContain(SECRET);
+      reopened.close();
     });
   });
 
