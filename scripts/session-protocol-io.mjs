@@ -1,6 +1,6 @@
 // Async process boundary for structured session workers. No protocol-specific interpretation.
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync, renameSync, openSync, closeSync, fsyncSync, appendFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, renameSync, openSync, closeSync, fsyncSync, appendFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -35,6 +35,16 @@ export function createSessionProtocolIO(directory, stopped = () => false) {
     }
   }
   return Object.freeze({ close,
+    capture(input) {
+      const row = load().find(row => row.claim === input.claim && row.incarnation === input.incarnation && row.identity === input.launch);
+      if (!row) throw Error('protocol capture identity unavailable');
+      if (input.requireClosed && live(row)) throw Error('protocol capture worker still alive');
+      const file = join(directory, `${createHash('sha256').update(input.launch).digest('hex')}.jsonl`);
+      if (statSync(file).size > 16 * 1024 * 1024) throw Error('protocol capture bound exceeded');
+      const bytes = readFileSync(file, 'utf8');
+      if (Buffer.byteLength(bytes) > 16 * 1024 * 1024 || !bytes.endsWith('\n')) throw Error('incomplete protocol capture');
+      return bytes.trimEnd().split('\n').map(line => JSON.parse(line));
+    },
     async open(input) {
       if (stopped() || !input.executable.startsWith('/') || !input.cwd.startsWith('/') || input.deadline <= Date.now()
         || !Number.isInteger(input.requestTimeoutMs) || input.requestTimeoutMs < 1 || input.requestTimeoutMs > 60000
