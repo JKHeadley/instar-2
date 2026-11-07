@@ -36,10 +36,10 @@ Deferral: generated/register.json:1 | not-a-deferral=Generated rule text retains
 
 Register publication: delegated scripts refreshed artifact pins without changing their populations; the support-chain script reported zero changed inventory pins. Replay at 047410e8fb298ed0ba8276e93b8c30d667b41152 produced generation sha256:b17e9565a458525779eceb6307b218a99b2086a354861a74ab469f46ba0c25a6 (301 entries, 122 rules, shape-only authority). This record also covers the generated publication.
 
+Historical seam follow-up: a direct bounded compile exposed TS2724 after 282 seconds: current assembly implementation code needs exports absent at the old effects revision. Compiling the old producer against current emitted declarations removes that unrelated implementation compilation. A separate producer namespace failed the private ownership brand check; the final fixture retains the original module identity inside the virtual build graph. Positive composition and all negative type assertions remain. The build precondition is shared with the existing runtime fixture. Failed attempts remain in the report.
+
 ## Closing block
 
 simplestRobustRoute: Reuse the existing finalizer and shared outcome port, then repair their stale test consumers. This is the simplest robust route; no new service, authority, guard or product machinery. Current grant, stop, durability, resource and one-use effect checks remain the start and limit guards; retained definite outcome and no extra physical call are the exit evidence. No autonomous shipped-path completion is claimed.
 80/20: Execute the changed tests and direct consumers, typecheck/build and required cheap checks; the assigned Studio pipeline owns full-suite qualification. This is an author submission, not independent convergence.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Historical seam follow-up: a direct bounded compile exposed TS2724 after 282 seconds: current assembly implementation code needs exports absent at the old effects revision. Compiling the old producer against current emitted declarations removes that unrelated implementation compilation. A separate producer namespace failed the private ownership brand check; the final fixture retains the original module identity inside the virtual build graph. Positive composition and all negative type assertions remain. The build precondition is shared with the existing runtime fixture. Failed attempts remain in the report.
