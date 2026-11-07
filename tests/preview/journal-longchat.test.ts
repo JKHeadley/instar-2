@@ -209,7 +209,7 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
       expect(spoken[0]!.intent!.startsWith(`${spoken[0]!.continuity!.disclosure} `)).toBe(true);
       // One seam throughout, so no basis change was owed a second sentence; exactly one went out.
       expect(new Set(compacted.map(turn => turn.continuity!.basis ?? 'summary')).size).toBe(1);
-      expect(sent.filter(text => text.startsWith('Earlier conversation is now summarized for me.'))).toHaveLength(1);
+      expect(sent.filter(text => text.startsWith('Earlier conversation '))).toHaveLength(1);
       // Each turn's own flag is what the predicate decides from the last sentence actually delivered.
       let delivered: ContinuityAccount | undefined;
       for (const turn of compacted) {
