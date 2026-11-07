@@ -284,7 +284,7 @@ Graduation requires replacing every stand-in with its named hardening unit, espe
 `run --stage 2` explicitly selects the implemented provider path. Stage 1 remains the default and
 refuses a root with a Stage 2 sidecar. Stage 2 accepts only bot `8820318295` /
 `@echo_mmtest_seam_b27x_bot`, private chat and sender `7812716706`, with no topic. Its fixed expiry
-is `2026-11-12T21:40:00Z` (`1794519600000`), a status-quo renewal of `2026-10-12T20:40:00Z`,
+is `2026-12-12T21:40:00Z` (`1797111600000`), a status-quo renewal of `2026-11-12T21:40:00Z`,
 itself a renewal of `2026-09-28T20:40:00Z` (see "Activation renewal" below). Existing trial limits, cursor and counters carry forward.
 This is the recorded supervised, unconfined preview waiver, not production admission or a
 replacement for M3/M4/M5. No code default supplies the model, login profile or activation record.
@@ -336,7 +336,7 @@ operatorAssertion, assertedAt, observer, observedAt, method, safeCaptureReferenc
 extraUsage: "observed-disabled" | "operator-asserted/unobservable" | "contradicted"
 extraUsageReason
 subscriptionLimit: "available" | "unobservable" | "exhausted"
-subscriptionLimitReason, acceptedResiduals: string[], expiresAt: 1794519600000
+subscriptionLimitReason, acceptedResiduals: string[], expiresAt: 1797111600000
 ```
 
 Digests are canonical SHA-256: profileDigest over the frozen descriptor, invocationPolicyDigest
@@ -450,7 +450,7 @@ an exhausted limit, an unknown observation field or a record this build refuses 
 Outputs are created exclusively and never replace an existing file.
 
 A build also carries its predecessor's reviewed end (`SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY`,
-2026-10-12T20:40:00Z for the 2026-11-12 build). `run` and each model call accept a record ending
+2026-11-12T21:40:00Z for the 2026-12-12 build). `run` and each model call accept a record ending
 there only while the journal's current end is that same end, so a runner can stay on the current
 record with `--renewal-activation` naming the renewed one, propose the renewal from the phone and
 complete it on the operator's yes. Once the expiry frame lands only the governed end is accepted:
@@ -485,7 +485,7 @@ once per reviewed expiry and only before it lapses, under the writer lease:
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs renew-expiry \
   --root /ABSOLUTE/ROOT --activation-record /ABSOLUTE/activation-next.json \
   --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
-  --expires-at 2026-11-12T21:40:00Z --authority "WHO APPROVED, WHERE, WHEN" \
+  --expires-at 2026-12-12T21:40:00Z --authority "WHO APPROVED, WHERE, WHEN" \
   --operator-records /ABSOLUTE/AGENT/.instar
 ```
 
@@ -525,6 +525,13 @@ protection for a mismatched switch. The prior build also refuses an uncompacted 
 (the expiry frame is an orphan effect to it), but after compaction it accepts the snapshot and uses
 the original genesis expiry — accepted compatibility residue: a full rollback of code and record can
 read a compacted journal but cannot run past the original expiry.
+
+The closing notice sets the same barrier earlier. A reader without closing-notice support refuses a
+journal holding a closing intent (`preview journal: held notice intent order`) even when no renewal
+exists, so a plain rollback is safe only before both the first closing intent and renewal. Once
+either exists, keep a build that reads it and repair forward. Preserve the journal and any uncertain
+send evidence; never delete the intent, restore an older journal over accepted work, or resend an
+UNKNOWN notice.
 
 `journal-renewal-continuity.test.ts` checks a fact recorded before renewal against one and two
 monotonic expiry frames, then replays, compacts twice and reopens the encrypted journal. It compares
@@ -1294,7 +1301,7 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
   --root /ABSOLUTE/NEW_ROOT --bot-id BOT_ID --bot-username @BOT_USERNAME \
   --operator-sender-id OPERATOR_ID --chat-id PRIVATE_CHAT_ID \
   --grant-reference TRIAL_ID --configuration-digest sha256:TRIAL_CONFIGURATION_DIGEST \
-  --expires-at 2026-11-12T21:40:00Z --activation-record /ABSOLUTE/activation.json \
+  --expires-at 2026-12-12T21:40:00Z --activation-record /ABSOLUTE/activation.json \
   --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
   --max-calls 16 --max-replies 16 --max-turns 20 --max-context-bytes 32768 \
   --time-zone America/Los_Angeles \
@@ -4554,3 +4561,28 @@ model id. Failed exchanges, local ceilings and stale evidence retain their exist
 meaning. Replaced doorway entries remain retired history and do not appear as active
 unavailable models in status, capability context or reply notices. Restarting an
 existing root applies this reconciliation without another store or probe.
+
+### Activation closing notice
+
+In the final five minutes before the journal's activation end, the minimal path sends one
+fixed infrastructure notice to the verified operator's latest accepted conversation. This
+works while an ordinary model answer is waiting. The signed intent is durable before dispatch;
+UNKNOWN outcomes and restarts never repeat that end's notice. A later authorized renewal has
+its own slot. The existing stop, audience and transport checks still hold. No accepted operator
+turn means no destination and no notice; an already expired or stopped runner sends nothing.
+It keeps the last reply reserved like the other fixed notices, so a runner at that reserve sends none.
+The notice states that renewal must finish before the end, without asserting that a renewal
+request exists or that a lapsed installation can be recovered by an untested procedure.
+
+Vitest's test-only clock keeps historical November fixtures at least 21 days before their
+fixture end once the real calendar reaches that margin. Workers and node children inherit the
+same shift; elapsed timers continue advancing and explicit fixture boundary clocks take
+precedence. The fixture anchor stays fixed when the shipped activation end moves. This neither
+changes production time nor authorizes an expired record; expiry and renewal tests inject
+both sides of the actual reviewed end explicitly.
+
+Every shifted run starts at the same fixed test time, so that clock cannot tell one run from
+the last. Evidence a gate compares with the run's start therefore stays on the host clock
+(`tests/setup/host-clock.mjs`): model-provider proofs, the grounding ledger and boot receipts.
+Vitest stamps file windows on the shifted clock, so the process exit row records the shift and
+the gate moves each window back to the host clock before comparing.
