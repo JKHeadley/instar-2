@@ -4,7 +4,7 @@ Subject base: e8c2a0b156ae412bcdcb4e020dd2cd6ef4d9098d
 Review state: open
 Reviewed content: none
 Outcome: A tool call that fails in a tool turn now keeps the harness's error text as its recorded result. A sandbox refusal is evidence in the admission record, the journal trace and the reply review, so the reply check no longer treats a true refusal as an unsupported claim.
-Affected rules: 1, 2, 3, 36, 57, 58, 84, 101, 102, 106, 116
+Affected rules: 1, 26, 30, 34, 36, 42, 49, 57, 58, 62, 70, 74, 76, 85, 101, 102, 107, 108, 111, 113, 116
 Affected floors: secrets — the failure row is clipped by the existing hook and passes the existing end-of-turn scrub, which cleans every row field; spend cap — no added model call; stop — unchanged, an interrupted call is a failure event with the same record; no duplicate sends — unchanged; durable intake — unchanged.
 Operator questions: none
 Suggested tier: significant
@@ -12,8 +12,8 @@ Declared tier: significant
 Tier rationale: Repairs missing evidence on the tool boundary with a real harness envelope and the recorded proof shape. No new authority, effect or capability.
 Side effects: Claude tool turns additionally register PostToolUseFailure on the existing post command. The tools class now requires that hook. toolTrace pairs a post-failure row with its admitted call as strictly as a post row, and leaves a failed helper's edge open. A failed call now counts as having a result, so a turn whose tools all ended and whose model failed settles on the existing T4 failure-notice path, and a completed worker whose tool failed is collected rather than left unknown. The generated tool settings are part of tools-guidance-only-v1 pins, so a grant of that class must be re-sealed before this build runs under it; exact-policy and full-tools-checkpointed-v1 grants are unaffected. The desk's T-trace.py must learn the post-failure phase before the first proof of this build.
 Undo and recovery: Revert this commit to restore the prior settings and trace. Older records hold no failure rows and replay unchanged. No data migration, service, authority grant or journal schema is added.
-Multi-machine posture: Machine-local turn state under the existing admission file; no new store or replication demand.
-Layer below: Full constitution; T2c evidence in preswitch-train-199-d7a9666c-20261107-044803 (tools-t2.json, inspect-t2.json, turns-t2.json); a real Claude Code 2.1.319 turn captured 2026-11-07 showing a failed Bash fires PostToolUseFailure and not PostToolUse, and a hook denial fires neither; the session route's fix 7abeb1ae6; 1.x main 40a131d93 src/core/PostUpdateMigrator.ts:8408, which states a failed tool fires PostToolUseFailure.
+Multi-machine posture: Machine-local turn state under the existing admission file; no new store or replication demand. Framework posture (Rule 30): the Claude route gains the event. Codex launches register only PostToolUse, on both the tool-turn and session routes, and no separate failure event exists there; whether Codex reports a failed call through that hook was not measured.
+Layer below: Full constitution, including purpose constraints 2 (nothing silently lost) and 3 (no claim of done without evidence) and rule-book Rule 42 (a refusal stays a refusal); T2c evidence in preswitch-train-199-d7a9666c-20261107-044803 (tools-t2.json, inspect-t2.json, turns-t2.json); a real Claude Code 2.1.319 turn captured 2026-11-07 showing a failed Bash fires PostToolUseFailure and not PostToolUse, and a hook denial fires neither; the session route's fix 7abeb1ae6; 1.x main 40a131d93 src/core/PostUpdateMigrator.ts:8408, which states a failed tool fires PostToolUseFailure.
 Bug class: integration
 Bug evidence: reproducer=tests/preview/tool-admission.test.ts
 Hook bypass: none; ordinary commits, no bypass flag used.
