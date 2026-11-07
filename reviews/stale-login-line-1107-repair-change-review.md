@@ -10,8 +10,8 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Accept the suggested tier. The change deletes one notice source on the reply-notice composition path that every reply passes through.
-Side effects: An operator no longer learns of a successful login switch from a reply; it is visible on the status pull surface and in the pool's switches history. Old journal rows that carried the line still replay, because recorded answer notices are validated from the row alone. The pool state field noticeIdentity is still written on legacy adoption and kept, so record shapes do not change, though no notice key reads it any more. A failed self-heal is still told: when no reviewed login remains, the existing outage reply (loginOutageReply) and the unavailable-member notice are unchanged.
-Undo and recovery: Revert the commit. It writes no state; pool files and journal rows are read as before. A revert would offer the latest switch line again on the next reply.
+Side effects: An operator no longer learns of a successful login switch from a reply; it is visible on the status pull surface and in the pool's switches history. Old journal rows that carried the line still replay, because recorded answer notices are validated from the row alone. The pool state field noticeIdentity is still written on legacy adoption and kept, so record shapes do not change, though no notice key reads it any more. A failed self-heal is still told: when no reviewed login remains, the existing outage reply (loginOutageReply) and the unavailable-member notice are unchanged. The generated/ register files were regenerated with build-register --replay from committed source 5c405e00b because the source wiring pin trailed harness-login-pool.mjs; the desk owner-manifest rehash and inventory repin chain changed zero pins, and no pin was hand-edited.
+Undo and recovery: Revert the commits. It writes no state; pool files and journal rows are read as before. A revert would offer the latest switch line again on the next reply.
 Multi-machine posture: Machine-local, deliberately, as before. Each runner keeps its own pool state and journal; no peer state or synchronization changes.
 Layer below: Read createHarnessLoginPool's switch writers, notices(), outage() and harnessLoginPoolStatus in tests/preview/harness-login-pool.mjs; replyNotices in tests/preview/journal-agent.mjs; openReplyNotices and validAnswerNotices in tests/preview/credential-reminders.ts; and the launcher test's sends assertion in tests/preview/harness-login-launcher.test.ts, the only other consumer of the line's text.
 Bug class: integration
@@ -24,7 +24,7 @@ Prompt review: No prompt or model-output parser changes. The removed line was ru
 
 1.x comparison: Inherited from the unit record and confirmed by the unit review at JKHeadley/instar main 8c2a16e67b394990ea8a7fd761ede283fbc3900f: src/core/ProactiveSwapMonitor.ts records and logs a successful swap and tells the user nothing, which is the behaviour this repair now matches for replies. src/monitoring/QuotaManager.ts:200,212 announce SessionMigrator switches through notify() at SUMMARY tier (src/commands/server.ts:8722), never inside a reply; the review held that this older SUMMARY behaviour does not override the current constitution. No 1.x code is ported.
 
-Subject (5 paths): tests/preview/credential-reminders.ts, tests/preview/harness-login-launcher.test.ts, tests/preview/harness-login-pool.mjs, tests/preview/harness-login-pool.test.ts, tests/preview/journal-agent.mjs
+Subject (12 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/credential-reminders.ts, tests/preview/harness-login-launcher.test.ts, tests/preview/harness-login-pool.mjs, tests/preview/harness-login-pool.test.ts, tests/preview/journal-agent.mjs
 
 ## Closing block
 
