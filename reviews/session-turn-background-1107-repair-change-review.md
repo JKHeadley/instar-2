@@ -15,7 +15,7 @@ Undo and recovery: revert these commits. The receipt shape is unchanged and no m
 Multi-machine posture: machine-local, deliberately. The hook's clock and the result file's write time are on the same machine as the worker; nothing is replicated.
 Layer below: read the Stop hook (scripts/session-hooks/stop.mjs), which stamps at with Date.now(), and the production result read, which already opens the file under custody checks. A real-file check showed Math.floor(lstat mtimeMs) equal to Date.now() at the same millisecond, which is why the comparison is strict.
 Bug class: live-path
-Bug evidence: reproducer=tests/assembly/production-conversation-session.test.ts; other=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-turn-background-1107-review-probes.txt
+Bug evidence: reproducer=tests/assembly/production-conversation-session.test.ts; live=tests/assembly/fixtures-background-turn-live-2026-11-07.json; other=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-turn-background-1107-review-probes.txt
 Hook bypass: none
 Convergence: none
 Decision: stb-write-time | The result is tied to the Stop by the file's own write time compared with the Stop receipt's time. Rejected: the hook capturing a result digest, because the hook does not know the per-delivery result path, and giving it that path would need a new pointer file. Also rejected: keeping the host's first-observation marker, which caused the probe-1 false completion. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-turn-background-1107-PROGRESS.md
