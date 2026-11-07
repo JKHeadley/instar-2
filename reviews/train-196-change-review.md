@@ -27,6 +27,8 @@ Decision: train196-publication | Recompute artifact hashes and regenerate source
 
 Publication verification: Regenerated seven register outputs from committed source b3c84c302b1e17ab234d5db031e90ff1d923d709, generation sha256:0d05119f6631fb1ac632126010d16777d4880e6a0d4ba91e8692f85d9d354d7e. Build and all 97 conversation-topic tests pass, including the combined recovery matrix and recorded shapes. Direct controls in both notice helpers admit exact activation and refuse generic credential additions. Native R105 composition certification remains with Studio, unchanged. Final check outcomes are in the reported progress record.
 
+Receipt verification: Restored docs/release-evidence/codex-model-map-refresh-1105.json to exact live 8258974660cadac50e9a4988c050cf14764e8dc3 bytes after detecting that the first merge had automatically replaced it with a newer candidate observation. The brief expressly requires the live declaration and its live receipts together. Parent observation history remains in Git; no observation timestamp is invented.
+
 ## Closing block
 
 simplestRobustRoute: Ordinary merges with exact parent heads, explicit desk resolution of the only semantic conflict, preserved assertion unions and existing pin/register generation are the simplest robust route. No new machinery. Entry guards are exact ancestry and receipt bytes; exit guards are targeted checks and honest host-dependent reporting. No unattended product-completion claim.
