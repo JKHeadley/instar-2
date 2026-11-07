@@ -7,7 +7,8 @@
 //     Every commit made since this checker was adopted must be covered by a record: a record
 //     covers the commits between its 'Subject base:' and the last commit that edited it.
 //     Each current record is validated against its actual subject (the files changed in that
-//     range): required fields, frozen content, prompt/dispatch findings, deferrals, skips and
+//     range): required fields, frozen content, prompt/dispatch findings (prompt sources are
+//     classified from the bytes at the record's own commits), deferrals, skips and
 //     governed-document versions (Rule 90: a changed governed document adds a new changelog
 //     version and keeps every earlier one byte-identical; any landing commit it names exists).
 //     Only unrelated prompt dispositions on records untouched by this change count as debt.
@@ -86,6 +87,18 @@ function promptScan() {
   const files = lines(git('ls-files')).filter(p => (isTestFile(p) || isPromptSourceFile(p)) && /\.(ts|mts|mjs|js)$/.test(p) && existsSync(p))
     .map(path => ({ path, text: readFileSync(path, 'utf8') }));
   return scanPrompts(files);
+}
+// Rules 12/27: a record answers for the bytes it reviewed, read at both ends of its own range, so
+// a prompt it removed still counts and one a later change adds answers to that change's record.
+// The current checker's definition applies. Only a record with no 'Prompt review:' can be refused
+// on this, so the others skip the read.
+function promptSourcesReviewed(entry) {
+  if (entry.record.one('Prompt review')) return [];
+  const candidates = entry.subject.filter(isPromptSourceFile);
+  if (!candidates.length) return [];
+  const sources = new Set([entry.base, entry.last].flatMap(commit => scanPrompts(
+    lines(git('ls-tree', '--name-only', commit, '--', ...candidates)).map(path => ({ path, text: git('show', `${commit}:${path}`) }))).promptSources));
+  return candidates.filter(path => sources.has(path));
 }
 function json(commit, path) { const t = tryGit('show', `${commit}:${path}`); if (t === null) return null; try { return JSON.parse(t); } catch { return undefined; } }
 
@@ -169,7 +182,7 @@ function check({ quiet = false } = {}) {
     const ctx = { subject: r.subject, digest: digestAt('HEAD', r.subject),
       promptFindings: scan.findings.filter(f => r.subject.includes(f.promptFile) || (f.fixtureFile && r.subject.includes(f.fixtureFile))
         || (changed.has(r.path) && touchedFindings.includes(f))),
-      promptSourcesChanged: r.subject.filter(p => scan.promptSources.includes(p)),
+      promptSourcesChanged: promptSourcesReviewed(r),
       deferrals: hits.deferrals, skips: hits.skips, exists: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null,
       read: p => tryGit('show', `${r.last}:${p}`),
       resolvesEvidence: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null || (isAbsolute(p) && existsSync(p) && statSync(p).isFile()),

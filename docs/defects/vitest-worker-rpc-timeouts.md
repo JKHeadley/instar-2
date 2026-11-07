@@ -120,3 +120,19 @@ That local run also timed out in the three-call ambient-wiring group at 60.442s.
 ## train-187 cumulative wiring budget, 2026-11-05
 
 The imported 99db9a096 affected-file run retained one clean-wiring timeout at 60,008ms, with 14 tests passing in 770.58s and no reported RPC error. Both parent-release controls and current-time CLI replay passed. The existing owner 7b78ea242 already repairs the same two-scan fixture budget: its independent review measured valid wiring at 52,387ms and untracked wiring timing out at 60,013ms. Train-187 reuses that 120s cumulative case budget over the four isolated bridge groups, with each build/wiring child explicitly retaining its 60s SIGTERM bound. No assertion, scan, model ability or production latency contract changes. The old red remains and the defect stays OPEN for desk full-run qualification.
+
+## train-192 recurrence, 2026-11-06
+
+The supplied M5 Pro gate for `7ef1ab43fe974d468c72c51dadbb1332993c5344` recorded
+one unattributed `onTaskUpdate` error and a 115,602 ms timeout in the intake owner
+manifest matrix, against its 60,000 ms limit. The same matrix passed unchanged
+in 4,824 ms on WSL with one worker. This does not exonerate the original failure
+or identify the worker responsible for the unattributed error.
+
+The fixture now copies asynchronously, uses the existing bounded async child helper
+for Git, and reads each unique referenced blob from its real fixture commit once.
+The matrix uses the loader's existing `show` port, as the register build does. Each
+manifest still undergoes all owner, path, dependency and hash checks; the timeout
+and assertions are unchanged. This removes repeated blocking Git children inside
+one case without serializing unrelated files or increasing runner deadlines.
+Full-gate qualification remains with the pipeline; this record stays OPEN.

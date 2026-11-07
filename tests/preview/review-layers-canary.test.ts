@@ -12,7 +12,7 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, 
 const operatorText = 'Please always answer briefly.';
 const reply = 'Understood.';
 const fenced = value => `\`\`\`json\n${value}\n\`\`\``;
-// The launcher runs on the real clock against a fixed fixture expiry, so a due activation reminder or a
+// The launcher runs on the real clock against a fixed fixture expiry, so the due activation reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride the answer as its own line, as in journal-agent.test.ts.
 // The answer itself stays exact, and nothing else may be appended.
 const NOTICE_LINE = /^(?:Reminder: your activation expires in [^.]+\. Smallest step for you: approve a renewed activation record\.|Model route check: .+\.)$/u;
@@ -24,6 +24,13 @@ const answerOf = text => {
   }
   return answer;
 };
+
+it('keeps the answer exact beside the recorded activation notice and rejects unrelated additions', () => {
+  const notice = 'Reminder: your activation expires in 6 days 21 h. Smallest step for you: approve a renewed activation record.';
+  expect(answerOf(`Understood.\n\n${notice}`)).toBe('Understood.');
+  expect(() => answerOf('Understood.\n\nUnexpected extra reply.')).toThrow();
+  expect(() => answerOf(`Understood.\n\n${notice} Extra text.`)).toThrow();
+});
 
 it('accepts the captured activation notice while refusing unrelated appended text', () => {
   // Exact notice from the train-173 Studio gate at 9cf2e24c, not model-authored text.

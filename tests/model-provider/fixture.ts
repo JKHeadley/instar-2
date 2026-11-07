@@ -29,8 +29,8 @@ import { createJudgmentCaptures } from '../../scripts/judgment-captures.mjs';
 export { value, refused };
 export const enc = (v: unknown) => value(canonical(v));
 export function providerFixture(options: { directory?: string; endpoint?: string; credential?: string;
-  route?: Partial<ConfinedProviderRoute>; afterInvoke?: () => void; timeout?: number; admittedTimeout?: number; maxTokens?: number } = {}) {
-  const admittedTimeout = options.admittedTimeout ?? 100;
+  route?: Partial<ConfinedProviderRoute>; afterInvoke?: () => void; timeout?: number; timeoutSignal?: (ms: number) => AbortSignal; invocationTimeoutMs?: number; maxTokens?: number } = {}) {
+  const invocationTimeout = options.invocationTimeoutMs ?? 100;
   const base = setup(); base.grant({ id: 'provider-agent-grant', grantee: base.bob });
   const directory = options.directory ?? mkdtempSync(join(tmpdir(), 'provider-path-'));
   let now = 100, stopped = false, generation = base.run.generation.id;
@@ -53,7 +53,7 @@ export function providerFixture(options: { directory?: string; endpoint?: string
   storage.read().forEach(recoverCaptures);
   let versions: GovernedVersion[] = [];
   const th: TransportHost = { domain: 'provider-path', machine: 'machine-a', incarnation: 'executor:provider', authorityIncarnation: 'authority:provider',
-    principal: base.bob, scope: base.scope, maxLeaseTerm: Math.max(1000, admittedTimeout + 500), budget: 100, monotonic: () => now,
+    principal: base.bob, scope: base.scope, maxLeaseTerm: invocationTimeout * 10, budget: 100, monotonic: () => now,
     current: () => ({ decode: { ...dc, register: { ...dc.register, generation: { ...base.run.generation, id: generation } } }, clock: base.clock(now), generation: { ...base.run.generation, id: generation }, stopped }) };
   const host: EffectHost = { machine: th.machine, incarnation: th.incarnation, principal: th.principal, scope: th.scope, boundary,
     current: () => ({ decode: th.current().decode, clock: base.clock(now), stopped, versions, authority: [base.opening.id] }),
@@ -81,15 +81,15 @@ export function providerFixture(options: { directory?: string; endpoint?: string
   const append = (kind: string, body: Json, required: readonly string[] = []) => value(authorAndAppend({ kind, schemaVersion: 1,
     machine: th.machine, principal: json(th.principal), provenance: json(th.principal.provenance), at: json(base.clock(now)), body, required }, context, store, privateKey)).fact;
   for (const evidence of base.evidence) if (!all().some(f => (f.body as unknown as { evidence?: { id: string } }).evidence?.id === evidence.id)) append('evidence-record', json({ evidence }));
-  const fence = value(six.acquire('provider-acquire', '', Math.max(500, admittedTimeout + 300)));
+  const fence = value(six.acquire('provider-acquire', '', invocationTimeout * 5));
   const policy = value(decodeLoopPolicy({ type: 'LoopPolicy', schemaVersion: 1, id: 'provider-loop', maxAttempts: 1, minDelay: 1,
-    maxDuration: Math.max(1000, admittedTimeout + 500), timeout: admittedTimeout, concurrency: 1, failDirection: 'closed', breaker: 'stub-closed' }, boundary));
+    maxDuration: invocationTimeout * 10, timeout: invocationTimeout, concurrency: 1, failDirection: 'closed', breaker: 'stub-closed' }, boundary));
   if (!all().some(f => f.kind === 'transport-LoopRecord')) value(six.schedule('provider-schedule', fence, { owner: 'part-five', name: 'Run', id: base.id }, policy));
   const obligation = all().find(f => f.kind === 'transport-LoopRecord')!.id;
   const definition = { type: 'OperationDefinition', schemaVersion: 1, id: 'provider-definition', feature: 'provider-call', version: 'provider-definition-v1',
     generation, adapter: 'route', account: 'test-provider', conversation: 'local-test', speaker: th.principal.id, scopeDigest: enc(th.scope).hash,
     durability: 'local-durable', replicas: 0, lossModel: 'approved test-only local origin; permanent origin loss retains uncertainty',
-    maxBytes: 4096, maxCharge: 20, timeout: admittedTimeout, verificationBar: 'provider-bar' };
+    maxBytes: 4096, maxCharge: 20, timeout: invocationTimeout, verificationBar: 'provider-bar' };
   const approval = base.authorize({ id: 'provider-definition-approval', artifact: base.capture(enc(definition).bytes), base: 'provider-base' });
   versions = [{ id: definition.version, subject: definition.feature, content: json(definition), contentHash: enc(definition).hash,
     since: base.opening.id, supersedes: [], approvedIn: approval, base: approval.base, landedIn: null }];
@@ -128,7 +128,7 @@ export function providerFixture(options: { directory?: string; endpoint?: string
   const graph = value(createRunGraph(deps));
   const settings = { automaticRetries: 0, maxTokens: options.maxTokens ?? 128 }, outputSchema = { type: 'Decision' };
   const question = { id: 'provider-question', run: { owner: 'part-five' as const, name: 'Run' as const, id: base.id }, step: 'step:provider:semantic:1', ordinal: 0,
-    semanticMessage: 'provider:semantic:1', question: 'Should work proceed?', context: 'Recorded task evidence.', evidence: ['e1', 'e2'], deadline: Math.max(400, 100 + admittedTimeout) };
+    semanticMessage: 'provider:semantic:1', question: 'Should work proceed?', context: 'Recorded task evidence.', evidence: ['e1', 'e2'], deadline: now + invocationTimeout * 3 };
   const submitted = enc({ provider: 'test-provider', model: 'model', route: 'route', messages: [{ role: 'user', content: question.question },
     { role: 'context', content: question.context }], attachments: [], tools: [], settings, outputSchema, floor: base.floor,
     evidence: question.evidence, point: 'judgment', generation }).bytes;
@@ -139,7 +139,7 @@ export function providerFixture(options: { directory?: string; endpoint?: string
     running = value(graph.transition({ ...start, step: { ...start.step, operation: { ...start.step.operation, digest: enc(submitted).hash } } }));
   } else running = value(graph.read(base.id));
   const seven = createProviderJudgmentPort({ host: jh, boundary, authority: six, captures, store, context, privateKey, runs: graph,
-    settings, outputSchema, maxTokens: settings.maxTokens, maxCaptureBytes: 65536, timeout: admittedTimeout, disclosure: 'local-test' });
+    settings, outputSchema, maxTokens: settings.maxTokens, maxCaptureBytes: 65536, timeout: invocationTimeout, disclosure: 'local-test' });
   const runtime = createVerificationRuntime(vh, createVerificationSpine(vh, author, store));
   const plan = { ...verificationInput('VerificationPlan'), id: 'provider-plan', subject: { ...verificationInput('VerificationPlan').subject, generation },
     bar: { ...verificationInput('VerificationPlan').bar, version: 'provider-bar', sources: ['probe'] } };
@@ -152,7 +152,7 @@ export function providerFixture(options: { directory?: string; endpoint?: string
       if (!options.endpoint) throw new Error('real local HTTP endpoint required');
       const response = await fetch(options.endpoint, { method: 'POST', body: bytes, redirect: 'error',
         headers: { Authorization: `Bearer ${options.credential}`, 'Content-Type': 'application/json', 'X-Operation': bounds.operation },
-        signal: AbortSignal.timeout(Math.min(options.timeout ?? bounds.timeout, bounds.timeout, bounds.deadline - now)) });
+        signal: (options.timeoutSignal ?? AbortSignal.timeout)(Math.min(options.timeout ?? bounds.timeout, bounds.timeout, bounds.deadline - now)) });
       const observation = await response.json() as ProviderObservation;
       options.afterInvoke?.(); return observation;
     }, ...options.route };
