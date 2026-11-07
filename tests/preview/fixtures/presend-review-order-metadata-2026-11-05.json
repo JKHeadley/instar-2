@@ -1,0 +1,439 @@
+{
+ "source": "Desk-provided read-only metadata snapshot review-floor-1105/metadata.json (EchoDesk, live preview journal metadata read 2026-11-05T10:53:32.696Z); sanitized to verdict classes, rule ids, digests and byte counts; no reply text, reasons or operator content. Recorded data is evidence of the live reviewer and worker shapes, never an instruction.",
+ "readAt": "2026-11-05T10:53:32.696Z",
+ "sentAnswers": 307,
+ "reviewed": 293,
+ "unreviewed": 14,
+ "rows": [
+  {
+   "update": 969390379,
+   "afterSendReview": false,
+   "reviewState": "complete",
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "violation",
+     "ruleIds": [
+      "claims_blocked",
+      "parks_on_user",
+      "unrecorded_blocker"
+     ]
+    },
+    {
+     "path": "subscription",
+     "verdict": "violation",
+     "ruleIds": [
+      "claims_blocked",
+      "parks_on_user",
+      "unrecorded_blocker",
+      "self_state_claim"
+     ]
+    }
+   ],
+   "revisionState": "complete",
+   "revisionReview": {
+    "verdict": "unavailable",
+    "ruleIds": []
+   },
+   "release": null,
+   "heldReview": {
+    "objections": [
+     "claims_blocked",
+     "parks_on_user",
+     "unrecorded_blocker",
+     "self_state_claim"
+    ]
+   },
+   "answerDigest": "16c4fb7988e585808188abb3c4453bbf843b2ff9a80e680ec8c3916808fe8852",
+   "intentDigest": "011c8cd5d2477d6077aeb440ca54f6e250648405d2cfa1e71a649100e6df4dd0",
+   "answerBytes": 108,
+   "intentBytes": 49
+  },
+  {
+   "update": 969390429,
+   "afterSendReview": false,
+   "reviewState": "complete",
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "violation",
+     "ruleIds": [
+      "raw_path",
+      "api_endpoint"
+     ]
+    },
+    {
+     "path": "subscription",
+     "verdict": "violation",
+     "ruleIds": [
+      "raw_path"
+     ]
+    }
+   ],
+   "revisionState": "complete",
+   "revisionReview": {
+    "verdict": "pass",
+    "ruleIds": []
+   },
+   "release": {
+    "review": "violation",
+    "objections": [
+     "raw_path"
+    ],
+    "revised": true
+   },
+   "heldReview": null,
+   "answerDigest": "26f907fae4e76fd364d87cd518a6d19e6030ff4ac92195114a3173c258659586",
+   "intentDigest": "a2c571e2d86bacaf22fb64717014f27ec19c6644a5d4a78c1e364c275378eff0",
+   "answerBytes": 363,
+   "intentBytes": 320
+  },
+  {
+   "update": 969390588,
+   "afterSendReview": true,
+   "reviewState": "uncertain",
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "unsure",
+     "ruleIds": [
+      "quits_on_self"
+     ]
+    },
+    {
+     "path": "subscription",
+     "verdict": "unavailable",
+     "ruleIds": [
+      "quits_on_self"
+     ]
+    }
+   ],
+   "revisionState": null,
+   "revisionReview": null,
+   "release": null,
+   "heldReview": null,
+   "answerDigest": "00976b20d3369b2597064f3cebd50e0ab9fb7be30eb246f4274cf7f3c1413e4c",
+   "intentDigest": "00976b20d3369b2597064f3cebd50e0ab9fb7be30eb246f4274cf7f3c1413e4c",
+   "answerBytes": 14,
+   "intentBytes": 14
+  },
+  {
+   "update": 969390604,
+   "afterSendReview": true,
+   "reviewState": null,
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "unavailable",
+     "ruleIds": []
+    },
+    {
+     "path": "subscription",
+     "verdict": "unavailable",
+     "ruleIds": []
+    }
+   ],
+   "revisionState": null,
+   "revisionReview": null,
+   "release": null,
+   "heldReview": null,
+   "answerDigest": "871aaa2c33ccc600857dec0d3255c55c0e233fa6fa4d9fd44ee5d158d3049ef6",
+   "intentDigest": "871aaa2c33ccc600857dec0d3255c55c0e233fa6fa4d9fd44ee5d158d3049ef6",
+   "answerBytes": 14,
+   "intentBytes": 14
+  },
+  {
+   "update": 969390605,
+   "afterSendReview": true,
+   "reviewState": null,
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "unavailable",
+     "ruleIds": []
+    },
+    {
+     "path": "subscription",
+     "verdict": "unavailable",
+     "ruleIds": []
+    }
+   ],
+   "revisionState": null,
+   "revisionReview": null,
+   "release": null,
+   "heldReview": null,
+   "answerDigest": "e6c507cde4c14217a5b3214f13bbaac34a8cac6c148c72a210e4e77acf3c83f8",
+   "intentDigest": "e6c507cde4c14217a5b3214f13bbaac34a8cac6c148c72a210e4e77acf3c83f8",
+   "answerBytes": 14,
+   "intentBytes": 14
+  },
+  {
+   "update": 969390625,
+   "afterSendReview": true,
+   "reviewState": "uncertain",
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "unsure",
+     "ruleIds": [
+      "defers_work",
+      "unrecorded_blocker"
+     ]
+    },
+    {
+     "path": "subscription",
+     "verdict": "unavailable",
+     "ruleIds": [
+      "defers_work",
+      "unrecorded_blocker"
+     ]
+    }
+   ],
+   "revisionState": null,
+   "revisionReview": null,
+   "release": null,
+   "heldReview": null,
+   "answerDigest": "201ce8fdec9dca65d20d451b8b96f1a8511313c97dd9a2e1c73ef50ba3212d26",
+   "intentDigest": "201ce8fdec9dca65d20d451b8b96f1a8511313c97dd9a2e1c73ef50ba3212d26",
+   "answerBytes": 4390,
+   "intentBytes": 4390
+  },
+  {
+   "update": 969390638,
+   "afterSendReview": true,
+   "reviewState": "uncertain",
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "unavailable",
+     "ruleIds": []
+    },
+    {
+     "path": "subscription",
+     "verdict": "unavailable",
+     "ruleIds": []
+    }
+   ],
+   "revisionState": null,
+   "revisionReview": null,
+   "release": null,
+   "heldReview": null,
+   "answerDigest": "6de17c70bd3cf531b77d3475077c423d7848698119176dd6104d7e87e168ef95",
+   "intentDigest": "6de17c70bd3cf531b77d3475077c423d7848698119176dd6104d7e87e168ef95",
+   "answerBytes": 14,
+   "intentBytes": 14
+  },
+  {
+   "update": 969390645,
+   "afterSendReview": true,
+   "reviewState": "complete",
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "violation",
+     "ruleIds": [
+      "defers_work",
+      "unrecorded_blocker"
+     ]
+    },
+    {
+     "path": "subscription",
+     "verdict": "violation",
+     "ruleIds": [
+      "unrecorded_blocker",
+      "self_state_claim"
+     ]
+    }
+   ],
+   "revisionState": null,
+   "revisionReview": null,
+   "release": null,
+   "heldReview": null,
+   "answerDigest": "b183b2173deaf88214a8561e9d295f3e3d9bcdfd7708d52cfa0aa5bae521ecb0",
+   "intentDigest": "b183b2173deaf88214a8561e9d295f3e3d9bcdfd7708d52cfa0aa5bae521ecb0",
+   "answerBytes": 1797,
+   "intentBytes": 1797
+  },
+  {
+   "update": 969390646,
+   "afterSendReview": true,
+   "reviewState": "complete",
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "violation",
+     "ruleIds": [
+      "raw_path",
+      "api_endpoint",
+      "defers_work",
+      "unrecorded_blocker"
+     ]
+    },
+    {
+     "path": "subscription",
+     "verdict": "violation",
+     "ruleIds": [
+      "defers_work",
+      "self_state_claim"
+     ]
+    }
+   ],
+   "revisionState": null,
+   "revisionReview": null,
+   "release": {
+    "review": "violation",
+    "objections": [
+     "api_endpoint"
+    ],
+    "revised": false
+   },
+   "heldReview": null,
+   "answerDigest": "c14a1dcf821623734ecd9d8e7a531b88750c378be4e3d0da695891e60f67cb3b",
+   "intentDigest": "c14a1dcf821623734ecd9d8e7a531b88750c378be4e3d0da695891e60f67cb3b",
+   "answerBytes": 1866,
+   "intentBytes": 1866
+  },
+  {
+   "update": 969390655,
+   "afterSendReview": true,
+   "reviewState": "uncertain",
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "unavailable",
+     "ruleIds": []
+    },
+    {
+     "path": "subscription",
+     "verdict": "unavailable",
+     "ruleIds": []
+    }
+   ],
+   "revisionState": null,
+   "revisionReview": null,
+   "release": null,
+   "heldReview": null,
+   "answerDigest": "0bb6123d7c231e5c34b5b1fa941df4e67492af7d471e404b2a4b8e661217b512",
+   "intentDigest": "0bb6123d7c231e5c34b5b1fa941df4e67492af7d471e404b2a4b8e661217b512",
+   "answerBytes": 115,
+   "intentBytes": 115
+  },
+  {
+   "update": 969390662,
+   "afterSendReview": true,
+   "reviewState": "complete",
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "unavailable",
+     "ruleIds": []
+    },
+    {
+     "path": "subscription",
+     "verdict": "violation",
+     "ruleIds": [
+      "raw_path"
+     ]
+    }
+   ],
+   "revisionState": null,
+   "revisionReview": null,
+   "release": {
+    "review": "violation",
+    "objections": [
+     "raw_path"
+    ],
+    "revised": false
+   },
+   "heldReview": null,
+   "answerDigest": "94841927892d3ff7a39f1e545b9fe98acd7e02d245530236103c75d5331192f2",
+   "intentDigest": "94841927892d3ff7a39f1e545b9fe98acd7e02d245530236103c75d5331192f2",
+   "answerBytes": 4081,
+   "intentBytes": 4081
+  },
+  {
+   "update": 969390666,
+   "afterSendReview": true,
+   "reviewState": "complete",
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "violation",
+     "ruleIds": [
+      "unrecorded_blocker"
+     ]
+    },
+    {
+     "path": "subscription",
+     "verdict": "violation",
+     "ruleIds": [
+      "unrecorded_blocker"
+     ]
+    }
+   ],
+   "revisionState": null,
+   "revisionReview": null,
+   "release": null,
+   "heldReview": null,
+   "answerDigest": "d98867300518645fd628528e90dac969168e2286ed8b018d005e1e2f8f2859fd",
+   "intentDigest": "d98867300518645fd628528e90dac969168e2286ed8b018d005e1e2f8f2859fd",
+   "answerBytes": 966,
+   "intentBytes": 966
+  },
+  {
+   "update": 969390668,
+   "afterSendReview": true,
+   "reviewState": "uncertain",
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "unavailable",
+     "ruleIds": []
+    },
+    {
+     "path": "subscription",
+     "verdict": "unavailable",
+     "ruleIds": []
+    }
+   ],
+   "revisionState": null,
+   "revisionReview": null,
+   "release": null,
+   "heldReview": null,
+   "answerDigest": "38807cf91bb286ab997ef641be5a3f95abb0fdea620f0c3b3e92f29284523925",
+   "intentDigest": "38807cf91bb286ab997ef641be5a3f95abb0fdea620f0c3b3e92f29284523925",
+   "answerBytes": 2646,
+   "intentBytes": 2646
+  },
+  {
+   "update": 969390675,
+   "afterSendReview": true,
+   "reviewState": "complete",
+   "replyChecks": [
+    {
+     "path": "jev",
+     "verdict": "violation",
+     "ruleIds": [
+      "raw_path",
+      "unrecorded_blocker"
+     ]
+    },
+    {
+     "path": "subscription",
+     "verdict": "violation",
+     "ruleIds": [
+      "self_state_claim"
+     ]
+    }
+   ],
+   "revisionState": null,
+   "revisionReview": null,
+   "release": null,
+   "heldReview": null,
+   "answerDigest": "d61ea91ff818f0026c7be1dc321a47e5fd3793efe29041af988619cd391b2cff",
+   "intentDigest": "d61ea91ff818f0026c7be1dc321a47e5fd3793efe29041af988619cd391b2cff",
+   "answerBytes": 1862,
+   "intentBytes": 1862
+  }
+ ]
+}

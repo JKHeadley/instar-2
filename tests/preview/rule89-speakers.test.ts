@@ -66,8 +66,8 @@ for (const sample of evidence.samples) {
     expect(sample.after.accepted - sample.before.accepted).toBe(agent + infrastructure);
   });
 
-  for (const acknowledge of [false, true]) for (const timing of ['before-send', 'after-send'] as const)
-    it(`${sample.update}: ${timing}, text acknowledgement=${acknowledge}; signed counters survive replay`, async () => {
+  for (const acknowledge of [false, true])
+    it(`${sample.update}: pre-send review, text acknowledgement=${acknowledge}; signed counters survive replay`, async () => {
       const root = mkdtempSync(join(tmpdir(), 'rule89-')), path = join(root, 'journal.encrypted');
       const key = new Uint8Array(32).fill(89);
       let now = sample.at;
@@ -76,7 +76,7 @@ for (const sample of evidence.samples) {
         maxCalls: 20, maxReplies: 10, maxTurns: 10, maxBytes: 262144, cursor: 0 });
       const sent: Parameters<PreviewPorts['send']>[0][] = [];
       const ports: PreviewPorts = { now: () => now, stopped: () => false, checkOutbound: () => {},
-        acknowledgementTimer: () => () => {}, replyReviewTiming: timing,
+        acknowledgementTimer: () => () => {},
         model: async () => sample.reply,
         replyCheck: { elapsedMs: () => 0,
           jev: async () => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(
@@ -90,11 +90,11 @@ for (const sample of evidence.samples) {
         worker.intake([{ update_id: sample.update, message: { chat: { id: 7654321, type: 'private' },
           from: { id: 7654321 }, text: sample.label === 'b8' ? 'status' : 'What is one easy stretch to do after a long walk?' } }]);
         if (acknowledge) { now += 7000; await worker.minimal(); }
-        await worker.drain(); await worker.reviewReplies(); await worker.minimal();
+        await worker.drain(); worker.recoverAfterSendReviews(); await worker.minimal();
         const speakers = { agent: sample.label === 'b5' ? 1 : 0,
           infrastructure: Number(sample.label === 'b8') + Number(acknowledge) };
         expect(journal.view.speakers).toEqual(speakers);
-        if (timing === 'after-send') expect(journal.view.order[0]?.afterSendReview).toBe(true);
+        expect(journal.view.order[0]?.afterSendReview).toBeUndefined();
         expect(sendOutcomeCounts(journal.view).accepted).toBe(1 + Number(acknowledge));
         expect(sent.map(row => row.provenance?.speaker)).toEqual([
           ...(acknowledge ? ['infrastructure'] : []), sample.label === 'b5' ? 'agent' : 'infrastructure']);

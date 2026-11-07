@@ -363,14 +363,21 @@ decision before release, linked to the parent authority/budget, and refuses dupl
 or unrecordable effects. This is the journal admission path; step 4 owns its foundation
 effect-doorway replacement.
 
-With `--conversation-session on`, the journal sends the completed reply through its
-existing secret, stop, spend and duplicate-send walls first. The existing Jev and
-contextual review then record advisory results for the next turn's grounding. A slow
-review cannot hold that reply; unknown paid reviews are never retried on recovery.
-Option off retains the existing pre-send review route. The non-additive journal
-`reply-review-after-send` marker uses generation 5: an older reader must refuse a copy
-that has used this mode. Do not reuse that copy for an older-build rollback; retain the
-original root for the desk's copy walk and deployment decision.
+With `--conversation-session on` or off, every model-written answer takes the one
+existing pre-send review before its send intent: Jev, then the batched full-context
+review, one bounded response round, then the exact secret, stop, spend and
+duplicate-send walls (register §11's pre-send team; Part 18 §16). The review's bounds
+are unchanged: one revision round, the shared 60 s deadline and the call allowance;
+the operator's own chat is released with surviving or unconfirmed objections recorded,
+and any other audience gets the content-free holding note when the review did not
+complete. The review runs inside the ordinary drain, never on the poll loop, so intake,
+stop and the minimal responder stay reachable while a reviewer is slow. Builds before
+2026-11-05 reviewed continuing-conversation answers after the send; a journal they wrote
+may carry the non-additive `reply-review-after-send` marker (generation 5, so an older
+reader must refuse such a copy). That marker is legacy history: an interrupted review it
+left behind is projected once on recovery as unavailable, with no paid call replayed, and
+no new review is started after a send. Do not reuse that copy for an older-build
+rollback; retain the original root for the desk's copy walk and deployment decision.
 
 Continuing topic workers can use a host-supplied `prepareTurn` boundary and
 `topicConfig` binding for reviewed account-pool moves. The host serializes the
