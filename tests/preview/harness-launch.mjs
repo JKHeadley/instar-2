@@ -41,6 +41,10 @@ const argv = process.argv.slice(2);
 const fail = message => { process.stderr.write(`harness-launch: ${message}\n`); process.exit(125); };
 
 if (argv[0] === '--probe') {
+  // Rows are written once and the exit waits for the write: on macOS a pipe write is asynchronous, so process.exit right
+  // after thousands of rows (one per /private/tmp entry) dropped the tail whenever sudo's relay read slowly, and readiness
+  // then held every launch ("the harness launch is not permitted") with no error to show.
+  let rows = '';
   for (const spec of argv.slice(1)) {
     const mode = spec.slice(0, 2), path = spec.slice(2);
     if (!['r:', 'w:'].includes(mode) || !path.startsWith('/')) fail(`probe spec ${JSON.stringify(spec)}`);
@@ -51,10 +55,9 @@ if (argv[0] === '--probe') {
       else { const fd = openSync(path, 'r'); try { readSync(fd, Buffer.alloc(1), 0, 1, 0); } finally { closeSync(fd); } }
       ok = true;
     } catch (error) { code = error?.code ?? 'error'; }
-    process.stdout.write(`${JSON.stringify({ path, mode: mode[0], ok, code })}\n`);
+    rows += `${JSON.stringify({ path, mode: mode[0], ok, code })}\n`;
   }
-  // A successful probe must retain every row even while its pipe reader is delayed.
-  await new Promise(resolve => process.stdout.write('', resolve));
+  await new Promise(resolve => process.stdout.write(rows, resolve));
   process.exit(0);
 }
 

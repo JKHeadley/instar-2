@@ -11,6 +11,7 @@ import { expect, it, onTestFinished } from 'vitest';
 import { installedFixtureHost, fixtureAdmissionNames } from './production-boot-installed-fixture.js';
 import { productionGroundingSourceDigest } from '../../scripts/check-assembly-contracts.mjs';
 import { validateBootRecoveryManifest } from '../../scripts/check-boot-conversation-evidence.mjs';
+import { hostNow } from '../setup/host-clock.mjs';
 
 const checkout = realpathSync(fileURLToPath(new URL('../..', import.meta.url)));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -62,7 +63,7 @@ export function registerBootConversationShard(shardId) {
   if (!shard || shard.id !== shardId) throw Error('unknown boot recovery shard');
   const fullName = shard.titleTemplate.replace('${fixtureAdmissionNames}', fixtureAdmissionNames);
   it(fullName, async ({ signal }) => {
-    const start = Date.now();
+    const start = hostNow();
     const work = realpathSync(mkdtempSync(join(tmpdir(), `production-public-trace-${shardId}-`)));
     const root = join(work, 'installation'), snapshots = join(work, 'snapshots');
     let active, complete = false;
@@ -92,14 +93,14 @@ export function registerBootConversationShard(shardId) {
         active = child(root, action, bin, directory);
         return { action, installationRoot: root, installationHash: installation.hash, bin };
       };
-      const traceStart = Date.now(), traceInvocation = invoke('trace', snapshots);
+      const traceStart = hostNow(), traceInvocation = invoke('trace', snapshots);
       const traceExit = await active.result;
       assertRunning();
       expect(traceExit, active.errors()).toEqual({ code: 0, signal: null });
       const traceProof = artifact(join(root, 'trace-proof.json')), proof = traceProof.data;
       console.error(`RECORDED-ONLY trace identifiers: ${JSON.stringify(proof)}`);
       expect(proof.update).toBeGreaterThan(0); expect(proof.replyMessage).toBeGreaterThan(0); expect(proof.assessment).toBeTruthy();
-      const traceEnd = Date.now();
+      const traceEnd = hostNow();
       const prefixes = readdirSync(snapshots).sort();
       expect(prefixes.length).toBe(29);
       expect(prefixes).toEqual(manifest.prefixes.map(row => row.prefix));
@@ -120,7 +121,7 @@ export function registerBootConversationShard(shardId) {
       // Cycles are sequential at the original immutable installation path.
       for (const observed of roster.filter(row => row.shard === shardId)) {
         assertRunning();
-        const { prefix } = observed, cycleStart = Date.now();
+        const { prefix } = observed, cycleStart = hostNow();
         rmSync(root, { recursive: true, force: true }); cpSync(join(snapshots, prefix), root, { recursive: true });
         const restored = artifact(join(root, 'recorded-checkpoint.json')), checkpoint = restored.data;
         expect(restored.hash).toBe(observed.checkpoint.hash);
@@ -167,7 +168,7 @@ export function registerBootConversationShard(shardId) {
         }
         // A row exists only after the real kill, successful inspect and all assertions.
         completed.push({ ordinal: observed.ordinal, prefix, shard: shardId, traceId,
-          expectedStage: observed.stage, actualStage: recovered.stage, start: cycleStart, end: Date.now(),
+          expectedStage: observed.stage, actualStage: recovered.stage, start: cycleStart, end: hostNow(),
           checkpointPath: observed.checkpoint.path, checkpointHash: restored.hash, restoredPath: restored.path,
           expectedHead: checkpoint.facts.at(-1).hash, actualHead: recovered.head,
           expectedCount: checkpoint.facts.length, actualCount: recovered.count,
@@ -183,7 +184,7 @@ export function registerBootConversationShard(shardId) {
       expect(hash(readFileSync(bin.path))).toBe(bin.hash);
       durableReceipt(resolve(checkout, `.instar/lanes/boot-conversation-artifacts/shard-${shardId}.json`), {
         version: 1, root: checkout, revision, sourceDigest, file: realpathSync(join(checkout, shard.file)), fullName,
-        shard: shardId, start, end: Date.now(), workRoot: work, installationRoot: root, installation, bin,
+        shard: shardId, start, end: hostNow(), workRoot: work, installationRoot: root, installation, bin,
         trace: { id: traceId, start: traceStart, end: traceEnd, invocation: traceInvocation, exit: traceExit, proof: traceProof },
         roster, completed,
       });

@@ -1,0 +1,113 @@
+{
+ "source": "Real Claude Code 2.1.280 (the pinned harness) on the MacBook Laptop, 2026-11-07. A logging hook recorded the Stop events; the session id, paths and message text are left out.",
+ "harnessVersion": "2.1.280",
+ "agentCallInput": {
+  "keys": [
+   "description",
+   "prompt",
+   "subagent_type"
+  ]
+ },
+ "agentCallResponse": {
+  "isAsync": true,
+  "status": "async_launched"
+ },
+ "stopKeys": [
+  "session_id",
+  "transcript_path",
+  "cwd",
+  "scratchpad_dir",
+  "prompt_id",
+  "permission_mode",
+  "effort",
+  "hook_event_name",
+  "stop_hook_active",
+  "last_assistant_message",
+  "background_tasks",
+  "session_crons"
+ ],
+ "stops": [
+  {
+   "atSeconds": 8.5,
+   "background_tasks": [
+    {
+     "id": "a257a5f3cca8b2e84",
+     "type": "subagent",
+     "status": "running",
+     "description": "Sleep 60s then reply beta",
+     "agent_type": "general-purpose"
+    },
+    {
+     "id": "boc9lx4cx",
+     "type": "shell",
+     "status": "running",
+     "description": "Sleep 40 seconds then print gamma",
+     "command": "sleep 40; echo gamma"
+    },
+    {
+     "id": "bil24jfp2",
+     "type": "shell",
+     "status": "running",
+     "description": "Sleep for 25 seconds",
+     "command": "sleep 25"
+    },
+    {
+     "id": "b32z9zpsh",
+     "type": "shell",
+     "status": "running",
+     "description": "Sleep for 60 seconds",
+     "command": "sleep 60"
+    }
+   ]
+  },
+  {
+   "atSeconds": 30.2,
+   "background_tasks": [
+    {
+     "id": "boc9lx4cx",
+     "type": "shell",
+     "status": "running",
+     "description": "Sleep 40 seconds then print gamma",
+     "command": "sleep 40; echo gamma"
+    },
+    {
+     "id": "bil24jfp2",
+     "type": "shell",
+     "status": "running",
+     "description": "Sleep for 25 seconds",
+     "command": "sleep 25"
+    },
+    {
+     "id": "b32z9zpsh",
+     "type": "shell",
+     "status": "running",
+     "description": "Sleep for 60 seconds",
+     "command": "sleep 60"
+    }
+   ]
+  },
+  {
+   "atSeconds": 74.0,
+   "background_tasks": []
+  }
+ ],
+ "expectedBackground": [
+  4,
+  3,
+  0
+ ],
+ "driverRun": {
+  "note": "Real tmux, real harness 2.1.280, real scripts/session-hooks/stop.mjs and the real production driver and session IO, unconfined. Seconds since delivery; stops lists each receipt background count.",
+  "resultWritten": [
+   "0s launched result=false stops=[]",
+   "5s launched result=false stops=[1]",
+   "32s launched result=true stops=[1]",
+   "33s output-observed result=true stops=[1,0]"
+  ],
+  "noResult": [
+   "0s launched result=false stops=[1,0]",
+   "4s launched result=false stops=[1,0,1]",
+   "23s output-observed result=false stops=[1,0,1,0]"
+  ]
+ }
+}

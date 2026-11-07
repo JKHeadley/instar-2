@@ -161,6 +161,11 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
     },
     /** Removes a leftover result; any failure but absence throws, so a stale file is never read as new. */
     clearResult(path) { rmSync(path, { force: true }); },
+    /** Last write time of the result, whole milliseconds on the hook's clock; null when absent. */
+    resultWrittenAt(path) {
+      try { return Math.floor(lstatSync(path).mtimeMs); }
+      catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
+    },
     /**
      * Rules 60, 75: how many model calls a delegated session in `project` has made since `since`,
      * counted from its harness's own transcript — a Claude Code session's distinct assistant request

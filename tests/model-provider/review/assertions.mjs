@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { hostNow } from '../../setup/host-clock.mjs';
 const active = new AsyncLocalStorage();
 export default new Proxy(assert, {
   get(target, key) {
@@ -20,7 +21,7 @@ const sources = ['conformance', 'supplement', 'partial', 'plan-copy', 'cuts', 'c
     'src/effects/provider-path.ts', 'src/judgment/provider-path.ts', 'src/verification/effect-consumption.ts',
     'src/assembly/provider-invocation.ts', 'scripts/model-provider-contracts.mjs']);
 export async function runAssertions(id, run) {
-  const context = { id, assertions: 0, startedAt: Date.now(), passed: false,
+  const context = { id, assertions: 0, startedAt: hostNow(), passed: false,
     sources: Object.fromEntries(sources.map(path => [path, createHash('sha256').update(readFileSync(path)).digest('hex')])) };
   mkdirSync('.model-provider-review-proofs', { recursive: true });
   const path = `.model-provider-review-proofs/${id}.json`;
@@ -29,7 +30,7 @@ export async function runAssertions(id, run) {
     const result = await run();
     assert.ok(context.assertions > 0, 'case must execute native assertions');
     context.passed = true;
-    writeFileSync(path, JSON.stringify({ ...context, finishedAt: Date.now() }));
+    writeFileSync(path, JSON.stringify({ ...context, finishedAt: hostNow() }));
     return result;
   });
 }

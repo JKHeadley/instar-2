@@ -33,7 +33,7 @@ import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERE
 import { boundedCorrection, checkReply, reviewReply, reviewUnavailableCause, replyReviewContext, repeatsOperatorOnly, HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, jevConfidentPass, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, confidentReplyNeedsReview, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { latestRecurringDay, nextRecurringDay, parseDatedItem, relativeDelay, resolvedDatedItem, requestedTimeReached, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, localMinute, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
-import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, reconcilePromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
+import { AGENT_PROMISE_LIMIT, carriedProposals, type CarriedReport, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, reconcilePromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
 import { TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
 import { renderCapabilityReply, renderCapabilityRevision } from './capability-render.js';
@@ -581,6 +581,11 @@ export const loginOutageReply = (resetAt: number | null, zone = 'UTC') => "My mo
   + (resetAt === null ? "I don't know yet when it will be available; I'll answer as soon as it is."
     : `I expect to answer again after ${localStamp(resetAt, zone)} (${zone}).`)
   + " Your messages are kept and I'll answer them then; you don't need to resend them.";
+/** The one message a person gets before the activation end stops this agent: once, this long before the end, on a fixed text. */
+export const CLOSING_NOTICE_LEAD_MS = 5 * 60_000;
+export const closingNoticeText = (end: number, zone = 'UTC') => `This agent will stop at ${localStamp(end, zone)} (${zone}) because its activation ends then. `
+  + 'After that it cannot read or answer messages here. Its activation must be renewed before it stops; '
+  + 'once stopped, this installation refuses renewal.';
 // Accept the previous fixed wording on replay; new notices make no unsupported cause claim.
 const LOGIN_OUTAGE_TEXT = /^(?:I've used up my model allowance for now|My model is unavailable right now), so I can't answer yet\. (?:I don't know yet when it resets; I'll answer as soon as it does|I don't know yet when it will be available; I'll answer as soon as it is|I expect to answer again after [0-9]{4}-[0-9]{2}-[0-9]{2} [0-2][0-9]:[0-5][0-9] \([^()]{1,64}\))\. Your messages are kept and I'll answer them then; you don't need to resend them\.$/u;
 /** Open from a recorded outage notice until a later successful model answer. */
@@ -1227,6 +1232,8 @@ export type JournalRecord =
     rejected?: RejectedObligations;
     /** Completed obligation work whose result this answer carries to the operator (Rules 8, 92). */
     reports?: string[];
+    /** Those of `reports` the agent gave in its own words, each with the words of this reply that give it. */
+    carriedReports?: CarriedReport[];
     rejectedReports?: { key: string; text: string; objection: string }[];
     /** Rules 8, 56, 100: the one fixed reminder line (credential expiry stage or failing doorway check) this answer carries. */
     notices?: ReplyNotice[];
@@ -1247,8 +1254,8 @@ export type JournalRecord =
     /** Other held messages in this conversation the one notice also answers; none gets a second push (P-14). */
     covers?: string[]; acknowledgement?: true; acknowledgementMode?: 'reaction-or-text'; workingProgress?: WorkingProgress; waitingProgress?: true; deliveryUnknown?: true;
     /** limit-notice-1020: its own durable slot (`login-outage:<id>`). Non-additive: a reader that skipped it would repeat the notice. */
-    loginOutage?: { resetAt: number | null }; provenance?: OutboundProvenance; at: number }
-  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; loginOutage?: true; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
+    loginOutage?: { resetAt: number | null }; closing?: { end: number; zone: string }; provenance?: OutboundProvenance; at: number }
+  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; loginOutage?: true; closing?: number; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
 
   // Non-additive: reservations/checks below may follow a sent reply; an older writer must refuse.
   | { kind: 'reply-review-after-send'; id: string; at: number }
@@ -1259,6 +1266,8 @@ export type JournalRecord =
   | { kind: 'reply-revision-reserve'; id: string; objections: string[]; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-revision'; id: string; state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string;
     promises?: PromiseProposal[]; fulfills?: FulfillmentProposal[];
+    /** The own-words results this revision still gives, each with the words of the revision that give it. */
+    carriedReports?: CarriedReport[];
     /** The agent's answer to each reserved objection, in order; only a complete revision carries it. */
     dispositions?: ObjectionDisposition[];
     /** The investigation record the correction declares for a cannot-do claim its answer left unrecorded (plan
@@ -1303,6 +1312,8 @@ export type JournalRecord =
     loops?: ReplyLoop[]; blocker?: ProposedBlocker; blockerRechecks?: BlockerRecheck[];
     /** Obligation work results this sent reply delivers; delivery settles the obligation (Rules 8, 92). */
     reports?: string[];
+    /** Those of `reports` given in the agent's own words, each with the words of this reply that give it. */
+    carriedReports?: CarriedReport[];
     /** Results explicitly rejected by the answering mind or removed by pre-send review,
      * each with its objection: the result returns to owned work for a correction (Rules 8, 22, 46). */
     withheldReports?: { key: string; objection: string }[];
@@ -1514,6 +1525,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   deliveryNotice?: { lead: string; text: string; at: number; sent?: number };
   /** limit-notice-1020: the one fixed notice that every reviewed login was out of capacity, on the turn host custody queued. */
   loginOutageNotice?: { text: string; at: number; resetAt: number | null; sent?: number };
+  closingNotices?: { end: number; text: string; at: number; sent?: number }[];
   heldNoticeReviewReserved?: true; heldNoticeReview?: ReplyCheckResult;
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
   afterSendReview?: true; replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevRetried?: true; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
@@ -1522,7 +1534,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   answerAt?: number; checkDoneAt?: number;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   revisionReserved?: true; revisionReservedAt?: number; revisionObjections?: string[];
-  revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; promises?: PromiseProposal[]; fulfills?: FulfillmentProposal[]; dispositions?: ObjectionDisposition[]; blocker?: ProposedBlocker; rejectedBlocker?: true; blockerReason?: string };
+  revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; promises?: PromiseProposal[]; fulfills?: FulfillmentProposal[]; carriedReports?: CarriedReport[]; dispositions?: ObjectionDisposition[]; blocker?: ProposedBlocker; rejectedBlocker?: true; blockerReason?: string };
   release?: ReplyRelease; heldReview?: ReplyHeld;
   revisionReviewReserved?: true;
   /** Exact claim-trimmed candidate using the existing revision-review operation. */
@@ -1549,7 +1561,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   reservedAt?: number;
   /** Obligations the answer proposed; the intent of a reply that says them makes them durable. */
   answerLoops?: ReplyLoop[]; answerBlocker?: ProposedBlocker; answerRechecks?: BlockerRecheck[];
-  answerRejected?: RejectedObligations; answerReports?: string[]; answerRejectedReports?: { key: string; text: string; objection: string }[]; answerNotices?: ReplyNotice[];
+  answerRejected?: RejectedObligations; answerReports?: string[]; answerCarriedReports?: CarriedReport[]; intentCarriedReports?: CarriedReport[]; answerRejectedReports?: { key: string; text: string; objection: string }[]; answerNotices?: ReplyNotice[];
   /** Validated model proposals from the answer, and the fulfillments recorded with the reply intent. */
   proposedPromises?: PromiseProposal[]; proposedFulfills?: FulfillmentProposal[]; intentFulfills?: number[];
   /** The operator action this turn's answer proposed; its reply carries the exact request or the refusal. */
@@ -2746,10 +2758,25 @@ export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLI
  * Selection and delivery are separate; the existing size bound and receipt decide whether it was sent. */
 export const READY_RESULT = 'report awaiting current evidence review before delivery, otherwise a later message; not proof the work is done';
 const REPORT_SELECTION_GUIDANCE = 'Judge pendingReports.items against current-task evidence and your answer. '
-  + 'A prior answer or follow-up is not proof of current capabilities. Return selectedReports:[key] only for reports '
-  + 'whose claims remain supported and consistent now; the runner appends those verbatim. Return rejectedReports:[{key,objection}] '
-  + 'for offered unverifiable or contradictory reports, with a concise objection (at most 1000 bytes), to return them to owned rework. '
-  + 'Mere omission leaves reports unchanged; they remain owed, not completed or delivered. Explain relevant uncertainty without repeating unsupported claims.';
+  + 'A prior answer or follow-up is not proof of current capabilities. This reply is how each offered report reaches the operator, '
+  + 'so decide every one exactly once. selectedReports:[key]: its claims remain supported and consistent now; the runner appends it verbatim, '
+  + 'so do not also restate it. carriedReports:[{key,quote}]: your reply itself gives this result in your own words, and quote copies word for word the part of your reply that gives it; the runner appends only a short '
+  + 'marker. rejectedReports:[{key,objection}]: unverifiable or contradictory and your reply does not give the result, with a concise objection '
+  + '(at most 1000 bytes), to return it to owned rework. An undecided report stays owed, not completed or delivered. '
+  + 'Explain relevant uncertainty without repeating unsupported claims.';
+/** What the runner's line says for a result the agent gave in its own words. The agent's declaration decides delivery; these
+ * words only tell the operator which owed item the reply settled, and repeat no result (Rules 8, 22, 92). */
+const REPORT_CARRIED = 'answered above.';
+/** The agent's own words in a reply: everything before the runner's first result line. A runner line repeats a
+ * commitment's wording, so it can never be the evidence that the reply gave that commitment's result. */
+const replyProse = (text: string) => { const at = text.indexOf('Follow-up on "'); return at < 0 ? text : text.slice(0, at); };
+/** The declared words that show this text still gives an own-words result; the marker line is never that evidence (Rule 26). */
+const carriedEvidence = (declared: readonly CarriedReport[] | undefined, key: string, text: string) =>
+  declared?.find(item => item.key === key && replyProse(text).includes(item.quote));
+/** Whether a reply still holds one result: the stored report verbatim, or the words declared for an own-words result. */
+const reportEvidenced = (view: JournalView, key: string, text: string, declared: readonly CarriedReport[] | undefined) =>
+  declared?.some(item => item.key === key) ? carriedEvidence(declared, key, text) !== undefined
+    : text.includes(view.obligationWork[key]?.report?.text ?? '\u0000');
 /** Reads one work step's decision; anything malformed is a recorded failed attempt, never a guessed outcome. */
 export function obligationDecision(output: string, kind: 'commitment' | 'blocker', at: number, zone: string, previous: readonly RunCompletionItem[] = []):
   Pick<Extract<JournalRecord, { kind: 'obligation-result' }>, 'outcome' | 'report' | 'note' | 'waitsOn' | 'recheckAt' | 'assessment' | 'completion'> {
@@ -2833,7 +2860,13 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
     // Delivery of a completed work result in a reply actually sent settles the obligation (evidenced settlement).
     if (!Array.isArray(row.reports) || !row.reports.length || new Set(row.reports).size !== row.reports.length
       || row.reports.some(key => !turn.answerReports?.includes(key) || !attachableReport(view.obligationWork[key])
-        || !row.text.includes(view.obligationWork[key]!.report!.text))) throw Error('preview journal: invalid obligation report');
+        || !reportEvidenced(view, key, row.text, turn.answerCarriedReports?.some(item => item.key === key) ? row.carriedReports : undefined)
+        || row.carriedReports?.some(item => item.key === key) && !turn.answerCarriedReports?.some(item => item.key === key))) throw Error('preview journal: invalid obligation report');
+    // The words recorded for an own-words result were declared by the answer or by its revision, never by the send.
+    if (row.carriedReports?.some(item => !row.reports!.includes(item.key) || !carriedEvidence([item], item.key, row.text)
+      || ![...turn.answerCarriedReports ?? [], ...turn.revision?.carriedReports ?? []].some(declared => declared.key === item.key && declared.quote === item.quote)))
+      throw Error('preview journal: invalid carried report');
+    if (row.carriedReports?.length) turn.intentCarriedReports = row.carriedReports;
     // The durable intent binds each result to this reply so no other reply carries it; only its sent receipt settles it.
     for (const key of row.reports) view.obligationWork[key]!.report!.boundTo = turn.id;
   }
@@ -3347,6 +3380,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
     return notice?.lead === key ? { sent: notice.sent } : undefined; }
   if (kind === 'login-outage') { const notice = view.turns.get(key)?.loginOutageNotice;
     return notice ? { sent: notice.sent } : undefined; }
+  if (kind === 'closing-notice') { const notice = view.turns.get(rest.slice(1).join(':'))?.closingNotices?.find(item => item.end === Number(rest[0]));
+    return notice ? { sent: notice.sent } : undefined; }
   if (kind === 'held-notice') { const turn = view.turns.get(key);
     return turn?.heldNoticeIntent !== undefined ? { sent: turn.heldNoticeSent } : undefined; }
   if (kind === 'reply-part') { const part = view.turns.get(rest.slice(1).join(':'))?.replyParts?.[Number(rest[0]) - 2];
@@ -3443,6 +3478,7 @@ export function sendOutcomeCounts(view: JournalView) {
     for (const progress of turn.workingProgress ?? []) settle(`working-progress:${progress.ordinal}:${turn.id}`, progress.sent);
     if (turn.waitingProgress) settle(`waiting-progress:${turn.id}`, turn.waitingProgress.sent);
     if (turn.loginOutageNotice) settle(`login-outage:${turn.id}`, turn.loginOutageNotice.sent);
+    for (const notice of turn.closingNotices ?? []) settle(`closing-notice:${notice.end}:${turn.id}`, notice.sent);
     if (turn.heldNoticeIntent !== undefined) settle(`held-notice:${turn.id}`, turn.heldNoticeSent);
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
   }
@@ -3487,7 +3523,7 @@ export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' |
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'limited-intent') return { target: `limited:${row.id}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'intent') return { target: `reply:${row.id}`, chat: row.chat, ...thread, body: row.body ?? row.text };
-  if (row.kind === 'held-notice-intent') return { target: `${row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.loginOutage ? 'login-outage' : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
+  if (row.kind === 'held-notice-intent') return { target: `${row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.loginOutage ? 'login-outage' : row.closing ? `closing-notice:${row.closing.end}` : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
   return { target: `requested-reminder:${String(row.batch)}`, chat: row.chat, ...thread, body: row.body };
 }
 /** Verifies a recorded system writer's owner signature over its exact occurrence. */
@@ -3596,7 +3632,8 @@ function settleDeliveredReply(view: JournalView, turn: Turn, message: number, at
   for (const [key, work] of Object.entries(view.obligationWork)) if (work.report?.boundTo === turn.id && work.report.delivered === undefined) {
     work.report.delivered = turn.id;
     const id = Number(key.slice(11));
-    if (key.startsWith('commitment:') && !view.closed.has(id) && !completionPending(view, id)) closeCommitment(view, { id, source: turn.id, quote: work.report.text });
+    if (key.startsWith('commitment:') && !view.closed.has(id) && !completionPending(view, id)) closeCommitment(view, { id, source: turn.id,
+      quote: turn.intentCarriedReports?.find(item => item.key === key)?.quote ?? work.report.text });
   }
   // An API-accepted reply closes the promises the model said it carries out; a legacy
   // intent (no fulfills field) keeps the closure rule it was recorded under.
@@ -4710,6 +4747,26 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (row.result.verdict !== 'unavailable') settleTokens(view, `held-notice-review:${row.id}`, row.result.usage);
     return;
   }
+  if (row.kind === 'held-notice-intent' && row.closing) {
+    if (!turn.accepted || !operatorWriter(view, turn, true) || row.closing.end !== view.expires
+      || view.order.some(item => item.closingNotices?.some(notice => notice.end === row.closing!.end))
+      || typeof row.closing.zone !== 'string' || row.closing.zone.length > 64
+      || row.text !== closingNoticeText(row.closing.end, row.closing.zone)
+      || view.stop !== null || row.at >= view.expires || row.at < view.expires - CLOSING_NOTICE_LEAD_MS
+      || view.replies >= view.limits.maxReplies - 1
+      || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant
+      || row.workingProgress || row.waitingProgress || row.deliveryUnknown || row.loginOutage || row.acknowledgement || row.acknowledgementMode || row.covers
+      || !row.provenance || admission === 'new' && row.provenance.speaker !== 'infrastructure')
+      throw Error('preview journal: closing notice refused');
+    (turn.closingNotices ??= []).push({ end: row.closing.end, text: row.text, at: row.at }); view.replies++; return;
+  }
+  if (row.kind === 'held-notice-sent' && row.closing) {
+    const notice = turn.closingNotices?.find(item => item.end === row.closing);
+    if (!notice || notice.sent !== undefined || !Number.isSafeInteger(row.message) || row.message <= 0
+      || row.deliveryUnknown || row.loginOutage || row.workingProgress || row.waitingProgress || row.acknowledgementPath)
+      throw Error('preview journal: closing notice receipt order');
+    notice.sent = row.message; return;
+  }
   if (row.kind === 'held-notice-intent' && row.loginOutage) {
     const resetAt = row.loginOutage.resetAt;
     if (!turn.accepted || !operatorWriter(view, turn, true) || !turn.reserved || turn.intent !== undefined
@@ -4941,6 +4998,8 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       || row.promises !== undefined && (row.state !== 'complete' || promiseProposals(row.promises, row.text!) === undefined)
       || row.fulfills !== undefined && (row.state !== 'complete' || fulfillmentProposals(row.fulfills, row.text!,
         item => fulfillmentSupported(item, row.text!, view.commitments)) === undefined)
+      || row.carriedReports !== undefined && (row.state !== 'complete' || !Array.isArray(row.carriedReports) || !row.carriedReports.length
+        || row.carriedReports.some(item => !turn.answerCarriedReports?.some(own => own.key === item?.key) || !carriedEvidence([item], item.key, row.text!)))
       || row.dispositions !== undefined && (row.state !== 'complete' || !validDispositions(row.dispositions, turn.revisionObjections ?? []))
       || row.rejectedBlocker !== undefined && (row.rejectedBlocker !== true || row.state !== 'complete'
         || row.blocker !== undefined || turn.answerBlocker !== undefined)
@@ -4951,6 +5010,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     turn.revision = { state: row.state, ...(row.text === undefined ? {} : { text: row.text }),
       ...(row.promises === undefined ? {} : { promises: row.promises }),
       ...(row.fulfills === undefined ? {} : { fulfills: row.fulfills }),
+      ...(row.carriedReports === undefined ? {} : { carriedReports: row.carriedReports }),
       ...(row.dispositions === undefined ? {} : { dispositions: row.dispositions.map(item => ({ ...item })) }),
       ...(row.blocker === undefined ? {} : { blocker: row.blocker }),
       ...(row.rejectedBlocker ? { rejectedBlocker: true } : {}),
@@ -5210,9 +5270,14 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (row.reports !== undefined) {
       if (!Array.isArray(row.reports) || !row.reports.length || new Set(row.reports).size !== row.reports.length
         || view.genesis.forum === true && row.reports.some(key => !pendingReports(view, { thread: turn.thread }).some(item => item.key === key))
-        || row.reports.some(key => !attachableReport(view.obligationWork[key]) || !row.text.includes(view.obligationWork[key]!.report!.text)))
+        || row.reports.some(key => !attachableReport(view.obligationWork[key]) || !reportEvidenced(view, key, row.text, row.carriedReports)))
         throw Error('preview journal: invalid obligation report');
       turn.answerReports = row.reports;
+    }
+    if (row.carriedReports !== undefined) {
+      if (!Array.isArray(row.carriedReports) || !row.carriedReports.length || new Set(row.carriedReports.map(item => item?.key)).size !== row.carriedReports.length
+        || row.carriedReports.some(item => !row.reports?.includes(item?.key) || !carriedEvidence([item], item.key, row.text))) throw Error('preview journal: invalid carried report');
+      turn.answerCarriedReports = row.carriedReports;
     }
     if (row.rejectedReports !== undefined) {
       if (!Array.isArray(row.rejectedReports) || !row.rejectedReports.length || !operatorWriter(view, turn, true)
@@ -6145,10 +6210,12 @@ export interface PreviewPorts {
     /** The mind's one revision of an objected draft (same model envelope as review). Absent: no revision round. */
     revise?(input: { text: string; id: string; originalPrompt: string; ruleIds: ReplyRule[]; reason?: string;
       /** Every objection the agent is asked to answer (rule ids and the deterministic link/topic objections). */
-      objections?: string[]; findings?: ReplyFinding[]; deadlineAt?: number }): Promise<{
+      objections?: string[]; findings?: ReplyFinding[];
+      /** The finished results the draft gave in the agent's own words: the revision keeps or renews evidence of each. */
+      carried?: { key: string; text: string }[]; deadlineAt?: number }): Promise<{
       state: 'complete' | 'rejected' | 'uncertain'; text?: string; dispositions?: ObjectionDisposition[];
       /** The raw blocker the correction declared; the runner admits it only through the answer's checks. */
-      blocker?: unknown; promises?: unknown; fulfills?: unknown; usage?: ModelUsage }> };
+      blocker?: unknown; promises?: unknown; fulfills?: unknown; carriedReports?: unknown; usage?: ModelUsage }> };
   /** Uses the same pinned Jev route as reply supervision, only after exact preservation cannot decide. */
   summaryCheck?(evidence: string): Promise<unknown>;
 
@@ -8636,6 +8703,32 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: turn.id, loginOutage: true, message: outcome.message, at: ports.now() }); }
     catch { /* the notice stays UNKNOWN; never repeated */ }
   };
+  /** Silence is the worst way to end: the person is told once, before the activation end, with a fixed text and no model call.
+   * It goes where they last wrote. Its intent precedes dispatch, so a crash or an UNKNOWN never repeats it. */
+  let closingInFlight: Promise<void> | undefined;
+  const noticeClosing = () => closingInFlight ??= sendClosingNotice().finally(() => { closingInFlight = undefined; });
+  const sendClosingNotice = async () => {
+    const now = ports.now();
+    if (journal.view.stop || ports.stopped() || now >= journal.view.expires || now < journal.view.expires - CLOSING_NOTICE_LEAD_MS
+      || journal.view.replies >= journal.view.limits.maxReplies - 1
+      || journal.view.order.some(turn => turn.closingNotices?.some(notice => notice.end === journal.view.expires))) return;
+    const lead = [...journal.view.order].reverse().find(turn => turn.accepted && fromOperator(turn));
+    if (!lead) return;
+    const end = journal.view.expires, zone = ports.timeZone ?? 'America/Los_Angeles';
+    const text = closingNoticeText(end, zone), chat = journal.view.genesis.chat;
+    const thread = lead.thread === undefined ? {} : { thread: lead.thread }, target = `closing-notice:${end}:${lead.id}`;
+    ports.checkOutbound(text);
+    const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
+    // An acknowledgement, a stop or the end can land while disclosure is awaited: the notice is then dropped, never a failed pass.
+    const current = () => journal.view.stop === null && !ports.stopped() && ports.now() < end && journal.view.expires === end
+      && (lead.closingNotices?.some(notice => notice.end === end) || journal.view.replies < journal.view.limits.maxReplies - 1);
+    const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: lead.update, current }, () => {
+      journal.append({ kind: 'held-notice-intent', id: lead.id, closing: { end, zone }, text, chat, ...thread, update: lead.update,
+        grant: journal.view.genesis.grant, provenance, at: ports.now() });
+    });
+    if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: lead.id, closing: end, message: outcome.message, at: ports.now() }); }
+    catch { /* the notice stays UNKNOWN; never repeated */ }
+  };
   /** Rules 2, 87, 88: a disclosure hold past the self-heal window is told once, content-free, per notice window; the
    * held turns are named only by this fixed text. Its intent precedes dispatch and an UNKNOWN is never repeated. */
   const noticeDisclosureHolds = async () => {
@@ -9127,6 +9220,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // failures quoted the old promise or changed the operator's words. Give these exact validation
           // failures the existing single format re-ask, before recording an answer or sending anything.
           // No meaning is inferred and no citation is repaired by code; the same validators decide again.
+          // Rules 8, 22, 92: a finished result leaves with the reply the operator is waiting on, so the answering mind
+          // decides each one it was shown. The existing single re-ask covers a miss; the runner never decides for it.
+          const undecidedReports = (value: Record<string, unknown>, body: string) => {
+            const named = (list: unknown) => Array.isArray(list) ? list as unknown[] : [];
+            const decided = [...named(value.selectedReports), ...carriedProposals(value.carriedReports, replyProse(body)).map(item => item.key),
+              ...named(value.rejectedReports).map(item => (item as { key?: unknown } | null)?.key)];
+            const items = probeTurn(journal.view, turn) ? [] : (JSON.parse(context) as { pendingReports?: { items: { key: string }[] } }).pendingReports?.items ?? [];
+            const missing = items.filter(item => decided.filter(key => key === item.key).length !== 1).map(item => item.key);
+            return missing.length ? `decide each of ${missing.join(', ')} exactly once in selectedReports, carriedReports (as {key,quote}, quote copied word for word from this reply) or rejectedReports` : undefined;
+          };
           const declarationDefect = (given: Answer): string | undefined => {
             const text = typeof given === 'string' ? given : 'text' in given ? given.text : undefined;
             if (text === undefined) return undefined;
@@ -9137,6 +9240,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const body = typeof reply === 'string' ? reply : reply && typeof reply === 'object' && !Array.isArray(reply)
               && 'answer' in reply && typeof reply.answer === 'string' ? reply.answer : undefined;
             if (body === undefined) return undefined;
+            const reportDefect = undecidedReports(value, body);
+            if (reportDefect !== undefined) return reportDefect;
             if (promiseProposals(value.promises, body) === undefined)
               return 'promises must quote an exact sentence of this reply; when, if present, must be copied from that sentence';
             if (fulfillmentProposals(value.fulfilled, body,
@@ -9294,19 +9399,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
               refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false,
               memoryFailure: MemoryFailureProposal | undefined;
-            let selectedReports: unknown[] = [], rejectedReports: { key: string; objection: string }[] = [];
+            let selectedReports: unknown[] = [], ownWordReports: CarriedReport[] = [], rejectedReports: { key: string; objection: string }[] = [];
             const heldForgets: MemoryChange[] = [];
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; correction?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown; cancelDeliveries?: unknown;
                 directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown; blockerRechecks?: unknown;
-                selectedReports?: unknown; rejectedReports?: unknown; promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
+                selectedReports?: unknown; carriedReports?: unknown; rejectedReports?: unknown; promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
               const replyValue = parsed?.reply;
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
                 separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string; decided = true;
                 if (Array.isArray(parsed.selectedReports)) selectedReports = parsed.selectedReports;
+                ownWordReports = carriedProposals(parsed.carriedReports, replyProse(text));
                 if (Array.isArray(parsed.rejectedReports) && parsed.rejectedReports.every(item => item
                   && typeof item.key === 'string' && boundedText(item.objection, 1, 1000))
                   && new Set(parsed.rejectedReports.map(item => item.key)).size === parsed.rejectedReports.length)
@@ -9650,20 +9756,22 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // remains pending; absence, malformed output and stale selections never close a commitment.
             const offeredReports = (JSON.parse(context) as { pendingReports?: {
               items: { key: string; text: string }[] } }).pendingReports?.items ?? [];
-            const reports: string[] = [], carried = new Set(journal.view.order
+            const reports: string[] = [], carriedReports: CarriedReport[] = [], carried = new Set(journal.view.order
               .filter(item => item.id !== turn.id && item.intent === undefined && !actionWithdrawn(journal.view, item)).flatMap(item => item.answerReports ?? []));
             if (replying)
               for (const item of pendingReports(journal.view, { thread: turn.thread }).filter(entry => !carried.has(entry.key)
-                && selectedReports.includes(entry.key) && !rejectedReports.some(rejected => rejected.key === entry.key)
+                && selectedReports.includes(entry.key) !== ownWordReports.some(own => own.key === entry.key) && !rejectedReports.some(rejected => rejected.key === entry.key)
                 && offeredReports.some(offered => offered.key === entry.key && offered.text === entry.text)
                 && !obligations.deliveryCancels?.some(cancel => entry.key === `commitment:${cancel.id}`))) {
-                const line = reportLine(item);
+                const own = ownWordReports.find(declared => declared.key === item.key), line = reportLine(own ? { ...item, text: REPORT_CARRIED } : item);
+                if (own && !carriedEvidence([own], own.key, text)) continue;
                 if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
                 text = `${text.trimEnd()}${line}`; reports.push(item.key);
+                if (own) carriedReports.push(own);
               }
             const rework = replying && text.trim() ? rejectedReports.flatMap(item => {
               const report = offeredReports.find(offered => offered.key === item.key);
-              return report && item.key.startsWith('commitment:') && !selectedReports.includes(item.key) && !carried.has(item.key)
+              return report && item.key.startsWith('commitment:') && !selectedReports.includes(item.key) && !ownWordReports.some(own => own.key === item.key) && !carried.has(item.key)
                 && pendingReports(journal.view, { thread: turn.thread }).some(entry => entry.key === item.key && entry.text === report.text)
                 && !text.includes(report.text) && !obligations.deliveryCancels?.some(cancel => item.key === `commitment:${cancel.id}`)
                 ? [{ ...item, text: report.text, objection: clean(redact(item.objection).text, true) }] : [];
@@ -9692,7 +9800,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(obligations.deliveryCancels?.length ? { deliveryCancels: obligations.deliveryCancels } : {}),
               ...(obligations.blocker ? { blocker: obligations.blocker } : {}),
               ...(obligations.blockerRechecks?.length ? { blockerRechecks: obligations.blockerRechecks } : {}),
-              ...(Object.keys(rejectedNow).length ? { rejected: rejectedNow } : {}), ...(reports.length ? { reports } : {}), ...(rework.length ? { rejectedReports: rework } : {}),
+              ...(Object.keys(rejectedNow).length ? { rejected: rejectedNow } : {}), ...(reports.length ? { reports } : {}), ...(carriedReports.length ? { carriedReports } : {}), ...(rework.length ? { rejectedReports: rework } : {}),
               ...(notices.length ? { notices } : {}),
               ...(promises.length && text.trim() ? { promises: promises.filter(item => text.includes(item.quote)) } : {}),
               ...(keptFulfills.length ? { fulfills: keptFulfills } : {}),
@@ -9963,8 +10071,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // review of the revision sees it and an objection to the prose never withholds a result (live pre-switch
             // sb-w4-updaterecord 04bed622, room four, D1c: the revision folded three results into its own wording, so
             // none occurred verbatim and all three went back to owned work).
-            const resultLines = pendingReports(journal.view).filter(item => turn.answerReports?.includes(item.key))
-              .map(reportLine).filter(line => reply.includes(line));
+            const pendingResults = pendingReports(journal.view).filter(item => turn.answerReports?.includes(item.key));
+            const ownWordResults = pendingResults.filter(item => turn.answerCarriedReports?.some(own => own.key === item.key));
+            const carriedLineOf = (item: { subject: string; text: string }) => reportLine({ ...item, text: REPORT_CARRIED });
+            const resultLines = pendingResults
+              .map(item => ownWordResults.includes(item) ? carriedLineOf(item) : reportLine(item))
+              .filter(line => reply.includes(line));
+            // Rules 8, 26: an own-words marker says the text above it gave the result, so it stays only where the
+            // declared words are still in that text. A revision may renew those words; a verbatim line needs no such words.
+            const carriedLines = ownWordResults.map(item => ({ key: item.key, line: carriedLineOf(item) })).filter(item => reply.includes(item.line));
+            const supportedLine = (line: string, text: string, declared: readonly CarriedReport[]) =>
+              !carriedLines.some(item => item.line === line) || carriedLines.some(item => item.line === line && carriedEvidence(declared, item.key, text) !== undefined);
             // A mandatory content objection can be removed without rewriting the answer, but the
             // resulting answer still needs its own contextual review. Keep part of the shared
             // deadline for that review when the reviewer named a locatable claim. T1's real
@@ -9987,7 +10104,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 gate();
                 journal.append({ kind: 'reply-revision-reserve', id: turn.id, objections,
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
-                let outcome: Awaited<ReturnType<NonNullable<NonNullable<PreviewPorts['replyCheck']>['revise']>>> | { state: 'failed'; text?: undefined; usage?: undefined; dispositions?: undefined; blocker?: undefined; promises?: undefined; fulfills?: undefined };
+                let outcome: Awaited<ReturnType<NonNullable<NonNullable<PreviewPorts['replyCheck']>['revise']>>> | { state: 'failed'; text?: undefined; usage?: undefined; dispositions?: undefined; blocker?: undefined; promises?: undefined; fulfills?: undefined; carriedReports?: undefined };
                 // The draft is revised without its Rule 110 disclosure, which code adds back to the final text, and
                 // without the runner's own result lines, which code attaches again verbatim below.
                 const draft = resultLines.reduce((text, line) => text.replace(line, ''),
@@ -9995,6 +10112,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 try { outcome = await ports.replyCheck.revise({ text: concealSecretMaterial(redact(draft).text, heldValues), id: turn.id, originalPrompt,
                   ruleIds: objections.filter(item => item !== BARE_TOPIC_OBJECTION) as ReplyRule[], objections,
                   ...(checkRow?.findings ? { findings: checkRow.findings } : {}),
+                  ...(ownWordResults.length ? { carried: ownWordResults.map(item => ({ key: item.key, text: concealSecretMaterial(redact(item.text).text, heldValues) })) } : {}),
                   ...(reason === undefined ? {} : { reason }), deadlineAt: revisionDeadline }); }
                 catch { outcome = { state: 'failed' }; }
                 const text = outcome.state === 'complete' && typeof outcome.text === 'string'
@@ -10017,6 +10135,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   ...(text && outcome.promises !== undefined ? { promises: promiseProposals(outcome.promises, text) ?? [] } : {}),
                   ...(text && outcome.fulfills !== undefined ? { fulfills: fulfillmentProposals(outcome.fulfills, text,
                     item => offered.has(item.id) && fulfillmentSupported(item, text, journal.view.commitments)) ?? [] } : {}),
+                  ...(text && carriedProposals(outcome.carriedReports, replyProse(text)).some(item => turn.answerCarriedReports?.some(own => own.key === item.key))
+                    ? { carriedReports: carriedProposals(outcome.carriedReports, replyProse(text)).filter(item => turn.answerCarriedReports?.some(own => own.key === item.key)) } : {}),
                   ...(answered ? { dispositions: answered } : {}), ...(proposed?.blocker ? { blocker: proposed.blocker } : {}),
                   ...(proposed?.rejected?.blocker ? { rejectedBlocker: true, blockerReason: proposed.rejected.blockerReason } : {}),
                   ...(outcome.usage ? { usage: outcome.usage } : {}), at: revisionAt });
@@ -10025,7 +10145,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 let body = turn.revision.text.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
                 if (continuity && body.startsWith(continuity.disclosure)) body = body.slice(continuity.disclosure.length).trimStart();
                 const prose = actionHeader === undefined ? disclosed(body) : `${actionHeader}\n${body}`;
-                const candidate = `${prose.trimEnd()}${resultLines.filter(line => !prose.includes(line)).join('')}`;
+                const candidate = `${prose.trimEnd()}${resultLines.filter(line => !prose.includes(line)
+                  && supportedLine(line, prose, [...turn.revision!.carriedReports ?? [], ...turn.answerCarriedReports ?? []])).join('')}`;
                 // The agent keeping its draft unchanged is its answer, not a new candidate: nothing to re-review.
                 // The same text with a newly declared investigation record is a new candidate (plan #104).
                 if (!redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate)) {
@@ -10045,11 +10166,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const body = continuity && stripped.startsWith(continuity.disclosure)
                 ? stripped.slice(continuity.disclosure.length).trimStart() : stripped;
               const claims = named.findings.flatMap(finding => namedClaimsIn(finding.reason, body));
-              const cut = exciseNamedClaims(body, claims);
+              // An own-words marker is set aside while the claims are cut and returns only if its declared words survived.
+              const ownLines = carriedLines.map(item => item.line);
+              const cut = exciseNamedClaims(ownLines.reduce((text, line) => text.replace(line, ''), body), claims);
+              const remainder = `${cut.text}${ownLines.filter(line => supportedLine(line, cut.text, turn.answerCarriedReports ?? [])).join('')}`;
               withheld = { rules: named.rules, removed: cut.removed, unlocated: cut.unlocated };
               if (cut.removed.length) {
                 nothingLeft = true; // Held until the full-context reviewer clears this exact remainder.
-                const candidate = actionHeader === undefined ? disclosed(cut.text) : `${actionHeader}\n${cut.text}`;
+                const candidate = actionHeader === undefined ? disclosed(remainder) : `${actionHeader}\n${remainder}`;
                 if ((turn.revisionReviewRemainder === undefined || turn.revisionReviewRemainder === candidate)
                   && substantiveReply(cut.text) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate)) {
                   scoped = candidate; revised = candidate;
@@ -10111,7 +10235,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               && !credentialHeldClass(turn, candidateDigest) && withheld?.removed.length && nothingLeft
               && resultRemainder !== undefined && checkedRemainder?.verdict === 'violation'
               && checkedRemainder.ruleIds.length === 1 && checkedRemainder.ruleIds[0] === 'incoherent_remainder'
-              ? resultLines.filter(line => resultRemainder.includes(line)) : [];
+              // Only verbatim lines can stand alone: a marker's answer was in the prose this path rejected.
+              ? resultLines.filter(line => resultRemainder.includes(line) && !carriedLines.some(item => item.line === line)) : [];
             if (revised !== undefined) { reply = revised; mentionedKeys = []; objection = reason ?? objections.join(', '); }
             else if (scoped !== undefined) { reply = scoped; mentionedKeys = []; }
             else if (deliverableResults.length) {
@@ -10259,7 +10384,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           fulfills: probeTurn(journal.view, turn) ? [] : ((revisionDeclarationsSelected ? turn.revision?.fulfills : undefined) ?? turn.proposedFulfills ?? []).filter(item => reply.includes(item.quote)
             && fulfillableCommitment(journal.view.commitments, item.id) && !journal.view.closed.has(item.id) && !completionPending(journal.view, item.id)
             && journal.view.commitments[item.id]!.source !== turn.id).map(item => item.id),
-          ...(heldBack || reply === HOLDING_REPLY ? {} : sentObligations(turn, reply, intentAt)),
+          ...(heldBack || reply === HOLDING_REPLY ? {} : sentObligations(turn, reply, intentAt, revisionDeclarationsSelected)),
           // A holding notice omitted the attached reports too. Preserve them as owned repair work
           // instead of reattaching the same rejected text to every later answer (46040277-46040279).
           ...withheldReports(turn, reply, held?.reason ?? (held ? held.objections.join(', ') : objection)),
@@ -10309,6 +10434,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         wakeTopicDrain = pump; pump();
       });
       await noticeFailedReplies();
+      await noticeClosing();
       if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
       // held-notice rows still replay; no other held notice is ever pushed.
@@ -10869,24 +10995,30 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const reportLine = (item: { subject: string; text: string }) =>
     `\n\nFollow-up on "${clip(clean(redact(item.subject).text, true), 160)}": ${item.text}`;
   /** The declared obligations a reply about to be sent actually says (Rules 6, 20-23, 99). */
-  const sentObligations = (turn: Turn, reply: string, at: number) => {
+  const sentObligations = (turn: Turn, reply: string, at: number, revisionSelected: boolean) => {
     const open = new Set(openBlockers(journal.view).map(item => item.id));
     const loops = turn.answerLoops?.filter(loop => reply.includes(loop.quote));
     const declared = turn.answerBlocker ?? turn.revision?.blocker;
     const blocker = declared && reply.includes(declared.claim) && declared.recheckAt > at ? declared : undefined;
     const rechecks = turn.answerRechecks?.every(item => open.has(item.id))
       ? turn.answerRechecks : undefined;
-    const reports = turn.answerReports?.filter(key => reply.includes(journal.view.obligationWork[key]?.report?.text ?? '\u0000')
-      && attachableReport(journal.view.obligationWork[key]));
+    // A renewed declaration describes the revision, so only a selected revision supplies one (like its fulfills).
+    const carried = [...revisionSelected ? turn.revision?.carriedReports ?? [] : [], ...turn.answerCarriedReports ?? []];
+    const ownWords = turn.answerCarriedReports?.flatMap(({ key }) => { const item = carriedEvidence(carried, key, reply); return item ? [item] : []; });
+    const reports = turn.answerReports?.filter(key => attachableReport(journal.view.obligationWork[key])
+      && (turn.answerCarriedReports?.some(item => item.key === key) ? ownWords!.some(item => item.key === key) : reply.includes(journal.view.obligationWork[key]!.report!.text)));
+    const carriedReports = ownWords?.filter(item => reports?.includes(item.key));
     return { ...(loops?.length ? { loops } : {}), ...(blocker ? { blocker } : {}), ...(rechecks ? { blockerRechecks: rechecks } : {}),
-      ...(reports?.length ? { reports } : {}) };
+      ...(reports?.length ? { reports } : {}), ...(carriedReports?.length ? { carriedReports } : {}) };
   };
   /** Rules 8, 22, 46, 86: an attached result the review cut from the reply is not delivered and is not attached again
    * unchanged (the same review would cut it again, on every reply, and the backlog would never drain). It returns to
    * owned work with the objection, so the next step corrects it or records why it cannot be done. */
   const withheldReports = (turn: Turn, reply: string, objection: string | undefined) => {
     const text = objection === undefined ? '' : clip(clean(redact(objection).text, true), 1000);
-    const withheld = text ? turn.answerReports?.filter(key => key.startsWith('commitment:')
+    // An objection to the agent's prose is not one to a stored result it gave in its own words: that result stays
+    // waiting, unchanged, for the next reply to decide it again; it is neither delivered nor reworked.
+    const withheld = text ? turn.answerReports?.filter(key => key.startsWith('commitment:') && !turn.answerCarriedReports?.some(item => item.key === key)
       && attachableReport(journal.view.obligationWork[key]) && !reply.includes(journal.view.obligationWork[key]!.report!.text))
       .map(key => ({ key, objection: text })) : undefined;
     const explicit = turn.answerRejectedReports?.filter(item => attachableReport(journal.view.obligationWork[item.key])
@@ -12312,7 +12444,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // Rules 4/15/77: review must not delay intake or the limited responder. The ordinary drain
     // awaits this same promise for final-send ordering and propagates any failure.
     for (const turn of acknowledgementTimers.keys()) void acknowledgeReply(turn).catch(() => {});
+    // The limited pass goes first so its one-pass claim is taken before anything here yields; yielding first let a
+    // concurrent drain send the same stop confirmation. It never waits on an ordinary model, so the warning is not delayed.
     await answerLimited();
+    await noticeClosing();
     await pollReviewRequests(); await issueRetractRequest(); };
   return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 

@@ -20,7 +20,7 @@ records `run-config.json` in this format (example identities are placeholders):
     "forum": true,
     "grant-reference": "preview-trial:example",
     "configuration-digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "expires-at": "2026-11-12T21:40:00Z",
+    "expires-at": "2026-12-12T21:40:00Z",
     "operator-records": "/installation/operator-records",
     "explicit-yes-installation": "/installation/explicit-yes-installation.json",
     "review-repository": "owner/repository",

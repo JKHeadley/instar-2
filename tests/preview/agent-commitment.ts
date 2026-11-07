@@ -10,6 +10,8 @@ import { parseDatedItem, type DatedItem } from './dated-memory.js';
 export type AgentPromise = CoreAgentPromise<DatedItem>;
 export interface PromiseProposal { quote: string; when?: string }
 export interface FulfillmentProposal { id: number; quote: string }
+/** One waiting result the reply gives in the agent's own words, with the exact words of the reply that give it. */
+export interface CarriedReport { key: string; quote: string }
 export const AGENT_PROMISE_LIMIT = 5;
 
 /** A fulfilment quote is bounded by the reply it must appear in, not by the sentence bound a promise
@@ -41,11 +43,13 @@ export function promiseProposals(value: unknown, reply: string): PromiseProposal
   }
   return found;
 }
-/** The one rule deciding whether a reply may carry out commitment `id`: the commitment is a promise the
- * agent itself made. A commitment the operator asked for — a reminder to them — is not the agent's promise,
- * so a reply delivering it settles that reminder through its own path, never as a fulfillment claim. */
-export const fulfillableCommitment = (commitments: readonly { agentPromise?: unknown }[], id: number): boolean =>
-  commitments[id]?.agentPromise !== undefined;
+/** The agent's own promises may be recorded by the answer, a declared loop, or the summary.
+ * All three use the same model-proposed, receipt-bound fulfillment path. Operator requests
+ * still settle through their result/reminder path; shared wording or source never merges them. */
+type FulfillableNote = { agentPromise?: unknown; in?: string; owner?: string };
+export const fulfillableCommitment = (commitments: readonly FulfillableNote[], id: number): boolean =>
+  commitments[id]?.agentPromise !== undefined
+  || commitments[id]?.in === 'reply' && commitments[id]?.owner === 'agent';
 
 /** The whole support rule for one fulfillment claim: the reply as written still quotes it, and it names a
  * commitment this reply may carry out. The writer applies this before it appends an answer row and the
@@ -53,7 +57,7 @@ export const fulfillableCommitment = (commitments: readonly { agentPromise?: unk
  * offered every agent-OWNED commitment while the replay accepted only agent PROMISES, so one delivered
  * reminder wrote a row the replay refused and made a whole journal unreadable (build 30bda628, 2026-10-01). */
 export const fulfillmentSupported = (item: FulfillmentProposal, reply: string,
-  commitments: readonly { agentPromise?: unknown }[]): boolean =>
+  commitments: readonly FulfillableNote[]): boolean =>
   reply.includes(item.quote) && fulfillableCommitment(commitments, item.id);
 
 /** Validated fulfillment proposals from one answer, or undefined when the proposal is malformed or claims
@@ -68,6 +72,18 @@ export function fulfillmentProposals(value: unknown, reply: string,
       || !exactClause(item.quote, reply, REPLY_EXCERPT_LIMIT)
       || !supported({ id: item.id as number, quote: item.quote as string })) return undefined;
     if (!found.some(saved => saved.id === item.id)) found.push({ id: item.id as number, quote: item.quote as string });
+  }
+  return found;
+}
+/** The own-words results a reply declares: each names one result and quotes the reply's own words for it. Whether those
+ * words give the result is the model's reading (Rule 10); code keeps only exact quotes. An entry without one is no
+ * declaration, so the result it names stays undecided and owed. */
+export function carriedProposals(value: unknown, reply: string): CarriedReport[] {
+  if (!Array.isArray(value)) return [];
+  const found: CarriedReport[] = [];
+  for (const item of value as { key?: unknown; quote?: unknown }[]) {
+    if (!item || typeof item !== 'object' || typeof item.key !== 'string' || !exactClause(item.quote, reply, REPLY_EXCERPT_LIMIT)) continue;
+    if (!found.some(saved => saved.key === item.key)) found.push({ key: item.key, quote: item.quote as string });
   }
   return found;
 }

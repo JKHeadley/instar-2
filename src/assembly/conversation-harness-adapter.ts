@@ -44,8 +44,9 @@ export function createSessionConversationAdapter(config: Readonly<{
       const text = input.delivery ? config.io.readResult(input.delivery.resultPath, input.delivery.maxBytes) : null;
       ensure(text === null || input.delivery != null && Buffer.byteLength(text) <= input.delivery.maxBytes,
         'conversation result exceeds byte bound');
+      const written = text?.trim() && input.delivery ? config.io.resultWrittenAt?.(input.delivery.resultPath) ?? null : null;
       const observed = take(driver.observe({ operation: input.delivery?.operation ?? input.claim, processIdentity: input.launch,
-        resultAvailable: Boolean(text?.trim()) }));
+        resultAvailable: Boolean(text?.trim()), resultWrittenAt: written }));
       let events: ConversationObservation[] = [];
       if (observed.phase === 'exit-observed') events = [{ kind: 'exit', evidence: observed.evidence,
         ...(observed.safetyDeadline === undefined ? {} : { safetyDeadline: observed.safetyDeadline }) }];

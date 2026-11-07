@@ -216,9 +216,11 @@ The activation policy declares an eight-worker safety ceiling and four-hour work
 and idle lifetimes. `--topic-worker-ceiling 1..8` can lower the installation ceiling;
 raising it requires a new policy disposition. The runner, coordinator and physical
 driver consume the same limit. A prior activation with the old policy digest refuses
-until the matching activation is installed. New workers require sampled CPU idle of
-at least 12 percent and free memory of at least 2 GiB and 10 percent of physical RAM,
-through `scripts/topic-worker-capacity.mjs`; unknown measurements retain queued work.
+until the matching activation is installed. A worker added beside a live one requires
+sampled CPU idle of at least 12 percent and available memory of at least 2 GiB and 10
+percent of physical RAM, through `scripts/topic-worker-capacity.mjs` (macOS: free,
+inactive and purgeable pages from `vm_stat`, never `os.freemem()`); unknown measurements
+retain queued work. With no worker live, Rule 15 admits the first one without that sample.
 The serialized resource admission samples after the topic slot wait and physical lease
 acquisition or retry, once the host knows its worker needs replacement. Refusal releases
 the unlaunched lease and keeps the input queued without dispatch, including an idle
@@ -310,7 +312,11 @@ claim/incarnation control; cleanup waits for late resource admission.
 
 The adapter returns distinct reply and turn-end observations from the bounded result
 capture and correlated Stop receipt. Repeated file bytes and pane-idle text cannot end a
-conversation turn. The installed lifecycle hook is copied beside the readable admitted
+conversation turn. A Stop that reports running background work, in the harness's own
+`background_tasks` list, closes a turn only for a result written before that Stop (by the
+result file's write time, not by when the host first saw the Stop). Otherwise each finished
+task wakes the session, and the Stop with none left closes it, so the runner reads the result
+the agent writes in a later turn. A worker that exits under such a Stop stays uncertain. The installed lifecycle hook is copied beside the readable admitted
 hook; its inbox is shared only with the worker identity. A hook is worker lifecycle evidence,
 not proof of tool completion, reply delivery, or independent authenticity against a malicious
 worker. The existing tool and outward effect owners still decide those facts.

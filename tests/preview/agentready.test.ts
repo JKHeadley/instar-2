@@ -19,9 +19,9 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
 const update = (id: number, text: string) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
 
-it('accepts the reviewed November end and the October predecessor only before renewal', () => {
-  expect(end).toBe(Date.parse('2026-11-12T21:40:00Z'));
-  expect(prior).toBe(Date.parse('2026-10-12T20:40:00Z'));
+it('accepts the reviewed December end and the November predecessor only before renewal', () => {
+  expect(end).toBe(Date.parse('2026-12-12T21:40:00Z'));
+  expect(prior).toBe(Date.parse('2026-11-12T21:40:00Z'));
   expect(subscriptionActivationEndAllowed(end)).toBe(true);
   expect(subscriptionActivationEndAllowed(prior, prior)).toBe(true);
   expect(subscriptionActivationEndAllowed(prior)).toBe(false);

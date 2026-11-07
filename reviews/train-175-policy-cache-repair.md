@@ -21,6 +21,10 @@ Recorded failure: preview-deploy.log 2026-11-05 09:07:16 and preserved forum-ans
 Hook bypass: none
 Convergence: none
 Prompt review: No model prompt, model output parser or model decision changes. The failed turn has no model output; this repair replays its real host-cache shape. Summary/Jev/reply-review parsing and delivered-answer logic are unchanged.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"
+Prompt finding: 849db3a6296a | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
+Prompt finding: 85544c20941f | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-conversation-session.test.ts: "your messages are kept and i'll answer them then; you don't need to resend them."
+Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 
 Owner provenance: Complete source/tests/fixture reused from 0c1d832a4816aeb21891e5a89242497d12c76fc1; original review base 428b6287201846c206e76be32f066a6b538333e3. This integration binds the record to train-176 without claiming a new independent verdict. The verification paragraph below records the owning repair; train-176 verification is in its own review.
 
@@ -38,12 +42,18 @@ Deferral: docs/evidence/train-192-notice-owner/constitution-attributed-statement
 Deferral: docs/evidence/train-192-notice-owner/constitution-one-constitution-change-review.md:30 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
 Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md:29 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
 
-Prompt finding: 0725f0150c56 | protocol-literal | The role and tool-refusal sentence is fixed prompt prologue text in conversationSessionPrompt; the regression uses it only to normalize historical packets for digest comparison, and no gate or model verdict keys on this phrase; read at both ends, unchanged by this merge.
-Prompt finding: 27d7720e7977 | protocol-literal | Fixed prologue sentence; the regression splits on it as the boundary of the prologue under byte comparison, and it is not a model decision trigger; read at both ends, unchanged by this merge.
+Prompt finding: 0725f0150c56 | protocol-literal | carried unchanged from the merged inputs; as dispositioned in reviews/2176b4cf-merge-live-d121315e-change-review.md at 340e5ac95848: carried unchanged from the merged inputs; as dispositioned in reviews/7a7af8da-merge-live-7ad55e86-change-review.md at 2176b4cf2524: carried unchanged from the merged inputs; as dispositioned in reviews/gap-email-1018s-change-review.md at 7ad55e86ef86: The regression normalizes the existing role/refusal prologue for historical packet and digest comparison; no semantic gate keys on this phrase.
+Prompt finding: 27d7720e7977 | protocol-literal | carried unchanged from the merged inputs; as dispositioned in reviews/2176b4cf-merge-live-d121315e-change-review.md at 340e5ac95848: carried unchanged from the merged inputs; as dispositioned in reviews/7a7af8da-merge-live-7ad55e86-change-review.md at 2176b4cf2524: carried unchanged from the merged inputs; as dispositioned in reviews/gap-email-1018s-change-review.md at 7ad55e86ef86: The existing memory-record boundary delimits the intentionally changed prologue in historical byte comparison; it is not a model decision trigger.
 Prompt finding: 4106b49fff07 | protocol-literal | Fixed obligation-decision clause; replacedClause needs its exact text to swap in the tool-route wording, and the test checks that delivered guidance rather than supplying a verdict; unchanged by this merge.
 Prompt finding: 849db3a6296a | protocol-literal | The agent's own fixed reply for an empty memory list, produced without a model; the startsWith branch recognizes that exact own output, never a person's words or a meaning; unchanged by this merge.
 Prompt finding: 85544c20941f | protocol-literal | Fixed infrastructure outage sentence sent with no model call; the test checks the actual notice, and the replay pattern matches only that own notice; unchanged by this merge.
 Prompt finding: e8708c7fea24 | protocol-literal | Fixed sourceLabel attribution instruction in delivered guidance; the regression checks the instruction is delivered, not a desired semantic answer; unchanged by this merge.
+
+Deferral: tests/preview/held-result-delivery.test.ts:86 | not-a-deferral=Product guidance or regression data about durable pending work; no builder deferral (as dispositioned in reviews/train-200-change-review.md)
+Deferral: tests/preview/held-result-delivery.test.ts:101 | not-a-deferral=Product guidance or regression data about durable pending work; no builder deferral (as dispositioned in reviews/train-200-change-review.md)
+Deferral: tests/preview/journal.ts:2750 | not-a-deferral=product guidance text telling the model an undecided report stays owed; it describes durable pending work, no builder deferral (held-result-delivery-1106)
+Deferral: tests/preview/journal.ts:2761 | not-a-deferral=product code comment describing the runner line for a result given in the agent's own words; no builder deferral (held-result-delivery-1106)
+Deferral: tests/preview/plain-task-stop.test.ts:29 | not-a-deferral=line carried verbatim from merged input aa570994, whose own record dispositions it
 
 ## Closing block
 
