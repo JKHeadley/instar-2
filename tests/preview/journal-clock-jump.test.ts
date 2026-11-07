@@ -9,7 +9,7 @@ import { dueState } from './dated-memory.js';
 const key = new Uint8Array(32).fill(31);
 const start = Date.UTC(2026, 8, 27, 17);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
-  grant: 'grant:clock-jump', configurationDigest: 'sha256:clock-jump', expires: start + 120_000,
+  grant: 'grant:clock-jump', configurationDigest: 'sha256:clock-jump', expires: start + 600_000,
   maxCalls: 12, maxReplies: 12, maxTurns: 12, maxBytes: 32768, cursor: 0 };
 const update = (id: number, text: string) => ({ update_id: id, message: {
   chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
@@ -65,10 +65,10 @@ it('keeps dated answers and journal time ordered, and never reopens expiry after
     resumed.seed(journal.view.clockFloor);
     worker = createJournalWorker(journal, { ...ports, now: resumed.now });
     expect(resumed.now()).toBeGreaterThanOrEqual(journal.view.clockFloor);
-    wall = start + 119_999;
+    wall = start + 599_999;
     expect(() => worker.gate()).not.toThrow();
     expect(dueState(journal.view.dated[0]!, resumed.now())).toBe('upcoming');
-    wall = start + 120_000;
+    wall = start + 600_000;
     expect(() => worker.gate()).toThrow('preview stopped');
     expect(journal.view.stop).toBe('trial expired');
     wall = start + 2 * 86_400_000;

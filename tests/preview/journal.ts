@@ -581,6 +581,11 @@ export const loginOutageReply = (resetAt: number | null, zone = 'UTC') => "My mo
   + (resetAt === null ? "I don't know yet when it will be available; I'll answer as soon as it is."
     : `I expect to answer again after ${localStamp(resetAt, zone)} (${zone}).`)
   + " Your messages are kept and I'll answer them then; you don't need to resend them.";
+/** The one message a person gets before the activation end stops this agent: once, this long before the end, on a fixed text. */
+export const CLOSING_NOTICE_LEAD_MS = 5 * 60_000;
+export const closingNoticeText = (end: number, zone = 'UTC') => `This agent will stop at ${localStamp(end, zone)} (${zone}) because its activation ends then. `
+  + 'After that it cannot read or answer messages here. Its activation must be renewed before it stops; '
+  + 'once stopped, this installation refuses renewal.';
 // Accept the previous fixed wording on replay; new notices make no unsupported cause claim.
 const LOGIN_OUTAGE_TEXT = /^(?:I've used up my model allowance for now|My model is unavailable right now), so I can't answer yet\. (?:I don't know yet when it resets; I'll answer as soon as it does|I don't know yet when it will be available; I'll answer as soon as it is|I expect to answer again after [0-9]{4}-[0-9]{2}-[0-9]{2} [0-2][0-9]:[0-5][0-9] \([^()]{1,64}\))\. Your messages are kept and I'll answer them then; you don't need to resend them\.$/u;
 /** Open from a recorded outage notice until a later successful model answer. */
@@ -1247,8 +1252,8 @@ export type JournalRecord =
     /** Other held messages in this conversation the one notice also answers; none gets a second push (P-14). */
     covers?: string[]; acknowledgement?: true; acknowledgementMode?: 'reaction-or-text'; workingProgress?: WorkingProgress; waitingProgress?: true; deliveryUnknown?: true;
     /** limit-notice-1020: its own durable slot (`login-outage:<id>`). Non-additive: a reader that skipped it would repeat the notice. */
-    loginOutage?: { resetAt: number | null }; provenance?: OutboundProvenance; at: number }
-  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; loginOutage?: true; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
+    loginOutage?: { resetAt: number | null }; closing?: { end: number; zone: string }; provenance?: OutboundProvenance; at: number }
+  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; loginOutage?: true; closing?: number; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
 
   // Non-additive: reservations/checks below may follow a sent reply; an older writer must refuse.
   | { kind: 'reply-review-after-send'; id: string; at: number }
@@ -1514,6 +1519,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   deliveryNotice?: { lead: string; text: string; at: number; sent?: number };
   /** limit-notice-1020: the one fixed notice that every reviewed login was out of capacity, on the turn host custody queued. */
   loginOutageNotice?: { text: string; at: number; resetAt: number | null; sent?: number };
+  closingNotices?: { end: number; text: string; at: number; sent?: number }[];
   heldNoticeReviewReserved?: true; heldNoticeReview?: ReplyCheckResult;
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
   afterSendReview?: true; replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevRetried?: true; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
@@ -3336,6 +3342,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
     return notice?.lead === key ? { sent: notice.sent } : undefined; }
   if (kind === 'login-outage') { const notice = view.turns.get(key)?.loginOutageNotice;
     return notice ? { sent: notice.sent } : undefined; }
+  if (kind === 'closing-notice') { const notice = view.turns.get(rest.slice(1).join(':'))?.closingNotices?.find(item => item.end === Number(rest[0]));
+    return notice ? { sent: notice.sent } : undefined; }
   if (kind === 'held-notice') { const turn = view.turns.get(key);
     return turn?.heldNoticeIntent !== undefined ? { sent: turn.heldNoticeSent } : undefined; }
   if (kind === 'reply-part') { const part = view.turns.get(rest.slice(1).join(':'))?.replyParts?.[Number(rest[0]) - 2];
@@ -3432,6 +3440,7 @@ export function sendOutcomeCounts(view: JournalView) {
     for (const progress of turn.workingProgress ?? []) settle(`working-progress:${progress.ordinal}:${turn.id}`, progress.sent);
     if (turn.waitingProgress) settle(`waiting-progress:${turn.id}`, turn.waitingProgress.sent);
     if (turn.loginOutageNotice) settle(`login-outage:${turn.id}`, turn.loginOutageNotice.sent);
+    for (const notice of turn.closingNotices ?? []) settle(`closing-notice:${notice.end}:${turn.id}`, notice.sent);
     if (turn.heldNoticeIntent !== undefined) settle(`held-notice:${turn.id}`, turn.heldNoticeSent);
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
   }
@@ -3476,7 +3485,7 @@ export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' |
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'limited-intent') return { target: `limited:${row.id}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'intent') return { target: `reply:${row.id}`, chat: row.chat, ...thread, body: row.body ?? row.text };
-  if (row.kind === 'held-notice-intent') return { target: `${row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.loginOutage ? 'login-outage' : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
+  if (row.kind === 'held-notice-intent') return { target: `${row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.loginOutage ? 'login-outage' : row.closing ? `closing-notice:${row.closing.end}` : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
   return { target: `requested-reminder:${String(row.batch)}`, chat: row.chat, ...thread, body: row.body };
 }
 /** Verifies a recorded system writer's owner signature over its exact occurrence. */
@@ -4698,6 +4707,26 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     turn.heldNoticeReview = row.result;
     if (row.result.verdict !== 'unavailable') settleTokens(view, `held-notice-review:${row.id}`, row.result.usage);
     return;
+  }
+  if (row.kind === 'held-notice-intent' && row.closing) {
+    if (!turn.accepted || !operatorWriter(view, turn, true) || row.closing.end !== view.expires
+      || view.order.some(item => item.closingNotices?.some(notice => notice.end === row.closing!.end))
+      || typeof row.closing.zone !== 'string' || row.closing.zone.length > 64
+      || row.text !== closingNoticeText(row.closing.end, row.closing.zone)
+      || view.stop !== null || row.at >= view.expires || row.at < view.expires - CLOSING_NOTICE_LEAD_MS
+      || view.replies >= view.limits.maxReplies - 1
+      || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant
+      || row.workingProgress || row.waitingProgress || row.deliveryUnknown || row.loginOutage || row.acknowledgement || row.acknowledgementMode || row.covers
+      || !row.provenance || admission === 'new' && row.provenance.speaker !== 'infrastructure')
+      throw Error('preview journal: closing notice refused');
+    (turn.closingNotices ??= []).push({ end: row.closing.end, text: row.text, at: row.at }); view.replies++; return;
+  }
+  if (row.kind === 'held-notice-sent' && row.closing) {
+    const notice = turn.closingNotices?.find(item => item.end === row.closing);
+    if (!notice || notice.sent !== undefined || !Number.isSafeInteger(row.message) || row.message <= 0
+      || row.deliveryUnknown || row.loginOutage || row.workingProgress || row.waitingProgress || row.acknowledgementPath)
+      throw Error('preview journal: closing notice receipt order');
+    notice.sent = row.message; return;
   }
   if (row.kind === 'held-notice-intent' && row.loginOutage) {
     const resetAt = row.loginOutage.resetAt;
@@ -8624,6 +8653,32 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: turn.id, loginOutage: true, message: outcome.message, at: ports.now() }); }
     catch { /* the notice stays UNKNOWN; never repeated */ }
   };
+  /** Silence is the worst way to end: the person is told once, before the activation end, with a fixed text and no model call.
+   * It goes where they last wrote. Its intent precedes dispatch, so a crash or an UNKNOWN never repeats it. */
+  let closingInFlight: Promise<void> | undefined;
+  const noticeClosing = () => closingInFlight ??= sendClosingNotice().finally(() => { closingInFlight = undefined; });
+  const sendClosingNotice = async () => {
+    const now = ports.now();
+    if (journal.view.stop || ports.stopped() || now >= journal.view.expires || now < journal.view.expires - CLOSING_NOTICE_LEAD_MS
+      || journal.view.replies >= journal.view.limits.maxReplies - 1
+      || journal.view.order.some(turn => turn.closingNotices?.some(notice => notice.end === journal.view.expires))) return;
+    const lead = [...journal.view.order].reverse().find(turn => turn.accepted && fromOperator(turn));
+    if (!lead) return;
+    const end = journal.view.expires, zone = ports.timeZone ?? 'America/Los_Angeles';
+    const text = closingNoticeText(end, zone), chat = journal.view.genesis.chat;
+    const thread = lead.thread === undefined ? {} : { thread: lead.thread }, target = `closing-notice:${end}:${lead.id}`;
+    ports.checkOutbound(text);
+    const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
+    // An acknowledgement, a stop or the end can land while disclosure is awaited: the notice is then dropped, never a failed pass.
+    const current = () => journal.view.stop === null && !ports.stopped() && ports.now() < end && journal.view.expires === end
+      && (lead.closingNotices?.some(notice => notice.end === end) || journal.view.replies < journal.view.limits.maxReplies - 1);
+    const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: lead.update, current }, () => {
+      journal.append({ kind: 'held-notice-intent', id: lead.id, closing: { end, zone }, text, chat, ...thread, update: lead.update,
+        grant: journal.view.genesis.grant, provenance, at: ports.now() });
+    });
+    if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: lead.id, closing: end, message: outcome.message, at: ports.now() }); }
+    catch { /* the notice stays UNKNOWN; never repeated */ }
+  };
   /** Rules 2, 87, 88: a disclosure hold past the self-heal window is told once, content-free, per notice window; the
    * held turns are named only by this fixed text. Its intent precedes dispatch and an UNKNOWN is never repeated. */
   const noticeDisclosureHolds = async () => {
@@ -10297,6 +10352,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         wakeTopicDrain = pump; pump();
       });
       await noticeFailedReplies();
+      await noticeClosing();
       if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
       // held-notice rows still replay; no other held notice is ever pushed.
@@ -12300,7 +12356,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // Rules 4/15/77: review must not delay intake or the limited responder. The ordinary drain
     // awaits this same promise for final-send ordering and propagates any failure.
     for (const turn of acknowledgementTimers.keys()) void acknowledgeReply(turn).catch(() => {});
+    // The limited pass goes first so its one-pass claim is taken before anything here yields; yielding first let a
+    // concurrent drain send the same stop confirmation. It never waits on an ordinary model, so the warning is not delayed.
     await answerLimited();
+    await noticeClosing();
     await pollReviewRequests(); await issueRetractRequest(); };
   return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 

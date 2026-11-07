@@ -114,6 +114,56 @@ function control(name, mutate, error) {
     } finally { rmSync(f.root, { recursive: true, force: true }); }
   });
 }
+const SHIFT = -15 * 86_400_000;
+// A shifted run: Vitest's file windows sit on the worker clock, everything else on the host clock.
+function shiftedRun(f, clockShift) {
+  for (const file of f.report.testResults) { file.startTime += SHIFT; file.endTime += SHIFT; }
+  if (clockShift !== undefined) f.exit.clockShift = clockShift;
+}
+it('BOOT-SPLIT evidence accepts host-clock receipts of a run whose file windows carry the test clock', () => {
+  const f = fixture();
+  try {
+    shiftedRun(f, SHIFT);
+    const result = run(f);
+    expect(result.status, result.stderr).toBe(0);
+  } finally { rmSync(f.root, { recursive: true, force: true }); }
+});
+// What Vitest writes for a file none of whose tests ever started: the report start, twice, host clock.
+function neverStarted(f, stamp) {
+  const name = join(f.root, 'tests/other.test.ts');
+  Object.assign(f.report.testResults.find(file => file.name === name), { startTime: stamp, endTime: stamp,
+    assertionResults: [{ fullName: 'other suite case', status: 'skipped', failureMessages: [] }] });
+  f.report.numPassedTests = 4;
+}
+for (const [label, clockShift] of [['a shifted run', SHIFT], ['an unshifted run', 0]]) {
+  it(`BOOT-SPLIT evidence accepts a never-started file stamped at the report start in ${label}`, () => {
+    const f = fixture();
+    try {
+      if (clockShift) shiftedRun(f, clockShift); else f.exit.clockShift = 0;
+      neverStarted(f, f.report.startTime);
+      const result = run(f);
+      expect(result.status, result.stderr).toBe(0);
+    } finally { rmSync(f.root, { recursive: true, force: true }); }
+  });
+}
+control('a shifted worker file that ended outside the run', f => {
+  shiftedRun(f, SHIFT);
+  f.report.testResults.at(-1).endTime += 3_600_000;
+}, /report\/process execution window/);
+control('a never-started file stamped after the report start in a shifted run', f => {
+  shiftedRun(f, SHIFT);
+  neverStarted(f, f.report.startTime + 3_600_000);
+}, /report\/process execution window/);
+control('an unshifted worker file that ended outside the run', f => {
+  f.report.testResults.at(-1).endTime += 3_600_000;
+}, /report\/process execution window/);
+control('a shifted run whose exit row records no clock shift', f => shiftedRun(f), /report\/process execution window/);
+control('a receipt left by an earlier shifted run', f => {
+  shiftedRun(f, SHIFT);
+  const receipt = f.receipts[0], earlier = 3_600_000;
+  receipt.start -= earlier; receipt.end -= earlier;
+  receipt.trace.start -= earlier; receipt.trace.end -= earlier;
+}, /receipt outside current report\/test execution window/);
 it('BOOT-SPLIT evidence accepts four independent complete fixture receipts and is read-only/idempotent', () => {
   const f = fixture();
   try {

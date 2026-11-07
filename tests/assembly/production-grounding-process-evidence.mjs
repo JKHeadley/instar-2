@@ -25,7 +25,8 @@ if(entry.endsWith('/vitest/vitest.mjs')&&realpathSync(process.cwd())===root){
       const dir=resolve(root,'.instar/lanes/round4c-artifacts');mkdirSync(dir,{recursive:true});
       appendFileSync(resolve(dir,'process-exits.jsonl'),JSON.stringify({root,revision,sourceDigest,
         reportDigest:createHash('sha256').update(JSON.stringify(report)).digest('hex'),
-        started,ended:Date.now(),reportStart:report.startTime,code})+'\n');
+        started,ended:Date.now(),reportStart:report.startTime,code,
+        clockShift:Number(process.env.INSTAR_TEST_CLOCK_SHIFT_MS)||0})+'\n');
     });
   }
 }
