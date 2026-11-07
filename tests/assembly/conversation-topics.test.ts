@@ -418,15 +418,28 @@ it('four busy topics all receive workers when measured headroom exists', async (
   f.held.clear(); await Promise.all(runs); await f.port.close();
 });
 
-it('low CPU headroom preserves input queued, then drains without resubmission', async () => {
-  const f = fixture(8); let room = false;
+// Rule 15. The real waits this replaces: update 969390685 was refused 156 times over 18 minutes, 969390684 10 times.
+it('with no worker live a refused headroom sample still starts the first worker, and decides the next one', async () => {
+  const f = fixture(8, 6, 16, 600000); let sampled = 0;
+  Object.assign(f.config, { capacity: async () => { sampled++; return { admit: false, memoryPressure: false }; } });
+  expect(await f.port.run(f.request('7:a'))).toMatchObject({ state: 'complete' });
+  expect(f.launches).toHaveLength(1); expect(sampled).toBe(0);
+  expect(await f.port.run(f.request('8:a'))).toMatchObject({ state: 'queued' });
+  expect(f.launches).toHaveLength(1); expect(sampled).toBeGreaterThan(0);
+  expect(f.state().topics['8']!.inputs[0]).toMatchObject({ state: 'queued', delivery: null, attempts: 0 });
+  await f.port.close();
+});
+
+it('low CPU headroom preserves an additional worker\'s input queued, then drains without resubmission', async () => {
+  const f = fixture(8, 6, 16, 600000); let room = false;
   Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: false }) });
+  await f.port.run(f.request('9:resident'));
   expect(await f.port.run(f.request('7:a'))).toMatchObject({ state: 'queued' });
   expect(f.state().topics['7']!.inputs[0]).toMatchObject({ state: 'queued', delivery: null, attempts: 0 });
-  expect(f.launches).toHaveLength(0);
+  expect(f.launches).toHaveLength(1);
   room = true; await f.port.maintain();
   expect(await f.port.collect('7:a')).toMatchObject({ outcome: { state: 'complete' } });
-  expect(f.delivered).toHaveLength(1); await f.port.close();
+  expect(f.delivered).toHaveLength(2); await f.port.close();
 });
 
 it('idle context survives six minutes and two hours, with the same worker on return', async () => {
@@ -456,30 +469,31 @@ it('memory pressure retires the oldest idle worker, never a busy worker', async 
 });
 
 it('a replacement also waits for headroom while a healthy retained worker can still answer', async () => {
-  const f = fixture(8); let room = true;
+  const f = fixture(8, 6, 16, 600000); let room = true;
   Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: false }) });
-  await f.port.run(f.request('7:a')); room = false;
+  await f.port.run(f.request('7:a')); f.advance(1000);
+  await f.port.run(f.request('9:resident')); room = false;
   expect(await f.port.run(f.request('7:b'))).toMatchObject({ state: 'complete' });
-  f.advance(2000);
+  f.advance(599000);
   expect(await f.port.run(f.request('7:c'))).toMatchObject({ state: 'queued' });
-  expect(f.launches).toHaveLength(1);
+  expect(f.launches).toHaveLength(2);
   room = true; await f.port.maintain();
   expect(await f.port.collect('7:c')).toMatchObject({ outcome: { state: 'complete' } });
-  expect(f.launches).toHaveLength(2); await f.port.close();
+  expect(f.launches).toHaveLength(3); await f.port.close();
 });
 
 it('an observed idle exit cannot replace a worker without current capacity', async () => {
-  const f = fixture(); let room = true;
-  Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: !room }) });
-  await f.port.run(f.request('7:a'));
+  const f = fixture(8, 6, 16, 600000); let room = true;
+  Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: false }) });
+  await f.port.run(f.request('9:resident')); await f.port.run(f.request('7:a'));
   room = false; f.exited.add('7');
   expect(await f.port.run(f.request('7:b'))).toMatchObject({ state: 'queued' });
-  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+  expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(2);
   expect(f.state().topics['7']!.inputs[1]).toMatchObject({ state: 'queued', delivery: null, attempts: 0 });
   room = true; f.exited.clear(); await f.port.maintain();
   expect(await f.port.collect('7:b')).toMatchObject({ outcome: { state: 'complete' } });
-  expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(2);
-  await f.port.maintain(); expect(f.delivered).toHaveLength(2); await f.port.close();
+  expect(f.launches).toHaveLength(3); expect(f.delivered).toHaveLength(3);
+  await f.port.maintain(); expect(f.delivered).toHaveLength(3); await f.port.close();
 });
 
 it('capacity is measured after a busy slot wait and queued input drains when it returns', async () => {
@@ -503,19 +517,20 @@ it('capacity is measured after a busy slot wait and queued input drains when it 
 const recordedCapacityShapes = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
   otherShapes: { kind: string; id: string; raw: string }[] };
 it.each(recordedCapacityShapes.otherShapes)('capacity wait preserves recorded $kind ($id) before dispatch', async sample => {
-  const f = fixture(8); let room = false;
+  const f = fixture(8, 6, 16, 600000); let room = false;
   Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: false }) });
+  await f.port.run(f.request('9:resident'));
   const request = { ...f.request('7:recorded'), context: JSON.stringify({ recorded: sample.raw }) };
   expect(await f.port.run(request)).toMatchObject({ state: 'queued' });
   expect(f.state().topics['7']!.inputs[0]!.request).toEqual(request);
-  expect(f.delivered).toHaveLength(0);
+  expect(f.delivered).toHaveLength(1);
   room = true; await f.port.maintain();
-  expect(f.delivered).toHaveLength(1); expect(f.delivered[0]!.input.text).toContain(request.context);
-  await f.port.maintain(); expect(f.delivered).toHaveLength(1); await f.port.close();
+  expect(f.delivered).toHaveLength(2); expect(f.delivered[1]!.input.text).toContain(request.context);
+  await f.port.maintain(); expect(f.delivered).toHaveLength(2); await f.port.close();
 });
 
 it.each(recordedCapacityShapes.otherShapes)('capacity recovery preserves topic-local grounding for recorded $kind ($id)', async sample => {
-  const f = fixture(8); let room = false;
+  const f = fixture(8, 6, 16, 600000); let room = false;
   const snapshots: { topic: string; text: string }[] = [];
   const topicConfig: NonNullable<ConversationTopicsConfig['topicConfig']> = topic => ({
     io: f.config.io, resources: f.config.resources, authorized: f.config.authorized,
@@ -528,12 +543,13 @@ it.each(recordedCapacityShapes.otherShapes)('capacity recovery preserves topic-l
     },
   });
   Object.assign(f.config, { topicConfig, capacity: async () => ({ admit: room, memoryPressure: false }) });
+  await f.port.run(f.request('9:resident')); snapshots.length = 0;
   for (const topic of ['7', '8']) {
     const request = { ...f.request(`${topic}:recorded`), context: JSON.stringify({ topic, recorded: sample.raw }) };
     expect(await f.port.run(request)).toMatchObject({ state: 'queued' });
     expect(f.state().topics[topic]!.inputs[0]!.request).toEqual(request);
   }
-  expect(snapshots).toHaveLength(0); expect(f.delivered).toHaveLength(0);
+  expect(snapshots).toHaveLength(0); expect(f.delivered).toHaveLength(1);
   room = true; await f.port.maintain();
   expect(snapshots).toHaveLength(2);
   for (const topic of ['7', '8']) {
@@ -542,21 +558,22 @@ it.each(recordedCapacityShapes.otherShapes)('capacity recovery preserves topic-l
     expect(delivered.input.text).toContain(JSON.stringify({ topic, recorded: sample.raw }));
     expect(await f.port.collect(`${topic}:recorded`)).toMatchObject({ outcome: { state: 'complete' } });
   }
-  await f.port.maintain(); expect(f.delivered).toHaveLength(2); await f.port.close();
+  await f.port.maintain(); expect(f.delivered).toHaveLength(3); await f.port.close();
 });
 
 // The review reproduction also covers the retry after reclaiming an idle topic.
 it.each([false, true])('physical lease wait rechecks headroom (retry=%s)', async retry => {
-  const f = fixture(2, 6, 16, 600000); let room = true, entered = false, calls = 0;
+  const f = fixture(3, 6, 16, 600000); let room = true, entered = false, calls = 0;
   Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: !room }) });
-  if (retry) await f.port.run(f.request('8:resident'));
+  await f.port.run(f.request('8:resident'));
+  if (retry) await f.port.run(f.request('9:resident'));
   const before = f.delivered.length;
   let resume!: () => void;
   const waiting = new Promise<void>(resolve => { resume = resolve; });
   const admit = f.config.resources.admit;
   Object.assign(f.config.resources, { admit: async () => {
     calls++;
-    if (retry && f.counts().live > 0) return null;
+    if (retry && f.counts().live > 1) return null;
     entered = true; await waiting; return admit();
   } });
   const request = f.request('7:physical');
@@ -572,7 +589,7 @@ it.each([false, true])('physical lease wait rechecks headroom (retry=%s)', async
   room = false; resume();
   expect(await pending).toMatchObject({ state: 'queued' });
   expect(f.launches).toHaveLength(before); expect(f.delivered).toHaveLength(before);
-  expect(f.counts().live).toBe(0);
+  expect(f.counts().live).toBe(retry ? 0 : 1); // The denied retry's memory pressure also reclaimed the confirmed idle resident.
   expect(f.state().edge).toEqual(reservation);
   expect(f.state().topics['7']).toMatchObject({ spent: 0, worker: null, claim: null, reserved: true });
   expect(f.state().topics['7']!.inputs[0]).toMatchObject({ request, digest: input.digest, state: 'queued', delivery: null, attempts: 0 });
@@ -585,19 +602,21 @@ it.each([false, true])('physical lease wait rechecks headroom (retry=%s)', async
 });
 
 it('an unreadable post-admission capacity sample releases the unused lease', async () => {
-  const f = fixture();
+  const f = fixture(8, 6, 16, 600000);
   Object.assign(f.config, { capacity: async () => { throw Error('measurement unavailable'); } });
+  await f.port.run(f.request('9:resident'));
   expect(await f.port.run(f.request('7:a'))).toMatchObject({ state: 'uncertain' });
-  expect(f.launches).toHaveLength(0); expect(f.delivered).toHaveLength(0);
-  expect(f.counts().live).toBe(0); await f.port.close();
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+  expect(f.counts().live).toBe(1); await f.port.close(); expect(f.counts().live).toBe(0);
 });
 
 it.each([false, true])('review: physical lease wait uses current headroom %s', async roomAfterWait => {
-  const f = fixture(); let room = true, entered = false;
+  const f = fixture(8, 6, 16, 600000); let room = true, entered = false;
   let releaseWait!: () => void;
   const waitForLease = new Promise<void>(resolve => { releaseWait = resolve; });
   const originalAdmit = f.config.resources.admit;
-  Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: !room }) });
+  Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: false }) });
+  await f.port.run(f.request('9:resident'));
   Object.assign(f.config.resources, { admit: async () => {
     entered = true; await waitForLease; return originalAdmit();
   } });
@@ -608,8 +627,8 @@ it.each([false, true])('review: physical lease wait uses current headroom %s', a
   const evidence = { state: result.state, launches: f.launches.length, deliveries: f.delivered.length, live: f.counts().live };
   await f.port.close();
   expect(evidence).toEqual(roomAfterWait
-    ? { state: 'complete', launches: 1, deliveries: 1, live: 1 }
-    : { state: 'queued', launches: 0, deliveries: 0, live: 0 });
+    ? { state: 'complete', launches: 2, deliveries: 2, live: 2 }
+    : { state: 'queued', launches: 1, deliveries: 1, live: 1 });
 });
 
 
