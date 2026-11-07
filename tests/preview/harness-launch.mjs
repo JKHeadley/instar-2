@@ -41,6 +41,10 @@ const argv = process.argv.slice(2);
 const fail = message => { process.stderr.write(`harness-launch: ${message}\n`); process.exit(125); };
 
 if (argv[0] === '--probe') {
+  // One write, awaited before exit: stdout to a pipe is asynchronous on macOS, so per-row writes followed by
+  // process.exit dropped the queued tail once thousands of /private/tmp rows were probed, and the runner read a
+  // short reply as "launch not permitted".
+  let rows = '';
   for (const spec of argv.slice(1)) {
     const mode = spec.slice(0, 2), path = spec.slice(2);
     if (!['r:', 'w:'].includes(mode) || !path.startsWith('/')) fail(`probe spec ${JSON.stringify(spec)}`);
@@ -51,8 +55,9 @@ if (argv[0] === '--probe') {
       else { const fd = openSync(path, 'r'); try { readSync(fd, Buffer.alloc(1), 0, 1, 0); } finally { closeSync(fd); } }
       ok = true;
     } catch (error) { code = error?.code ?? 'error'; }
-    process.stdout.write(`${JSON.stringify({ path, mode: mode[0], ok, code })}\n`);
+    rows += `${JSON.stringify({ path, mode: mode[0], ok, code })}\n`;
   }
+  await new Promise(resolve => process.stdout.write(rows, resolve));
   process.exit(0);
 }
 

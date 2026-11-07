@@ -2,7 +2,7 @@
 // each proven on both sides without the root step (fakes for sudo and the probe; the launcher and the resource owner on
 // real processes of this user). The live proof against the real `_instarharness` user is
 // tests/integration/tool-turn-harness-user-live.test.ts.
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -335,6 +335,18 @@ describe('the launcher', () => {
   const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
   const pidOf = (out: string, name: string) => Number(readFileSync(join(out, name), 'utf8').trim());
   const waitFor = async (check: () => boolean, ms = 3000) => { const end = Date.now() + ms; while (!check() && Date.now() < end) await new Promise(r => setTimeout(r, 20)); return check(); };
+
+  it('delivers every probe row through a pipe before exiting, and a short reply is refused (both sides)', () => {
+    // A busy Studio probes thousands of /private/tmp entries; per-row pipe writes then process.exit lost the tail on macOS.
+    const specs = Array.from({ length: 9000 }, (_, i) => `r:${dir}/absent-${String(i).padStart(5, '0')}`);
+    for (let run = 0; run < 5; run++) {
+      const rows = probeAccess(specs, { exec: (_command: string, args: string[], options: object) =>
+        execFileSync(process.execPath, [launcher, ...args.slice(4)], options) });
+      expect(rows).toHaveLength(specs.length);
+    }
+    const lines = specs.map(spec => JSON.stringify({ path: spec.slice(2), mode: 'r', ok: false, code: 'ENOENT' }));
+    expect(probeAccess(specs, { exec: () => `${lines.slice(0, 1075).join('\n')}\n` })).toBeNull();
+  });
 
   it('passes exactly the given environment and the exit code, and ends what the harness left behind', async () => {
     const out = fresh('launcher-exit');
