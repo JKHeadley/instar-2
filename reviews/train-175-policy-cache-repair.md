@@ -1,6 +1,7 @@
 # Change review — keep reviewed subscription profiles usable after cache refresh
 
-Subject base: b8170121555ada94a5be46e78f21dc09fa050e74
+Subject base: 78fa9e5e763602705086009de21cd4561167b3a7
+Source attribution: Reused owner 0c1d832a4816aeb21891e5a89242497d12c76fc1; original Subject base: 428b6287201846c206e76be32f066a6b538333e3 retained in that commit. Historical verification below belongs to that owner; current integration evidence is in train-188-repair-1747-PROGRESS.md.
 Review state: open
 Reviewed content: none
 Outcome: The ordinary tool route can construct its subscription provider after Claude Code writes signed policy-cache metadata or first populates its restrictive cache. The saved turn remains available; no effect is replayed by this repair.
@@ -25,14 +26,17 @@ Owner provenance: Complete source/tests/fixture reused from 0c1d832a4816aeb21891
 
 1.x comparison: Searched actual JKHeadley/instar origin/main cc11e45f92e2590dd1bbd3c3facb5b849532f0fc src/ and docs/specs/ for launch/spawn failures, policy-limits, policyLimits and remote-settings.json; searched git history with -G for policy-limits|remote-settings.json. No matching cache implementation in those inspected paths. Related src/core/SessionManager.ts handleReadyAndInject retains a startup failure and retries stale resume once; docs/specs/cli-login-expired-opens-repair.eli16.md and commit 7da5a52ff corroborate real login failures instead of trusting labels. Read ONEX-LESSONS section 4. No 1.x code transplanted: the exact fit is existing 2.0 subscriptionServerPolicy, including its separation of cache freshness from effective policy. A model retry cannot repair this pre-dispatch failure.
 
-Decision: train-175-cache | Reuse the existing bounded cache inspector; recognize only the pinned CLI's signature/issuance schemas. Keep cryptographic verification with that CLI and enforce Instar authority at the existing profile, hook and effect checkpoints. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-175-repair-PROGRESS.md
-Decision: train-175-enrollment | A digest enrolled before any cache already permits the baseline: arrival of a cache that only restricts it cannot widen authority. Preserve that digest only after every cache check succeeds. Preserve stricter cache-bound enrollment when it exists. No new grant or profile mutation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-175-repair-PROGRESS.md
+Decision: train-175-cache | Reuse the existing bounded cache inspector; recognize only the pinned CLI's signature/issuance schemas. Keep cryptographic verification with that CLI and enforce Instar authority at the existing profile, hook and effect checkpoints. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-188-repair-1747-PROGRESS.md
+Decision: train-175-enrollment | A digest enrolled before any cache already permits the baseline: arrival of a cache that only restricts it cannot widen authority. Preserve that digest only after every cache check succeeds. Preserve stricter cache-bound enrollment when it exists. No new grant or profile mutation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-188-repair-1747-PROGRESS.md
 
 Verification: tsc and build pass. Both changed test files pass (122 tests); recorded host profile matches its existing identity and managed digest with hooks enabled. Architecture reports only the charter-exempt native macOS self-host composition certificate. Source pins and register are regenerated with the delegated desk tools. The automatic Studio answer/full-test gate remains outstanding.
 
 Register replay: regenerated seven generated/ outputs from source commit 0c1d832a4816aeb21891e5a89242497d12c76fc1 using the existing replay command (297 entries, 120 rules). The owner rehash and support-source repin scripts completed with zero changes. This record covers the generated commit as well as the source repair.
 
 Deferral: generated/register.json:1 | not-a-deferral=Regenerated full-line register retains existing rule wording; no implementation is postponed.
+Deferral: docs/evidence/train-192-notice-owner/constitution-attributed-statements-change-review.md:29 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-one-constitution-change-review.md:30 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md:29 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
 
 ## Closing block
 
