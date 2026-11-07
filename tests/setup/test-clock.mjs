@@ -10,5 +10,6 @@ if (Number.isSafeInteger(shift) && shift !== 0) {
   Object.setPrototypeOf(TestDate, Real);
   TestDate.prototype = Real.prototype;
   TestDate.now = () => now() + shift;
+  TestDate.hostNow = now; // tests/setup/host-clock.mjs: run evidence stays on the host clock
   globalThis.Date = TestDate;
 }

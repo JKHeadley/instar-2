@@ -58,6 +58,12 @@ function allTestFiles(directory = join(root, 'tests')) {
     return entry.name.endsWith('.test.ts') ? [rootedFile(path)] : [];
   });
 }
+/** Vitest stamps a file's window on the worker clock; evidence and the report start are on the host
+ * clock. The exit row records the run's shift, so a window moves to the host clock before comparing. */
+export function hostFileWindow(file, exit) {
+  const shift = exit.clockShift ?? 0;
+  return { start: file.startTime - shift, end: file.endTime - shift };
+}
 function timeWindow(start, end, lower, upper, message) {
   fail(finite(start) && finite(end) && start <= end && start >= lower && end <= upper, message);
 }
@@ -79,8 +85,9 @@ function checkReceipt(receipt, shard, file, sourceDigest, revision, bin, report,
   equal(receipt.fullName, fullName(shard), 'receipt full name');
   equal(receipt.shard, shard.id, 'receipt shard');
   equal(receipt.bin, bin, 'current invoked bin bytes/path');
-  timeWindow(receipt.start, receipt.end, Math.max(report.startTime, file.startTime),
-    Math.min(file.endTime + 100, exit.ended), 'receipt outside current report/test execution window');
+  const window = hostFileWindow(file, exit);
+  timeWindow(receipt.start, receipt.end, Math.max(report.startTime, window.start),
+    Math.min(window.end + 100, exit.ended), 'receipt outside current report/test execution window');
   // Successful roots are removed after fsync; their canonical paths were asserted
   // by the runner before each invocation, and are retained as evidence identities.
   fail(typeof receipt.workRoot === 'string' && isAbsolute(receipt.workRoot)
@@ -187,7 +194,7 @@ export function checkBootRecoveryCoverage(report, sourceDigest, otherHalfFiles =
       && row.reportDigest === reportDigest && row.reportStart === report.startTime);
   fail(exits.length === 1 && exits[0].code === 0, 'one actual successful Vitest main-process exit required');
   const exit = exits[0];
-  timeWindow(report.startTime, Math.max(...report.testResults.map(file => file.endTime)), exit.started - 1000, exit.ended + 100, 'report/process execution window');
+  timeWindow(report.startTime, Math.max(...report.testResults.map(file => hostFileWindow(file, exit).end)), exit.started - 1000, exit.ended + 100, 'report/process execution window');
   const binPath = rootedFile(join(root, 'bin/instar-production.mjs'));
   const bin = { path: realpathSync(binPath), hash: sha(readFileSync(binPath)) };
   const retired = join(root, 'tests/assembly/production-boot-conversation.test.ts');

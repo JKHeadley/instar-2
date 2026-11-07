@@ -4580,3 +4580,9 @@ same shift; elapsed timers continue advancing and explicit fixture boundary cloc
 precedence. The fixture anchor stays fixed when the shipped activation end moves. This neither
 changes production time nor authorizes an expired record; expiry and renewal tests inject
 both sides of the actual reviewed end explicitly.
+
+Every shifted run starts at the same fixed test time, so that clock cannot tell one run from
+the last. Evidence a gate compares with the run's start therefore stays on the host clock
+(`tests/setup/host-clock.mjs`): model-provider proofs, the grounding ledger and boot receipts.
+Vitest stamps file windows on the shifted clock, so the process exit row records the shift and
+the gate moves each window back to the host clock before comparing.
