@@ -333,24 +333,32 @@ const UNCONFIRMED_UNKNOWN_ANSWER_NOTICE = 'Completion of your request is unconfi
   + 'Work may have changed files or external services; those results are not confirmed by this notice. '
   + 'Your request and this attempt remain in the conversation record. This attempt is not automatically retried. '
   + 'Before resuming, the recorded work and current external state need to be checked so completed actions are not repeated.';
+/** Bytes the train delivered before the combined notice; recognized only, never sent anew. */
+const PLAIN_UNKNOWN_ANSWER_NOTICE = 'Work on your request stopped before a finished answer was available. The reason is unknown. Your request and this incomplete attempt are saved. This attempt will not be repeated automatically.';
 export const UNKNOWN_ANSWER_NOTICE = 'Work on your request stopped before a finished answer was available. The reason is unknown. '
   + 'Completion of your request is unconfirmed. Work may have changed files or external services. '
   + 'Your request and this incomplete attempt are saved. This attempt will not be repeated automatically. '
   + 'Before resuming, the recorded work and current external state need to be checked so completed actions are not repeated.';
 /** Quote the person's own words, rather than infer a task name from an unfinished model output. */
-const noticeRequest = (text: string) => {
+const noticeRequest = (text: string, limit: number) => {
   const quote = redact(text).text.trim();
-  return quote.length > 700 ? `${quote.slice(0, 699)}…` : quote;
+  return quote.length > limit ? `${quote.slice(0, limit - 1)}…` : quote;
 };
 const failedToolChecks = (count: number | undefined) => count === undefined ? ''
   : ` ${count} tool checks returned results, but those results were not verified into an answer. The requested result remains unverified; no tool work was automatically repeated.`;
-/** Counts completed tool attempts, never successful checks or task completion. */
-export function unknownAnswerNotice(turn: Pick<Turn, 'text' | 'safetyCeiling' | 'toolChecks'>): string {
-  const reason = turn.safetyCeiling ? SAFETY_CEILING_NOTICE : UNKNOWN_ANSWER_NOTICE;
-  const request = noticeRequest(turn.text);
+type NoticeTurn = Pick<Turn, 'text' | 'safetyCeiling' | 'toolChecks'>;
+const renderUnknownAnswerNotice = (turn: NoticeTurn, unknownReason: string, requestLimit: number) => {
+  const reason = turn.safetyCeiling ? SAFETY_CEILING_NOTICE : unknownReason;
+  const request = noticeRequest(turn.text, requestLimit);
   const checks = failedToolChecks(turn.toolChecks);
   return `${reason}${request ? ` Your request: “${request}”` : ''}${checks}`;
+};
+/** Counts completed tool attempts, never successful checks or task completion. */
+export function unknownAnswerNotice(turn: NoticeTurn): string {
+  return renderUnknownAnswerNotice(turn, UNKNOWN_ANSWER_NOTICE, 700);
 }
+/** The exact notice the train's earlier writer rendered for this turn, under its 800-character quote bound. */
+const plainUnknownAnswerNotice = (turn: NoticeTurn) => renderUnknownAnswerNotice(turn, PLAIN_UNKNOWN_ANSWER_NOTICE, 800);
 
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
 export const TOO_LONG_REPLY_NOTICE = 'I produced an answer, but it was too long for one Telegram reply. I did not send part of it. Please ask for a shorter answer.';
@@ -7337,6 +7345,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // The label follows the text actually intended: review can replace the notice with a holding reply.
   const lostNotice = (item: Turn) => item.noticeClass !== undefined && [
     ...[LEGACY_UNKNOWN_ANSWER_NOTICE, UNCONFIRMED_UNKNOWN_ANSWER_NOTICE].flatMap(notice => [notice, notice + failedToolChecks(item.toolChecks)]),
+    PLAIN_UNKNOWN_ANSWER_NOTICE, plainUnknownAnswerNotice(item),
     UNKNOWN_ANSWER_NOTICE, unknownAnswerNotice(item), 'I lost my answer to that message. Please send it again.',
   ].includes(replyBody(item)?.replace(/^PREVIEW — /u, '') ?? '');
   const modelFailure = (item: Turn) => item.answer === MODEL_FAILURE_REPLY

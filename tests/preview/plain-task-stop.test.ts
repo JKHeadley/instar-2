@@ -118,6 +118,76 @@ for (const toolChecks of [undefined, 6]) it(`keeps historical notice bytes and c
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
+// Literal bytes of the writer at e57d3ed79: changing the current notice must not change these.
+const parentNotice = (request: string, toolChecks?: number) => 'Work on your request stopped before a finished answer was available. '
+  + 'The reason is unknown. Your request and this incomplete attempt are saved. This attempt will not be repeated automatically.'
+  + ` Your request: “${request}”`
+  + (toolChecks === undefined ? '' : ` ${toolChecks} tool checks returned results, but those results were not verified into an answer. The requested result remains unverified; no tool work was automatically repeated.`);
+const longRequest = 'a'.repeat(900);
+const parentCases = [
+  { name: 'quoted request', text: captured.request as string, quote: captured.request as string },
+  { name: 'request at the old 800 bound', text: longRequest, quote: `${'a'.repeat(799)}…` },
+  { name: 'request between the two bounds', text: 'b'.repeat(750), quote: 'b'.repeat(750) },
+];
+for (const { name, text, quote } of parentCases) for (const toolChecks of [undefined, 6])
+for (const receipt of [true, false]) for (const disclosed of [false, true])
+it(`keeps the train parent notice classified: ${name}, toolChecks=${toolChecks}, receipt=${receipt}, disclosed=${disclosed}`, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'plain-stop-parent-')), path = join(root, 'journal');
+  let journal = openPreviewJournal(path, key, genesis), context = '';
+  const sha = (value: string) => createHash('sha256').update(value).digest('hex');
+  const disclosure = 'Earlier conversation is now summarized for me. Your previous request is still open; no finished answer is confirmed.';
+  const historical = parentNotice(quote, toolChecks);
+  const intent = disclosed ? `${disclosure} ${historical}` : historical;
+  try {
+    const ports = { now: () => 1000, stopped: () => false, model: async (input: { context: string }) => {
+      context = input.context; return 'A complete answer.'; }, checkOutbound: () => {}, send: async () => 2 };
+    const worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, 'An earlier request'), update(2, text)]);
+    journal.append({ kind: 'reserve', id: id(1), at: 1000 });
+    journal.append({ kind: 'answer', id: id(1), text: 'An earlier answer.', state: 'complete', at: 1000 });
+    journal.append({ kind: 'intent', id: id(1), text: 'An earlier answer.', chat: genesis.chat, update: 1, grant: genesis.grant, at: 1000 });
+    journal.append({ kind: 'sent', id: id(1), message: 1, at: 1000 });
+    journal.append({ kind: 'reserve', id: id(2), ...(disclosed ? { grounding: { packetSha256: 'p', summaryThrough: 1,
+      compactedThrough: 1, history: [], recalled: [], people: [], commitments: [], channelItems: [],
+      corrections: [], memoryChanges: [], memoryCandidates: [] } } : {}), at: 1000 });
+    journal.append({ kind: 'model-uncertain', id: id(2), state: 'uncertain', ...(toolChecks ? { toolChecks } : {}), at: 1000 });
+    journal.append({ kind: 'notice', id: id(2), noticeClass: 'unknown-answer', at: 1000 });
+    journal.append({ kind: 'intent', id: id(2), text: intent, chat: genesis.chat, update: 2, grant: genesis.grant, at: 1000,
+      ...(disclosed ? { continuity: { prePauseInbound: id(1), capture: sha(journal.view.order[0]!.raw), summarizedThrough: 1,
+        grounding: 'p', disposition: 'pending' as const, reference: 'no reply from me yet', disclosure, replyDigest: sha(intent) } } : {}) });
+    if (receipt) journal.append({ kind: 'sent', id: id(2), message: 2, at: 1000 });
+    journal.close(); journal = openPreviewJournal(path, key);
+    const next = createJournalWorker(journal, ports); next.intake([update(3, 'Next request')]); await next.drain();
+    expect(journal.view.order[1]?.intent).toBe(intent);
+    const row = JSON.parse(context).history.find((item: { notice?: string }) => item.notice?.includes(historical));
+    expect(row).toMatchObject({ answer: null,
+      outcome: receipt ? 'loss notice delivered; model UNKNOWN' : 'loss notice delivery UNKNOWN; model UNKNOWN' });
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+// The other side of the decision: review really did replace the notice, and a near miss is not a parent notice.
+for (const [name, replacement] of [['holding reply', HOLDING_REPLY],
+  ['parent notice quoting another request', parentNotice('A different request')]] as const)
+it(`still reports a replaced notice as a holding reply: ${name}`, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'plain-stop-holding-')), path = join(root, 'journal');
+  let journal = openPreviewJournal(path, key, genesis), context = '';
+  try {
+    const ports = { now: () => 1000, stopped: () => false, model: async (input: { context: string }) => {
+      context = input.context; return 'A complete answer.'; }, checkOutbound: () => {}, send: async () => 2 };
+    const worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, 'An earlier request')]);
+    journal.append({ kind: 'reserve', id: id(1), at: 1000 });
+    journal.append({ kind: 'model-uncertain', id: id(1), state: 'uncertain', at: 1000 });
+    journal.append({ kind: 'notice', id: id(1), noticeClass: 'unknown-answer', at: 1000 });
+    journal.append({ kind: 'intent', id: id(1), text: replacement, chat: genesis.chat, update: 1, grant: genesis.grant, at: 1000 });
+    journal.append({ kind: 'sent', id: id(1), message: 1, at: 1000 });
+    journal.close(); journal = openPreviewJournal(path, key);
+    const next = createJournalWorker(journal, ports); next.intake([update(2, 'Next request')]); await next.drain();
+    expect(JSON.parse(context).history[0]).toMatchObject({ answer: null,
+      outcome: 'holding reply delivered in place of the loss notice; model UNKNOWN' });
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
 for (const fault of ['none', 'ordinary-answer', 'wording', 'basis', 'digest', 'capture'] as const)
 it(`plain continuity retains exact journal checks: ${fault}`, () => {
   const root = mkdtempSync(join(tmpdir(), 'plain-stop-account-')), path = join(root, 'journal');
