@@ -5,6 +5,13 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
 
+// Budgets for real launcher children. On an idle Mama PC a run took 8.2 s and a status read about 7 s, and the
+// Studio full run spent 45 s in this case. The 15 s and 10 s budgets had little margin, and when spawnSync's timer fires
+// it signals the child and closes its pipes: the child pauses, exits 1 and its last stderr is lost, so a spent budget
+// reads as a launcher refusal. Sized from the 50 s child recorded in docs/defects/full-suite-load-timeouts.md, at that
+// record's 2.4x margin; a status read does less work, so half of it.
+const RUN_BUDGET_MS = 120_000, STATUS_BUDGET_MS = 60_000;
+
 it('keeps Telegram polling alive through a source error, then clears it after a durable import', async () => {
   const trial = successiveWorld();
   const root = join(trial.directory, 'source-journal');
@@ -35,19 +42,23 @@ it('keeps Telegram polling alive through a source error, then clears it after a 
       '--tools', 'off', '--activation-record', activation, '--operator-records', join(trial.directory, 'operator-records'), '--login-profile', profile, '--model', trial.model,
       '--bot-username', trial.configuration.botUsername, '--max-cycles', '2', '--max-poll-seconds', '1',
       '--agent-state-dir', source];
-    const run = () => spawnSync(process.execPath, args, { cwd: process.cwd(), encoding: 'utf8', timeout: 15000, env });
+    const run = () => spawnSync(process.execPath, args, { cwd: process.cwd(), encoding: 'utf8', timeout: RUN_BUDGET_MS, env });
     const status = () => JSON.parse(spawnSync(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs',
-        'status', '--root', root], { cwd: process.cwd(), encoding: 'utf8', timeout: 10000, env }).stdout);
+        'status', '--root', root], { cwd: process.cwd(), encoding: 'utf8', timeout: STATUS_BUDGET_MS, env }).stdout);
+    const expectClean = result => {
+      expect(result.error, 'the launcher outlived its budget').toBeUndefined();
+      expect(result.status, result.stderr).toBe(0);
+    };
     const failed = run();
-    expect(failed.status, failed.stderr).toBe(0);
+    expectClean(failed);
     expect(readFileSync(pollLog, 'utf8')).toContain('getUpdates');
     expect(status().channelSources.telegram).toMatchObject({ offset: 0, error: 'import refused' });
     expect(status().channelItems).toBe(1); // Item append preceded the malformed line and survived.
     writeFileSync(logPath, valid);
     const recovered = run();
-    expect(recovered.status, recovered.stderr).toBe(0);
+    expectClean(recovered);
     expect(status().channelSources.telegram).toMatchObject({ imported: 1, scanned: 1, error: null });
     expect(status().channelItems).toBe(1);
   } finally { endpoint.kill('SIGTERM'); }
-}, 30_000);
+}, 2 * RUN_BUDGET_MS + 4 * STATUS_BUDGET_MS + 20_000);
