@@ -9,6 +9,10 @@ export const TEST_FIXTURE_END = 1794519600000;
 
 export const TEST_CLOCK_MARGIN_MS = 21 * 86_400_000;
 
+/** The host's actual wall time for a test comparing against what the preload cannot shift: tmux, shell, file times, and
+ * Node children launched with a scrubbed environment. performance is deliberately left unshifted. */
+export const realNow = () => Math.round(performance.timeOrigin + performance.now());
+
 export function testClockShift(realNow: number, end = TEST_FIXTURE_END, margin = TEST_CLOCK_MARGIN_MS) {
   return realNow < end - margin ? 0 : end - margin - realNow;
 }

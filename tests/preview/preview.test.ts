@@ -103,7 +103,7 @@ function runRecordedLauncher(stateRoot: string, preloadSource: string,
   const preloadRoot = root('preview-error-preload-'), preload = join(preloadRoot, 'preload.mjs');
   writeFileSync(preload, preloadSource);
   return spawnSync(process.execPath, recordedLauncherArguments(stateRoot, overrides), {
-    cwd: process.cwd(), env: { ...process.env, NODE_OPTIONS: `--import=${preload}`,
+    cwd: process.cwd(), env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import=${preload}`,
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '9001:synthetic_recorded_test_only_value',
       INSTAR_SECRET_PREVIEW_STORAGE_KEY: '13'.repeat(32) }, encoding: 'utf8', timeout: 30_000,
   });
@@ -450,7 +450,7 @@ describe('Stage 1 preview driver (recorded transport only)', () => {
       '--expires-at', expires, '--max-cycles', '3', '--max-poll-seconds', '1', '--max-batch-items', '1',
       '--max-context-turns', '2', '--max-context-bytes', '4096', '--max-pending-turns', '2', '--max-trial-turns', '4',
       '--reply-limit', '2', '--reply-window-ms', '60000', '--error-limit', '2', '--backoff-ms', '1', '--max-backoff-ms', '2'],
-    { cwd: process.cwd(), env: { ...process.env, NODE_OPTIONS: `--import=${preload}`,
+    { cwd: process.cwd(), env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import=${preload}`,
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '9001:synthetic_recorded_test_only_value',
       INSTAR_SECRET_PREVIEW_STORAGE_KEY: '13'.repeat(32) }, encoding: 'utf8', timeout: 30_000 });
     expect(result.status, result.stderr).toBe(0);
@@ -472,7 +472,7 @@ describe('Stage 1 preview driver (recorded transport only)', () => {
       '--expires-at', expires, '--max-cycles', '3', '--max-poll-seconds', '1', '--max-batch-items', '1',
       '--max-context-turns', '2', '--max-context-bytes', '4096', '--max-pending-turns', '2', '--max-trial-turns', '4',
       '--reply-limit', '2', '--reply-window-ms', '60000', '--error-limit', '2', '--backoff-ms', '1', '--max-backoff-ms', '2'],
-    { cwd: process.cwd(), env: { ...process.env, NODE_OPTIONS: `--import=${preload}`,
+    { cwd: process.cwd(), env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import=${preload}`,
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '9001:synthetic_recorded_test_only_value',
       INSTAR_SECRET_PREVIEW_STORAGE_KEY: '13'.repeat(32) }, encoding: 'utf8', timeout: 30_000 });
     expect(result.status, result.stderr).toBe(0);

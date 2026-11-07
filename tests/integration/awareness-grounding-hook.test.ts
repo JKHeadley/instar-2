@@ -3,6 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { realNow } from '../setup/test-clock-env.js';
 import { buildGrounding, groundingDigest, GROUNDING_MAX_BYTES } from '../../src/awareness/grounding.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createAwarenessIO } from '../../scripts/awareness-io.mjs';
@@ -67,10 +68,10 @@ describe('SessionStart grounding hook (real process)', () => {
     const io = createAwarenessIO({ stateDirectory: join(root, 'state'), inboxDirectory: join(root, 'inbox') });
     const g = grounding();
     io.writeGrounding('topic:42', g.text);
-    const before = Date.now();
+    const before = realNow();
     const out = runHook({ INSTAR_SESSION_NAME: name, INSTAR_SESSION_INBOX: join(root, 'inbox'),
       INSTAR_SESSION_GROUNDING_FILE: io.groundingFileFor('topic:42') }, JSON.stringify({ session_id: 'abc', source: 'resume' }));
-    const after = Date.now();
+    const after = realNow();
     const context: string = JSON.parse(out.stdout).hookSpecificOutput.additionalContext;
     const injected = context.match(/Injected (\d{4}-\d\d-\d\d \d\d:\d\d UTC)/)?.[1];
     expect(injected).toBeDefined();

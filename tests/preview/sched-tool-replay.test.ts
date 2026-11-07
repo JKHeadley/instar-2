@@ -74,7 +74,7 @@ it('delivers the recorded weather body without manufacturing an effect refusal, 
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'sched-replay-'))), key = new Uint8Array(32).fill(63);
   const path = join(root, 'journal.encrypted'), sent: string[] = [];
   let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
-    grant: 'grant:replay', configurationDigest: 'sha256:offline', expires: captured.at + 100000,
+    grant: 'grant:replay', configurationDigest: 'sha256:offline', expires: captured.at + 600000,
     maxCalls: 20, maxReplies: 5, maxTurns: 5, maxBytes: 32768, cursor: 0 });
   const answer = JSON.parse(captured.writer).reply;
   const body = typeof answer === 'string' ? answer : answer.answer;

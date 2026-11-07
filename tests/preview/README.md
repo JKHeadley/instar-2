@@ -526,6 +526,13 @@ protection for a mismatched switch. The prior build also refuses an uncompacted 
 the original genesis expiry — accepted compatibility residue: a full rollback of code and record can
 read a compacted journal but cannot run past the original expiry.
 
+The closing notice sets the same barrier earlier. A reader without closing-notice support refuses a
+journal holding a closing intent (`preview journal: held notice intent order`) even when no renewal
+exists, so a plain rollback is safe only before both the first closing intent and renewal. Once
+either exists, keep a build that reads it and repair forward. Preserve the journal and any uncertain
+send evidence; never delete the intent, restore an older journal over accepted work, or resend an
+UNKNOWN notice.
+
 `journal-renewal-continuity.test.ts` checks a fact recorded before renewal against one and two
 monotonic expiry frames, then replays, compacts twice and reopens the encrypted journal. It compares
 the recall selection and answer, memory, self-state, full read-only `status` and effective expiry;

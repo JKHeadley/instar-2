@@ -12319,8 +12319,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // Rules 4/15/77: review must not delay intake or the limited responder. The ordinary drain
     // awaits this same promise for final-send ordering and propagates any failure.
     for (const turn of acknowledgementTimers.keys()) void acknowledgeReply(turn).catch(() => {});
-    await noticeClosing();
+    // The limited pass goes first so its one-pass claim is taken before anything here yields; yielding first let a
+    // concurrent drain send the same stop confirmation. It never waits on an ordinary model, so the warning is not delayed.
     await answerLimited();
+    await noticeClosing();
     await pollReviewRequests(); await issueRetractRequest(); };
   return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
