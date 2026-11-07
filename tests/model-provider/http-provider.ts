@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import type { ProviderObservation } from '../../src/judgment/index.js';
-export async function localProvider() {
+export async function localProvider(onRequest?: () => void) {
   const credential = randomBytes(24).toString('hex');
   const requests: { bytes: string; operation: string }[] = [];
   let response: ProviderObservation = { state: 'complete', bytes: '{}', providerOperation: 'http-operation', usage: { inputTokens: 1, outputTokens: 1, charge: 3, source: 'local-http' }, retryBlocked: false }, delay = 0;
@@ -9,6 +9,7 @@ export async function localProvider() {
     if (req.headers.authorization !== `Bearer ${credential}`) { res.writeHead(401); res.end(); return; }
     const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
     requests.push({ bytes: Buffer.concat(chunks).toString('utf8'), operation: String(req.headers['x-operation']) });
+    if (onRequest) { onRequest(); return; } // Deliberately leave the observed request unanswered.
     if (delay) await new Promise(resolve => setTimeout(resolve, delay));
     res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(response));
   });
