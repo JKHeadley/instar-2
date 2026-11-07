@@ -39,6 +39,13 @@ it.each([
   else expect(() => answerOf(`Understood.\n\n${notice}`)).toThrow();
 });
 
+it('keeps the answer exact beside the recorded activation notice and rejects unrelated additions', () => {
+  const notice = 'Reminder: your activation expires in 6 days 21 h. Smallest step for you: approve a renewed activation record.';
+  expect(answerOf(`Understood.\n\n${notice}`)).toBe('Understood.');
+  expect(() => answerOf('Understood.\n\nUnexpected extra reply.')).toThrow();
+  expect(() => answerOf(`Understood.\n\n${notice} Extra text.`)).toThrow();
+});
+
 it.each(['wrapped', 'reply-contradiction', 'summary-contradiction'])(
   'covers answer, full-context reply review, summary and summary review offline (%s)', async mode => {
     const world = successiveWorld(), root = join(world.directory, 'review-canary');

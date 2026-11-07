@@ -9,7 +9,7 @@ import assert, { runAssertions } from '../model-provider/review/assertions.mjs';
 it('MODEL-PROVIDER-PATH REVIEW F6 accepted judgment produces a separately settled ordinary reply', () => runAssertions('F6-reply', async () => {
   const http = await localProvider();
   try {
-    const f = providerFixture({ ...http, admittedTimeout: 2000 });
+    const f = providerFixture({ ...http, invocationTimeoutMs: 2000 });
     http.respond({ state: 'complete', bytes: JSON.stringify(f.decisionInput()), providerOperation: 'provider-before-reply',
       usage: { inputTokens: 1, outputTokens: 1, charge: 3, source: 'local HTTP' }, retryBlocked: false });
     const { request, prepared } = f.prepare();

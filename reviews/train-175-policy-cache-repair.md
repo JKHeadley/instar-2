@@ -1,6 +1,6 @@
 # Change review — keep reviewed subscription profiles usable after cache refresh
 
-Subject base: 428b6287201846c206e76be32f066a6b538333e3
+Subject base: b8170121555ada94a5be46e78f21dc09fa050e74
 Review state: open
 Reviewed content: none
 Outcome: The ordinary tool route can construct its subscription provider after Claude Code writes signed policy-cache metadata or first populates its restrictive cache. The saved turn remains available; no effect is replayed by this repair.
@@ -20,6 +20,8 @@ Recorded failure: preview-deploy.log 2026-11-05 09:07:16 and preserved forum-ans
 Hook bypass: none
 Convergence: none
 Prompt review: No model prompt, model output parser or model decision changes. The failed turn has no model output; this repair replays its real host-cache shape. Summary/Jev/reply-review parsing and delivered-answer logic are unchanged.
+
+Owner provenance: Complete source/tests/fixture reused from 0c1d832a4816aeb21891e5a89242497d12c76fc1; original review base 428b6287201846c206e76be32f066a6b538333e3. This integration binds the record to train-176 without claiming a new independent verdict. The verification paragraph below records the owning repair; train-176 verification is in its own review.
 
 1.x comparison: Searched actual JKHeadley/instar origin/main cc11e45f92e2590dd1bbd3c3facb5b849532f0fc src/ and docs/specs/ for launch/spawn failures, policy-limits, policyLimits and remote-settings.json; searched git history with -G for policy-limits|remote-settings.json. No matching cache implementation in those inspected paths. Related src/core/SessionManager.ts handleReadyAndInject retains a startup failure and retries stale resume once; docs/specs/cli-login-expired-opens-repair.eli16.md and commit 7da5a52ff corroborate real login failures instead of trusting labels. Read ONEX-LESSONS section 4. No 1.x code transplanted: the exact fit is existing 2.0 subscriptionServerPolicy, including its separation of cache freshness from effective policy. A model retry cannot repair this pre-dispatch failure.
 
