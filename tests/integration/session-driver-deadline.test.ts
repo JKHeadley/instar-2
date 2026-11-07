@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
+import { realNow } from '../setup/test-clock-env.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 
@@ -29,16 +30,16 @@ it.skipIf(!available)('independent deadline kills only the exact tmux identity a
     const stamp = io.tmux(['display-message', '-p', '-t', `=${name}:`, '#{pane_pid}:#{session_created}']).stdout.trim();
     const completedStamp = io.tmux(['display-message', '-p', '-t', `=${completed}:`, '#{pane_pid}:#{session_created}']).stdout.trim();
     const newReceiptStamp = io.tmux(['display-message', '-p', '-t', `=${newReceipt}:`, '#{pane_pid}:#{session_created}']).stdout.trim();
-    const identity = `${name}:${stamp}`, started = Date.now(), deadline = started + 800;
+    const identity = `${name}:${stamp}`, started = realNow(), deadline = started + 800;
     writeFileSync(join(io.inboxDirectory, `${name}.old.json`), JSON.stringify({ kind: 'turn-closed',
       sessionId: 'older', at: started, receiptId: 'old-receipt' }));
     writeFileSync(join(io.inboxDirectory, `${newReceipt}.old.json`), JSON.stringify({ kind: 'turn-closed',
       sessionId: 'older', at: started, receiptId: 'old-receipt' }));
     io.save({ sessions: [{ name, identity, turnDeadline: deadline, turnStartedAt: started, closedAt: null,
       turnReceiptIds: ['old-receipt'] },
-      { name: reused, identity: `${reused}:0:0`, turnDeadline: deadline, turnStartedAt: Date.now(), closedAt: null },
+      { name: reused, identity: `${reused}:0:0`, turnDeadline: deadline, turnStartedAt: realNow(), closedAt: null },
       { name: completed, identity: `${completed}:${completedStamp}`, turnDeadline: deadline,
-        turnStartedAt: Date.now(), closedAt: Date.now() },
+        turnStartedAt: realNow(), closedAt: realNow() },
       { name: newReceipt, identity: `${newReceipt}:${newReceiptStamp}`, turnDeadline: deadline,
         turnStartedAt: started, closedAt: null, turnReceiptIds: ['old-receipt'] }],
       deliveries: [], resumes: {} });

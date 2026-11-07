@@ -22,6 +22,8 @@ export const modelProviderArms = Object.freeze({
   nine: ['real object-valued digest Evidence assessment', 'current synchronous effect assessment consumption'],
   ten: ['confined local HTTP test route', 'consumed claim plus persisted Eight acceptance', 'exact submitted bytes and one captured return; zero retries'],
 });
+/** Both times are host clock: tests/setup/host-clock.mjs stamps the proof, Vitest's main process the report. */
+export const proofIsCurrent = (proof, report) => proof.startedAt >= report.startTime && proof.finishedAt >= proof.startedAt;
 export function checkModelProviderCoverage(report, owner) {
   if (!report.success) throw new Error('model-provider seam requires successful actual gate; never label red green');
   if (!modelProviderArms[owner]) throw new Error('unknown model-provider owner');
@@ -52,8 +54,7 @@ export function checkModelProviderCoverage(report, owner) {
     ...cuts.map(cut => `cut-${cut}`)];
   const proofs = cases.map(id => {
     const proof = JSON.parse(readFileSync(`.model-provider-review-proofs/${id}.json`, 'utf8'));
-    if (proof.id !== id || !proof.passed || proof.assertions < 1 || proof.startedAt < report.startTime
-      || proof.finishedAt < proof.startedAt) throw new Error(`model-provider missing current assertion proof ${id}`);
+    if (proof.id !== id || !proof.passed || proof.assertions < 1 || !proofIsCurrent(proof, report)) throw new Error(`model-provider missing current assertion proof ${id}`);
     for (const [path, hash] of Object.entries(proof.sources)) {
       if (createHash('sha256').update(readFileSync(path)).digest('hex') !== hash)
         throw new Error(`model-provider proof source changed: ${id} ${path}`);

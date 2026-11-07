@@ -1,5 +1,5 @@
 import { productionBindingHolds } from '../dist/assembly/production-holds.js';
-import { bootRecoveryEvidenceFiles, checkBootRecoveryCoverage } from './check-boot-conversation-evidence.mjs';
+import { bootRecoveryEvidenceFiles, checkBootRecoveryCoverage, hostFileWindow } from './check-boot-conversation-evidence.mjs';
 import { localHalfReport } from './split-report.mjs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -177,7 +177,7 @@ export function productionGroundingSourceDigest(root = realpathSync(fileURLToPat
     if (existsSync(resolve(root, path))) { hash.update(path); hash.update(readFileSync(resolve(root, path))); }
   return hash.digest('hex');
 }
-const REVIEWED_GROUNDING_INVENTORY = '85c0a6f660478b46cfc8f37c156619bad157debf5ca46b4ded887ddc3566e7d2';
+const REVIEWED_GROUNDING_INVENTORY = 'b82faf14e29fbeebc2103444d4d12e57fb01e379c11636359ebe4620c82b4405';
 export function checkProductionGroundingAssemblyEvidence(report) {
   const root = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
   if (!report.success || report.numFailedTests || report.numFailedTestSuites || !Number.isFinite(report.startTime))
@@ -214,9 +214,9 @@ export function checkProductionGroundingAssemblyEvidence(report) {
     const matches = report.testResults.flatMap(file => file.name === path ? (file.assertionResults ?? [])
       .filter(test => test.fullName === required.fullName).map(test => ({ file, test })) : []);
     if (matches.length !== 1 || matches[0].test.status !== 'passed') throw new Error(`missing unique passing production grounding case: ${required.fullName}`);
-    const { file, test } = matches[0];
+    const { file, test } = matches[0], window = hostFileWindow(file, exits[0]);
     const runs = audit.filter(row => row.file === path && row.fullName === required.fullName
-      && row.start >= report.startTime && row.start >= file.startTime && row.end <= file.endTime + 100
+      && row.start >= report.startTime && row.start >= window.start && row.end <= window.end + 100
       && row.revision === revision && row.sourceDigest === sourceDigest);
     if (runs.length !== 1 || runs[0].assertionCalls < required.minimumExecutedAssertions || !runs[0].assertions.length || runs[0].state !== 'pass')
       throw new Error(`missing current executed assertion evidence: ${required.fullName}`);

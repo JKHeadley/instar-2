@@ -60,7 +60,7 @@ it.each(['original', 'repaired', 'offload'] as const)('replays the real %s revie
     send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return sends.length; },
   };
   let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '-1001234', forum: true,
-    operator: '7654321', grant: 'grant:replay', configurationDigest: 'sha256:offline', expires: captured.at + 100000,
+    operator: '7654321', grant: 'grant:replay', configurationDigest: 'sha256:offline', expires: captured.at + 600000,
     maxCalls: 12, maxReplies: 3, maxTurns: 3, maxBytes: 32768, cursor: 0 });
   try {
     const worker = createJournalWorker(journal, ports);
