@@ -40,6 +40,10 @@ Overlap disposition: The frozen binding sha256:094316dfd656ab51b6d7663e4bd9207c6
 
 Integration review: train-192 explicitly reopens this round because its register replay at the merged head 84d7bb0768f456fb3b38eb5df7dccf31e97bad03 regenerates the seven generated/ outputs (generated/capabilities.json, capabilities.md, coverage.md, glossary.md, register.json, rules.md and source.json), which this record's subject covers (Rule 109); no source, test, document or declaration in the subject changed, and the reviewed content cannot be restored because the publication must be true to the merged head. The previous frozen content and verdict remain in git history. reviews/train-192-change-review.md covers the merged candidate (decision train-192-review-rounds), whose desk review is still required.
 
+Deferral: docs/evidence/train-192-notice-owner/constitution-attributed-statements-change-review.md:29 | not-a-deferral=Copied historical review evidence quotes the old deferred:slack-intake-v1:36 deadline refusal; this integration preserves that evidence verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-one-constitution-change-review.md:30 | not-a-deferral=Copied historical review evidence quotes the old deferred:slack-intake-v1:36 deadline refusal; this integration preserves that evidence verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md:29 | not-a-deferral=Copied historical review evidence quotes the old deferred:slack-intake-v1:36 deadline refusal; this integration preserves that evidence verbatim and makes no new deferral. Current register verification passes.
+
 ## Closing block
 
 simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.

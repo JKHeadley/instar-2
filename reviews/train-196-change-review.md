@@ -31,6 +31,8 @@ Receipt verification: Restored docs/release-evidence/codex-model-map-refresh-110
 
 Laptop continuation: Resume the exact pushed faa3eeed817e079c50abe2096c9a8464e5dc4d39 head without redoing merges. Decision reports now point to the r3 desk destination required by the authenticated repair brief. Rechecked the inherited 1.x comparison against the named source revision, source history and ONEX-LESSONS section 6. Verification results and any desk-owned exceptions are recorded in that report; no runtime or assertion change is introduced by this continuation.
 
+Decision: train196-historical-evidence | Add the six missing Rule 71 dispositions to the two open browser reviews for unchanged copied historical deadline evidence; preserve evidence bytes and all runtime assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-196-r3-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: Ordinary merges with exact parent heads, explicit desk resolution of the only semantic conflict, preserved assertion unions and existing pin/register generation are the simplest robust route. No new machinery. Entry guards are exact ancestry and receipt bytes; exit guards are targeted checks and honest host-dependent reporting. No unattended product-completion claim.
