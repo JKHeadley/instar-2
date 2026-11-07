@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:0c66f282fe7d2872c8c0d5bdf62157a87159236d5ed876a8b4dcbc1bf34fc138
-Source commit: d55e7623beeda6239f53b0d8a7218057e5e85d90
+Register generation: sha256:bd631b675023daff677a6c621cbab4c082bd361d806071a7b5f4348d4a63d1f5
+Source commit: 84e3376d155a095b9bd161d1ab8dc2581333163e
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -159,40 +159,12 @@ An agent with exactly one AI provider, whichever one it is (Anthropic, OpenAI, G
 Check: A single-provider boot test for each supported harness: a fresh installation with only that harness's own provider configured passes the live end-to-end proofs (#43, #62), including a real conversation with the operator, with nothing refused, held or switched off for want of another provider. A declaration check: every place that calls a provider other than the agent's main one carries a declared single-provider behaviour, and a missing declaration fails the build.
 Terms: term:feature
 
-## 119. One Constitution, Two Books Aligned
-
-The 1.x registry and the 2.0 purpose and rule book are one constitution, and they stay aligned on every update. Every change to either book names its counterpart change in the other, or says why it has none (it concerns only that version, or it changes no obligation). Where the two differ, the alignment map says so by name, and the master governs. No difference is silent.
-
-Check: A script reads each pull request touching either book and flags one with no declared counterpart; the 1.x merge tool refuses it. A daily check reads both repositories' history and raises any merged change whose pair never landed. Whether two wordings carry the same obligation, and whether a stated "none" is honest, is held by the independent review of the change.
-Terms: (none)
-
 ## 12. Intelligent Prompts
 
 A model gate's prompt judges by meaning. It must never be written to block on a fixed phrase copied from a test.
 
 Check: A scan over prompt text for literal phrases from test cases.
 Terms: (none)
-
-## 120. The Person Decides; the Agent Does the Rest
-
-An Instar agent does all the research, account management and operation its person's needs require. The person only approves or declines, asks for changes, or supplies a credential. They never need to open a browser, visit a provider's site, run a command or follow steps. Sending a link to finished work, such as a document or an application built for the person, is delivery and is welcome. What this rule forbids is making the person do the work. The agent is like an executive assistant who manages the accounts, and the person is like a CEO who directs and approves. Using the person's own accounts, accounts of the agent's own, or both is the person's choice; the agent makes clear it can fully manage the person's accounts, states plainly what each choice concedes, and never recommends against either. If a service truly needs the person themselves, the agent reduces that to one credential or one tap on the easiest surface available. The app and dashboard exist to make approvals and credentials effortless, and neither is required. Extends #23 and #82 from when to escalate and how to ask, to what the person's whole part is.
-
-Check: An outbound check that holds a message giving the person any task other than a decision, a requested change or a credential, tested on both sides with paraphrases, including that a link to finished work passes. A live proof for each supported service: a fresh agent enables it through a real conversation, and the record shows the person did nothing but approve and supply credentials.
-Terms: term:surface
-
-## 121. Attributed Statements Trace to Their Source
-
-Any statement credited to a person, whether in a message, note, rule or memory, carries a pointer to the logged message it came from and that person's own words. The pointer is checked when the statement is written and again when it is cited or enforced. A heading or label written by the agent is never evidence of who said something. Without a source, the statement says "source unknown" or is labeled the agent's own, and it never becomes that person's rule. Later changes stay traceable back to the origin. This holds for every agent, channel and machine, and needs no purchased service.
-
-Check: Nothing checks this yet; the checks are being built. Owed: a check when a credited statement is written to memory, notes or rules, and another when it is sent, cited or enforced, each resolving the pointer to a logged message from that person and comparing the words, tested on both sides with paraphrases. Whether the words support the claim made from them is a judgment, held by a model or an independent review, not a script. The 1.x design is `docs/specs/attribution-paper-trail.md` in JKHeadley/instar, not yet merged. The 2.0 form of the pointer is not designed.
-Terms: (none)
-
-## 122. No Feature May Require a Purchased Service
-
-Every Instar feature works fully without the user buying anything from a third party. An outside paid service may be offered as an optional add-on for robustness. A design that blocks or degrades core function when that service is absent is wrong and goes back. The subscriptions a user already chose to run their agent are not covered by this rule.
-
-Check: Nothing checks this yet. Owed: a no-purchase boot test, in which a fresh installation running only on the subscription the person chose for the agent, with no other paid service, passes the live end-to-end proofs (#43, #62) with nothing refused, held or degraded for want of an outside service. Whether a design degrades core function when the service is absent is a judgment, held by the independent review of that design, not a script.
-Terms: term:feature, term:user
 
 ## 13. Quantitative Claims Must Bind a Subject
 
@@ -651,10 +623,10 @@ Terms: (none)
 
 ## 72. Maturation Path
 
-Every feature graduates test agent → development agent → fleet, with a declared graduation test and deadline, and with default-on for the fleet as the last rung unless a recorded user-preference decision keeps it off. Every rung has machine-checkable thresholds against the feature's own logged behaviour. A threshold met raises the feature to the recurring review, whose model decides; it never flips anything by itself. A fleet default stays a reviewed code change.
+Every feature graduates test agent → development agent → fleet, with a declared graduation test and deadline.
 
-Check: Every gated feature declares both and the deadline is enforced. The direct fix for 20-of-92. 1.x holds the thresholds in its feature ladder and fails the build on a switched-off flag with no entry; 2.0's equivalent needs building.
-Terms: term:feature, term:user
+Check: Every gated feature declares both and the deadline is enforced. The direct fix for 20-of-92.
+Terms: term:feature
 
 ## 73. A Dark Feature Guards Nothing
 

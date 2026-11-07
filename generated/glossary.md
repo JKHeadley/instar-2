@@ -1,7 +1,7 @@
 # Generated glossary
 
-Register generation: sha256:0c66f282fe7d2872c8c0d5bdf62157a87159236d5ed876a8b4dcbc1bf34fc138
-Source commit: d55e7623beeda6239f53b0d8a7218057e5e85d90
+Register generation: sha256:bd631b675023daff677a6c621cbab4c082bd361d806071a7b5f4348d4a63d1f5
+Source commit: 84e3376d155a095b9bd161d1ab8dc2581333163e
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -75,7 +75,7 @@ A capability the system offers that has a name a person could ask for. A module 
 not a feature; "private views" is. The test: could it appear in the agent's own briefing as
 something it can do? (Rules 34, 39, 62, 72, 76.)
 
-Used by: rule:105, rule:118, rule:122, rule:30, rule:34, rule:39, rule:52, rule:62, rule:72, rule:73, rule:78, rule:8, rule:84, rule:91
+Used by: rule:105, rule:118, rule:30, rule:34, rule:39, rule:52, rule:62, rule:72, rule:73, rule:78, rule:8, rule:84, rule:91
 
 ## governed port
 
@@ -230,14 +230,14 @@ Used by: rule:33, rule:35, rule:40, rule:7
 
 Where does a person meet it, if anywhere?
 
-Used by: rule:102, rule:105, rule:120, rule:62, rule:8, rule:80, rule:87
+Used by: rule:102, rule:105, rule:62, rule:8, rule:80, rule:87
 
 ## user
 
 A principal the agent serves — any standing. Every operator is a user; a user with only
 requester standing is a user the agent works *for* but does not take *binding* decisions from.
 
-Used by: rule:114, rule:122, rule:14, rule:2, rule:28, rule:35, rule:52, rule:54, rule:62, rule:72, rule:76, rule:77, rule:78, rule:83, rule:85, rule:87, rule:95
+Used by: rule:114, rule:14, rule:2, rule:28, rule:35, rule:52, rule:54, rule:62, rule:76, rule:77, rule:78, rule:83, rule:85, rule:87, rule:95
 
 ## user-facing
 

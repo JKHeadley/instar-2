@@ -11,7 +11,7 @@
  * experience (Rule 76), what enables it in a launch, the source files whose content is its
  * version, its test tiers, and the journal outcome a live-surface proof of it must show. A
  * missing join stays in the denominator as a gap. */
-import { PREVIEW_PROOF_PLANS, probeId, replyTurn, requestedActionTurn, statusTurn } from './proofs.js';
+import { PREVIEW_PROOF_PLANS, probeId, replyTurn, requestedActionTurn, sentReview, sentReviewEvidence, statusTurn } from './proofs.js';
 import type { LiveProofRecord, PlanPosture, ProofRecord } from './proofs.js';
 import { isJournalUpdate, wholeReplyReceipt } from './journal.js';
 import { PROMOTION_RECORD, STAGES, promotionOf, promotionRecordFindings, utcDay } from './promotion-record.js';
@@ -58,8 +58,8 @@ export const PREVIEW_CAPABILITY_META: Readonly<Record<string, CapabilityMeta>> =
     evidence: { unit: ['tests/preview/journal.test.ts', 'tests/preview/successive.test.ts'],
       integration: ['tests/preview/journal-agent.test.ts', 'tests/preview/journal-cutover.test.ts'], procedure: 'tests/preview/core-journey-live-test.md' },
     acceptance: outcome('reply') },
-  'preview.reply-review': { change: 'capability', enabledBy: 'default', sources: [...RUNNER, 'tests/preview/reply-check.ts'],
-    evidence: { unit: ['tests/preview/reply-check.test.ts', 'tests/preview/reply-review-corpus.test.ts'],
+  'preview.reply-review': { change: 'capability', enabledBy: 'default', sources: [...RUNNER, 'tests/preview/reply-check.ts', 'tests/preview/proofs.ts'],
+    evidence: { unit: ['tests/preview/reply-check.test.ts', 'tests/preview/reply-review-corpus.test.ts', 'tests/preview/reply-review-accounting.test.ts'],
       integration: ['tests/preview/review-layers-canary.test.ts', 'tests/preview/reviewer-thinking-bound.test.ts'], procedure: 'tests/preview/jev-live-test.md' },
     acceptance: outcome('reviewed-reply') },
   'preview.held-reply-notice': { change: 'repair', enabledBy: 'default', sources: [...RUNNER],
@@ -332,7 +332,12 @@ export function resolveLiveProof(input: LiveProofInput): LiveProofResult {
   let found: { message: number | null; at: number } | null = null;
   switch (capability.acceptance.outcome) {
     case 'reply': found = turn && replyTurn(turn) ? sent(turn) : null; break;
-    case 'reviewed-reply': found = turn && replyTurn(turn) && turn.replyChecks?.some(check => check.verdict === 'pass') ? sent(turn) : null; break;
+    case 'reviewed-reply': {
+      const review = turn && sentReview(sentReviewEvidence(turn)), receipt = sent(turn);
+      if (turn && replyTurn(turn) && review?.kind !== 'fixed-notice' && review?.passed && receipt)
+        found = { ...receipt, at: Math.max(receipt.at, turn.checkDoneAt!) };
+      break;
+    }
     case 'status': found = turn && statusTurn(turn) ? sent(turn) : null; break;
     case 'memory-change': found = turn && replyTurn(turn) && view.memory.some(change => change.trigger === turn.id) ? sent(turn) : null; break;
     case 'held-notice': found = turn?.heldNoticeSent !== undefined && turn.heldNoticeSentAt !== undefined

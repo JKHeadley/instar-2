@@ -11,7 +11,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: The combined browser and live worker paths touch protected task execution and require an exact-head full gate and live proof.
-Side effects: The configured agent-owned Chrome tab can navigate through two to four named GitHub pages. The worker receives bounded observations, not profile custody. The resource-owner recovery remains as in the live build.
+Side effects: The configured agent-owned Chrome tab can navigate through two to four named GitHub pages. The worker receives bounded observations, not profile custody. The resource-owner recovery remains as in the live build. The reply-review-proof-accounting-1105 candidate changes shared generated register bytes, so this frozen round is void; the accounting repair is covered by its own change review and requires independent review before release.
 Undo and recovery: Restore live 47b9c823 if the combined build fails. Retain prepared and uncertain effect records; do not replay an uncertain identity.
 Multi-machine posture: Owner browser stays local to its signed-in profile; worker remains separate. No new remote credential or browser fallback.
 Layer below: Original parent comparison found only generated conflicts and retained reviewed 24194ed8 browser source with live 47b9c823 resource-owner behavior. Later connector repairs and carryover-08 session-driver changes are covered by their separate exact-head records; train-169 preserves both, without claiming those later sources remain byte-identical to the original parents.
