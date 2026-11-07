@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import { createProductUpdater } from '../../scripts/update-product.mjs';
+import { observeUpdateBound } from '../../scripts/update-runner.mjs';
+import { initializeUpdateRuntime } from '../../scripts/update.mjs';
+import { observeUpdateBoot, drainUpdateRestart } from '../../scripts/update-runner.mjs';
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
 import { nextObligationAt } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
@@ -1519,11 +1523,15 @@ async function main() {
   // Service observation (design 18): whether this owner can serve right now, with the typed reason when not.
   // Rule 15 gap (a): the host supervisor's progress beat. Written each loop cycle (with the service beat) so a
   // runner that is alive but not progressing (stopped, wedged) is seen and relaunched. Liveness evidence only.
+  let updateEnabled = false, updateController = null;
+  try { await initializeUpdateRuntime(); updateEnabled = true; } catch { /* Update refusal cannot deny existing custody. */ }
+  const updateVersion = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
+  let updateIdle = () => false, updateVerifying = () => false, updateHealthy = false;
   let hostBeatSeq = 0;
   const hostBeat = () => {
     try {
       const temporary = join(root, `.runner-beat-${process.pid}.pending`);
-      writeFileSync(temporary, JSON.stringify({ v: 1, pid: process.pid, seq: ++hostBeatSeq }), { mode: 0o600 });
+      writeFileSync(temporary, JSON.stringify({ v: 1, pid: process.pid, seq: ++hostBeatSeq, update: { version: updateVersion, launch: String(launchedAt), idle: updateIdle(), verifying: updateVerifying(), healthy: updateHealthy } }), { mode: 0o600 });
       renameSync(temporary, join(root, 'runner-beat.json'));
     } catch { /* a lost beat only makes the supervisor's judgement more conservative */ }
   };
@@ -2951,6 +2959,7 @@ async function main() {
     proofRecords = readProofs(proofsPath).proofs;
     const supervisors = { replyReview: true, summaryReview: true, stepCheck: stepCheckEnabled };
     proofPorts = { now: wallNow, liveView: () => journal.view, boundBot: Number(g.bot), supervisors, storeAgreements,
+      updateBound: () => observeUpdateBound(root, updateController, hostResources.snapshot()),
       durableView: () => { const copy = openJournal(journalPath, key(), undefined, undefined, true); try { return copy.view; } finally { copy.close(); } },
       botIdentity: () => {
         try {
@@ -3009,7 +3018,7 @@ async function main() {
     // result. A sustained conflict or refusal ends the run; a sustained outage keeps the poll breaker open at the capped
     // trial cadence while due work goes on (waitWorking).
     const pollFailure = async (conflict, unreachable = false) => {
-      failedPolls++; routeHealthy = false;
+      failedPolls++; routeHealthy = false; updateHealthy = false;
       conflictedPolls = conflict ? conflictedPolls + 1 : 0;
       try { appendRun(runsPath, { v: 1, launch: launchedAt, poll: conflict ? 'conflicted' : 'failed', at: wallNow() }); }
       catch { endReason = 'run log unavailable'; process.exitCode = 1; return false; }
@@ -3132,6 +3141,17 @@ async function main() {
         || !ownerHeld() || !activationMatchesJournal(journal.view, activation) ? null : nextObligationAt(journal.view),
       after: (ms, fire) => { const timer = setTimeout(fire, ms); timer.unref(); return () => clearTimeout(timer); },
       wake: () => workCycle(false, true) });
+    updateVerifying = () => Boolean(stepJob || replyReviewJob || retroJob || summaryJob);
+    updateIdle = () => lane.admissible() && !summaryJob && !stepJob && !retroJob && !replyReviewJob
+      && Object.keys(journal.view.activeSessionWork ?? {}).length === 0;
+    if (updateEnabled) {
+      try {
+        updateController = createProductUpdater(root, { runningVersion: () => updateVersion,
+          stopped: () => signalled || workerStop.value || existsSync(stopPath) || Boolean(journal.view.stop)
+            || wallNow() >= journal.view.expires || !ownerHeld(),
+          readiness: () => ({ idle: updateHealthy && updateIdle(), verifying: updateVerifying() }) });
+      } catch { /* Preserve corrupt optional update state; serving remains available. */ }
+    }
     dueWake.refresh();
     // Plan #548, the desk's live check only: with --telegram-cut-file, while that file holds a future epoch-ms every
     // poll fails as an unreachable connection without a network call. Never passed to the operator's runner.
@@ -3143,6 +3163,14 @@ async function main() {
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
+      // Recheck inside the runner, not from a stale supervisor beat. No await between
+      // observing idle and leaving the poll loop; its ordinary shutdown drains remaining work.
+      try {
+        if (drainUpdateRestart(root, { version: updateVersion, launch: String(launchedAt), idle: updateIdle(),
+          stopped: signalled || workerStop.value || existsSync(stopPath) || Boolean(journal.view.stop) })) {
+          endReason = 'installed update restart drained'; break;
+        }
+      } catch { /* Preserve malformed/busy update state; continue serving. */ }
       // Attempting another poll is not restoration: while a poll-failure episode is open the owner stays
       // non-servable with its typed reason; only a successful poll (below) restores service.
       const unrestored = failedPolls > 0 || conflictedPolls > 0;
@@ -3209,7 +3237,9 @@ async function main() {
       // A successful poll is the restoration evidence that closes the episode, recorded before it is relied on.
       if (failedPolls || conflictedPolls) appendRun(runsPath, { v: 1, launch: launchedAt, poll: 'restored', at: wallNow() });
       if (failedPolls || conflictedPolls) serviceBeat(!journal.view.stop && wallNow() < journal.view.expires, 'poll restored');
-      failedPolls = 0; conflictedPolls = 0; routeHealthy = true;
+      failedPolls = 0; conflictedPolls = 0; routeHealthy = true; updateHealthy = !ended();
+      try { updateController?.start(); updateController?.updater.recheckRestartHolds(); observeUpdateBoot(root, { version: updateVersion, launch: String(launchedAt), healthy: !ended() }); }
+      catch { /* The pending handshake remains unverified; a later poll can retry. */ }
       // Updates this journal already recorded come back until the shared cursor passes them; only the new ones are taken.
       const batch = shared ? updates.result.filter(update => !(update?.update_id < journal.view.cursor)) : updates.result;
       if (!await untilStopped(() => worker.intake(batch), ended)) break;
@@ -3316,6 +3346,7 @@ async function main() {
     reportExit(`paused by signal ${signalName}`);
   }
   finally {
+    updateController?.stop();
     dueWake?.close();
     try {
       // Rules 2, 42: a launch refused before it launched is still a launch with a recorded end. The
@@ -3345,7 +3376,7 @@ async function main() {
           // operator need a live runner as much as due or scheduled work does.
           const remaining = health ? health.ownedWork : 0;
           // Two machines: an owner that ends (its cycle limit, a lost lease) is wanted back as the standby and the peer copy.
-          if (health) end = { unfinished: health.unfinished, revival: remaining === 0 && !multi ? 'none' : inhibited ? 'inhibited' : 'queued',
+          if (health) end = { unfinished: health.unfinished, revival: endReason === 'installed update restart drained' && !inhibited ? 'queued' : remaining === 0 && !multi ? 'none' : inhibited ? 'inhibited' : 'queued',
             ...(health.nextWorkAt === null ? {} : { nextWorkAt: health.nextWorkAt }),
             // Rule 33: the exact journal frontier this claim describes.
             frontier: projectionDigest(journal.view) };

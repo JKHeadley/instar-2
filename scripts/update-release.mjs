@@ -7,8 +7,8 @@ export const readableSchemas = [1];
 export const migrations = [{ id: 'mcp-defaults-1024', async run(root) {
   const { register } = await import('node:module');
   register('./slice-ts-loader.mjs', import.meta.url);
-  const { installMcp } = await import('./mcp-setup.mjs');
-  installMcp(root);
+  const { installMcp, verifyMcpDefaults } = await import('./mcp-setup.mjs');
+  if (!verifyMcpDefaults(root)) installMcp(root);
 } }];
 
 // A new id reaches roots which already recorded the snapshot-only migration.
@@ -16,3 +16,13 @@ migrations.push({ id: 'mcp-browser-reads-1024', run: migrations[0].run });
 
 // Reach installations which already recorded both earlier browser migrations.
 migrations.push({ id: 'mcp-browser-profile-1024', run: migrations[0].run });
+
+// Existing installations already have all three ids. Recheck their actual
+// default template on every update, including a repeated tag, before accepting it.
+// Repair uses the same installer as setup, preserving unknown operator choices.
+migrations.push({ id: 'mcp-defaults-verified-1104', run: migrations[0].run, async verify(root) {
+  const { register } = await import('node:module');
+  register('./slice-ts-loader.mjs', import.meta.url);
+  const { verifyMcpDefaults } = await import('./mcp-setup.mjs');
+  return verifyMcpDefaults(root);
+} });

@@ -1,7 +1,7 @@
 # Rule coverage
 
-Register generation: sha256:f4e50ec70254dd22c66c8f0fce4ef48cfd409b3ec6d43cc6de09c66601811afd
-Source commit: 0b1e7ba4df04393e3154e78156fc03d366a7f9ec
+Register generation: sha256:7e2c5311beb21d317bb17e57a2641f2b3086b35cdb3fe06f4eaaab09ec208186
+Source commit: 2abf0176e9008587583863a40ab72a32f69145d3
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -10,7 +10,7 @@ Authority: shape-only; entering-force verification required at consumption.
 | held-reviewed | 0 |
 | held-unreviewed | 0 |
 | declared | 2 |
-| partial | 27 |
+| partial | 28 |
 | deferred | 1 |
 | gap | 114 |
 
@@ -7963,6 +7963,7 @@ Authority: shape-only; entering-force verification required at consumption.
         "preview.durable-intake.startup",
         "preview.durable-intake.store-agreements",
         "preview.held-reply-notice.delivered",
+        "preview.proofs.update-bound",
         "preview.reminders.delivered",
         "preview.reply-review.reached",
         "preview.reply.bot-identity",
