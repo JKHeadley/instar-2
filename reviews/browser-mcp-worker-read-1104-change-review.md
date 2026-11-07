@@ -44,6 +44,12 @@ Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-chang
 
 ## Closing block
 
+Integration record repair: train-188 explicitly reopens this inherited frozen record because regenerated combined outputs changed its subject digest. The old frozen bytes and review history remain in git; this is not a new independent acceptance claim. The train review covers the exact combined candidate.
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:9 | not-a-deferral=Exact main text restored by the train; actual reviewed deadline declarations unchanged.
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:10 | not-a-deferral=Exact main text restored by the train; actual reviewed deadline declarations unchanged.
+Deferral: generated/conversion.json:1 | not-a-deferral=Regenerated governing text, not a new commitment.
+Deferral: generated/register.json:1 | not-a-deferral=Regenerated governing text, not a new commitment.
+
 simplestRobustRoute: Use the existing harness ACL helper on the one generated file before a continuing session launches.
 80/20: The worker can load the connector without changing owner profile custody. Real signed-in page reads still need copy proof before live release.
 VERDICT: author submission; this record asserts no independent verdict.

@@ -54,6 +54,21 @@ Round1 repair validation: Real finite-survivor and unavailable-observation fallb
 
 Subject (8 paths): register-source/owner-references/preview.json, tests/register/live-rule-four-admissions.test.ts, scripts/process-census-query.mjs, scripts/process-inventory.mjs, scripts/resource-owner.declarations.json, scripts/resource-owner.mjs, tests/integration/process-census-query.test.ts, tests/preview/resource-census-recovery.test.ts
 
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:9 | not-a-deferral=Exact main text restored by the train; actual reviewed deadline declarations unchanged.
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:10 | not-a-deferral=Exact main text restored by the train; actual reviewed deadline declarations unchanged.
+Deferral: generated/conversion.json:1 | not-a-deferral=Regenerated governing text, not a new commitment.
+Deferral: generated/register.json:1 | not-a-deferral=Regenerated governing text, not a new commitment.
+Deferral: docs/evidence/train-192-notice-owner/constitution-attributed-statements-change-review.md:29 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-one-constitution-change-review.md:30 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md:29 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
+
+Prompt finding: 0725f0150c56 | protocol-literal | The role and tool-refusal sentence is fixed prompt prologue text in conversationSessionPrompt; the regression uses it only to normalize historical packets for digest comparison, and no gate or model verdict keys on this phrase; read at both ends, unchanged by this merge.
+Prompt finding: 27d7720e7977 | protocol-literal | Fixed prologue sentence; the regression splits on it as the boundary of the prologue under byte comparison, and it is not a model decision trigger; read at both ends, unchanged by this merge.
+Prompt finding: 4106b49fff07 | protocol-literal | Fixed obligation-decision clause; replacedClause needs its exact text to swap in the tool-route wording, and the test checks that delivered guidance rather than supplying a verdict; unchanged by this merge.
+Prompt finding: 849db3a6296a | protocol-literal | The agent's own fixed reply for an empty memory list, produced without a model; the startsWith branch recognizes that exact own output, never a person's words or a meaning; unchanged by this merge.
+Prompt finding: 85544c20941f | protocol-literal | Fixed infrastructure outage sentence sent with no model call; the test checks the actual notice, and the replay pattern matches only that own notice; unchanged by this merge.
+Prompt finding: e8708c7fea24 | protocol-literal | Fixed sourceLabel attribution instruction in delivered guidance; the regression checks the instruction is delivered, not a desired semantic answer; unchanged by this merge.
+
 ## Closing block
 
 simplestRobustRoute: Retain the existing census population, metadata and first4096 normalized command characters while streaming away tails already omitted by its decoder. Preserve2second and1MiB materialized bounds. Reuse current owner and Six settlement at admission pressure rather than add a recovery daemon or enlarge capacity.
