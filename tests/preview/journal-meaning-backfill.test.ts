@@ -101,7 +101,7 @@ describe('Rule 11: the meaning index backfills summaries written before build 2'
       await turn(older + 2);
       await turn(older + 3);
       expect(sent).toHaveLength(3);
-      expect(sent[0]).toContain(`Earlier conversation up to #${older} is now summarized for me`);
+      expect(sent[0]).toContain('Earlier conversation is now summarized for me');
       expect(sent.slice(1).some(text => text.includes('is now summarized for me'))).toBe(false);
       // An empty backlog adds no pass when no summary is otherwise due.
       expect(indexContexts).toHaveLength(passes);

@@ -209,7 +209,7 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
       expect(spoken[0]!.intent!.startsWith(`${spoken[0]!.continuity!.disclosure} `)).toBe(true);
       // One seam throughout, so no basis change was owed a second sentence; exactly one went out.
       expect(new Set(compacted.map(turn => turn.continuity!.basis ?? 'summary')).size).toBe(1);
-      expect(sent.filter(text => text.startsWith('Earlier conversation up to #'))).toHaveLength(1);
+      expect(sent.filter(text => text.startsWith('Earlier conversation is now summarized for me.'))).toHaveLength(1);
       // Each turn's own flag is what the predicate decides from the last sentence actually delivered.
       let delivered: ContinuityAccount | undefined;
       for (const turn of compacted) {
@@ -261,7 +261,7 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
       journal.append({ kind: 'summary', through: 29, text: 'The operator keeps a garden log.', at });
       let worker = createJournalWorker(journal, ports(at + 100_000));
       worker.intake([update(31, 'How is the garden?')]); await worker.drain();
-      expect(sent.at(-1)).toMatch(/^Earlier conversation up to #29 is now summarized for me;/u);
+      expect(sent.at(-1)).toMatch(/^Earlier conversation is now summarized for me\./u);
       journal.append({ kind: 'summary-reserve', through: 31, at: at + 1 });
       journal.append({ kind: 'summary', through: 31, text: 'The operator keeps a garden log and asked how it is.', at: at + 1 });
       journal.close();

@@ -137,14 +137,14 @@ it(`plain continuity retains exact journal checks: ${fault}`, () => {
     }
     const disclosure = fault === 'wording' ? 'Everything has been completed.'
       : 'Earlier conversation is now summarized for me. Your previous request is still open; no finished answer is confirmed.';
-    const text = `${disclosure} ${unknownAnswerNotice({ text: 'The current request' })}`;
+    const text = `${disclosure} ${fault === 'ordinary-answer' ? 'An answer.' : unknownAnswerNotice({ text: 'The current request' })}`;
     const append = () => journal.append({ kind: 'intent', id: id(2), text, chat: genesis.chat, update: 2,
       grant: genesis.grant, at: 1000, continuity: { prePauseInbound: id(1),
         capture: fault === 'capture' ? 'wrong' : sha(journal.view.order[0]!.raw), summarizedThrough: 1,
         grounding: 'p', disposition: 'pending', reference: 'no reply from me yet', disclosure,
         ...(fault === 'basis' ? { basis: 'set-aside' as const } : {}),
         replyDigest: fault === 'digest' ? 'wrong' : sha(text) } });
-    if (fault === 'none') expect(append).not.toThrow();
+    if (fault === 'none' || fault === 'ordinary-answer') expect(append).not.toThrow();
     else expect(append).toThrow('continuity account refused');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });

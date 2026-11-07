@@ -410,8 +410,8 @@ const continuityTail = (disposition: ContinuityAccount['disposition'], reference
 export const continuityDisclosure = (label: string, through: number, disposition: ContinuityAccount['disposition'], reference: string,
   basis: ContinuityBasis = 'summary') =>
   `${continuityHead(through, basis)}${label}${continuityTail(disposition, reference)}`;
-/** Plain surface for a stopped task; exact prior-message evidence remains in ContinuityAccount. */
-const stoppedTaskContinuity = (disposition: ContinuityAccount['disposition'], basis: ContinuityBasis) =>
+/** Plain surface for every reply; exact prior-message evidence remains in ContinuityAccount. */
+const plainContinuity = (disposition: ContinuityAccount['disposition'], basis: ContinuityBasis) =>
   `${basis === 'set-aside' ? 'Earlier conversation no longer fits in my view; it is saved and searchable, but not summarized.'
     : 'Earlier conversation is now summarized for me.'} Your previous request ${disposition === 'addressed'
       ? 'was answered.' : disposition === 'superseded' ? 'was replaced by your later edit.'
@@ -5352,8 +5352,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
         || !CONTINUITY_DISPOSITIONS.includes(account.disposition) || !account.reference
         || !(account.disclosure.startsWith(continuityHead(account.summarizedThrough, frontier.basis))
           && account.disclosure.endsWith(continuityTail(account.disposition, account.reference))
-          || turn.noticeClass === 'unknown-answer'
-            && account.disclosure === stoppedTaskContinuity(account.disposition, frontier.basis))
+          || account.disclosure === plainContinuity(account.disposition, frontier.basis))
         || opens === (account.spoken === false)
         || account.replyDigest !== createHash('sha256').update(row.text).digest('hex'))
         throw Error('preview journal: continuity account refused');
@@ -6563,11 +6562,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : before.intent !== undefined ? ['pending', 'my reply to it was prepared but its delivery is unconfirmed']
             : ['pending', before.held ? `held: ${before.held}` : 'no reply from me yet'];
     const label = `#${before.update}, ${dated(before)}`;
-    // The stopped task needs a plain disclosure too. Exact ids and the delivery account stay
-    // in the durable continuity record; a notice receipt is still not an answered request.
-    const disclosure = turn.noticeClass === 'unknown-answer'
-      ? stoppedTaskContinuity(disposition, basis)
-      : continuityDisclosure(label, through, disposition, reference, basis);
+    // Every reply uses plain words. Exact ids and the delivery account stay in the durable
+    // continuity record; a notice receipt is still not an answered request.
+    const disclosure = plainContinuity(disposition, basis);
     // Quiet repetition is scoped to one continuous episode: this worker's run. A disclosure an earlier run
     // delivered does not cover history compacted since, so the first reply after a resume into a newer frontier
     // says it again (a changed seam is already spoken by `continuitySpoken`); later routine replies of this run

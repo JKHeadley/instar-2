@@ -502,7 +502,7 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     // reply first discloses it and accounts for the last message (Rule 110), then answers.
     const asked = w.journal.view.order.at(-1)!;
     expect(asked.answer?.endsWith('Your gym locker code is 3310.')).toBe(true);
-    expect(asked.intent!.startsWith('Earlier conversation up to #')).toBe(asked.continuity !== undefined);
+    expect(asked.intent!.startsWith('Earlier conversation')).toBe(asked.continuity !== undefined);
     await w.say(id++, 'Actually my gym locker code is 4412, not 3310.');
     expect(w.journal.view.memory).toHaveLength(1);
     expect(replyBody(w.journal.view.order.at(-1)!)).toBe('Now: my gym locker code is 4412. Was: My gym locker code is 3310.');
