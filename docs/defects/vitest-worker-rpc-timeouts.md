@@ -16,6 +16,8 @@ Two runs recorded unhandled runner errors `[vitest-worker]: Timeout calling "onT
 
 **Second cause found and repaired (2026-09-28, cint-5):** the cint-5 gate at `ed66cfcb` passed every test but exited 1 on one `onTaskUpdate` timeout. A full traced run (worker-side RPC trace, per-file) showed task-update replies left unanswered while a single case ran blocking child processes: `tests/e2e/transport-loop-a1.test.ts` 65 s (24 `spawnSync` vitest children in one case; that run's error), `tests/e2e/register.test.ts` 41 s (the synchronous P3-P5 CLI case), `tests/e2e/harness-adapters-round12-regression.test.ts` 37 s, `tests/e2e/harness-adapters-round9-regression.test.ts` 26 s, and `tests/conversation/telegram.round24.integration.test.ts` 28 s (a synchronous 21-case matrix). The four spawning files now use one async child helper, `tests/e2e/async-child.ts` (spawnSync's result shape and SIGTERM timeout), and the round24 matrix yields a real event-loop turn per case, as round20 already did. No assertion or timeout changed. Re-traced, the worst unanswered interval in those files is 2.3 s. The remaining blocks under 22 s are mostly module import at file start.
 
+**Train-188 recurrence (2026-11-05):** the supplied `fast-train-188-b0f4776a/fast.log` reports one `onTaskUpdate` timeout alongside a 79-second synchronous case in `tests/e2e/harness-adapters-round7-regression.test.ts`. That case started nineteen `vite-node` children without yielding. This file now awaits the existing `tests/e2e/async-child.ts` runner and uses the shipped TypeScript loader; the nine append cuts and successful control each have their own case, and the poison matrix is split by seed condition. Every crash, uncertainty, stale-write and reconnect assertion remains. Child waits retain their 30-second timeout. The full file passes 14 cases in 36 seconds without an RPC error in the targeted run. This removes an identified starvation source; closure still requires the desk's full run and does not assert that all host-starvation causes are gone.
+
 **Repair and closure:** the owner (1) identifies the starving file or the host condition from the worker trace, (2) confirms the resolved vitest package is the worktree's intended version, not a sibling's, and (3) repairs the cause, for example by an async yield in a long synchronous file, lower worker count or a per-worktree install. Closure needs a full run with zero runner errors under the original conditions. If a later run shows the error again, this record reopens.
 
 **Multi-machine posture:** runner and host are machine-local. This record travels with the repository.
@@ -78,6 +80,25 @@ must use different process ids. Discovery checks compare the actual runner inven
 all tracked test files in unsplit, macOS-only and non-macOS modes. Full-suite qualification
 and repeated real-fixture runs are recorded in the builder's absolute lanes progress record;
 this defect remains open until that evidence establishes zero runner errors.
+
+## train-177 targeted repair, 2026-11-05
+
+The supplied Studio gate at `1cdebb160e9bdc97690fee8043a25e227e4973a7` reports one
+unattributed `onTaskUpdate` timeout. In that run, the round-seven harness adapter
+boundary case took 66,411 ms against its 60,000 ms ceiling while making nineteen
+consecutive blocking child calls (nine cuts, nine readers, one control). This is
+an observed event-loop blocking path beyond the RPC deadline; the excerpt does
+not establish that it caused the unattributed error.
+
+`tests/e2e/harness-adapters-round7-regression.test.ts` now uses the existing
+`async-child.ts` helper throughout, preserving the 30-second child bounds. Each
+independent append cut and the uninterrupted control has its own test; all nine
+cuts, refusal checks, concurrent-reader checks and the twelve poison cases
+remain. The torn-state reconstructions and twelve poison combinations also have
+separate case bounds after the first targeted run exposed their aggregate deadlines.
+No child deadline, worker concurrency or product behavior is changed.
+Targeted verification covers the repaired file, not full-suite closure.
+The defect remains open pending the pipeline's full run with zero runner errors.
 
 ## train-181 recurrence, 2026-11-05
 

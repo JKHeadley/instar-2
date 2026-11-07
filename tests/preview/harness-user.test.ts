@@ -2,7 +2,7 @@
 // each proven on both sides without the root step (fakes for sudo and the probe; the launcher and the resource owner on
 // real processes of this user). The live proof against the real `_instarharness` user is
 // tests/integration/tool-turn-harness-user-live.test.ts.
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -336,6 +336,19 @@ describe('the launcher', () => {
   const pidOf = (out: string, name: string) => Number(readFileSync(join(out, name), 'utf8').trim());
   const waitFor = async (check: () => boolean, ms = 3000) => { const end = Date.now() + ms; while (!check() && Date.now() < end) await new Promise(r => setTimeout(r, 20)); return check(); };
 
+  it('delivers every probe row through a pipe before exiting, and a short reply is refused (both sides)', () => {
+    // A busy Studio probes thousands of /private/tmp entries; per-row pipe writes then process.exit lost the tail on macOS.
+    // Short fixed paths keep the arguments far below macOS's 1 MiB ARG_MAX on any scratch root; the row count keeps the reply above 1 MiB.
+    const specs = Array.from({ length: 20_000 }, (_, i) => `r:/n/${String(i).padStart(5, '0')}`);
+    for (let run = 0; run < 5; run++) {
+      const rows = probeAccess(specs, { exec: (_command: string, args: string[], options: object) =>
+        execFileSync(process.execPath, [launcher, ...args.slice(4)], options) });
+      expect(rows).toHaveLength(specs.length);
+    }
+    const lines = specs.map(spec => JSON.stringify({ path: spec.slice(2), mode: 'r', ok: false, code: 'ENOENT' }));
+    expect(probeAccess(specs, { exec: () => `${lines.slice(0, 1075).join('\n')}\n` })).toBeNull();
+  });
+
   it('passes exactly the given environment and the exit code, and ends what the harness left behind', async () => {
     const out = fresh('launcher-exit');
     const name = `instar20-${'b'.repeat(24)}`;
@@ -426,6 +439,22 @@ describe('the launcher', () => {
       .trim().split('\n').map(line => JSON.parse(line));
     expect(rows.map(row => row.ok)).toEqual([true, true, false]);
     expect(rows[2].code).toBe('ENOENT');
+  });
+  it('flushes every real probe row before a successful exit when the pipe reader pauses', async () => {
+    const count = 2500;
+    const child = spawn(process.execPath, [launcher, '--probe', ...Array(count).fill(`r:${fake}`)], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '', error = '', paused = false;
+    child.stdout.on('data', (chunk: Buffer) => {
+      output += chunk;
+      if (!paused) { paused = true; child.stdout.pause(); setTimeout(() => child.stdout.resume(), 500); }
+    });
+    child.stderr.on('data', (chunk: Buffer) => { error += chunk; });
+    const code = await new Promise<number | null>((resolve, reject) => { child.once('error', reject); child.once('close', resolve); });
+    expect(code).toBe(0);
+    expect(error).toBe('');
+    const rows = output.trim().split('\n').map(line => JSON.parse(line));
+    expect(rows).toHaveLength(count);
+    expect(rows.every(row => row.path === fake && row.mode === 'r' && row.ok === true)).toBe(true);
   });
 });
 
