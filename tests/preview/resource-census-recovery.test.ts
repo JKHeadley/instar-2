@@ -22,6 +22,10 @@ const drop = async (children: ChildProcess[]) => Promise.all(children.map(child=
 it('PREVIEW-RESOURCE-CENSUS-RECOVERY retains nine real Six debits on failed census, then same living owner verifies quiescence and admits the tenth', {timeout:120000}, async()=>{
   const root=mkdtempSync(join(tmpdir(),'resource-census-recovery-'));chmodSync(root,0o700);
   const noise: ChildProcess[]=[];
+  let releaseCensus: (()=>void)|undefined;
+  const censusGate=new Promise<void>(resolve=>{releaseCensus=resolve});
+  let censusStarted: (()=>void)|undefined;
+  const waitingForCensus=new Promise<void>(resolve=>{censusStarted=resolve});
   try {
     for(let i=0;i<6;i++) {
       const child=spawn(process.execPath,['-e','setTimeout(()=>process.exit(0),110000);setInterval(()=>{},1000)','census-fixture-'+i+'x'.repeat(200000)],{stdio:'ignore',env:{PATH:'/usr/bin:/bin'}});
@@ -36,8 +40,13 @@ it('PREVIEW-RESOURCE-CENSUS-RECOVERY retains nine real Six debits on failed cens
     const inventoryPids=new Set(compact.split('\n').map((line:string)=>Number(line.trim().split(' ')[0])));
     noise.forEach(child=>expect(inventoryPids.has(child.pid)).toBe(true));
     let repaired=false;
-    const query=(file:string,args:string[])=>file==='/bin/ps'&&args.includes(PROCESS_CENSUS_COLUMNS)&&!repaired
-      ? oldRead(file,args,failures):hostQuery(file,args);
+    const query=async(file:string,args:string[])=>{
+      if(file==='/bin/ps'&&args.includes(PROCESS_CENSUS_COLUMNS)) {
+        if(!repaired)return oldRead(file,args,failures);
+        censusStarted!();await censusGate; // Inject unavailable progress without loading the host.
+      }
+      return hostQuery(file,args);
+    };
     const allocation=createHostResourceAllocation({root,machine:'machine:census-fixture',ceilings:RESOURCE_CEILINGS,
       incarnation:`census-fixture:${process.pid}`,now:()=>Date.now(),monotonic:()=>performance.now()});
     const ledgerPath=join(root,'owned-launches.json');
@@ -55,7 +64,15 @@ it('PREVIEW-RESOURCE-CENSUS-RECOVERY retains nine real Six debits on failed cens
     const ownerBefore=JSON.parse(readFileSync(ledgerPath,'utf8')).launches;
     expect(new Set(Object.values(ownerBefore).map((x: unknown)=>(x as {owner:{pid:number}}).owner.pid))).toEqual(new Set([process.pid]));
     repaired=true; // same owner, same original ceilings and allocation authority
-    const tenth=await owner.execute(input,'answer');
+    // This request includes reconciliation of nine durable Six allocations. The
+    // short request above proves capacity refusal; this positive request grants
+    // the recovery work its own finite budget, without changing owner ceilings.
+    const pendingTenth=owner.execute({...input,timeout:60000},'answer');
+    await waitingForCensus;
+    expect(allocation.open()).toHaveLength(9);
+    expect(owner.snapshot().counters.cleanupRecovered??0).toBe(0);
+    releaseCensus!();
+    const tenth=await pendingTenth;
     expect(tenth).toMatchObject({code:0,stdout:'completed',resources:{cleanup:'verified',allocation:{state:'returned'}}});
     expect(owner.snapshot().counters.cleanupRecovered).toBe(9);
     expect(allocation.open()).toHaveLength(0);
@@ -63,7 +80,7 @@ it('PREVIEW-RESOURCE-CENSUS-RECOVERY retains nine real Six debits on failed cens
     expect(owner.snapshot().outcomes).toContainEqual(expect.objectContaining({kind:'cleanup-reconciled',launches:9}));
     // The unrelated argv holders were fully inventoried and never signalled by the owner.
     noise.forEach(child=>expect(child.exitCode===null&&child.signalCode===null).toBe(true));
-  } finally {await drop(noise);rmSync(root,{recursive:true,force:true});}
+  } finally {releaseCensus?.();await drop(noise);rmSync(root,{recursive:true,force:true});}
 });
 it('keeps the same owners debit while its real recorded descendant survives a denied cleanup', {timeout:30000}, async()=>{
   const root=mkdtempSync(join(tmpdir(),'resource-census-survivor-'));chmodSync(root,0o700);

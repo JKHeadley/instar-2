@@ -54,6 +54,14 @@ Round1 repair validation: Real finite-survivor and unavailable-observation fallb
 
 Subject (8 paths): register-source/owner-references/preview.json, tests/register/live-rule-four-admissions.test.ts, scripts/process-census-query.mjs, scripts/process-inventory.mjs, scripts/resource-owner.declarations.json, scripts/resource-owner.mjs, tests/integration/process-census-query.test.ts, tests/preview/resource-census-recovery.test.ts
 
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:9 | not-a-deferral=Exact main text restored by the train; actual reviewed deadline declarations unchanged.
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:10 | not-a-deferral=Exact main text restored by the train; actual reviewed deadline declarations unchanged.
+Deferral: generated/conversion.json:1 | not-a-deferral=Regenerated governing text, not a new commitment.
+Deferral: generated/register.json:1 | not-a-deferral=Regenerated governing text, not a new commitment.
+Deferral: docs/evidence/train-192-notice-owner/constitution-attributed-statements-change-review.md:29 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-one-constitution-change-review.md:30 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md:29 | not-a-deferral=Copied historical review evidence from live quotes the old deferred:slack-intake-v1:36 deadline refusal; the train-188 merge preserves it verbatim and makes no new deferral. Current register verification passes.
+
 ## Closing block
 
 simplestRobustRoute: Retain the existing census population, metadata and first4096 normalized command characters while streaming away tails already omitted by its decoder. Preserve2second and1MiB materialized bounds. Reuse current owner and Six settlement at admission pressure rather than add a recovery daemon or enlarge capacity.

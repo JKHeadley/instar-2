@@ -46,6 +46,12 @@ Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-chang
 
 ## Closing block
 
+Integration record repair: train-188 explicitly reopens this inherited frozen record because regenerated combined outputs changed its subject digest. The old frozen bytes and review history remain in git; this is not a new independent acceptance claim. The train review covers the exact combined candidate.
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:9 | not-a-deferral=Exact main text restored by the train; actual reviewed deadline declarations unchanged.
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:10 | not-a-deferral=Exact main text restored by the train; actual reviewed deadline declarations unchanged.
+Deferral: generated/conversion.json:1 | not-a-deferral=Regenerated governing text, not a new commitment.
+Deferral: generated/register.json:1 | not-a-deferral=Regenerated governing text, not a new commitment.
+
 simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
 80/20: The two browser test files and register lifecycle test passed 31/31 on the combined branch. Full exact-head suite, independent combination review and a real signed-in multi-step group task remain required before release. No new browser service or credential custody path.
 VERDICT: author submission; this record asserts no independent verdict.
