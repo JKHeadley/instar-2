@@ -4,7 +4,7 @@ Subject base: e8c2a0b156ae412bcdcb4e020dd2cd6ef4d9098d
 Review state: open
 Reviewed content: none
 Outcome: A tool call that fails in a tool turn now keeps the harness's error text as its recorded result. A sandbox refusal is evidence in the admission record, the journal trace and the reply review, so the reply check no longer treats a true refusal as an unsupported claim.
-Affected rules: 1, 26, 30, 34, 36, 42, 49, 57, 58, 62, 70, 74, 76, 85, 101, 102, 107, 108, 111, 113, 116
+Affected rules: 1, 26, 30, 34, 36, 42, 49, 57, 58, 62, 70, 74, 76, 85, 101, 102, 105, 107, 108, 111, 113, 114, 115, 116
 Affected floors: secrets — the failure row is clipped by the existing hook and passes the existing end-of-turn scrub, which cleans every row field; spend cap — no added model call; stop — unchanged, an interrupted call is a failure event with the same record; no duplicate sends — unchanged; durable intake — unchanged.
 Operator questions: none
 Suggested tier: significant
@@ -20,6 +20,8 @@ Hook bypass: none; ordinary commits, no bypass flag used.
 Convergence: none
 Decision: stale-checks-t2c-failure-result | Record a failed call's error as its result in the tool-turn trace, because the harness reports a failed call only through PostToolUseFailure. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stale-checks-1107-PROGRESS.md
 Decision: stale-checks-t2c-scope | Change the product for T2c only. I4b and I7b are check and scheduling repairs proposed to the desk, because the product defers those cases durably within its pass bounds. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stale-checks-1107-PROGRESS.md
+Decision: stale-checks-native-renewal | The settings change alters the certified native composition, so R105 is repaired here: the existing contract ran on this composition, 9/10 before with only the stale certificate failing, then 10/10 after re-declaring sha256:9a8219066b5036440ec06437248bfc3aa584b4d03476c55c54d00759354e8670, which the certificate test compares with the contract's own computed digest. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stale-checks-1107-PROGRESS.md
+Decision: stale-checks-rule-114 | Rule 114 is affected: a failed helper's result is recorded but its parent-child edge stays open, so parent settlement is retained and a failed helper never acquires a returned child result. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stale-checks-1107-PROGRESS.md
 Deferral: tests/preview/tools-policy-class.ts:105 | not-a-deferral=The class check is tightened in this change; nothing is left for later.
 Prompt review: No prompt text or parser changes. The reply review's existing toolAttempts packet now carries the error text where it carried null. The recorded t2 call (update 46040954) replays with a real-harness failure envelope through the executable hook into toolTrace. The live journals are not reachable from this host, so the summary-writer, Jev and delivered-reply recorded shapes were not replayed here; tool-failure-answer.test.ts replays the T4 capture and passes.
 Prompt finding: 0d4664ea9de7 | protocol-literal | Existing tool and identity prompt text, unchanged by this commit; the settings hook is the only edit in this file — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
