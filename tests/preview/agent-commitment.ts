@@ -41,11 +41,13 @@ export function promiseProposals(value: unknown, reply: string): PromiseProposal
   }
   return found;
 }
-/** The one rule deciding whether a reply may carry out commitment `id`: the commitment is a promise the
- * agent itself made. A commitment the operator asked for — a reminder to them — is not the agent's promise,
- * so a reply delivering it settles that reminder through its own path, never as a fulfillment claim. */
-export const fulfillableCommitment = (commitments: readonly { agentPromise?: unknown }[], id: number): boolean =>
-  commitments[id]?.agentPromise !== undefined;
+/** The agent's own promises may be recorded by the answer, a declared loop, or the summary.
+ * All three use the same model-proposed, receipt-bound fulfillment path. Operator requests
+ * still settle through their result/reminder path; shared wording or source never merges them. */
+type FulfillableNote = { agentPromise?: unknown; in?: string; owner?: string };
+export const fulfillableCommitment = (commitments: readonly FulfillableNote[], id: number): boolean =>
+  commitments[id]?.agentPromise !== undefined
+  || commitments[id]?.in === 'reply' && commitments[id]?.owner === 'agent';
 
 /** The whole support rule for one fulfillment claim: the reply as written still quotes it, and it names a
  * commitment this reply may carry out. The writer applies this before it appends an answer row and the
@@ -53,7 +55,7 @@ export const fulfillableCommitment = (commitments: readonly { agentPromise?: unk
  * offered every agent-OWNED commitment while the replay accepted only agent PROMISES, so one delivered
  * reminder wrote a row the replay refused and made a whole journal unreadable (build 30bda628, 2026-10-01). */
 export const fulfillmentSupported = (item: FulfillmentProposal, reply: string,
-  commitments: readonly { agentPromise?: unknown }[]): boolean =>
+  commitments: readonly FulfillableNote[]): boolean =>
   reply.includes(item.quote) && fulfillableCommitment(commitments, item.id);
 
 /** Validated fulfillment proposals from one answer, or undefined when the proposal is malformed or claims
