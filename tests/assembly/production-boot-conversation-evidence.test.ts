@@ -128,6 +128,35 @@ it('BOOT-SPLIT evidence accepts host-clock receipts of a run whose file windows 
     expect(result.status, result.stderr).toBe(0);
   } finally { rmSync(f.root, { recursive: true, force: true }); }
 });
+// What Vitest writes for a file none of whose tests ever started: the report start, twice, host clock.
+function neverStarted(f, stamp) {
+  const name = join(f.root, 'tests/other.test.ts');
+  Object.assign(f.report.testResults.find(file => file.name === name), { startTime: stamp, endTime: stamp,
+    assertionResults: [{ fullName: 'other suite case', status: 'skipped', failureMessages: [] }] });
+  f.report.numPassedTests = 4;
+}
+for (const [label, clockShift] of [['a shifted run', SHIFT], ['an unshifted run', 0]]) {
+  it(`BOOT-SPLIT evidence accepts a never-started file stamped at the report start in ${label}`, () => {
+    const f = fixture();
+    try {
+      if (clockShift) shiftedRun(f, clockShift); else f.exit.clockShift = 0;
+      neverStarted(f, f.report.startTime);
+      const result = run(f);
+      expect(result.status, result.stderr).toBe(0);
+    } finally { rmSync(f.root, { recursive: true, force: true }); }
+  });
+}
+control('a shifted worker file that ended outside the run', f => {
+  shiftedRun(f, SHIFT);
+  f.report.testResults.at(-1).endTime += 3_600_000;
+}, /report\/process execution window/);
+control('a never-started file stamped after the report start in a shifted run', f => {
+  shiftedRun(f, SHIFT);
+  neverStarted(f, f.report.startTime + 3_600_000);
+}, /report\/process execution window/);
+control('an unshifted worker file that ended outside the run', f => {
+  f.report.testResults.at(-1).endTime += 3_600_000;
+}, /report\/process execution window/);
 control('a shifted run whose exit row records no clock shift', f => shiftedRun(f), /report\/process execution window/);
 control('a receipt left by an earlier shifted run', f => {
   shiftedRun(f, SHIFT);

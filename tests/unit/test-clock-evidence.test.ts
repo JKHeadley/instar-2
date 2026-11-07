@@ -1,6 +1,6 @@
 // A shifted run starts every worker at one fixed test time, so run evidence must stay on the host
 // clock: the gate compares it with Vitest's unshifted report start (train-198 gate, 2026-11-07).
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -72,4 +72,30 @@ it('a file window moves to the host clock by exactly the recorded shift', () => 
   expect(hostFileWindow(file, { clockShift: SHIFT })).toEqual({ start: 1000, end: 2000 });
   expect(hostFileWindow({ startTime: 1000, endTime: 2000 }, { clockShift: 0 })).toEqual({ start: 1000, end: 2000 });
   expect(hostFileWindow({ startTime: 1000, endTime: 2000 }, {})).toEqual({ start: 1000, end: 2000 });
+});
+
+// Numbers from the M5 report of train-198 afbdd6c0: a never-started file carries the report start.
+describe('a file none of whose tests ever started is already on the host clock', () => {
+  const clockShift = -1356509156, reportStart = 1794061709011;
+  const exit = { clockShift, reportStart };
+
+  it('keeps the exact report-start stamp Vitest writes for it', () => {
+    expect(hostFileWindow({ startTime: reportStart, endTime: reportStart }, exit)).toEqual({ start: reportStart, end: reportStart });
+  });
+
+  it('still shifts a worker file, including one whose tests all skipped after starting', () => {
+    const worker = { startTime: reportStart + clockShift + 5, endTime: reportStart + clockShift + 9 };
+    expect(hostFileWindow(worker, exit)).toEqual({ start: reportStart + 5, end: reportStart + 9 });
+  });
+
+  it('still shifts a file with a span, even if its start equals the report start', () => {
+    expect(hostFileWindow({ startTime: reportStart, endTime: reportStart + 1 }, exit))
+      .toEqual({ start: reportStart - clockShift, end: reportStart + 1 - clockShift });
+  });
+
+  it('is the same stamp either way without a shift', () => {
+    const file = { startTime: reportStart, endTime: reportStart };
+    expect(hostFileWindow(file, { clockShift: 0, reportStart })).toEqual({ start: reportStart, end: reportStart });
+    expect(hostFileWindow(file, { reportStart })).toEqual({ start: reportStart, end: reportStart });
+  });
 });

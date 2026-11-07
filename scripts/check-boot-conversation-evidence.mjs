@@ -59,9 +59,12 @@ function allTestFiles(directory = join(root, 'tests')) {
   });
 }
 /** Vitest stamps a file's window on the worker clock; evidence and the report start are on the host
- * clock. The exit row records the run's shift, so a window moves to the host clock before comparing. */
+ * clock. The exit row records the run's shift, so a window moves to the host clock before comparing.
+ * A file none of whose tests ever started has no worker stamp: Vitest's main process writes the report
+ * start as both its start and end, already on the host clock, so that exact stamp does not move. */
 export function hostFileWindow(file, exit) {
-  const shift = exit.clockShift ?? 0;
+  const neverStarted = file.startTime === exit.reportStart && file.endTime === exit.reportStart;
+  const shift = neverStarted ? 0 : exit.clockShift ?? 0;
   return { start: file.startTime - shift, end: file.endTime - shift };
 }
 function timeWindow(start, end, lower, upper, message) {
