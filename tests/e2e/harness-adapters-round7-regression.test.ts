@@ -47,39 +47,46 @@ it('A2-E2E A2-R6-01-BOUNDARIES P13-NF-24 P13-NF-28 P13-NF-38 P13-NF-39 uninterru
   });
 }, 60_000);
 
-it('A2-E2E A2-R6-01 P13-NF-24 P13-NF-28 P13-NF-38 P13-NF-39 a fully fsynced pending owner append remains persistently uncertain after SIGKILL', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'p13-a2-r7-race-'));
+describe('A2-E2E A2-R6-01 P13-NF-24 P13-NF-28 P13-NF-38 P13-NF-39 fully fsynced pending owner append', () => {
+  let root: string;
   const script = 'tests/harness-adapters/a2-round7-recovery-race-worker.ts';
-  writeFileSync(join(root, 'state.json'), JSON.stringify(base));
-  const seed = await runChild(worker, [script, 'seed', root], { cwd: process.cwd(), timeout: 30_000 });
-  expect(seed.signal, seed.stderr).toBe('SIGKILL');
+  beforeAll(async () => {
+    root = mkdtempSync(join(tmpdir(), 'p13-a2-r7-race-'));
+    writeFileSync(join(root, 'state.json'), JSON.stringify(base));
+    const seed = await runChild(worker, [script, 'seed', root], { cwd: process.cwd(), timeout: 30_000 });
+    expect(seed.signal, seed.stderr).toBe('SIGKILL');
+  }, 60_000);
 
-  const readers = await Promise.all([
-    runChild(worker, [script, 'reader', root], { cwd: process.cwd(), timeout: 30_000 }),
-    runChild(worker, [script, 'reader', root], { cwd: process.cwd(), timeout: 30_000 }),
-  ]);
-  for (const reader of readers) {
-    expect(reader, reader.stderr).toMatchObject({ status: 0, signal: null });
-    const result = JSON.parse(reader.stdout);
-    expect(result.observations).toHaveLength(3);
-    expect(result.observations.every((row: { state: string; reason: string }) =>
-      row.state === 'unknown' && row.reason.includes('Part Two harness state append is uncertain'))).toBe(true);
-  }
-  expect(readFileSync(join(root, 'state.json.part-two', 'facts.pending'), 'utf8')).toContain('operation:cut');
-  expect(JSON.parse(readFileSync(join(root, 'state.json.part-two', 'facts.json'), 'utf8'))).toHaveLength(1);
+  it('stays uncertain across concurrent readers after SIGKILL', async () => {
+    const readers = await Promise.all([
+      runChild(worker, [script, 'reader', root], { cwd: process.cwd(), timeout: 30_000 }),
+      runChild(worker, [script, 'reader', root], { cwd: process.cwd(), timeout: 30_000 }),
+    ]);
+    for (const reader of readers) {
+      expect(reader, reader.stderr).toMatchObject({ status: 0, signal: null });
+      const result = JSON.parse(reader.stdout);
+      expect(result.observations).toHaveLength(3);
+      expect(result.observations.every((row: { state: string; reason: string }) =>
+        row.state === 'unknown' && row.reason.includes('Part Two harness state append is uncertain'))).toBe(true);
+    }
+    expect(readFileSync(join(root, 'state.json.part-two', 'facts.pending'), 'utf8')).toContain('operation:cut');
+    expect(JSON.parse(readFileSync(join(root, 'state.json.part-two', 'facts.json'), 'utf8'))).toHaveLength(1);
+  }, 60_000);
 
-  const control = join(root, 'control');
-  mkdirSync(control);
-  writeFileSync(join(control, 'state.json'), JSON.stringify(base));
-  const recovered = await runChild(worker, [script, 'control', control], {
-    cwd: process.cwd(), timeout: 30_000,
-  });
-  expect(recovered.status, recovered.stderr).toBe(0);
-  expect(JSON.parse(recovered.stdout)).toMatchObject({ state: 'saved', staleWrite: 'refused' });
-  expect(createHarnessAdapterFileState(join(control, 'state.json')).load()).toMatchObject({
-    revision: 1, attempts: [{ operation: 'operation:cut' }],
-  });
-}, 30_000);
+  it('keeps the uninterrupted control saved and refuses a stale write', async () => {
+    const control = join(root, 'control');
+    mkdirSync(control);
+    writeFileSync(join(control, 'state.json'), JSON.stringify(base));
+    const recovered = await runChild(worker, [script, 'control', control], {
+      cwd: process.cwd(), timeout: 30_000,
+    });
+    expect(recovered.status, recovered.stderr).toBe(0);
+    expect(JSON.parse(recovered.stdout)).toMatchObject({ state: 'saved', staleWrite: 'refused' });
+    expect(createHarnessAdapterFileState(join(control, 'state.json')).load()).toMatchObject({
+      revision: 1, attempts: [{ operation: 'operation:cut' }],
+    });
+  }, 60_000);
+});
 
 describe('A2-E2E A2-R6-02 P13-NF-24 P13-NF-28 P13-NF-39 torn owner pending bytes', () => {
   let root: string, pendingPath: string, torn: string;

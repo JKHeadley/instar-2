@@ -35,6 +35,9 @@ Decision: train184-173839-register | Use delegated owner/grounding repin and reg
 
 Verification so far: typecheck, build and architecture passed. Delegated tools refreshed two preview owner-reference pins and zero grounding inventory entries. Register replay binds source 491e185153eb038a07025098b63a9b2c220e5c0c (299 entries, 122 rules). Final targeted test and gate outputs belong to the builder report.
 
+Repair evidence: The first targeted run passed 75 of 76 tests. The remaining unsplit fsynced-pending case timed out at its 30000ms aggregate deadline. Split only its seed setup, concurrent-reader test and independent control test using the existing beforeAll/it pattern; preserve both simultaneous readers and every assertion, with each physical child still bounded at 30000ms. This removes the aggregate stage coupling rather than restoring the previous 95000ms monolith.
+Decision: train184-173839-last-aggregate | Split the one remaining multi-stage crash case after its observed timeout; keep concurrent reads together and every state assertion intact. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-184-repair-173839-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, existing split test cases and timeout injection, and existing register regeneration. No new gate, runtime mechanism, quarantine or capability restriction. Start from the exact named parents; finish with targeted tests and cheap checks; Studio retains full-run and independent qualification.
