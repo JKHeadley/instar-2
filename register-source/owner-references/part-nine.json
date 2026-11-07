@@ -178,6 +178,15 @@
         "path": "tests/preview/proofs-launcher.test.ts",
         "hash": "sha256:fdcbf5dd38a4e02a9c26e4f27e02fdb0a645b91716d454469b85aec3aa7d78e8"
       }
+    },
+    {
+      "id": "P9-PREVIEW-update-bound",
+      "cadence": 60000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:fdcbf5dd38a4e02a9c26e4f27e02fdb0a645b91716d454469b85aec3aa7d78e8"
+      }
     }
   ],
   "documents": [],
