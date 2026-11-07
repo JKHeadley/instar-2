@@ -230,13 +230,20 @@ this launch for a running agent, which counts only its own launches. What bounds
 pair is one launch at a time under the update lock, the per-launch ceilings, and the
 user-wide process limit.
 
-A stop during a launch ends the tree and keeps the current release. A cleanup the owner
-cannot confirm is reported on stderr, because no ledger row keeps it for later recovery;
-it does not fail the update, and a failed census does not refuse a launch. If the
-command itself is killed outright, a running npm continues until it finishes, as it
-did before and as it does in 1.x; its unpublished stage stays out of `current`. Hosts
-whose `/bin/sh` refuses `ulimit -u` cannot launch through the owner at all, so the
-command fails there with the current release retained.
+A stop during a launch, including during its cleanup, ends the tree, keeps the current
+release and nothing further is launched, migrated or published. A stop between launches
+ends the process, and a hung migration can still be stopped this way; the next run
+resumes the saved transaction. A cleanup the owner cannot confirm is reported on stderr,
+because no ledger row keeps it for later recovery; it does not fail the update, and a
+failed census does not refuse a launch. If the command itself is killed outright, a
+running npm continues until it finishes, as it did before and as it does in 1.x; its
+unpublished stage stays out of `current`.
+
+POSIX does not require `ulimit -u` and dash refuses it, so the owner runs its limit shim
+under the first of `/bin/sh` and `/bin/bash` that can hold the limit. If neither can, the
+launch is refused with the current release retained; it never runs without the limit.
+Linux counts threads against this limit, so there the owner counts the user's threads
+when setting it.
 
 ## Periodic bound observation
 

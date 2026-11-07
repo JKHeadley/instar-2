@@ -52,19 +52,28 @@ export function ownedUpdateExecutor(resources, stopped) {
 // It composes the owner as setup's one-shot run does: admission, limits, census and
 // verified cleanup, with no durable ledger because there is no debit to return after a
 // crash. The owner launches in its own process group, which a terminal stop no longer
-// reaches, so a stop during a launch is passed to it. A stop between launches is unchanged.
+// reaches, so a stop during a launch is passed to it. The owner stops watching before its
+// asynchronous cleanup, so the stop is held for the whole update and a launch that ended
+// meanwhile still returns as stopped (Rule 42). A stop between launches ends the process.
 export function standaloneExecutor(resources) {
-  return async input => {
-    let stop = false;
-    const onStop = () => { stop = true; };
-    for (const name of STOP_SIGNALS) process.on(name, onStop);
+  let stop = false, launching = 0;
+  const release = () => { for (const name of STOP_SIGNALS) process.off(name, onStop); };
+  function onStop(name) {
+    if (launching) { stop = true; return; }
+    release(); process.kill(process.pid, name);
+  }
+  for (const name of STOP_SIGNALS) process.on(name, onStop);
+  const execute = async input => {
+    launching++;
     try {
       const result = await ownedUpdateExecutor(resources, () => stop)(input);
       // No ledger keeps this row for a later recovery, so the person is told now.
       if (result.resources?.cleanup === 'unresolved') process.stderr.write('A helper process from this update could not be confirmed gone.\n');
-      return result;
-    } finally { for (const name of STOP_SIGNALS) process.off(name, onStop); }
+      return stop && !result.cancellationReason ? { ...result, cancellationReason: 'stopped' } : result;
+    } finally { launching--; }
   };
+  execute.release = release;
+  return execute;
 }
 async function validateCandidate(installed, release, execute) {
   const pkg = candidateIdentity(installed, release);
@@ -117,8 +126,8 @@ export async function updateRoot(directory, options = {}) {
   await initializeUpdateRuntime();
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const releaseLock = acquireUpdateLock(root);
+  let execute = options.execute;
   try {
-    let execute = options.execute;
     if (!execute) {
       const resources = createResourceOwner();
       await resources.attach();
@@ -126,7 +135,7 @@ export async function updateRoot(directory, options = {}) {
     }
     return await apply(root, release, source, execute, options.fallbackSchemas);
   }
-  finally { releaseLock(); }
+  finally { execute?.release?.(); releaseLock(); }
 }
 export async function initializeUpdateRuntime() {
   if (!candidateBinding) candidateBinding = (async () => {
