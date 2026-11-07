@@ -33,6 +33,8 @@ Decision: train184-173839-split | Adopt designated live split crash cases and ex
 Decision: train184-173839-history | Keep candidate policy-cache review byte-identical; the alternative train-176 version remains at live parent 82589746 with owner provenance 0c1d832a. Both histories survive this merge, without rebinding an old review to unrelated changes. Retain both reminder test sets. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-184-repair-173839-PROGRESS.md
 Decision: train184-173839-register | Use delegated owner/grounding repin and register replay from the committed merged source; never edit a pin by hand. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-184-repair-173839-PROGRESS.md
 
+Verification so far: typecheck, build and architecture passed. Delegated tools refreshed two preview owner-reference pins and zero grounding inventory entries. Register replay binds source 491e185153eb038a07025098b63a9b2c220e5c0c (299 entries, 122 rules). Final targeted test and gate outputs belong to the builder report.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, existing split test cases and timeout injection, and existing register regeneration. No new gate, runtime mechanism, quarantine or capability restriction. Start from the exact named parents; finish with targeted tests and cheap checks; Studio retains full-run and independent qualification.
