@@ -7,7 +7,7 @@ import { createWorkingActivities, readWorkingAdmission } from './working-activit
 import { AgentPathRefused, assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
 import { createAudienceTimingObserver, recordPhaseTiming } from './phase-timing.js';
-import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice } from './reply-check.js';
+import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice, reviewResultFailure } from './reply-check.js';
 import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin, observeInstalledSessionLogin } from './installed-harness-logins.mjs';
 import { loadHarnessLogins, harnessLoginPoolStatus, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
@@ -44,7 +44,7 @@ import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COV
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom,
   staleAgainst, updateDelivery, updatePacketItem } from './installation.js';
 import { currentActionFacts, bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, ModelNotStarted, createModelLaunchBoundary, capacityAlerts } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, replyCheckCauses, unavailableChecks, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, readSelfAccess, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
@@ -1190,7 +1190,7 @@ async function main() {
         failed: view.view.order.filter(t => t.checkFailed).length,
         pendingCorrections: view.view.corrections.length,
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
-      jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view), claimScopedWithholds: claimScopedWithholds(view.view), guidance: guidanceReport(view.view),
+      jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, replyCheckCauses: replyCheckCauses(view.view), operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view), claimScopedWithholds: claimScopedWithholds(view.view), guidance: guidanceReport(view.view),
         memoryLearning: memoryLearningReport(view.view, turn => operatorWriter(view.view, turn, true)),
       // Absolute times only: the ages are derivable and would make two reads of one journal differ.
       obligations: (({ oldestUnfinishedAgeMs: _age, progressAgeMs: _progress, ...health }) => health)(loopHealth(view.view, wallNow())),
@@ -1287,7 +1287,7 @@ async function main() {
             return { outcome: settled.kind === 'accepted' ? 'api-accepted' : !whole.started ? 'sending' : settled.kind === 'refused' ? 'send-refused' : 'send-unknown',
               ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}),
               ...(whole.of > 1 ? { parts: { of: whole.of, ...(settled.kind === 'accepted' ? {} : { stoppedAt: whole.part }) } } : {}) }; })(),
-          grounding: reply.grounding ?? null,
+          grounding: reply.grounding ?? null, unavailableChecks: unavailableChecks(reply),
           answerReason: reply.answerReason ?? null,
           retrospectiveGrade: (() => { const row = latestGrades(view.view).get(`answer:${reply.id}`);
             return row ? { pass: row.pass, conclusion: row.grade.conclusion, reason: row.grade.reason, outcome: row.grade.outcome,
@@ -1315,7 +1315,7 @@ async function main() {
         ...(next ? { next } : {}), withheld: withheldView(view.view),
         undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
           change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
-        jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view), claimScopedWithholds: claimScopedWithholds(view.view), guidance: guidanceReport(view.view),
+        jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, replyCheckCauses: replyCheckCauses(view.view), operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view), claimScopedWithholds: claimScopedWithholds(view.view), guidance: guidanceReport(view.view),
         memoryLearning: memoryLearningReport(view.view, turn => operatorWriter(view.view, turn, true)),
         lastReplyCheck: view.view.lastReplyCheck, lastReplyReview: lastReplyReview(view.view),
         ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}) })).text}\n`);
@@ -1948,9 +1948,11 @@ async function main() {
     };
     const callJev = async (judgment, state, questions, timeoutMs = 2000, occurrence, admission) => {
       const admit = async () => {
-        await requireGroupDisclosure(journal.view);
-        assertLiveJudgment(judgment, 'typesafe-jev');
-        if (shared !== null && !await peerHolds()) throw Error('preview: Jev unavailable');
+        try {
+          await requireGroupDisclosure(journal.view);
+          assertLiveJudgment(judgment, 'typesafe-jev');
+          if (shared !== null && !await peerHolds()) throw Error('preview: Jev unavailable');
+        } catch (error) { throw Object.assign(error, { causeDetail: 'admission' }); }
       };
       const replyCheck = judgment === 'jev-reply-check';
       // Admission is separately bounded across the worker and host checkpoints.
@@ -2020,7 +2022,7 @@ async function main() {
       const policy = doorway.policyFor(required(options, 'model'),
         toolTurn ? doorway.toolsFraming ?? doorway.conversationFraming : doorway.conversationFraming);
       const deadline = Math.min(journal.view.expires, deadlineAt ?? wallNow() + policy.timeout + 60000);
-      if (deadline - wallNow() <= 100) throw Error('preview: reply check budget exceeded');
+      if (deadline - wallNow() <= 100) throw Object.assign(Error('preview: reply check budget exceeded'), { reviewCause: 'timeout', causeDetail: 'budget' });
       const result = await callSubscription(judgmentOf(id), prepared, id, { operation: id, deadline,
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 }, toolTurn, selectedLogin);
@@ -2028,8 +2030,9 @@ async function main() {
         diagnostics: replyReviewDiagnostics(result.usage),
         ...(result.usage ? { usage: recordedUsage(result.usage) } : {}), at: wallNow() });
 
-      if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage };
-      if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage,
+      const providerFailure = result.failure ? { providerFailure: result.failure.failureClass } : {};
+      if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage, ...providerFailure };
+      if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage, ...providerFailure,
         ...(result.failure?.failureClass === 'limit' && result.usage?.inputTokens === 0 && result.usage.inputComplete === true
           && result.usage.outputTokens === 0 && result.usage.charge === null
           ? { capacity: { resetHint: result.failure.resetHint, resetAt: result.failure.resetAt } } : {}) };
@@ -2323,7 +2326,7 @@ async function main() {
             if (result.defect) reviewDefects.set(operationId, result.defect);
             throw Error(REVIEW_MALFORMED);
           }
-          if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
+          if (result.state !== 'complete' || result.failureClass) throw reviewResultFailure(result);
           // The reply verdict is one exact line per selected rule (rule_id: PASS | reason); the whole-line
           // pattern admits no surrounding text, so a written rejection can never be discarded around it.
           let parsed;

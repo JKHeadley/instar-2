@@ -318,7 +318,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     // holds still bind, and ordinary authority/stop admission is always rechecked.
     if (usable) return admitted(entries[current], tools, requireRoom);
     if (requireRoom) return null;
-    fail('has no reviewed login with available capacity');
+    throw Object.assign(Error('preview: harness login pool has no reviewed login with available capacity'), { reviewCause: 'no-account' });
   };
   return Object.freeze({
     select,
