@@ -24,6 +24,8 @@ Decision: duplicate-promise-1106-evidence | Preserve the supplied D1 status as h
 
 Verification: both summary and loop positive cases failed before the repair because the promise stayed open after the request closed. The new tests retain separate, UNKNOWN-send, omitted-declaration, invented-quote and unfinished-work neighbors; they reopen the encrypted journal and prohibit repeat work or sends. Existing assertions are unchanged. Targeted tests and gates are reported in the builder report.
 
+Register publication: regenerated the seven existing generated register/capability artifacts from source commit f2bea3a7137bc3bd4dbad2b24a0a7d4253d4d0da. No declaration, manifest, grant or conformance certificate changed.
+
 ## Closing block
 
 simplestRobustRoute: this is the simplest robust route: widen the existing shared predicate to the two existing agent-owned reply representations. The model identifies fulfillment, the existing parser checks offered identity and exact excerpt, intent retains evidence, and a complete receipt closes only work without open subtasks. No new store, model call, equivalence classifier or send path. Recorded-shape worker execution is not an unattended live-model proof.
