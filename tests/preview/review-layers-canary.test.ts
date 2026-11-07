@@ -134,7 +134,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         '--bot-username', world.configuration.botUsername, '--max-cycles',
         mode === 'summary-contradiction' ? '1' : '3', '--max-poll-seconds', '1'],
       { cwd: process.cwd(), timeout: CHILD_TIMEOUT, env });
-      expect(run.status, run.stderr).toBe(0);
+      const runsPath = join(root, 'runs.jsonl');
+      const launchEvidence = existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : 'no launch record';
+      expect(run.status, `${run.stderr}\n${launchEvidence}`).toBe(0);
       const rows = readFileSync(calls, 'utf8').trim().split('\n').map(line => JSON.parse(line));
       const roles = rows.map(row => row.role);
       expect(roles).toEqual(mode === 'summary-contradiction'

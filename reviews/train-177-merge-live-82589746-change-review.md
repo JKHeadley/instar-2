@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Accept the combined merge tier; authored conflict repair changes tests and review metadata only. Incoming production behavior remains byte-identical to its reviewed live parent.
-Side effects: Canary runs one additional pure notice control from live alongside all five candidate controls. Existing asynchronous child helper and 30-second per-launch bounds remain. Register references are regenerated from merged bytes.
+Side effects: Failed startup assertions now include the offline runs.jsonl evidence so a refused launch names its cause. Canary runs one additional pure notice control from live alongside all five candidate controls. Existing asynchronous child helper and 30-second per-launch bounds remain. Register references are regenerated from merged bytes.
 Undo and recovery: Revert the merge using its first parent and regenerate derived register outputs. Preserve both histories and uncertain effects; no installation migration is introduced.
 Multi-machine posture: Shared repository merge; disposable offline fixtures and checks remain machine-local. No authority, credential custody or synchronization change.
 Layer below: Read both parent diffs and tests/e2e/async-child.ts. The helper awaits exact spawned children and terminates those children at their existing deadlines. Browser review incoming dispositions extend the existing unchanged prompt accounting. Main is an ancestor of the pinned live target.
@@ -20,6 +20,7 @@ Hook bypass: none
 Convergence: none
 Decision: train177-173539-merge | Merge pinned live 825897466, which includes main, preserving all candidate asynchronous budgets and both parents' notice controls. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-177-repair-173539-PROGRESS.md
 Decision: train177-173539-review | Keep incoming browser review dispositions in full; they account for inherited prompt literals without changing runtime behavior. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-177-repair-173539-PROGRESS.md
+Decision: train177-173539-host | Expose offline startup evidence; retain WSL launcher failures and separately verify the portable controls, without changing the production resource shim. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-177-repair-173539-PROGRESS.md
 Decision: train177-173539-register | Use canonical desk rehash and replay tools from committed merged bytes; never hand-edit hashes or qualification declarations. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-177-repair-173539-PROGRESS.md
 
 1.x comparison: JKHeadley/instar origin/main 1723950ceca23f0ae516e4cb9d3e675ae1c1eea3; src/core/WorktreeManager.ts and src/core/SessionLivenessOracle.ts use bounded asynchronous child execution and preserve uncertainty. Searched those paths and docs/specs/test-runner-concurrency-bound.md with history 5143e436, 618560b3, 269da957; read ONEX-LESSONS sections 2 and 6. The lifecycle/semaphore implementation does not fit this fixture merge; existing 2.0 async-child is the fitting implementation, preserved intact.
@@ -37,5 +38,5 @@ Subject (37 paths): docs/implementation/carryover-16-helper-failure-1104.md, gen
 ## Closing block
 
 simplestRobustRoute: Ordinary merge, union of complementary test controls, incoming complete browser review dispositions and canonical register replay. This is the simplest robust route; no new runtime machinery or ability restriction.
-80/20: Run the conflict-bearing canary, typecheck, build and cheap gate checks; full-suite qualification remains on the Studio per the assigned host scope.
+80/20: Typecheck and build passed. Full canary attempted twice: six pure controls passed, three physical-launch cases failed on WSL; recorded startup reason is bot identity refused. The unchanged transport uses /bin/sh (dash here), whose ulimit rejects -u. Keep that red evidence, run the portable controls separately, and leave the physical launcher to the Studio. No timeout or limit was weakened. Full-suite qualification remains on the Studio per the assigned host scope.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
