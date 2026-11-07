@@ -1,0 +1,9 @@
+# Snapshot string scanning delays status reads
+
+A status read replays the authenticated journal before constructing its report. On the inspected retained snapshot (181,823,916 bytes), the snapshot parser spent 2,496 ms scanning and assembling JSON. The switch consumer allows five seconds within its ten-second read deadline; repeatedly retrying a slow read cannot establish reliable readiness.
+
+Quoted scalar payload was visited one byte at a time in JavaScript even when it contained no quote. The parser now searches for candidate closing quotes with Buffer.indexOf and counts immediately preceding backslashes, carrying escape parity across chunk boundaries. Native JSON.parse still validates each complete scalar; the existing two MiB scalar ceiling, chunked containers, snapshot digest verification, authenticated frames, projection and complete status report remain unchanged. No cache, alternate authority, partial projection or increased deadline is introduced.
+
+The same authenticated snapshot parsed to deeply identical objects in the diagnostic comparison: 2,496 ms with the original scanner and 1,817 ms with the candidate scanner. These are bounded measurements, not a universal latency guarantee. UTF-8, escaped quotes, odd/even backslash runs, empty chunks, malformed scalars and oversized scalars are covered by focused controls. Runtime status admission remains one attempt with its existing deadline and headroom requirement.
+
+This changes no model prompt, model-output interpretation, send decision, owner, stop, custody or allocation policy. It applies identically to local readers on each machine; no new durable state is introduced. Existing users receive the updated parser through the ordinary code update path. Independent review and normal landing/copy gates remain required before serving it.

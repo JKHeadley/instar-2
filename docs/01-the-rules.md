@@ -55,13 +55,13 @@ meaning.
 
 | Group | Count |
 |---|---|
-| Checkable now | 21 |
+| Checkable now | 22 |
 | Free from the core | 9 |
-| Needs building | 75 |
+| Needs building | 78 |
 | Held by the mind | 13 |
-| **Total** | **118** |
+| **Total** | **122** |
 
-Twenty-one of one hundred eighteen can be checked by a script today. That is the honest starting
+Twenty-two of one hundred twenty-two can be checked by a script today. That is the honest starting
 position, and it is roughly what 1.x's own record shows: 92 checks in the running system, 20
 confirmed on.
 
@@ -207,7 +207,7 @@ reconstructable from the log* — argues the same way.
 
 ---
 
-### Checkable now — 21 of 118
+### Checkable now — 22 of 122
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -232,8 +232,9 @@ reconstructable from the log* — argues the same way.
 | 83 | The Agent Carries the Loop | A promise is the agent's job to finish, never the user's job to remember. | A commitment cannot be created without declaring who owns it and what it waits on. Refused at creation. |
 | 91 | A Document Reads as Its First Version | A governed document reads as if written once, today: no revision notes, review responses, or "what changed" prose in the body. Its history lives beside it in `NAME.changelog.json`, one entry per revision, each change linking to the commit or review comment that caused it. Full text: `docs/rules/91-a-document-reads-as-its-first-version.md`. | A script walks every governed document and fails on a revision marker in the body; `scripts/validate-changelog.mjs` fails the sibling changelog on any missing field. Governed is a property a document declares (or a rule names it and then it must declare), never a folder. |
 | 106 | A Link Handed to a Human Works | Every link sent to a person is complete and clickable from where they are: never localhost, never a bare id where a name exists, never a path only the agent can open. | A lint over link shapes at the outbound doorway — 1.x already refuses localhost links in automated sends. (First stated by the operator at #22873, #20131, #19466; recovered by the 2026-08-26 re-sweep.) |
+| 119 | One Constitution, Two Books Aligned | The 1.x registry and the 2.0 purpose and rule book are one constitution, and they stay aligned on every update. Every change to either book names its counterpart change in the other, or says why it has none (it concerns only that version, or it changes no obligation). Where the two differ, the alignment map says so by name, and the master governs. No difference is silent. | A script reads each pull request touching either book and flags one with no declared counterpart; the 1.x merge tool refuses it. A daily check reads both repositories' history and raises any merged change whose pair never landed. Whether two wordings carry the same obligation, and whether a stated "none" is honest, is held by the independent review of the change. |
 
-### Free from the core — 9 of 118
+### Free from the core — 9 of 122
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -247,7 +248,7 @@ reconstructable from the log* — argues the same way.
 | 78 | No Manual Work (user *or* agent) | Capturing context and using available tools is automatic. Neither the user nor the agent should have to remember a feature exists. | Free once the capability list is generated from the modules rather than hand-written. The check: no hand-maintained list exists. |
 | 84 | Agent Awareness | Every feature is written into the agent's own briefing. A capability the agent doesn't know about, it doesn't have. Identity, self-knowledge, reflection and growth are present by default; the agent explains itself and its actual abilities in the person's language. | Free from the same generation as #78. A hand-maintained briefing is exactly how 1.x lost this one. |
 
-### Needs building — 75 of 118
+### Needs building — 78 of 122
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -290,7 +291,7 @@ reconstructable from the log* — argues the same way.
 | 66 | A Decision That Can Block Must Live Where the Checks Can See It | Every place that can refuse or gate lives somewhere the enforcement tooling actually inspects. | Needs the same blocking-site registry as #4. |
 | 68 | An Autonomous Run Must Outlive Its Session | A delegated run is durable work; the session running it is disposable. No session event may silently end the run. | A registered run with time left always has either a live session or a queued revival. |
 | 70 | Bug-Fix Evidence Bar | A fix carries evidence of the kind its class of bug requires before it can be called fixed. | Needs evidence to be typed rather than prose. |
-| 72 | Maturation Path | Every feature graduates test agent → development agent → fleet, with a declared graduation test and deadline. | Every gated feature declares both and the deadline is enforced. The direct fix for 20-of-92. |
+| 72 | Maturation Path | Every feature graduates test agent → development agent → fleet, with a declared graduation test and deadline, and with default-on for the fleet as the last rung unless a recorded user-preference decision keeps it off. Every rung has machine-checkable thresholds against the feature's own logged behaviour. A threshold met raises the feature to the recurring review, whose model decides; it never flips anything by itself. A fleet default stays a reviewed code change. | Every gated feature declares both and the deadline is enforced. The direct fix for 20-of-92. 1.x holds the thresholds in its feature ladder and fails the build on a switched-off flag with no entry; 2.0's equivalent needs building. |
 | 73 | A Dark Feature Guards Nothing | A safety feature that ships switched off protects nothing. It must have a date to graduate or be called what it is. | Same machinery as #72. |
 | 76 | User-Facing Fixes Ship Live | A fix to what the user experiences ships on by default. The dark-launch ladder is for risky new capabilities, never for UX fixes. | Use the glossary's user-facing classification; live-surface proof is required independently of the sign-off list. |
 | 77 | The User Experience Is the Product | The user's ability to reach the agent and get a timely, coherent answer outranks internal caution when they conflict. | Reachability and response time are measurable. Coherence, and the ranking against caution, are held by the mind. |
@@ -326,6 +327,9 @@ reconstructable from the log* — argues the same way.
 | 115 | The System Has a Native Harness | Instar ships a first-party harness built only on the same public core ports available to every other harness. It can use any registered model doorway and can develop, test, extend, and repair Instar itself. It is the reference client, never a privileged bypass. | The native harness runs the full harness contract suite against every compatible registered model doorway; an architecture lint refuses private core imports or special-case authority, and the self-hosting suite builds and installs a real local capability through it. (Operator review of PR #12; makes rule 2 concrete.) |
 | 117 | One Agent, Many Sessions | Sessions running at the same time are one agent. Each knows what the others have said, promised and done, as close to real time as the system allows, and an agent never gives its operator contradictory answers from two places. Where awareness lags, the session says so instead of guessing. | Two-session tests run in desk proof rooms on every build: one session acts or speaks, another is asked about it, and it must answer correctly (LIVE-PATH-PLAN.md section g, rows a to d). Status: partial until (a) and (b) pass live. |
 | 118 | One Provider Is Enough | An agent with exactly one AI provider, whichever one it is (Anthropic, OpenAI, Google, and so on), is fully functional. A second provider (a separate decision model, a reviewer from another model family, a cheaper model routed off the main one) is an optimization only: it may make a feature better, faster or cheaper, never possible. Every feature that uses a second provider declares what it does when there is only one, and that behaviour delivers the feature rather than refusing, holding or switching it off. Extends #30 from harnesses to providers. An outage of the one provider is #67's case, not this rule's. | A single-provider boot test for each supported harness: a fresh installation with only that harness's own provider configured passes the live end-to-end proofs (#43, #62), including a real conversation with the operator, with nothing refused, held or switched off for want of another provider. A declaration check: every place that calls a provider other than the agent's main one carries a declared single-provider behaviour, and a missing declaration fails the build. |
+| 120 | The Person Decides; the Agent Does the Rest | An Instar agent does all the research, account management and operation its person's needs require. The person only approves or declines, asks for changes, or supplies a credential. They never need to open a browser, visit a provider's site, run a command or follow steps. Sending a link to finished work, such as a document or an application built for the person, is delivery and is welcome. What this rule forbids is making the person do the work. The agent is like an executive assistant who manages the accounts, and the person is like a CEO who directs and approves. Using the person's own accounts, accounts of the agent's own, or both is the person's choice; the agent makes clear it can fully manage the person's accounts, states plainly what each choice concedes, and never recommends against either. If a service truly needs the person themselves, the agent reduces that to one credential or one tap on the easiest surface available. The app and dashboard exist to make approvals and credentials effortless, and neither is required. Extends #23 and #82 from when to escalate and how to ask, to what the person's whole part is. | An outbound check that holds a message giving the person any task other than a decision, a requested change or a credential, tested on both sides with paraphrases, including that a link to finished work passes. A live proof for each supported service: a fresh agent enables it through a real conversation, and the record shows the person did nothing but approve and supply credentials. |
+| 121 | Attributed Statements Trace to Their Source | Any statement credited to a person, whether in a message, note, rule or memory, carries a pointer to the logged message it came from and that person's own words. The pointer is checked when the statement is written and again when it is cited or enforced. A heading or label written by the agent is never evidence of who said something. Without a source, the statement says "source unknown" or is labeled the agent's own, and it never becomes that person's rule. Later changes stay traceable back to the origin. This holds for every agent, channel and machine, and needs no purchased service. | Nothing checks this yet; the checks are being built. Owed: a check when a credited statement is written to memory, notes or rules, and another when it is sent, cited or enforced, each resolving the pointer to a logged message from that person and comparing the words, tested on both sides with paraphrases. Whether the words support the claim made from them is a judgment, held by a model or an independent review, not a script. The 1.x design is `docs/specs/attribution-paper-trail.md` in JKHeadley/instar, not yet merged. The 2.0 form of the pointer is not designed. |
+| 122 | No Feature May Require a Purchased Service | Every Instar feature works fully without the user buying anything from a third party. An outside paid service may be offered as an optional add-on for robustness. A design that blocks or degrades core function when that service is absent is wrong and goes back. The subscriptions a user already chose to run their agent are not covered by this rule. | Nothing checks this yet. Owed: a no-purchase boot test, in which a fresh installation running only on the subscription the person chose for the agent, with no other paid service, passes the live end-to-end proofs (#43, #62) with nothing refused, held or degraded for want of an outside service. Whether a design degrades core function when the service is absent is a judgment, held by the independent review of that design, not a script. |
 
 **Value — rationale for Rule 117.** Rule 31 covers coherence across machines. Sessions also
 need coherence while running at the same time on one machine: continuity from one session to
@@ -336,7 +340,22 @@ feature can do that and still need a second provider to run at all. A person who
 agent may have only one subscription. If a feature quietly depends on a second one, that person gets a
 weaker agent and is never told why.
 
-### Held by the mind — 13 of 118
+**Value — rationale for Rule 120.** Rules 23 and 82 tell an agent when not to stop and how to ask, but no rule states what the person's whole part is. So an agent can follow them and still write "get a key from the provider" as a step for the person. It is a persistent trap: a sign-up feels like something only a person can do. The person hired an assistant, and their part is judgment.
+
+**Value — rationale for Rule 121.** Rule 89 says who a delivered message is really from, and Rule 58 logs what a
+model judged. Neither covers a later claim about what a person said, once that claim lives in a note or a memory. In 1.x
+that gap let a note written on 2026-07-30 say the operator had corrected the agent, with no pointer to any message. A keyword
+search of the logs later found no such message. By 2026-11-04 the note read as his standing rule, and on 2026-11-05 it was
+used to refuse real work. A check of the 190 notes crediting him found 118 matched, 50 drifted, 5 not found and 17 in a
+record gap, one reader judging each note. Writing the lesson down does not close this, which is why the rule asks for a check.
+
+**Value — rationale for Rule 122.** Rule 118 says a second AI provider is never required. No rule covered any other paid service, so a
+design could need one and nothing in the rule book called that wrong. On 2026-11-05 the agent told the operator the Conversations witness design did:
+"without a paid server you couldn't make corrections" [source: telegram 136110/139098 2026-11-05]. A person should never have to pay an
+outside company to get what an Instar agent promises. The rule's last sentence was the agent's addition, because without it the rule would forbid the
+subscription Instar runs on; the message that showed him the wording said so.
+
+### Held by the mind — 13 of 122
 
 These are binding. Their adequacy is judged through the applicable review, with recorded evidence.
 
@@ -370,4 +389,11 @@ document's history is in `01-the-rules.changelog.json` beside it. Rules 114 and 
 operator's review of the big-picture design on PR #12. Rule 116 comes from the operator's
 2026-09-23 skills-over-scripts direction and adoption of the simplicity audit as a fundamental
 Occam's Razor / Simplest Robust Route development standard. Rule 118 comes from the operator's
-2026-10-26 direction that an Instar agent is always fully functional with a single AI provider.*
+2026-10-26 direction that an Instar agent is always fully functional with a single AI provider. Rule 119 comes
+from the operator's 2026-11-03 direction that the 1.x and 2.0 rule books always stay aligned for all updates. Rule 120 comes from the operator's
+2026-11-03 direction that the person only ever approves, asks for changes or supplies credentials. Rule 121 comes from the
+operator's 2026-11-05 requirement: "it can tie back a paper trail of evidence to a specific conversation that is logged and
+recorded on how a statement or proclamation, originated, and evolved" [source: telegram 136110/139097 2026-11-05]. His approval of
+this wording: "approved" [source: telegram 136110/139199 2026-11-05]. Rule 122 comes from the operator's 2026-11-05 requirement:
+"we should never ever ever require anything that forces the user to purchase a third-party service" [source: telegram 136110/139094 2026-11-05].
+His approval of this wording: "Yes, on the new rule" [source: telegram 136110/139311 2026-11-05]. The wording, the title and the last sentence are the agent's, and the message he answered marked that sentence as the agent's (136110/139251).*

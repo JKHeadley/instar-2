@@ -58,7 +58,7 @@ describe('the live enumeration rule 4 asks for', () => {
       const hold = (holders[0]!.holds ?? []).find(h => h.rule === rule) as
         { class: string; evidence?: { id: string; stage: string }; portion?: string; remainder?: string };
       expect(hold.class).toBe('partial');
-      expect(hold.evidence).toEqual({ kind: 'fixture', id: 'PREVIEW-RESOURCE-ADMISSION', stage: 'build' });
+      expect(hold.evidence).toEqual({ kind: 'fixture', id: rule === 60 ? 'PREVIEW-RESOURCE-CENSUS-RECOVERY' : 'PREVIEW-RESOURCE-ADMISSION', stage: 'build' });
       expect(hold.portion).toBeTruthy();
       expect(hold.remainder).toContain('Part Two');
     }

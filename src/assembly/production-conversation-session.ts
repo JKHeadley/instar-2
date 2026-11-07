@@ -35,6 +35,8 @@ export interface ConversationInput {
   readonly reply: string | null; readonly outcome: SessionWorkOutcome | null;
   readonly attempts: number; readonly retryAt: number;
   readonly batch?: readonly string[];
+  /** Exact never-dispatched envelope retained across replacement; not a fresh model prompt. */
+  readonly retryDelivery?: ConversationDelivery;
   readonly effectsAtDispatch?: number;
   readonly contextRecovery?: 'compacting' | 'restoring' | 'continued';
   readonly workerRecovery?: 'restoring' | 'continued';
@@ -273,10 +275,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       }
       // Before touching queued work, fence and retire any prior host's worker. Inputs at the
       // dispatch boundary are retained as uncertain; completed results and cursors survive.
-      // Recover a closed batch from the adapter's durable result before retiring its worker.
+      // Carryover 08: recover each closed turn from the adapter's durable result before retiring its worker.
       // This closes the result-to-custody crash window without another model turn.
-      for (const input of state.inputs) if (input.batch && input.batch.length > 1
-        && input.batch[0] === input.request.operation && input.state !== 'settled' && input.delivery && state.worker) {
+      for (const input of state.inputs) if ((!input.batch || input.batch[0] === input.request.operation)
+        && (input.state === 'accepted' || input.state === 'dispatching') && input.delivery && state.worker) {
         // An absent gate is normal after restart. A correlated process edge and closed
         // child edges can establish completion; missing evidence retains uncertainty.
         let ready = false;
@@ -289,24 +291,31 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
               && record.id === `${state.claim}:process` && record.child === state.claim
               && record.parent === state.edge?.id && record.drawsOn === state.edge?.id && record.authority === state.authority);
             ready = admittedEdge !== undefined && records.filter((record): record is SessionWorkEdge =>
-              record.type === 'SessionWorkEdge' && record.parent === admittedEdge.id).every(child =>
-              records.some(record => record.type === 'SessionWorkEdgeClose' && record.edge === child.id
-                && record.child === child.child && record.state === 'complete'));
+              record.type === 'SessionWorkEdge' && record.parent === admittedEdge.id).every(child => {
+              // Exactly one settled close per helper (row 16): a returned result, or a harness-reported failure the parent
+              // received. A second close, an uncertain one or none leaves the batch unrecovered; no automatic replay.
+              const closes = records.filter((record): record is SessionWorkEdgeClose => record.type === 'SessionWorkEdgeClose' && record.edge === child.id);
+              return closes.length === 1 && closes[0]!.child === child.child && (closes[0]!.state === 'complete' || closes[0]!.state === 'failed');
+            });
           }
         } catch { /* Unreadable evidence must not wedge other work or authorize replay. */ }
         if (!ready) continue;
         try {
+          ensure(input.delivery.operation === input.request.operation && input.delivery.launch === state.worker.launch
+            && input.delivery.claim === state.worker.claim && input.delivery.incarnation === state.worker.incarnation
+            && digest(input.delivery.text) === input.delivery.digest, 'recovered input differs from recorded worker or bytes');
           const observed = await adapter.observe({ ...state.worker, delivery: input.delivery, cursor: 0, limit: 16 });
           const reply = observed.observations.find(event => event.kind === 'reply');
           const ended = observed.observations.find(event => event.kind === 'turn-end');
           if (observed.complete && reply?.kind === 'reply' && ended?.kind === 'turn-end' && ended.state === 'completed') {
             ensure(reply.delivery === input.request.operation && ended.delivery === input.request.operation
-              && digest(reply.text) === reply.digest && Buffer.byteLength(reply.text) <= config.maxResultBytes,
-            'recovered batch identity or bytes differ');
-            const results = batchResults(input.batch, { state: 'complete', text: reply.text,
-              detail: 'recovered correlated batch reply', edge: state.edge!.id, child: state.worker.launch });
+              && reply.text.trim().length > 0 && digest(reply.text) === reply.digest && Buffer.byteLength(reply.text) <= config.maxResultBytes,
+            'recovered turn identity or bytes differ');
+            const members = input.batch ?? [input.request.operation];
+            const results = batchResults(members, { state: 'complete', text: reply.text,
+              detail: 'recovered correlated turn reply', edge: state.edge!.id, child: state.worker.launch });
             persist({ inputs: state.inputs.map(item => {
-              const index = input.batch!.indexOf(item.request.operation);
+              const index = members.indexOf(item.request.operation);
               return index < 0 || item.state === 'settled' ? item : { ...item, state: 'settled', reply: reply.text,
                 cursor: observed.cursor, outcome: results[index]! };
             }) });
@@ -317,8 +326,17 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       ensure(!state.edge || state.reserved, 'reservation interrupted; reconcile parent liability before continuing');
       ensure(!state.edge || Number.isSafeInteger(state.edge.budget.deadline) && state.edge.budget.deadline > 0, 'recorded parent lifetime invalid');
       ensure(!state.edge || state.edge.budget.calls === config.maxCalls, 'conversation allowance cannot change on restart');
-      for (const input of state.inputs) if (input.state === 'dispatching' || input.state === 'accepted')
-        settle(input.request.operation, outcome('host restarted with an unresolved turn; no automatic replay'));
+      for (const input of state.inputs) if (input.state === 'dispatching' || input.state === 'accepted') {
+        // PendingInjectStore's boot retry, after confirmed retirement and only
+        // with positive adapter evidence that no input crossed dispatch.
+        let unsent = false;
+        if (input.state === 'dispatching' && input.delivery && input.attempts < 3 && adapter.notDispatched) {
+          try { unsent = await adapter.notDispatched(input.delivery); } catch { /* Unknown remains uncertain. */ }
+        }
+        if (unsent) update(input.request.operation, { state: 'queued', delivery: null, retryDelivery: input.delivery!, cursor: 0, reply: null,
+          retryAt: config.now() + config.pollMs * 2 ** input.attempts });
+        else settle(input.request.operation, outcome('host restarted with an unresolved turn; no automatic replay'));
+      }
       recovered = true;
     };
     const replace = async (request: SessionWorkRequest, restore?: { operation: string; digest: string; deadline: number }) => {
@@ -414,9 +432,12 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             + JSON.stringify(members.map(operation => ({ operation, envelope: row(operation).request.question, ...(separateContext(row(operation).request) ? { context: row(operation).request.context } : {}) }))) }, path, attachmentContext(members));
         // Size the exact envelope, including escaped packet bytes, host history and path.
         // A non-fitting suffix stays queued and keeps its own identity and reservation.
-        ids = [id];
-        let text = prompt(ids);
-        for (let count = 2; count <= waiting.length; count++) {
+        const retry = row(id).retryDelivery;
+        ids = retry ? row(id).batch ?? [id] : [id];
+        ensure(!retry || ids.every(member => waiting.includes(member)) && retry.resultPath === path,
+          'retained non-dispatch batch or result destination differs');
+        let text = retry ? retry.text : prompt(ids);
+        for (let count = 2; !retry && count <= waiting.length; count++) {
           const candidate = waiting.slice(0, count), combined = prompt(candidate);
           if (Buffer.byteLength(combined) > 1_048_576) break;
           ids = candidate; text = combined;
@@ -588,7 +609,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       const result: SessionWorkEdgeClose = freeze({ type: 'SessionWorkEdgeClose', schemaVersion: 1, id: `${processEdge}:host-close:${state.epoch}`, edge: processEdge,
         child: null, state: problems.length ? 'uncertain' : 'complete', detail: problems.join('; ') || 'conversation closed',
         evidence: state.edge.id, resultBytes: null, closedAt: config.now(), calls: used, reserved: config.maxCalls });
-      config.append(result); persist({ close: result }); return result;
+      // An edge the journal refused at the cap (reservation never confirmed) has no durable edge to close there; the
+      // port's own record still carries the close. A second journal close for the same edge would be refused (row 16).
+      if (state.reserved) config.append(result);
+      persist({ close: result }); return result;
     };
     const maintain = async () => {
       if (state.halt) { await close(); return; }

@@ -34,6 +34,16 @@ starts the restored turn through its normal delivery path before returning the
 replacement handle. A bare launch never replays input. A missing host receipt or
 an uncertain RPC submission remains uncertain across restart.
 
+A restarted host can collect a completed turn from the existing physical capture without
+reopening pipes or making a model call. The session journal binds each submission to its
+worker, intake digest, thread and exact grounded text digest before dispatch. Recovery
+requires one matching request, one successful response and the existing reader's completed
+turn evidence. Missing, legacy, partial or ambiguous evidence retains uncertainty; an
+empty final answer is not success. Captures are bounded to 16 MiB and checked against the
+recorded process identity. After confirmed process retirement, a prepared bootstrap with
+no turn request in its complete capture may retry through normal host admission. Any
+recorded turn request holds this conservative non-dispatch proof closed.
+
 For explicit lifecycle closure the host closes admission before control. Control interrupts the exact active turn and
 closes the exact physical process. A host stop or finite lifetime also closes the pipe
 process. The model checkpoint, not cumulative protocol token usage, holds spend limits.

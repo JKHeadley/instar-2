@@ -70,9 +70,17 @@ if (mode === 'post') {
     if (typeof call.tool_use_id !== 'string' || !call.tool_use_id || typeof call.tool_name !== 'string' || !call.tool_name
       || typeof call.error !== 'string') throw Error('invalid tool failure completion');
     // A failed invocation ended, but its external effect may still be uncertain. Record activity
-    // completion without sending the success-shaped checkpoint post or settling a child edge.
+    // completion without sending the success-shaped checkpoint post. An effect's record is never settled by a
+    // failure: its external outcome stays uncertain. A failed delegation is the one exception: the harness names the
+    // exact helper call that failed, so its edge closes failed at the checkpoint (row 16; 1.x HelperWatchdog
+    // helper-failed) instead of staying open until the parent settles it as uncertain. A report that cannot be made
+    // leaves the edge open for the parent.
     record({ phase: 'post-failure', id: call.tool_use_id, tool: call.tool_name, result: clip(call.error),
       ...(typeof call.agent_id === 'string' ? { agent: call.agent_id } : {}) });
+    if (DELEGATION_TOOLS.includes(String(call.tool_name)) && typeof config.gate === 'string') {
+      try { await ask({ phase: 'post', kind: 'delegation', failed: true, tool_name: call.tool_name, tool_use_id: call.tool_use_id,
+        error_excerpt: clip(call.error) }); } catch { /* settled by the parent */ }
+    }
     process.exit(0);
   }
   const agent = SUBAGENT_TOOLS.includes(call.tool_name) && typeof call.tool_response?.agentId === 'string' ? { agent: call.tool_response.agentId } : {};

@@ -219,6 +219,56 @@ describe('prompt findings reach the record (Rules 12, 27)', () => {
   }, 120_000);
 });
 
+describe('a record answers for the prompt sources it reviewed (Rules 12, 27)', () => {
+  const PLAIN = 'export const a = 1;\n';
+  const PROMPTED = "export const PROMPT = 'Judge the reply by what it means';\n";
+  const review = 'Prompt review: reviewed meaning and neutral dispatch';
+  const start = () => { const r = repo(); r.write('README.md', 'fixture\n'); const base = r.commit('base'); adopt(r); return { r, base }; };
+
+  it('does not hold an older record to a prompt a later change added to the same path', () => {
+    const { r, base } = start();
+    r.write('src/worker.ts', PLAIN); r.write('reviews/older.md', record(base)); const older = r.commit('older plain worker');
+    r.write('src/worker.ts', PROMPTED); r.write('reviews/later.md', record(older, review)); r.commit('later prompt, reviewed');
+    const checked = r.check('check');
+    expect(checked.out).not.toMatch(/reviews\/older.md:.*prompt sources changed/); expect(checked.status).toBe(0);
+  }, 120_000);
+  it('still refuses that later change when its own record has no prompt review', () => {
+    const { r, base } = start();
+    r.write('src/worker.ts', PLAIN); r.write('reviews/older.md', record(base)); const older = r.commit('older plain worker');
+    r.write('src/worker.ts', PROMPTED); r.write('reviews/later.md', record(older)); r.commit('later prompt, unreviewed');
+    const checked = r.check('check'); expect(checked.status).toBe(1);
+    expect(checked.out).toMatch(/reviews\/later.md: Rules 12\/27: prompt sources changed \(src\/worker.ts\)/);
+    expect(checked.out).not.toMatch(/reviews\/older.md:.*prompt sources changed/);
+  }, 120_000);
+  it('refuses a prompt the record reviewed, even after a later change removed it', () => {
+    const { r, base } = start();
+    r.write('src/worker.ts', PROMPTED); r.write('reviews/older.md', record(base)); const older = r.commit('older prompt, unreviewed');
+    r.write('src/worker.ts', PLAIN); r.write('reviews/later.md', record(older, review)); r.commit('later removal, reviewed');
+    const checked = r.check('check'); expect(checked.status).toBe(1);
+    expect(checked.out).toMatch(/reviews\/older.md: Rules 12\/27: prompt sources changed \(src\/worker.ts\)/);
+  }, 120_000);
+  it.each([
+    ['rewrites', (r: ReturnType<typeof repo>) => r.write('src/worker.ts', PLAIN)],
+    ['deletes', (r: ReturnType<typeof repo>) => rmSync(join(r.dir, 'src/worker.ts'))],
+  ] as const)('refuses a change that %s a prompt source away without a prompt review', (_name, edit) => {
+    const { r, base } = start();
+    r.write('src/worker.ts', PROMPTED); r.write('reviews/first.md', record(base, review)); const before = r.commit('reviewed prompt');
+    edit(r); r.write('reviews/own.md', record(before)); r.commit('prompt removed, unreviewed');
+    const checked = r.check('check'); expect(checked.status).toBe(1);
+    expect(checked.out).toMatch(/reviews\/own.md: Rules 12\/27: prompt sources changed \(src\/worker.ts\)/);
+    r.write('reviews/own.md', record(before, review)); r.commit('removal reviewed');
+    expect(r.check('check').status).toBe(0);
+  }, 120_000);
+  it('classifies committed bytes, so an uncommitted prompt edit cannot flip a committed record', () => {
+    const { r, base } = start();
+    r.write('src/worker.ts', PLAIN); r.write('reviews/own.md', record(base)); r.commit('plain worker');
+    r.write('src/worker.ts', PROMPTED);
+    const checked = r.check('check');
+    expect(checked.out).not.toContain('prompt sources changed'); expect(checked.status).toBe(0);
+    expect(r.check('draft', '--base', base).out).toContain('Prompt review:');
+  }, 120_000);
+});
+
 describe('only own records require prompt dispositions', () => {
   const setup = () => {
     const r = repo();
