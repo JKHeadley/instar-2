@@ -915,6 +915,9 @@ static int feasibility(const char *which, const char *profile, const char *scrat
      * the worker by looking up a PID. */
     /* The supervisor simulation runs the supervisor's own backstop, so a stopped
      * guard is ended by its parent (guard-stop), as the installed slot loop does. */
+    /* The deadline case arms its deadline past the whole arm bound, so a slow arm
+     * under host load cannot spend the deadline before the worker is observed alive. */
+    enum { ARM_MS = 3000, DEADLINE_CASE_MS = ARM_MS + 800 };
     const char *faults[] = { "supervisor-kill", "supervisor-stop", "guard-kill", "deadline", "guard-stop" };
     for (int f = 0; f < 5; f++) {
       int info[2]; if (pipe(info) != 0) die("pipe");
@@ -922,7 +925,7 @@ static int feasibility(const char *which, const char *profile, const char *scrat
       if (sup == 0) {
         close(info[0]);
         char deadline[32];
-        uint64_t deadline_ticks = mach_continuous_time() + ms_to_ticks(f == 3 ? 800 : 20000);
+        uint64_t deadline_ticks = mach_continuous_time() + ms_to_ticks(f == 3 ? DEADLINE_CASE_MS : 20000);
         snprintf(deadline, sizeof deadline, "%llu", (unsigned long long)deadline_ticks);
         char *argv[] = { self_path, "guard", "-", "-", "32", uid_s, gid_s, (char *)profile, deadline,
                          self_path, "probe", "sleep", NULL };
@@ -930,8 +933,9 @@ static int feasibility(const char *which, const char *profile, const char *scrat
         if (spawn_guard(&g, argv, -1) != 0) _exit(20);
         char line[256];
         (void)write(g.link, "H", 1);
-        if (read_line(g.link, line, sizeof line, now_ms() + 3000) != 0 || line[0] != 'S') _exit(21);
-        char msg[64]; int n = snprintf(msg, sizeof msg, "%d %d\n", atoi(line + 2), g.pid);
+        if (read_line(g.link, line, sizeof line, now_ms() + ARM_MS) != 0 || line[0] != 'S') _exit(21);
+        char msg[96]; int n = snprintf(msg, sizeof msg, "%d %d %llu\n", atoi(line + 2), g.pid,
+                                       (unsigned long long)deadline_ticks);
         (void)write(info[1], msg, (size_t)n);
         for (;;) {
           if (write(g.link, "H", 1) != 1) _exit(0);
@@ -941,30 +945,38 @@ static int feasibility(const char *which, const char *profile, const char *scrat
         }
       }
       close(info[1]);
-      char buf[64] = { 0 };
+      char buf[96] = { 0 };
       struct pollfd pf = { .fd = info[0], .events = POLLIN };
-      ssize_t k = poll(&pf, 1, 4000) > 0 ? read(info[0], buf, sizeof buf - 1) : 0;
+      ssize_t k = poll(&pf, 1, ARM_MS + 1000) > 0 ? read(info[0], buf, sizeof buf - 1) : 0;
       close(info[0]);
       pid_t worker = -1, guardp = -1;
-      if (k <= 0 || sscanf(buf, "%d %d", &worker, &guardp) != 2) {
+      unsigned long long armed = 0;
+      if (k <= 0 || sscanf(buf, "%d %d %llu", &worker, &guardp, &armed) != 3) {
         kill(sup, SIGKILL); waitpid(sup, NULL, 0);
         failures += report("guard", "FAIL", "%s: arm sequence did not complete", faults[f]); continue;
       }
       usleep(200000);
-      int before = alive(worker);
+      /* Both sides of the deadline case: alive before the deadline, ended after it. */
+      int before = alive(worker) && (f != 3 || mach_continuous_time() < (uint64_t)armed);
       uint64_t t0 = now_ms();
       if (f == 0) kill(sup, SIGKILL);
       if (f == 1) kill(sup, SIGSTOP);
       if (f == 2) kill(guardp, SIGKILL);
       if (f == 4) kill(guardp, SIGSTOP);
-      uint64_t limit = f == 3 ? 2000 : 1500, gone_at = 0;
-      while (now_ms() - t0 < limit) { if (!alive(worker)) { gone_at = now_ms() - t0; break; } usleep(5000); }
+      uint64_t limit = f == 3 ? DEADLINE_CASE_MS + 1500 : 1500, gone_at = 0;
+      int early = 0;
+      while (now_ms() - t0 < limit) {
+        if (!alive(worker)) { gone_at = now_ms() - t0; early = f == 3 && mach_continuous_time() < (uint64_t)armed; break; }
+        usleep(5000);
+      }
       int gone = !alive(worker);
       if (f == 1) kill(sup, SIGCONT);
       kill(sup, SIGKILL); waitpid(sup, NULL, 0);
       char label[64]; snprintf(label, sizeof label, "guard-%s", faults[f]);
-      failures += report(label, VERDICT(before && gone), "worker ended=%s after %llums (deadline case: 800ms from arm)",
-                         gone ? "yes" : "NO", (unsigned long long)gone_at);
+      failures += report(label, VERDICT(before && gone && !early),
+                         "worker ended=%s after %llums%s (deadline case: %dms from arm, alive before and ended after it)",
+                         gone ? "yes" : "NO", (unsigned long long)gone_at, early ? " BEFORE its deadline" : "",
+                         DEADLINE_CASE_MS);
     }
     /* Both sides of every backstop bound, on the function the supervisor runs. */
     uint64_t t = mach_continuous_time(), d = t + ms_to_ticks(1000), grace = ms_to_ticks(DEADLINE_BACKSTOP_MS);
