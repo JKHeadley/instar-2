@@ -31,7 +31,11 @@ Receipt verification: Restored docs/release-evidence/codex-model-map-refresh-110
 
 Laptop continuation: Resume the exact pushed faa3eeed817e079c50abe2096c9a8464e5dc4d39 head without redoing merges. Decision reports now point to the r3 desk destination required by the authenticated repair brief. Rechecked the inherited 1.x comparison against the named source revision, source history and ONEX-LESSONS section 6. Verification results and any desk-owned exceptions are recorded in that report; no runtime or assertion change is introduced by this continuation.
 
-Decision: train196-historical-evidence | Add the six missing Rule 71 dispositions to the two open browser reviews for unchanged copied historical deadline evidence; preserve evidence bytes and all runtime assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-196-r3-PROGRESS.md
+Decision: train196-historical-evidence | Add the missing Rule 71 dispositions to the two open browser reviews and this combined review for unchanged copied historical deadline evidence; preserve evidence bytes and all runtime assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-196-r3-PROGRESS.md
+
+Deferral: docs/evidence/train-192-notice-owner/constitution-attributed-statements-change-review.md:29 | not-a-deferral=Copied historical review evidence quotes the old deferred:slack-intake-v1:36 deadline refusal; this integration preserves that evidence verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-one-constitution-change-review.md:30 | not-a-deferral=Copied historical review evidence quotes the old deferred:slack-intake-v1:36 deadline refusal; this integration preserves that evidence verbatim and makes no new deferral. Current register verification passes.
+Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md:29 | not-a-deferral=Copied historical review evidence quotes the old deferred:slack-intake-v1:36 deadline refusal; this integration preserves that evidence verbatim and makes no new deferral. Current register verification passes.
 
 ## Closing block
 
