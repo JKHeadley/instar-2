@@ -95,7 +95,7 @@ import { createTelegramMediaCustody, journalMediaSource, telegramInboundMedia } 
 import { createLocalTranscriber } from '../../scripts/local-transcriber.mjs';
 import { prepareMediaInput, invokeMediaTurn, protectMediaBytes, openConversationMedia } from './media-understanding.mjs';
 import { createMediaAdmission } from './media-admission.js';
-import { credentialNotices, doorwayNotices, dueWithDelivery, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
+import { credentialNotices, doorwayNotices, dueWithDelivery, lastReplySentAt, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
 import { reapNotices } from './reap-notices.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
 import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking } from './live-sentinels.js';
@@ -2216,7 +2216,7 @@ async function main() {
         // Plan #473: an answer whose tool turn was refused for the harness identity says so under it.
         if (turn !== undefined && identityRefusal !== null && (journal.view.toolTurns?.identityRefused ?? []).includes(turn))
           notices.push({ key: `harness:${turn}`, line: harnessRefusedNotice(identityRefusal) });
-        notices.push(...(loginPool?.notices() ?? []));
+        notices.push(...(loginPool?.notices(lastReplySentAt(journal.view.order)) ?? []));
         notices.push(...sessionLoginNotices([...sessionLoginObservations.values()], now));
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
         try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }

@@ -372,8 +372,10 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       const reset = result.failure.resetAt;
       hold(entry, { reason: 'provider-limit', observedAt: now(), resetAt: Number.isSafeInteger(reset) && reset > now() ? reset : null });
     },
-    notices: () => [
-      ...state.switches.filter(event => event.reason !== 'member-unavailable').map(event => ({ key: `doorway:harness-login:${state.noticeIdentity ?? identity}:${event.sequence}`,
+    // stale-login-line-1107: one line, on the reply that follows the switch. Older switches stay in history and
+    // status; offering each one let a backlog drip out, one per reply, long after the switch it described.
+    notices: (repliedAt = -Infinity) => [
+      ...state.switches.filter(event => event.reason !== 'member-unavailable').slice(-1).filter(event => event.at > repliedAt).map(event => ({ key: `doorway:harness-login:${state.noticeIdentity ?? identity}:${event.sequence}`,
         line: `The model login reached its ${event.reason === 'usage-threshold' ? 'configured usage threshold' : 'usage limit'}. I switched to the next approved login for this runner.` })),
       ...(state.exclusions ?? []).map(({ index }) => ({ key: `doorway:harness-login:${identity}:unavailable:${index}`,
         line: `Approved model login ${index + 1} was unavailable and was removed from selection. See status for current login availability.` })),
