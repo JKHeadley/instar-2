@@ -2617,7 +2617,8 @@ function currentSiblingWords(view: JournalView, currentTopic: string, maxBytes: 
 
 /** Rules 60, 61, 114: an edge reserves its step's whole model-call liability before the child
  * exists, and refuses when the call allowance cannot hold it. */
-function projectSessionWork(view: JournalView, record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkCall | SessionWorkEffect): void {
+function projectSessionWork(view: JournalView, record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkCall | SessionWorkEffect,
+  admission: 'new' | 'replay' = 'new'): void {
   validateSessionWorkRow(record);
   if (record.type === 'SessionWorkCall') {
     const edge = view.activeSessionWork?.[record.edge];
@@ -2641,9 +2642,18 @@ function projectSessionWork(view: JournalView, record: SessionWorkEdge | Session
         ...(subject === undefined ? {} : { subject }), state }].slice(-64);
     return;
   }
+  const active = view.activeSessionWork ?? (view.activeSessionWork = {});
+  // Rules 2, 42, 60 (row 16, duplicate-result refusal): a new row opens an edge once and closes it once. A second close for
+  // the same helper (a duplicate result, or a late completion over its settled uncertain close) is refused here rather than
+  // silently re-charging the excess or re-settling the edge; a re-opened id would reserve its liability twice. The identity
+  // refusal comes before the allowance check. Rows already durable replay exactly as they were accepted.
+  if (admission === 'new') {
+    if (record.type === 'SessionWorkEdge' && active[record.id] !== undefined) throw Error('preview journal: session work edge already open');
+    if (record.type === 'SessionWorkEdgeClose' && active[record.edge] === undefined)
+      throw Error('preview journal: session work close for an unknown or already closed edge');
+  }
   if (record.type === 'SessionWorkEdge' && record.drawsOn === undefined && record.charge !== 'per-call'
     && view.calls + record.budget.calls > view.limits.maxCalls) throw Error('preview journal: session work call cap');
-  const active = view.activeSessionWork ?? (view.activeSessionWork = {});
   const closingEdge = record.type === 'SessionWorkEdgeClose' ? active[record.edge] : undefined;
   if (record.type === 'SessionWorkEdge') active[record.id] = record;
   else {
@@ -4450,7 +4460,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       summaryCount: view.summaries.length, closedCount: view.closed.size }; return;
   }
   if (row.kind === 'obligation-start' || row.kind === 'obligation-result') { projectObligationWork(view, row); return; }
-  if (row.kind === 'session-work') { projectSessionWork(view, row.record); return; }
+  if (row.kind === 'session-work') { projectSessionWork(view, row.record, admission); return; }
   if (row.kind === 'summary-candidate') {
     if (!view.summaryReservations.has(row.through) || view.summaryCandidates.has(row.through))
       throw Error('preview journal: summary candidate order');

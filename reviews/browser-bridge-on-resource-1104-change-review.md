@@ -6,7 +6,7 @@ Reviewed content: none
 Outcome: Merge the independently reviewed bounded owner GitHub read sequence onto the answering resource-recovery build, retaining its worker-slot repair. The only merge conflicts were generated register outputs; regenerate those against the merged source commit. The later connector file ACL and Claude-compatible MCP schema repairs are reviewed separately in browser-mcp-worker-read-1104-change-review.md; this combined record covers the updated exact content.
 Integration review (train-169, carried from its Outcome line): Reopened for train-169 because register regeneration changes frozen outputs. Preserve the original bounded owner GitHub read and resource recovery, the later connector file ACL and Claude-compatible MCP schema repairs reviewed in browser-mcp-worker-read-1104-change-review.md, and carryover-08 session recovery reviewed in carryover-08-accepted-question-restart-1104-change-review.md and carryover-08-full-parity-1104-change-review.md. Independent combined review is required again.
 Integration outcome (train-171): Merge the independently reviewed bounded owner GitHub read sequence onto the answering resource-recovery build, retaining its worker-slot repair. The later connector file ACL and Claude-compatible MCP schema repairs remain covered by browser-mcp-worker-read-1104-change-review.md. Reopen this combined record because the send-contract merge and regenerated outputs change its frozen subject; no new convergence is claimed.
-Affected rules: 1, 4, 18, 28, 34, 36, 42, 44, 49, 55, 57, 60, 61, 62, 63, 66, 74, 78, 84, 95, 100, 101, 103, 111, 113, 116
+Affected rules: 109, 1, 4, 18, 28, 34, 36, 42, 44, 49, 55, 57, 60, 61, 62, 63, 66, 74, 78, 84, 95, 100, 101, 103, 111, 113, 116
 Affected floors: secrets — owner-side fixed DOM projection and scrub stay in place; spend cap — no model budget change; stop — the same claim and deadline bound every read; no duplicate sends — read-only operation admits no send or write; durable intake — existing effect preparation and exact grant remain prerequisites.
 Operator questions: none
 Suggested tier: critical
@@ -21,7 +21,13 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none
 Convergence: none
-Prompt review: no prompt or model dispatch change.
+Prompt review: no prompt or model dispatch change. Reopening this record expands its historical subject across the helper unit; the existing helper dispositions below cover unchanged prompt literals in that subject.
+Prompt finding: 0725f0150c56 | protocol-literal | The regression normalizes the existing role/refusal prologue for historical packet and digest comparison; no semantic gate keys on this phrase; unchanged by this change.
+Prompt finding: 27d7720e7977 | protocol-literal | The existing memory-record boundary delimits the intentionally changed prologue in historical byte comparison; it is not a model decision trigger; unchanged by this change.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision.
+Prompt finding: 849db3a6296a | protocol-literal | an existing fixed reply literal in journal.ts, unchanged by this change
+Prompt finding: 85544c20941f | protocol-literal | Existing fixed queued-message notice, unchanged by this change; its test checks the actual notice, not a semantic trigger.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision.
 Skip: tests/preview/session-connectors.test.ts:60 | scope=the worker-account check requires a macOS harness host with passwordless sudo; cross-platform cases run elsewhere.
 Deferral: generated/register.json:1 | not-a-deferral=generated source hash was regenerated from the merged commit; the original branch's separate missing Part Two authority is unchanged and remains open.
 
@@ -68,6 +74,8 @@ The original browser subject changed through generated register publication inhe
 
 Deferral: tests/preview/journal-conversation-session.test.ts:448 | not-a-deferral=The inherited row07 test advances an injected clock to the existing queued-delivery retry deadline; it defers no implementation. Whole row07 behavior remains covered by its own critical review record.
 
+
+Overlap disposition: The frozen binding sha256:094316dfd656ab51b6d7663e4bd9207c62d4593c8a3e743493d748b4dfe47228 is void. Carryover row 16 changed tests/preview/admission-gate.mjs to settle an exact delegated tool failure, and its repair regenerates dependent register publication. Browser custody, bounded reads and grants are unchanged. The narrow overlap is covered by the helper repair submission; this open record claims no renewed independent browser verdict. Historical review evidence is retained.
 
 ## Closing block
 

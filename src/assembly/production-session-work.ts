@@ -84,6 +84,33 @@ export function nestedSessionWorkClose(edge: SessionWorkEdge, state: SessionWork
   return freeze({ type: 'SessionWorkEdgeClose' as const, schemaVersion: 1 as const, id: `${edge.id}:close`, edge: edge.id,
     child: edge.child, state, detail, evidence, resultBytes, closedAt });
 }
+/** Carried from 1.x HelperWatchdog FAILURE_PATTERNS (legacy-1x/src/monitoring/HelperWatchdog.ts): the tuned markers that
+ * identified a helper's failure in its last message. A signal only (Rules 4, 10, 86): a close's state comes from the
+ * harness's own failure report, never from a match; the match names the likely cause for the parent and the status surface. */
+const HELPER_FAILURE_PATTERNS: readonly Readonly<{ reason: string; pattern: RegExp }>[] = Object.freeze([
+  { reason: 'rate-limit', pattern: /\b(rate[\s-]?limit|too\s+many\s+requests?|429)\b/i },
+  { reason: 'quota-exhausted', pattern: /\b(quota\s+(?:exhausted|exceeded)|out\s+of\s+(?:credits?|tokens?))\b/i },
+  { reason: 'auth-error', pattern: /\b(unauthori[sz]ed|invalid\s+api\s+key|401|403)\b/i },
+  { reason: 'timeout', pattern: /\b(timed?\s*out|timeout|request\s+timeout)\b/i },
+  { reason: 'api-error', pattern: /\b(api[\s-]?error|anthropic[\s-]?error|internal[\s-]?server[\s-]?error|5\d{2})\b/i },
+]);
+/** 1.x HelperWatchdog.classifyStopMessage: the first tuned marker a failed helper's message matches, or null. */
+export function classifyHelperFailure(message: string | null | undefined): Readonly<{ reason: string; matchedPattern: string }> | null {
+  if (!message) return null;
+  for (const { reason, pattern } of HELPER_FAILURE_PATTERNS) if (pattern.test(message)) return freeze({ reason, matchedPattern: pattern.source });
+  return null;
+}
+/** The close of a nested edge whose invocation the harness reported failed: its failure completion names the exact call, and
+ * the parent received the error as that call's result. The helper's failure returns to the parent as a durable fact instead of
+ * an edge left open that would hold the parent's own result uncertain (row 16). Only the classified reason is kept; the failure
+ * text stays with the parent that received it (least revelation, secrets floor). */
+export function nestedSessionWorkFailure(edge: SessionWorkEdge, call: string, error: string | null | undefined, closedAt: number): SessionWorkEdgeClose {
+  ensure(/^[A-Za-z0-9._:-]{1,200}$/u.test(call) && edge.child === `delegated:${call}`, 'exact delegation identity required');
+  const signal = classifyHelperFailure(error);
+  return nestedSessionWorkClose(edge, 'failed',
+    `the harness reported this delegated agent's invocation failed before a result returned (signal: ${signal?.reason ?? 'unclassified'})`,
+    `tool-failure:${call}`, null, closedAt);
+}
 /** One effect-owner record (see `SessionWorkEffect`). */
 export function sessionWorkEffect(input: Omit<SessionWorkEffect, 'type' | 'schemaVersion'>): SessionWorkEffect {
   return freeze({ type: 'SessionWorkEffect' as const, schemaVersion: 1 as const, ...input });

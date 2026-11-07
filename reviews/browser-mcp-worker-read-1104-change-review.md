@@ -6,7 +6,7 @@ Reviewed content: none
 Outcome: Grant the worker read access to the generated MCP launch configuration before its continuing session starts and expose the owner browser tool with an Anthropic-compatible input schema. Keep the configuration owned by the operator and read-only to the worker. Regenerate the source-pinned register against the committed repair.
 Integration review (train-169, carried from its Outcome line): Reopened by train-169 because combined-source register regeneration changes the previously frozen generated outputs; the original connector ACL and schema repair source remains unchanged. Independent review of the combination is required. Original outcome: grant the worker read access to the generated MCP launch configuration before its continuing session starts and expose the owner browser tool with an Anthropic-compatible input schema. Keep the configuration owned by the operator and read-only to the worker. Regenerate the source-pinned register against the committed repair.
 Integration outcome (train-171): Grant the worker read access to the generated MCP launch configuration before its continuing session starts and expose the owner browser tool with an Anthropic-compatible input schema. Keep the configuration owned by the operator and read-only to the worker. Regenerate the source-pinned register against the committed repair. Reopened for train-171 because its combined source and regenerated publication change this record's subject; the prior frozen round remains in history and no new convergence is claimed.
-Affected rules: 31, 63, 74, 78, 95, 101, 103, 111, 113, 116
+Affected rules: 109, 31, 63, 74, 78, 95, 101, 103, 111, 113, 116
 Affected floors: secrets — only the already redacted launch file is readable, not credential custody; spend cap — unchanged; stop — unchanged; no duplicate sends — no new effect path; durable intake — unchanged.
 Operator questions: none
 Suggested tier: significant
@@ -21,7 +21,13 @@ Bug class: live-path
 Bug evidence: reproducer=tests/preview/session-connectors.test.ts; live=/Users/Shared/instar-harness/profile/home/Library/Caches/claude-cli-nodejs/-private-tmp-its-7c0e567ee5f5/mcp-logs-owner-github/2026-11-05T00-00-27-432Z.jsonl
 Hook bypass: none
 Convergence: none
-Prompt review: no prompt or model dispatch change.
+Prompt review: no prompt or model dispatch change. Reopening this record expands its historical subject across the helper unit; the existing helper dispositions below cover unchanged prompt literals in that subject.
+Prompt finding: 0725f0150c56 | protocol-literal | The regression normalizes the existing role/refusal prologue for historical packet and digest comparison; no semantic gate keys on this phrase; unchanged by this change.
+Prompt finding: 27d7720e7977 | protocol-literal | The existing memory-record boundary delimits the intentionally changed prologue in historical byte comparison; it is not a model decision trigger; unchanged by this change.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision.
+Prompt finding: 849db3a6296a | protocol-literal | an existing fixed reply literal in journal.ts, unchanged by this change
+Prompt finding: 85544c20941f | protocol-literal | Existing fixed queued-message notice, unchanged by this change; its test checks the actual notice, not a semantic trigger.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision.
 Skip: tests/preview/session-connectors.test.ts:60 | scope=the native worker-account check applies only to the macOS harness host with passwordless sudo; other hosts run the cross-platform connector cases.
 
 Decision: MCP-READ-1104-1 | Grant read-only ACL only on the generated MCP file at launch, rather than giving the worker access to the owner profile or shared temp directory. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
@@ -62,6 +68,7 @@ The original browser subject changed through generated register publication inhe
 
 Deferral: tests/preview/journal-conversation-session.test.ts:448 | not-a-deferral=The inherited row07 test advances an injected clock to the existing queued-delivery retry deadline; it defers no implementation. Whole row07 behavior remains covered by its own critical review record.
 
+Overlap disposition: The frozen binding sha256:41339ecebaa3eebf3d3a09bcb98108b0bdb289e724fb0bd3514a7e0c7431d0cc is void because the helper-failure repair regenerated its seven register publication files. Connector ACL and schema source bytes remain unchanged. Publication is covered by reviews/carryover-16-helper-failure-1104-repair-change-review.md; this open record asserts no renewed independent acceptance.
 
 ## Closing block
 

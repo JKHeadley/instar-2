@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, limitedAnswerText, openPreviewJournal, openRequests } from './journal-test-worker.js';
 import { statusReply } from './status-command.js';
-import { createLiveSentinels, promiseObservations, createOrdinaryLane, sentinelCycle, sentinelReport, sentinelStatusLines, workSilenceObservations, WORK_SILENCE_MS, type LiveSentinelPorts } from './live-sentinels.js';
+import { createLiveSentinels, promiseObservations, createOrdinaryLane, sentinelCycle, sentinelReport, sentinelStatusLines, workSilenceObservations, WORK_SILENCE_MS, WORK_STALE_GRACE_MS, type LiveSentinelPorts } from './live-sentinels.js';
 import { SENTINEL_FAMILIES, type SentinelFamily } from './sentinel-record.js';
 import { defaultSentinelConfig } from '../../src/awareness/sentinel.js';
 import { defaultPresenceConfig } from '../../src/sentinels/presence.js';
@@ -501,6 +501,49 @@ it('observes every registered child without inbound turns; advancing work, waits
     const saved = JSON.stringify(w.journal.view.sentinels);
     w.clock.stopped = true; w.clock.now += WORK_SILENCE_MS; w.sentinels.observeWork();
     expect(JSON.stringify(w.journal.view.sentinels)).toBe(saved);
+  } finally { w.close(); }
+});
+
+it('a helper open past its recorded deadline is stale (the 1.x stale cap as a recorded fact): it needs action and no longer holds its parent in a wait', () => {
+  let activity: ReturnType<NonNullable<LiveSentinelPorts['workActivity']>> = [];
+  const w = harness({ families: ['presence'], workActivity: () => activity });
+  const edge = (id: string, deadline: number, parent = 'launch'): SessionWorkEdge => ({ type: 'SessionWorkEdge', schemaVersion: 1,
+    id, parent, child: id, scope: '/work', owner: 'machine-a', authority: 'grant:existing',
+    budget: { steps: 1, calls: 1, tokens: null, maxResultBytes: 1024, deadline },
+    exitTest: 'one result', placement: 'machine-a', transport: 'existing session', resultDestination: '/work/result', openedAt: START,
+    ...(parent === 'launch' ? {} : { drawsOn: parent }) });
+  const parentSeen = (...subjects: string[]) => { activity = ['parent', ...subjects].map(subject =>
+    ({ subject, at: w.clock.now, activity: 'indeterminate' as const, progress: 'same frame', wait: null })); };
+  try {
+    // The host died mid-step: the parent edge and its helper's edge are durable and no close ever follows. The helper's
+    // step deadline is ten minutes; the parent's own is later.
+    w.journal.append({ kind: 'session-work', record: edge('parent', START + 1_800_000), at: START });
+    w.journal.append({ kind: 'session-work', record: edge('helper', START + 600_000, 'parent'), at: START });
+    parentSeen(); w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work).toMatchObject({ parent: { state: 'waiting' }, helper: { state: 'unknown' } });
+    // Up to one grace past the helper's recorded deadline the wait holds, however long the parent's silence.
+    w.clock.now = START + 600_000 + WORK_STALE_GRACE_MS - 1; parentSeen(); w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work).toMatchObject({ parent: { state: 'waiting' }, helper: { state: 'unknown' } });
+    expect(w.effects).toEqual([]);
+    // One grace past it the helper is stale: it needs reconciliation by the owning step, and it no longer excuses the
+    // parent's silence, whose own clock now runs (observing, then may be stalled). Nothing is killed or retried.
+    w.clock.now += 1; parentSeen(); w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work).toMatchObject({ helper: { state: 'action-needed' }, parent: { state: 'observing' } });
+    expect(w.journal.view.sentinels?.work?.helper?.detail).toBe('Open past its recorded deadline with no close; the owning step must reconcile it. No death or recovery inferred.');
+    expect(sentinelStatusLines(w.journal.view).join(' ')).toContain('Work helper: action-needed. Open past its recorded deadline');
+    w.clock.now += WORK_SILENCE_MS; parentSeen(); w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work).toMatchObject({ helper: { state: 'action-needed' }, parent: { state: 'stalled' } });
+    expect(w.effects).toEqual([]);
+    // Replay after a restart rebuilds the same decision and still owns both registered children.
+    const before = JSON.stringify(w.journal.view.sentinels?.work);
+    w.reopen();
+    expect(JSON.stringify(w.journal.view.sentinels?.work)).toBe(before);
+    expect(Object.keys(w.journal.view.activeSessionWork ?? {}).sort()).toEqual(['helper', 'parent']);
+    // The other side: a live step whose helper is within its deadline keeps its parent's wait through the same silence.
+    w.journal.append({ kind: 'session-work', record: edge('parent2', w.clock.now + 1_800_000), at: w.clock.now });
+    w.journal.append({ kind: 'session-work', record: edge('helper2', w.clock.now + 600_000, 'parent2'), at: w.clock.now });
+    w.clock.now += WORK_SILENCE_MS * 3; parentSeen('parent2'); w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work).toMatchObject({ parent2: { state: 'waiting' }, helper2: { state: 'unknown' } });
   } finally { w.close(); }
 });
 
