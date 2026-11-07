@@ -1,0 +1,191 @@
+# duplicate-promise-1106-r2 progress
+
+Read the entire 19864-byte brief; SHA256 matches d50d170820b127efae8cda77ba481693616ae59ed4e89cd18fe79541ec3c7c64. Read purpose and rules. Local continuation capability is disabled.
+
+1.x FIRST: researched actual JKHeadley/instar main c55d2a998429cbb2a7f2d0748d015fc45415a2df, fetched as onex/main. Inspected src/monitoring/CommitmentTracker.ts record()/deliver(), docs/specs/COMMITMENTS-COHERENCE-SPEC.md duplicate section, docs/specs/PROMISE-BEACON-SPEC.md partial fulfillment, and tracker git history including 4018bf338 and 5ff755994. Read ONEX-LESSONS.md commitment and outbound duplication entries via authenticated Studio read. Reuse explicit agent judgment plus identity-bound delivery closure; externalKey dedup does not fit because the independently extracted quotes have different identities. No fuzzy merge or second tracking service.
+
+Rules touched: 4/10 semantic equivalence remains the model's decision; 8/83 owned promises close on evidenced delivery; 26/70 test actual journal receipt and reopen; 36 fixture provenance explicitly distinguishes recorded text from synthetic declarations; 74/102/113 review, decisions and shared journal posture; 101 no hook bypass; 116 reuse the existing fulfillment path. Floors: no changes to secret checks, spend caps, stop, durable intake or send identity.
+
+Initial finding: fulfillableCommitment only accepts agentPromise, while summary commitments and openLoops can record an agent-owned reply promise without that field. Existing guidance already asks for fulfilled for completed open agent commitments. The embedded evidence does not contain the original model declaration, so the exact live capture path remains unconfirmed. Testing both reply representations with the recorded reply text.
+
+## Implementation and decisions
+
+Pushed f2bea3a7137bc3bd4dbad2b24a0a7d4253d4d0da to origin/fix/duplicate-promise-1106. One production predicate accepts `in: reply, owner: agent` as well as existing agentPromise records. The existing model interpretation, exact excerpt validation, offered identity, no-open-subtasks check, durable intent and full receipt settle the promise. Operator-message obligations still use their existing result path; no semantic merge or send is added.
+
+Decision duplicate-promise-1106-reuse-fulfillment: reuse the existing fulfillment path for owned reply commitments; do not infer equivalence from wording or shared source.
+Decision duplicate-promise-1106-evidence: preserve the supplied historical failure and label synthetic model declarations explicitly; live acceptance belongs to the desk.
+
+Files beyond the named journal.ts: implementation is in its existing imported validator tests/preview/agent-commitment.ts; tests/preview/agent-commitment.test.ts adds identity/ownership boundaries; tests/preview/duplicate-promise.test.ts and fixtures/duplicate-promise-d1-1106.json hold the requested regression; reviews/duplicate-promise-1106-change-review.md records the change. journal.ts itself requires no change because writer and replay already share this validator.
+
+## Verification so far
+
+Before the fix: recorded-shape fixture had 2 failures (summary and loop promise stayed open) and 5 passing safety neighbors. After the fix: 7/7 regression cases pass, including distinct promises, UNKNOWN receipt, missing declaration, invented excerpt and a durable open completion item. The positive paths reach awaitingDelivery 0, reopen their encrypted journals and cannot rerun or resend. The fixture is NOT a replay: original D1 model declarations were not supplied. It preserves exact reply/status values from updates 46040849 and 46040850.
+
+Targeted direct imports: agent-commitment 6/6, answer-flat-live 10/10, promise-fulfilment-quote 7/7, retrospective-promises 11/11. Recorded-output replay includes summary-ack-walk update 840342898 and retrospective-duty-followup-train-1 shapes: summary:715672480, uncertain summary 715672483, Jev undecided 715672482, Jev unsure 969389570, reply review 969389923, delivered reply 715672479 and empty reply 715672550. Existing fulfillment-recording fixtures also pass. These are recorded evidence, not fresh live model calls.
+
+Typecheck exited 0. Standalone architecture check exited 0. No existing assertion or D1c requirement weakened. No live D1c result claimed.
+
+Host setup notes: initial npm ci could not write the restricted default npm cache; retried with a task-local /private/tmp cache and NODE_ENV=development --include=dev, successfully. macOS /var temporary directory alias caused the retrospective fixture's exact-path protection to refuse it; rerun with canonical TMPDIR=/private/tmp passed all 11. nice -n 10 was requested on test commands but the sandbox reported setpriority Operation not permitted; tests ran with one worker. No protection was bypassed. Hooks directory contains only samples and core.hooksPath is unset; plain git commit used.
+
+## Register publication and pushed tree
+
+Initial lint/register checks reported only the stale source pin for agent-commitment.ts. Regenerated the existing register with `node scripts/build-register.mjs --commit f2bea3a7137bc3bd4dbad2b24a0a7d4253d4d0da`; generation sha256:539b7989478c75f7a8b7c0ccef1137c67854dbce7f188de9852cbabab15bbe80. Seven extra files changed mechanically: generated/capabilities.json, capabilities.md, coverage.md, glossary.md, register.json, rules.md and source.json. No authority declaration or certificate changed.
+
+Final lint exited 0 (architecture passed; wiring issues=[]). Final register:check exited 0. Register still has its declared static-proof residuals; no new complete-enumeration claim is made.
+
+`git status --porcelain`:
+```text
+(empty)
+```
+
+Pushed commits (`git show --stat`):
+```text
+commit f2bea3a7137bc3bd4dbad2b24a0a7d4253d4d0da
+Author: Echo <echo@sagemindai.io>
+Date:   Fri Nov 6 18:20:25 2026 -0800
+
+    Fix fulfillment of reply promises captured as loops or summaries
+
+ reviews/duplicate-promise-1106-change-review.md    |  31 +++++++
+ tests/preview/agent-commitment.test.ts             |  13 +++
+ tests/preview/agent-commitment.ts                  |  14 +--
+ tests/preview/duplicate-promise.test.ts            | 102 +++++++++++++++++++++
+ .../fixtures/duplicate-promise-d1-1106.json        |  45 +++++++++
+ 5 files changed, 199 insertions(+), 6 deletions(-)
+commit dd581674d984da0d1460989642bb225670d259c2
+Author: Echo <echo@sagemindai.io>
+Date:   Fri Nov 6 18:24:16 2026 -0800
+
+    Refresh source pins for reply promise fulfillment repair
+
+ generated/capabilities.json                     | 4 ++--
+ generated/capabilities.md                       | 4 ++--
+ generated/coverage.md                           | 4 ++--
+ generated/glossary.md                           | 4 ++--
+ generated/register.json                         | 2 +-
+ generated/rules.md                              | 4 ++--
+ generated/source.json                           | 4 ++--
+ reviews/duplicate-promise-1106-change-review.md | 2 ++
+ 8 files changed, 15 insertions(+), 13 deletions(-)
+commit 7dc991435a48433a4a1be176bb279c7a3bc23c47
+Author: Echo <echo@sagemindai.io>
+Date:   Fri Nov 6 18:26:41 2026 -0800
+
+    Name the unchanged duplicate-send floor explicitly
+
+ reviews/duplicate-promise-1106-change-review.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+```
+
+`git diff --check origin/main...HEAD` and unstaged diff check exited 0.
+
+## Unrun or host-dependent checks
+
+The initial full change-review process ended with signal 15 (exit 143), without diagnostic output. Retried with the assigned source base on the pushed tree. No exit 137 occurred.
+
+The pinned tests initially reported an unchanged journal-obligations D5 directive child-status timeout (20 seconds, child status null rather than zero). The brief explicitly permits untouched host-dependent checks to be submitted to the Studio gate; no timeout/assertion was weakened. Remaining results pending.
+
+
+Supplemental own-record validation used the repository's parseRecord/validateRecord, full prompt scan, actual changed subject and added-line scan. Its only errors were the two expected Rule 102 missing Studio report references for duplicate-promise-1106-reuse-fulfillment and duplicate-promise-1106-evidence. The report is intentionally local for desk copy, per the remote-builder brief. Tier notes suggest critical from paths while the author declares significant for this narrowly scoped repair. No prompt-copy, deferral, floor or evidence-bar errors were reported.
+
+Initial pinned run: 110 passed, 4 failed, 1 worker RPC timeout; 7 files completed of 8 requested. Host-dependent failures in unchanged files: journal-obligations D5 directive child status timed out (20000ms); proofs-launcher startup/due proof returned 1 with separate-harness/P-08 trial warnings; proofs-launcher status proof timed out (60000ms); proofs-launcher stop proof launch returned 1. tests/e2e/register.test.ts did not report completion, alongside the worker onTaskUpdate timeout. These outcomes are retained, not relabeled passed. The final-head rerun is pending.
+
+Final-head progress: typecheck exited 0. The final pinned run has passed all 8 proofs-launcher tests and all 51 journal-obligations tests, including the four cases that failed on the earlier run. The earlier red evidence remains above; this is not a claim that the host timeout cause was repaired. Remaining checks are still in progress.
+
+
+Full change-review scan completed with exit 1: 4,358 commits since adoption, 1,296 records, 1,201 current records, 36 prompt findings. All 3,115 errors are missing evidence/report files in the Studio filesystem; zero other errors. This scan began before the final review-only wording commit, so the separate final-head own-record validation above supplies the exact changed record's result (only the two expected missing Studio report paths). No historical evidence was fabricated or copied to impersonate the Studio filesystem. Full log is retained with this report's evidence files.
+
+
+Final pinned run: all 114 tests in seven files passed. The remaining untouched tests/e2e/register.test.ts produced no result after more than twenty minutes of the foreground invocation. The exact owning node PID 71730 (parent 36546) and its esbuild child 72362 were identified by their open handles to this task's unique log, /private/tmp/duplicate-final-ready.log. I am ending this task-owned invocation with SIGTERM to exact PID 71730, preserving it as INCOMPLETE host-dependent evidence for the Studio gate under the remote-builder brief. No pattern/group kill, assertion change or pass claim. This is an author-imposed verification time bound, not a demonstrated intrinsic test failure. The earlier run's worker RPC timeout and missing e2e result are retained separately.
+
+Correction to termination status: at 2026-11-06 18:53:28 PST, the sandbox refused `kill -TERM 71730` with Operation not permitted. No signal was delivered by that command, and no alternate termination path was attempted. The run remains incomplete; it is not a pass and is not reported stopped.
+
+
+## Final submission
+
+READY for independent Studio gate, under the brief's explicit allowance for untouched host-dependent checks. Live D1c is not claimed passed. The original live model declaration was unavailable, so the precise original capture remains unconfirmed; the recorded-shape regression proves both excluded reply representations now close when the answering model declares their fulfillment.
+
+Final head: 7dc991435a48433a4a1be176bb279c7a3bc23c47. Origin tracking ref matches. Final diff checks against origin/main and unstaged changes exited 0; `git status --porcelain` is empty. Every changed repository file is in the pushed commits listed above. Source repair remains f2bea3a7137bc3bd4dbad2b24a0a7d4253d4d0da, followed by mechanical register publication and a review-floor wording correction.
+
+Final verification: 41 targeted tests pass; typecheck, architecture, lint and register:check pass. Seven pinned files / 114 tests pass on the final head. The untouched e2e/register file remains INCOMPLETE with its test process still active at the last tool poll; sandbox refused the exact-PID stop attempt. Full change-review reports only absent Studio evidence; final own-record validation reports only its two expected absent Studio report references. No outstanding product failure was found in changed files. The initial red runs are preserved and not erased by later passes.
+
+Evidence logs are stored under .instar/state/duplicate-promise-1106-r2-evidence (never committed):
+- duplicate-final-lint.log: sha256 aebb691e7b4d8aa22759ff68ce784b6d7b8a128aa348e5a26ead9c24c6ca9050
+- duplicate-final-ready-incomplete.log: sha256 d692671345c9e224311a443ca2ff3bd359917d78d85e951b9e7d70a19c176604
+- duplicate-final-register.log: sha256 88602f31cfd071ee33bf590e3a80a2ca2dacf25b4f2c9f3310b463ffe4df3c83
+- duplicate-final-review.log: sha256 74da90e4057586a56e78b842302757acaa51d320b837974b2bb4aa56557daa62
+- duplicate-final-typecheck.log: sha256 08239a8c2d32c0df5edd000bbc8910d242b0450fe5032dd7c376a529e59c2b3c
+- duplicate-green.log: sha256 93844d211c664e0175890160d15f96804c583bd2c328e841961cb0b6a456c956
+- duplicate-own-review.log: sha256 3602285eb566d82e0b0224770e8c313ecdae1f53c7ad43e92cc676d67ec7dbac
+- duplicate-ready.log: sha256 1d6a4b4bb36e9a054dd2c7d75a7a47f4eb4d4d07afae4718900761e1027ad1cd
+- duplicate-red.log: sha256 4880cd66693225797028ba2acd96ce16c67c062de9f4f50222697f66d94a9c7a
+- duplicate-retro.log: sha256 0b85291a1f34d2c635abf0bcf44e1847ec2bd4265290884a43a7d610baa4efa4
+- duplicate-unit.log: sha256 6005320ffbd2601632cad4941599e7b39f6e1d7c1db7c414b206fc2c1598f6a9
+
+READY 7dc991435a48433a4a1be176bb279c7a3bc23c47
+
+
+## Remote repair report duplicate-promise-1106-repair-190647 (copied by the driver, plan #566)
+
+# Duplicate promise — pipeline repair
+
+Brief verified: 34674 bytes; SHA256 5eabf47536557dfb234422ddf2b4f7d8e7295b0fa7128d74cdb6b2fc36dd6cf2.
+Read the full purpose and rule book; both match fetched origin/main. Continuation capability reports enabled:false.
+
+1.x FIRST comparison inherited from the reviewed repair (explicitly permitted by the charter): JKHeadley/instar main c55d2a998429cbb2a7f2d0748d015fc45415a2df; src/monitoring/CommitmentTracker.ts record()/deliver(); docs/specs/COMMITMENTS-COHERENCE-SPEC.md duplication; docs/specs/PROMISE-BEACON-SPEC.md partial fulfillment; history 4018bf338 and 5ff755994; ONEX-LESSONS.md commitment/outbound duplication entries. Existing 2.0 fulfillment reuses explicit semantic judgment and identity-bound delivery. externalKey does not match independently extracted quotes; a standalone tracker duplicates the journal. The independent review confirmed this comparison; this documentation repair adds no runtime mechanism.
+
+## Pipeline repair
+M1: replace unconditional predicate rollback with the actual compatibility boundary. Revert only before newly supported intents exist; afterward use compatible forward repair retaining replay support. Preserve journal and receipts without deleting or rewriting history. Inspected tests/preview/journal.ts intent replay validation and docs/14-the-assembly.md P10-NF-08/09/30.
+Files touched not named by M1: none in the repository. This required local report is outside the worktree and will not be committed.
+
+Rules: 74 corrects the unsound undo account; 8/83 preserve completed promises across recovery; 102 records and reports decisions; 113 states the same replay compatibility requirement on every machine; 101 uses ordinary commits without bypass; 116 fixes the prose at its source with no added framework. Rules 4/10, 26/36/70 and floors remain unchanged. Secrets, spend cap, stop, no duplicate sends and durable intake are preserved. Rules 22/92 remain background obligations.
+
+Decision duplicate-promise-1106-reuse-fulfillment: retain the existing explicit fulfillment path and protect unrelated promises.
+Decision duplicate-promise-1106-evidence: retain historical D1 failure and synthetic-declaration disclosure; no new live-proof claim.
+Decision duplicate-promise-1106-compatible-recovery: only revert before new intents; otherwise forward repair with compatible replay and preserved history.
+
+N1 retained: exact original capture and unattended D1c remain unconfirmed; combined-build/live check belongs to the desk. N2 retained: prior reviewer runner invocations were incomplete; no claim they passed or stopped. This repair changes no model-facing path and adds no permanent tests, as explicitly requested.
+
+## Verification
+- Typecheck: exit 0.
+- npm run lint on cdfa315fe76dc5577609f4053168c435b269b84c: architecture passed; register wiring issues=[] (54 disclosed static-proof residuals); no source-pin exception and no repin needed.
+- npm run register:check: check=true; source commit f2bea3a7137bc3bd4dbad2b24a0a7d4253d4d0da; 299 entries, 122 rules.
+- git diff --check origin/main...HEAD and unstaged diff check: clean.
+- Dependency installation: initial default-cache write failed with EPERM; npm ci --include=dev succeeded with /private/tmp/echo-duplicate-promise-npm-cache. No global cache/config was altered.
+- nice -n 10 was requested; the sandbox refused setpriority, but the commands executed. Test maxWorkers=1 remains enforced.
+- No source or test changes, so no additional direct-import test set. No full suite was run.
+
+## Unrun or host-dependent checks
+Pinned test run reports all 11 tests in untouched tests/preview/topic-awareness.test.ts failing with `preview journal: substituted directory`. Per the remote brief, this untouched-test failure is recorded without investigation or repair. It is not claimed passed. The Studio gate must re-run it; no all-green claim and no GATE-HANDOFF onlyUnrun claim are made.
+
+## Review-record check
+`node scripts/check-change-review.mjs check` completed with 3118 missing host-local report/evidence errors, not a green result. 3116 reference the Studio .instar lanes/state tree; the other two are the Studio harness MCP log under /Users/Shared/instar-harness and .worktrees/gate-sb-w4-replycheck/.test-results.json. No non-missing-evidence error was reported. The own record has exactly the three expected Rule 102 errors for its Decision reports at /Users/dabombstudio/.instar/agents/echo/.instar/lanes/duplicate-promise-1106-repair-190647-PROGRESS.md. All three ids are named above. Draft skeleton was generated with --base 7dc991435a48433a4a1be176bb279c7a3bc23c47; the existing open record was updated to cover this commit without creating an empty-subject record. No own syntax error. The brief delegates syncing reports and rerunning this check to the Studio. Complete output: /private/tmp/duplicate-promise-change-review.log on this Laptop.
+
+## Final pinned-test result
+Command: nice -n 10 ./node_modules/.bin/vitest run --maxWorkers 1 <the eight files emitted by the authenticated ready-gate-tests.py and driver.py>.
+Exit 1; 7 files passed, 1 failed; 120 tests passed, 11 failed; duration 732.04s. All 17 E2E register tests passed (630082ms).
+Passed files: tests/preview/journal-obligations.test.ts (51), tests/preview/journal-boundaries.test.ts (23), tests/preview/proofs-launcher.test.ts (8), tests/integration/register.test.ts (7), tests/preview/capability-briefing.test.ts (9), tests/preview/constitution-briefing-sync.test.ts (5), tests/e2e/register.test.ts (17).
+Failed file: tests/preview/topic-awareness.test.ts (11). All fail at openPreviewJournal tests/preview/journal.ts:5455, called by seed at topic-awareness.test.ts:22, with `preview journal: substituted directory` before the replay assertions. This is an untouched file and directory-admission host result, carried to the Studio under the brief's remote-host exception. No source workaround, weakened assertion, quarantine or pin edit was made. The run completed; no task-owned runner is left waiting.
+
+## Pushed artifact and clean state
+Push succeeded to origin/fix/duplicate-promise-1106. Local HEAD and remote tracking ref both resolve to cdfa315fe76dc5577609f4053168c435b269b84c. The only repository file changed by this repair is reviews/duplicate-promise-1106-change-review.md; it is in the pushed commit. No .instar files were staged or committed. Both branch-range and unstaged whitespace checks passed.
+
+`git status --porcelain` output (empty):
+```text
+```
+
+`git show --stat cdfa315fe76dc5577609f4053168c435b269b84c`:
+```text
+commit cdfa315fe76dc5577609f4053168c435b269b84c
+Author: Echo <echo@sagemindai.io>
+Date:   Fri Nov 6 19:09:09 2026 -0800
+
+    docs: preserve replay compatibility in promise recovery guidance
+
+ reviews/duplicate-promise-1106-change-review.md | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+```
+
+READY means ready for the Studio gate under the brief's remote report/evidence and untouched host-test exceptions, not that all local gates passed or that live D1c is proved. The existing 1.x comparison, bounded live evidence and pending combined-build/live check remain unchanged.
+
+READY cdfa315fe76dc5577609f4053168c435b269b84c
