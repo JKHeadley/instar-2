@@ -11,7 +11,7 @@ export interface NativeHarnessDriverPort {
   launch(input: Readonly<{ operation: string; claim: string; artifact: string; incarnation: string; workingScope: string; handles: readonly string[]; restore?: { operation: string; digest: string; deadline: number } }>): import('../index.js').Result<string>;
   deliver(input: Readonly<{ operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }>): import('../index.js').Result<string>;
   /** Bounded nonempty result from the caller's current delivery, never pane text. */
-  observe(input: Readonly<{ operation: string; processIdentity: string; resultAvailable?: boolean }>): import('../index.js').Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string; safetyDeadline?: number }>>;
+  observe(input: Readonly<{ operation: string; processIdentity: string; resultAvailable?: boolean; resultWrittenAt?: number | null }>): import('../index.js').Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string; safetyDeadline?: number }>>;
   /** Exact closed-worker proof used by the continuing host to retain never-sent intake. */
   notDispatched?(input: Readonly<{ operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }>): import('../index.js').Result<boolean>;
   /** Optional durable-intake recovery. Only a driver that can prove non-arrival may resend. */

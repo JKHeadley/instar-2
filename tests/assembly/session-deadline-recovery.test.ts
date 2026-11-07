@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 
-it.each(['waiting', 'sending', 'accepted', 'ordinary', 'closed', 'different-process'])(
+it.each(['waiting', 'sending', 'accepted', 'ordinary', 'closed', 'different-process', 'background'])(
   'independent deadline retains its brake for %s recovery', state => {
     const root = mkdtempSync(join(tmpdir(), 'deadline-recovery-'));
     const name = `instar20-${'a'.repeat(24)}`, identity = `${name}:123:456`;
@@ -18,8 +18,9 @@ it.each(['waiting', 'sending', 'accepted', 'ordinary', 'closed', 'different-proc
       chmodSync(tmux, 0o700);
       writeFileSync(journal, JSON.stringify({ deliveries: [], resumes: {}, sessions: [{ name, identity, turnDeadline: deadline,
         turnStartedAt: deadline - 1000, closedAt: state === 'closed' ? deadline - 10 : null,
-        ...(state === 'ordinary' ? {} : { rateRecovery: { state, dueAt: deadline - 50 } }) }] }));
-      writeFileSync(join(root, `${name}.stop.json`), JSON.stringify({ kind: 'turn-closed', at: deadline - 20 }));
+        ...(state === 'ordinary' || state === 'background' ? {} : { rateRecovery: { state, dueAt: deadline - 50 } }) }] }));
+      writeFileSync(join(root, `${name}.stop.json`), JSON.stringify({ kind: 'turn-closed', at: deadline - 20,
+        ...(state === 'background' ? { background: 1 } : {}) }));
       const result = spawnSync(process.execPath, [fileURLToPath(new URL('../../scripts/session-deadline-watchdog.mjs', import.meta.url)),
         journal, root, tmux, name, identity, String(deadline)], { encoding: 'utf8', timeout: 5000 });
       expect(result.status, result.stderr).toBe(0);
