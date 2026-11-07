@@ -14,7 +14,7 @@ Side effects: The first runner on this build reinstalls the shared launcher at i
 Undo and recovery: Revert the code commit and replay the register; the next readiness check reinstalls the previous launcher. No state migration.
 Multi-machine posture: Machine-local launcher under /Users/Shared/instar-harness; no sync, authority or credential change.
 Layer below: Node's process.stdout is asynchronous for pipes on macOS; process.exit drops queued writes. Reproduced: 9000 per-row writes then exit lost rows on 6 of 10 runs (850 to 5633 kept); one awaited write kept all 9000 on 10 of 10. The failed answer check probed about 8100 /private/tmp entries.
-Bug class: stdout-truncated-on-exit
+Bug class: live-path
 Bug evidence: preview-deploy.log 2026-11-06 19:27:30 FAIL for c7b1eb47 (reply "I couldn't start my model right now"); answer-check-forum.log line 2289 "Harness identity: UNAVAILABLE ... the harness launch is not permitted (sudo rule, user or launcher missing)", with no [harness-probe] exec error, so the short-reply branch fired. Copy status: heldRepliesToday reason "model not started". harness-user.mjs and harness-launch.mjs are byte-identical to the passing c9847434 and 14748355 builds, so the failure is load-dependent rather than introduced by this branch.
 Hook bypass: none
 Convergence: none
