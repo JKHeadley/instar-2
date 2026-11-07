@@ -1,10 +1,10 @@
 import { afterEach, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect } from 'node:net';
 import { runInNewContext } from 'node:vm';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 // @ts-expect-error physical checkpoint
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
 // @ts-expect-error plain hook
@@ -14,19 +14,23 @@ import { prepareSessionConnectors, admitSessionConnector } from './session-conne
 // @ts-expect-error plain fixed contract
 import { OWNER_BROWSER_TOOL } from './owner-browser-contract.mjs';
 // @ts-expect-error physical owner adapter
-import { createOwnerBrowser } from './owner-browser.mjs';
+import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
+// @ts-expect-error existing installer writer
+import { configureTrust, setupTrustPolicy } from './trust-setup.mjs';
+// @ts-expect-error the runner's own policy reader
+import { currentEffectPolicy } from './effect-doorway.mjs';
 const close: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const fn of close.splice(0).reverse()) await fn(); });
 const input = { page: 'account-profile' };
 const observation = { status: 'observed', page: 'account-profile', account: 'EchoOfDawn', title: 'Your profile', observedAt: 10, truncated: false };
-async function world(options: { browser?: ReturnType<typeof createOwnerBrowser>; disabled?: boolean; pages?: string[] } = {}) {
+async function world(options: { browser?: ReturnType<typeof createOwnerBrowser>; disabled?: boolean; pages?: string[]; policy?: () => unknown } = {}) {
   let stopped = false, owner = true, time = 10, failAppend = false, failObserved = false, granted = true, check = 'clear';
   let grantId = 'read';
   let dispatches = 0, block = false, release = () => {};
   const rows: { id: string; state?: string; cause?: string }[] = [];
-  const policy = () => ({ type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [],
+  const policy = options.policy ?? (() => ({ type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [],
     registered: [{ effect: 'tool:mcp', target: OWNER_BROWSER_TOOL, consequence: 'data', reversibility: 'reversible', reach: 'agent', costUsd: 0, source: 'operator:read' }],
-    grants: granted ? [{ id: grantId, ...(options.pages ? { ownerBrowserPages: options.pages } : {}), effect: 'tool:mcp', target: OWNER_BROWSER_TOOL, approves: ['scope'], source: 'operator:read', custodian: 'owner', recovery: 'withdraw', expiresAt: 100 }] : [] });
+    grants: granted ? [{ id: grantId, ...(options.pages ? { ownerBrowserPages: options.pages } : {}), effect: 'tool:mcp', target: OWNER_BROWSER_TOOL, approves: ['scope'], source: 'operator:read', custodian: 'owner', recovery: 'withdraw', expiresAt: 100 }] : [] }));
   const append = (row: { id: string; state?: string }) => { if (failAppend || (failObserved && row.state === 'observed')) throw Error('disk unavailable'); rows.push(row); };
   const effects = createToolEffectOwner({ append, stopped: () => stopped || !owner, now: () => time,
     prepared: (id: string) => rows.some(row => row.id === id),
@@ -202,4 +206,95 @@ it('refuses ungranted, expired and stopped sequences and withholds observations 
   const result = w.gate.observeOwner('claim', 'sequence', { pages });
   w.set({ grantId: 'replacement-read' }); w.release();
   expect((await result).status).toBe('refused'); expect(w.rows.map(row => row.state)).toEqual(['prepared']);
+});
+
+// Rules 18/100/103: authority comes from the operator's recorded connection through the existing writer; the runner's
+// own policy reader, connector admission, gate and fixed DOM adapter are what the installed record must satisfy.
+const REVIEWED_PAGES = ['account-profile', 'account-repositories'];
+const connection = { service: 'github', account: 'EchoOfDawn', ownership: 'agent', recovery: 'Withdraw this connection' };
+const operatorRequest = (extra: object = {}) => ({ source: 'operator:connection:1', custodian: 'installation-owner', recovery: 'Revoke standing trust',
+  resourceLevelUsd: 0, effects: [], mcp: { mcpServers: {}, reads: [] },
+  role: { description: 'Keep my repositories tidy', accounts: ['github:EchoOfDawn'], channels: [], trust: 'Read my own account' }, ...extra });
+function installRoot() {
+  const root = mkdtempSync(join(tmpdir(), 'owner-install-')); mkdirSync(join(root, 'chrome'));
+  close.push(async () => { rmSync(root, { recursive: true, force: true }); });
+  writeFileSync(join(root, 'owner-browser.json'), JSON.stringify({ profileId: 'echoofdawn-github', service: 'github', account: 'EchoOfDawn', ownership: 'agent', userDataDir: realpathSync(join(root, 'chrome')) }));
+  return root;
+}
+const standingTrust = (root: string, action: string, request?: object) => {
+  const path = join(root, 'operator-request.json');
+  if (request) writeFileSync(path, JSON.stringify(request));
+  return spawnSync(process.execPath, ['scripts/setup-standing-trust.mjs', action, root, ...(request ? [path] : [])], { encoding: 'utf8', timeout: 60000 });
+};
+/** One claim's read of the pages under whatever the installation's effect-policy file says at this moment. */
+async function installedRead(root: string, value: object) {
+  let url = new URL('https://github.com/settings/profile'), evaluations = 0;
+  const browser = createOwnerBrowser({ binding: () => readOwnerBrowserBinding(root), platform: 'darwin', uid: 501, now: () => 10,
+    hold: async () => ({ release: async () => {} }), wait: async () => {}, scrub: (s: string) => s, held: () => 'clear',
+    execute: async (command: string, args: string[]) => {
+      if (command === '/bin/ps') return `81453 501 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=${realpathSync(join(root, 'chrome'))}`;
+      evaluations++;
+      return runInNewContext(args.at(-1)!, { location: { href: url.href, origin: url.origin, pathname: url.pathname, search: url.search,
+        assign: (target: string) => { url = new URL(target); } }, document: { readyState: 'complete', title: `Title ${url.pathname}`,
+        querySelector: (selector: string) => selector.startsWith('form') ? null : { content: 'EchoOfDawn' } } });
+    } });
+  const w = await world({ browser, policy: () => currentEffectPolicy(() => readFileSync(join(root, 'effect-policy.json'), 'utf8')) });
+  const result = await w.gate.observeOwner('claim', 'install-read', value);
+  return { result, evaluations: () => evaluations };
+}
+const twoPages = { pages: REVIEWED_PAGES };
+
+it('a fresh install reads both reviewed pages only under the operator connection grant, and withdrawal refuses', async () => {
+  const root = installRoot();
+  const fresh = spawnSync(process.execPath, ['bin/instar2.mjs', 'setup', root], { encoding: 'utf8', timeout: 60000,
+    input: 'Keep my repositories tidy\nRead my own account\n0\nnone\n' });
+  expect(fresh.status, fresh.stderr).toBe(0);
+  const ungranted = await installedRead(root, twoPages);
+  expect(ungranted.result.status).toBe('refused'); expect(ungranted.evaluations()).toBe(0);
+
+  const granted = standingTrust(root, 'revise', operatorRequest({ agentGitHubConnection: connection }));
+  expect(granted.status, granted.stderr).toBe(0);
+  const read = await installedRead(root, twoPages);
+  expect(read.result).toMatchObject({ status: 'observed' });
+  expect(read.result.observations.map((row: { page: string }) => row.page)).toEqual(REVIEWED_PAGES);
+  expect(JSON.parse(readFileSync(join(root, 'effect-policy.json'), 'utf8')).onboarding).toBeDefined();
+
+  expect(standingTrust(root, 'tighten', operatorRequest({ agentGitHubConnection: connection })).status).toBe(0);
+  expect((await installedRead(root, twoPages)).result.status).toBe('observed');
+  expect(standingTrust(root, 'tighten', operatorRequest()).status).toBe(0);
+  const narrowed = await installedRead(root, twoPages);
+  expect(narrowed.result.status).toBe('refused'); expect(narrowed.evaluations()).toBe(0);
+  expect((await installedRead(root, input)).result.status).toBe('refused');
+
+  expect(standingTrust(root, 'revise', operatorRequest({ agentGitHubConnection: connection })).status).toBe(0);
+  expect((await installedRead(root, twoPages)).result.status).toBe('observed');
+  expect(standingTrust(root, 'revoke').status).toBe(0);
+  const revoked = await installedRead(root, twoPages);
+  expect(revoked.result.status).toBe('refused'); expect(revoked.evaluations()).toBe(0);
+}, 120000);
+
+it('mints nothing beyond the exact agent-owned connection and leaves unrelated and older grants as they were', async () => {
+  for (const wrong of [{ ...connection, ownership: 'operator' }, { ...connection, account: 'SomeoneElse' }, { ...connection, service: 'gitlab' },
+    { ...connection, pages: ['account-profile', 'account-repositories'] }, { ...connection, token: 'x' }, { ...connection, recovery: '' }, null]) {
+    const root = installRoot();
+    expect(() => configureTrust(root, 'setup', operatorRequest({ agentGitHubConnection: wrong }))).toThrow('agent-owned GitHub connection');
+    expect(existsSync(join(root, 'effect-policy.json'))).toBe(false);
+  }
+  const draft = { effect: 'tool:mcp', target: 'mcp__drafts__edit', recovery: 'Restore the draft',
+    registration: { consequence: 'data', reversibility: 'reversible', costUsd: 0 } };
+  const unrelated = setupTrustPolicy(operatorRequest({ effects: [draft], agentGitHubConnection: connection }));
+  expect(unrelated.grants.find((row: { target: string }) => row.target === 'mcp__drafts__edit')).not.toHaveProperty('ownerBrowserPages');
+  expect(unrelated.grants.find((row: { target: string }) => row.target === OWNER_BROWSER_TOOL)).toMatchObject({ ownerBrowserPages: REVIEWED_PAGES, approves: ['scope'], source: 'operator:connection:1' });
+  expect(() => setupTrustPolicy(operatorRequest({ effects: [{ ...draft, target: OWNER_BROWSER_TOOL }], agentGitHubConnection: connection }))).toThrow('agent-owned GitHub connection');
+  // A grant recorded before the page scope stays a one-page grant on every path that is not a new operator choice.
+  const older = installRoot();
+  configureTrust(older, 'setup', operatorRequest({ agentGitHubConnection: connection }));
+  const path = join(older, 'effect-policy.json'), recorded = JSON.parse(readFileSync(path, 'utf8'));
+  delete recorded.grants[0].ownerBrowserPages;
+  writeFileSync(path, JSON.stringify(recorded)); const bytes = readFileSync(path, 'utf8');
+  expect((await installedRead(older, twoPages)).result.status).toBe('refused');
+  expect((await installedRead(older, input)).result).toMatchObject({ status: 'observed', page: 'account-profile' });
+  expect(() => configureTrust(older, 'setup', operatorRequest({ agentGitHubConnection: connection }))).toThrow('different operator choices');
+  expect(() => configureTrust(older, 'tighten', operatorRequest({ agentGitHubConnection: connection }))).toThrow('cannot widen');
+  expect(readFileSync(path, 'utf8')).toBe(bytes);
 });
