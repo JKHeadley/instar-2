@@ -148,7 +148,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
   return {state:'complete',bytes:JSON.stringify(decision),usage:{inputTokens:1,outputTokens:1}};
 }}});
 `);
-  writeFileSync(loader, `export async function resolve(specifier,context,next) {
+  writeFileSync(loader, `// Controlled cold-start delay: no host load generator.
+if (process.env.INSTAR_TEST_IDLE_BOOT_DELAY_MS) await new Promise(done=>setTimeout(done,Number(process.env.INSTAR_TEST_IDLE_BOOT_DELAY_MS)));
+export async function resolve(specifier,context,next) {
   if (context.parentURL?.endsWith('/journal-agent.mjs') && specifier.endsWith('/production-provider.js'))
     return {url:${JSON.stringify(pathToFileURL(provider).href)},shortCircuit:true};
   return next(specifier,context);
@@ -168,16 +170,19 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','100000','--max-poll-seconds','1'];
     child = spawn(process.execPath,args,{cwd:process.cwd(),stdio:['ignore','pipe','pipe'],env:{...process.env,
+      INSTAR_TEST_IDLE_BOOT_DELAY_MS:signal==='SIGTERM'?'10500':'0',
       INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`}});
     let stderr=''; child.stderr.on('data',data=>{stderr+=String(data);});
+    // Boot/import and idle readiness precede the signal-latency measurement.
+    // Keep the three-second post-signal ceiling independent of cold startup.
     const deadline = Date.now()+CHILD_TIMEOUT;
-    while ((!existsSync(log) || readFileSync(log,'utf8').split('getUpdates').length < 4) && Date.now()<deadline)
+    while ((!existsSync(log) || readFileSync(log,'utf8').split('getUpdates').length < 4) && child.exitCode===null && child.signalCode===null && Date.now()<deadline)
       await new Promise(done=>setTimeout(done,20));
     expect(existsSync(log),stderr).toBe(true);
-    expect(readFileSync(log,'utf8').split('getUpdates').length).toBeGreaterThanOrEqual(4);
+    expect(readFileSync(log,'utf8').split('getUpdates').length,stderr).toBeGreaterThanOrEqual(4);
     const pollsAtSignal=readFileSync(log,'utf8').split('getUpdates').length-1;
     child.kill(signal);
     const exit = await Promise.race([
@@ -231,6 +236,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
         INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`}});
     expect(refused.status).not.toBe(0);
   } finally { child?.kill('SIGKILL'); endpoint.kill('SIGTERM'); }
+// Six sequential child bounds plus cold boot; signal latency stays independently 3s.
 }, 8 * CHILD_TIMEOUT);
 
 it.each([['echo', 0], ['drop-thread', 1]])('the real launcher answers a topic from the main chat and replies into that topic (endpoint %s; a result without the thread stays UNKNOWN)', async (mode, unknown) => {

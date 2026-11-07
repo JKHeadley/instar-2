@@ -32,6 +32,7 @@ export const TOOL_TURNS_KEPT = 16;
 export const TOOL_EGRESS_RECORDED = 64;
 export const TOOL_HOOK_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'tool-admission-hook.mjs');
 /** Starts an MCP server whose environment names a credential by SecretRef (`readRootMcp`, `serveTurnSocket`). */
+export const TOOL_LOCAL_VERIFY = join(dirname(fileURLToPath(import.meta.url)), 'local-verify-mcp.mjs');
 export const TOOL_MCP_LAUNCHER = join(dirname(fileURLToPath(import.meta.url)), 'mcp-launch.mjs');
 /** Answer turns and scheduled obligation work run with tools; reviews, summaries and benchmark reruns never do. */
 export const toolTurnEligible = id => /^telegram:[0-9]+:update:[0-9]+$/u.test(id) || /^obligation:/u.test(id);
@@ -309,7 +310,10 @@ export function prepareMcpLaunch({ mcp, privateDirectory, socket, harness = null
     const launcher = harness ? join(dirname(harness.hookScript), 'mcp-launch.mjs') : TOOL_MCP_LAUNCHER;
     const nonces = Object.fromEntries(secretServers.map(name => [name, randomBytes(16).toString('hex')]));
     const launch = Object.fromEntries(servers.map(name => {
-      const configured = mcp.servers[name];
+      let configured = mcp.servers[name];
+      // The worker cannot read the owner repository; use the existing immutable hook installation.
+      if (harness && name === 'local_verify' && configured.args?.length === 1 && configured.args[0] === TOOL_LOCAL_VERIFY)
+        configured = { ...configured, args: [join(dirname(harness.hookScript), 'local-verify-mcp.mjs')] };
       // MCP spawns do not inherit the shell's PATH repair. Include the installation's node/npx directory.
       let server = configured.command.includes('/') ? configured : { ...configured,
         env: { PATH: `${dirname(node)}:${process.env.PATH ?? '/usr/bin:/bin'}`, ...configured.env } };

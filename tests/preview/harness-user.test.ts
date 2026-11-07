@@ -436,6 +436,22 @@ describe('the launcher', () => {
     expect(result.status).toBe(0);
     expect(Number(result.stdout.trim())).toBe(specs.length);
   });
+  it('flushes every real probe row before a successful exit when the pipe reader pauses', async () => {
+    const count = 2500;
+    const child = spawn(process.execPath, [launcher, '--probe', ...Array(count).fill(`r:${fake}`)], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '', error = '', paused = false;
+    child.stdout.on('data', (chunk: Buffer) => {
+      output += chunk;
+      if (!paused) { paused = true; child.stdout.pause(); setTimeout(() => child.stdout.resume(), 500); }
+    });
+    child.stderr.on('data', (chunk: Buffer) => { error += chunk; });
+    const code = await new Promise<number | null>((resolve, reject) => { child.once('error', reject); child.once('close', resolve); });
+    expect(code).toBe(0);
+    expect(error).toBe('');
+    const rows = output.trim().split('\n').map(line => JSON.parse(line));
+    expect(rows).toHaveLength(count);
+    expect(rows.every(row => row.path === fake && row.mode === 'r' && row.ok === true)).toBe(true);
+  });
 });
 
 describe('the census and cleanup of a harness-user tree', () => {
