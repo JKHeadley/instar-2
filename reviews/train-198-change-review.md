@@ -25,7 +25,7 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing unchanged protocol/fi
 Prompt finding: 85544c20941f | protocol-literal | Existing unchanged protocol/fixed-notice wording; the renewal adds no model instruction — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-conversation-session.test.ts: "your messages are kept and i'll answer them then; you don't need to resend them."
 Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged protocol/fixed-notice wording; the renewal adds no model instruction — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 
-Subject (15 paths): docs/product-run.md, src/assembly/subscription-window.ts, tests/preview/README.md, tests/preview/agentready.test.ts, tests/preview/closing-notice-boundary.test.ts, tests/preview/closing-notice.test.ts, tests/preview/journal.ts, tests/preview/renew-activation.test.ts, tests/preview/renew-ask-live.test.ts, tests/preview/yes-batch-live.test.ts, tests/setup/test-clock-env.ts, tests/setup/test-clock.mjs, tests/unit/test-clock-process.test.ts, tests/unit/test-clock.test.ts, vitest.config.ts
+Subject (16 paths): docs/product-run.md, src/assembly/subscription-window.ts, tests/preview/README.md, tests/preview/agentready.test.ts, tests/preview/closing-notice-boundary.test.ts, tests/preview/closing-notice.test.ts, tests/preview/journal.ts, tests/preview/renew-activation.test.ts, tests/preview/renew-ask-live.test.ts, tests/preview/yes-batch-live.test.ts, tests/preview/yes-window.test.ts, tests/setup/test-clock-env.ts, tests/setup/test-clock.mjs, tests/unit/test-clock-process.test.ts, tests/unit/test-clock.test.ts, vitest.config.ts
 
 ## Closing block
 
