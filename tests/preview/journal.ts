@@ -330,18 +330,39 @@ export const WAITING_PROGRESS = "Still on your earlier message; I'll get to this
 export const REFUSED_SEND_NOTICE = 'I could not send my complete answer. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
 export const UNKNOWN_SEND_NOTICE = 'My answer may not have arrived. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
 export const SAFETY_CEILING_NOTICE = 'Instar halted this work because its safety limit was reached. This was not an operator stop or a decision by the agent to finish. Unfinished work and any uncertain actions remain recorded; nothing is automatically retried.';
-/** Historical delivered bytes remain a loss notice when replayed; never rewrite an old send intent. */
-const LEGACY_UNKNOWN_ANSWER_NOTICE = 'The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.';
-export const UNKNOWN_ANSWER_NOTICE = 'Completion of your request is unconfirmed. No verified answer was recorded for this attempt. '
+/** Kept for recognition of already delivered journal rows, never rewritten on reopen. */
+export const LEGACY_UNKNOWN_ANSWER_NOTICE = 'The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.';
+/** Bytes the live build delivered before the plain request-quoting notice; recognized only, never sent anew. */
+const UNCONFIRMED_UNKNOWN_ANSWER_NOTICE = 'Completion of your request is unconfirmed. No verified answer was recorded for this attempt. '
   + 'Work may have changed files or external services; those results are not confirmed by this notice. '
   + 'Your request and this attempt remain in the conversation record. This attempt is not automatically retried. '
   + 'Before resuming, the recorded work and current external state need to be checked so completed actions are not repeated.';
+/** Bytes the train delivered before the combined notice; recognized only, never sent anew. */
+const PLAIN_UNKNOWN_ANSWER_NOTICE = 'Work on your request stopped before a finished answer was available. The reason is unknown. Your request and this incomplete attempt are saved. This attempt will not be repeated automatically.';
+export const UNKNOWN_ANSWER_NOTICE = 'Work on your request stopped before a finished answer was available. The reason is unknown. '
+  + 'Completion of your request is unconfirmed. Work may have changed files or external services. '
+  + 'Your request and this incomplete attempt are saved. This attempt will not be repeated automatically. '
+  + 'Before resuming, the recorded work and current external state need to be checked so completed actions are not repeated.';
+/** Quote the person's own words, rather than infer a task name from an unfinished model output. */
+const noticeRequest = (text: string, limit: number) => {
+  const quote = redact(text).text.trim();
+  return quote.length > limit ? `${quote.slice(0, limit - 1)}…` : quote;
+};
+const failedToolChecks = (count: number | undefined) => count === undefined ? ''
+  : ` ${count} tool checks returned results, but those results were not verified into an answer. The requested result remains unverified; no tool work was automatically repeated.`;
+type NoticeTurn = Pick<Turn, 'text' | 'safetyCeiling' | 'toolChecks'>;
+const renderUnknownAnswerNotice = (turn: NoticeTurn, unknownReason: string, requestLimit: number) => {
+  const reason = turn.safetyCeiling ? SAFETY_CEILING_NOTICE : unknownReason;
+  const request = noticeRequest(turn.text, requestLimit);
+  const checks = failedToolChecks(turn.toolChecks);
+  return `${reason}${request ? ` Your request: “${request}”` : ''}${checks}`;
+};
 /** Counts completed tool attempts, never successful checks or task completion. */
-function unknownAnswerNotice(turn: Pick<Turn, 'safetyCeiling' | 'toolChecks'>): string {
-  if (turn.safetyCeiling) return SAFETY_CEILING_NOTICE;
-  return turn.toolChecks === undefined ? UNKNOWN_ANSWER_NOTICE
-    : `${UNKNOWN_ANSWER_NOTICE} ${turn.toolChecks} tool checks returned results, but those results were not verified into an answer. The requested result remains unverified; no tool work was automatically repeated.`;
+export function unknownAnswerNotice(turn: NoticeTurn): string {
+  return renderUnknownAnswerNotice(turn, UNKNOWN_ANSWER_NOTICE, 700);
 }
+/** The exact notice the train's earlier writer rendered for this turn, under its 800-character quote bound. */
+const plainUnknownAnswerNotice = (turn: NoticeTurn) => renderUnknownAnswerNotice(turn, PLAIN_UNKNOWN_ANSWER_NOTICE, 800);
 
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
 export const TOO_LONG_REPLY_NOTICE = 'I produced an answer, but it was too long for one Telegram reply. I did not send part of it. Please ask for a shorter answer.';
@@ -409,6 +430,12 @@ const continuityTail = (disposition: ContinuityAccount['disposition'], reference
 export const continuityDisclosure = (label: string, through: number, disposition: ContinuityAccount['disposition'], reference: string,
   basis: ContinuityBasis = 'summary') =>
   `${continuityHead(through, basis)}${label}${continuityTail(disposition, reference)}`;
+/** Plain surface for every reply; exact prior-message evidence remains in ContinuityAccount. */
+const plainContinuity = (disposition: ContinuityAccount['disposition'], basis: ContinuityBasis) =>
+  `${basis === 'set-aside' ? 'Earlier conversation no longer fits in my view; it is saved and searchable, but not summarized.'
+    : 'Earlier conversation is now summarized for me.'} Your previous request ${disposition === 'addressed'
+      ? 'was answered.' : disposition === 'superseded' ? 'was replaced by your later edit.'
+        : 'is still open; no finished answer is confirmed.'}`;
 /** Rule 110: whether this reply says its disclosure out loud, given the last one it actually delivered.
  * `last` is the most recent spoken account whose send Telegram confirmed, absent when none ever was.
  * `unresolved` is true when a spoken disclosure's send stayed UNKNOWN, so the operator may never have
@@ -417,13 +444,17 @@ export const continuityDisclosure = (label: string, through: number, disposition
  * something they do not already have: the first time this context lost verbatim history, when the
  * accounted message is not already answered, when the kind of seam changed (a summarized prefix and a
  * kept-but-unsummarized one are different claims about what can still be reached), or when the last one
- * may not have arrived -- and never twice running with the same words. */
-export const continuitySpoken = (last: { disclosure: string; basis?: 'set-aside' } | undefined,
-  account: { disposition: ContinuityAccount['disposition']; basis: ContinuityBasis; disclosure: string },
+ * may not have arrived. Equal plain wording can describe different pending requests, so suppress
+ * it only when the accounted inbound and outcome evidence also match. */
+type SpokenContinuityEvidence = Pick<ContinuityAccount, 'prePauseInbound' | 'capture' | 'disposition' | 'reference' | 'disclosure'>;
+export const continuitySpoken = (last: SpokenContinuityEvidence & { basis?: 'set-aside' } | undefined,
+  account: SpokenContinuityEvidence & { basis: ContinuityBasis },
   unresolved: boolean) =>
   (last === undefined || unresolved || account.disposition !== 'addressed'
     || (last.basis ?? 'summary') !== account.basis)
-  && account.disclosure !== last?.disclosure;
+  && (account.disclosure !== last?.disclosure || account.prePauseInbound !== last?.prePauseInbound
+    || account.capture !== last?.capture || account.disposition !== last?.disposition
+    || account.reference !== last?.reference || account.basis !== (last?.basis ?? 'summary'));
 /** A turn's sent reply without its Rule 110 disclosure (for measurement of the answer itself).
  * A silently recorded account never prefixed the text, so nothing is stripped from it. */
 export const replyBody = (turn: { intent?: string; continuity?: ContinuityAccount }) =>
@@ -554,6 +585,11 @@ export const loginOutageReply = (resetAt: number | null, zone = 'UTC') => "My mo
   + (resetAt === null ? "I don't know yet when it will be available; I'll answer as soon as it is."
     : `I expect to answer again after ${localStamp(resetAt, zone)} (${zone}).`)
   + " Your messages are kept and I'll answer them then; you don't need to resend them.";
+/** The one message a person gets before the activation end stops this agent: once, this long before the end, on a fixed text. */
+export const CLOSING_NOTICE_LEAD_MS = 5 * 60_000;
+export const closingNoticeText = (end: number, zone = 'UTC') => `This agent will stop at ${localStamp(end, zone)} (${zone}) because its activation ends then. `
+  + 'After that it cannot read or answer messages here. Its activation must be renewed before it stops; '
+  + 'once stopped, this installation refuses renewal.';
 // Accept the previous fixed wording on replay; new notices make no unsupported cause claim.
 const LOGIN_OUTAGE_TEXT = /^(?:I've used up my model allowance for now|My model is unavailable right now), so I can't answer yet\. (?:I don't know yet when it resets; I'll answer as soon as it does|I don't know yet when it will be available; I'll answer as soon as it is|I expect to answer again after [0-9]{4}-[0-9]{2}-[0-9]{2} [0-2][0-9]:[0-5][0-9] \([^()]{1,64}\))\. Your messages are kept and I'll answer them then; you don't need to resend them\.$/u;
 /** Open from a recorded outage notice until a later successful model answer. */
@@ -1221,8 +1257,8 @@ export type JournalRecord =
     /** Other held messages in this conversation the one notice also answers; none gets a second push (P-14). */
     covers?: string[]; acknowledgement?: true; acknowledgementMode?: 'reaction-or-text'; workingProgress?: WorkingProgress; waitingProgress?: true; deliveryUnknown?: true;
     /** limit-notice-1020: its own durable slot (`login-outage:<id>`). Non-additive: a reader that skipped it would repeat the notice. */
-    loginOutage?: { resetAt: number | null }; provenance?: OutboundProvenance; at: number }
-  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; loginOutage?: true; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
+    loginOutage?: { resetAt: number | null }; closing?: { end: number; zone: string }; provenance?: OutboundProvenance; at: number }
+  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; loginOutage?: true; closing?: number; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
 
   // Non-additive: reservations/checks below may follow a sent reply; an older writer must refuse.
   | { kind: 'reply-review-after-send'; id: string; at: number }
@@ -1493,6 +1529,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   deliveryNotice?: { lead: string; text: string; at: number; sent?: number };
   /** limit-notice-1020: the one fixed notice that every reviewed login was out of capacity, on the turn host custody queued. */
   loginOutageNotice?: { text: string; at: number; resetAt: number | null; sent?: number };
+  closingNotices?: { end: number; text: string; at: number; sent?: number }[];
   heldNoticeReviewReserved?: true; heldNoticeReview?: ReplyCheckResult;
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
   afterSendReview?: true; replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevRetried?: true; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
@@ -3319,6 +3356,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
     return notice?.lead === key ? { sent: notice.sent } : undefined; }
   if (kind === 'login-outage') { const notice = view.turns.get(key)?.loginOutageNotice;
     return notice ? { sent: notice.sent } : undefined; }
+  if (kind === 'closing-notice') { const notice = view.turns.get(rest.slice(1).join(':'))?.closingNotices?.find(item => item.end === Number(rest[0]));
+    return notice ? { sent: notice.sent } : undefined; }
   if (kind === 'held-notice') { const turn = view.turns.get(key);
     return turn?.heldNoticeIntent !== undefined ? { sent: turn.heldNoticeSent } : undefined; }
   if (kind === 'reply-part') { const part = view.turns.get(rest.slice(1).join(':'))?.replyParts?.[Number(rest[0]) - 2];
@@ -3415,6 +3454,7 @@ export function sendOutcomeCounts(view: JournalView) {
     for (const progress of turn.workingProgress ?? []) settle(`working-progress:${progress.ordinal}:${turn.id}`, progress.sent);
     if (turn.waitingProgress) settle(`waiting-progress:${turn.id}`, turn.waitingProgress.sent);
     if (turn.loginOutageNotice) settle(`login-outage:${turn.id}`, turn.loginOutageNotice.sent);
+    for (const notice of turn.closingNotices ?? []) settle(`closing-notice:${notice.end}:${turn.id}`, notice.sent);
     if (turn.heldNoticeIntent !== undefined) settle(`held-notice:${turn.id}`, turn.heldNoticeSent);
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
   }
@@ -3459,7 +3499,7 @@ export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' |
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'limited-intent') return { target: `limited:${row.id}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'intent') return { target: `reply:${row.id}`, chat: row.chat, ...thread, body: row.body ?? row.text };
-  if (row.kind === 'held-notice-intent') return { target: `${row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.loginOutage ? 'login-outage' : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
+  if (row.kind === 'held-notice-intent') return { target: `${row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.loginOutage ? 'login-outage' : row.closing ? `closing-notice:${row.closing.end}` : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
   return { target: `requested-reminder:${String(row.batch)}`, chat: row.chat, ...thread, body: row.body };
 }
 /** Verifies a recorded system writer's owner signature over its exact occurrence. */
@@ -4700,6 +4740,26 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (row.result.verdict !== 'unavailable') settleTokens(view, `held-notice-review:${row.id}`, row.result.usage);
     return;
   }
+  if (row.kind === 'held-notice-intent' && row.closing) {
+    if (!turn.accepted || !operatorWriter(view, turn, true) || row.closing.end !== view.expires
+      || view.order.some(item => item.closingNotices?.some(notice => notice.end === row.closing!.end))
+      || typeof row.closing.zone !== 'string' || row.closing.zone.length > 64
+      || row.text !== closingNoticeText(row.closing.end, row.closing.zone)
+      || view.stop !== null || row.at >= view.expires || row.at < view.expires - CLOSING_NOTICE_LEAD_MS
+      || view.replies >= view.limits.maxReplies - 1
+      || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant
+      || row.workingProgress || row.waitingProgress || row.deliveryUnknown || row.loginOutage || row.acknowledgement || row.acknowledgementMode || row.covers
+      || !row.provenance || admission === 'new' && row.provenance.speaker !== 'infrastructure')
+      throw Error('preview journal: closing notice refused');
+    (turn.closingNotices ??= []).push({ end: row.closing.end, text: row.text, at: row.at }); view.replies++; return;
+  }
+  if (row.kind === 'held-notice-sent' && row.closing) {
+    const notice = turn.closingNotices?.find(item => item.end === row.closing);
+    if (!notice || notice.sent !== undefined || !Number.isSafeInteger(row.message) || row.message <= 0
+      || row.deliveryUnknown || row.loginOutage || row.workingProgress || row.waitingProgress || row.acknowledgementPath)
+      throw Error('preview journal: closing notice receipt order');
+    notice.sent = row.message; return;
+  }
   if (row.kind === 'held-notice-intent' && row.loginOutage) {
     const resetAt = row.loginOutage.resetAt;
     if (!turn.accepted || !operatorWriter(view, turn, true) || !turn.reserved || turn.intent !== undefined
@@ -5367,8 +5427,9 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
         || account.grounding !== turn.grounding!.packetSha256
         || account.capture !== createHash('sha256').update(before.raw).digest('hex')
         || !CONTINUITY_DISPOSITIONS.includes(account.disposition) || !account.reference
-        || !account.disclosure.startsWith(continuityHead(account.summarizedThrough, frontier.basis))
-        || !account.disclosure.endsWith(continuityTail(account.disposition, account.reference))
+        || !(account.disclosure.startsWith(continuityHead(account.summarizedThrough, frontier.basis))
+          && account.disclosure.endsWith(continuityTail(account.disposition, account.reference))
+          || account.disclosure === plainContinuity(account.disposition, frontier.basis))
         || opens === (account.spoken === false)
         || account.replyDigest !== createHash('sha256').update(row.text).digest('hex'))
         throw Error('preview journal: continuity account refused');
@@ -6578,7 +6639,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : before.intent !== undefined ? ['pending', 'my reply to it was prepared but its delivery is unconfirmed']
             : ['pending', before.held ? `held: ${before.held}` : 'no reply from me yet'];
     const label = `#${before.update}, ${dated(before)}`;
-    const disclosure = continuityDisclosure(label, through, disposition, reference, basis);
+    // Every reply uses plain words. Exact ids and the delivery account stay in the durable
+    // continuity record; a notice receipt is still not an answered request.
+    const disclosure = plainContinuity(disposition, basis);
     // Quiet repetition is scoped to one continuous episode: this worker's run. A disclosure an earlier run
     // delivered does not cover history compacted since, so the first reply after a resume into a newer frontier
     // says it again (a changed seam is already spoken by `continuitySpoken`); later routine replies of this run
@@ -6586,7 +6649,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const prior = lastSaid?.continuity;
     const carried = prior && !episodeSpoken.has(lastSaid!.id)
       && through > prior.summarizedThrough ? undefined : prior;
-    const spoken = continuitySpoken(carried, { disposition, basis, disclosure }, unresolved !== undefined);
+    const spoken = continuitySpoken(carried, { prePauseInbound: before.id,
+      capture: createHash('sha256').update(before.raw).digest('hex'), disposition, reference, basis, disclosure }, unresolved !== undefined);
     return { before, label, disposition, reference, basis, disclosure, spoken };
   };
   /** Part 21 §16: the learning loop's retrieval hints add the words of a question that missed to its source's cues. */
@@ -7429,9 +7493,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }).slice(0, 2);
   };
   // The label follows the text actually intended: review can replace the notice with a holding reply.
-  const lostNotice = (item: Turn) => item.noticeClass !== undefined && [unknownAnswerNotice(item), item.toolChecks === undefined ? LEGACY_UNKNOWN_ANSWER_NOTICE
-    : `${LEGACY_UNKNOWN_ANSWER_NOTICE} ${item.toolChecks} tool checks returned results, but those results were not verified into an answer. The requested result remains unverified; no tool work was automatically repeated.`,
-    'I lost my answer to that message. Please send it again.'].includes(sentText(item) ?? '');
+  const lostNotice = (item: Turn) => item.noticeClass !== undefined && [
+    ...[LEGACY_UNKNOWN_ANSWER_NOTICE, UNCONFIRMED_UNKNOWN_ANSWER_NOTICE].flatMap(notice => [notice, notice + failedToolChecks(item.toolChecks)]),
+    PLAIN_UNKNOWN_ANSWER_NOTICE, plainUnknownAnswerNotice(item),
+    UNKNOWN_ANSWER_NOTICE, unknownAnswerNotice(item), 'I lost my answer to that message. Please send it again.',
+  ].includes(replyBody(item)?.replace(/^PREVIEW — /u, '') ?? '');
   const modelFailure = (item: Turn) => item.answer === MODEL_FAILURE_REPLY
     && (item.failureClass !== undefined || item.modelState === 'rejected');
   const sizeRefused = (item: Turn) => item.noticeClass === 'too-long-input';
@@ -8708,6 +8774,32 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: turn.id, loginOutage: true, message: outcome.message, at: ports.now() }); }
     catch { /* the notice stays UNKNOWN; never repeated */ }
   };
+  /** Silence is the worst way to end: the person is told once, before the activation end, with a fixed text and no model call.
+   * It goes where they last wrote. Its intent precedes dispatch, so a crash or an UNKNOWN never repeats it. */
+  let closingInFlight: Promise<void> | undefined;
+  const noticeClosing = () => closingInFlight ??= sendClosingNotice().finally(() => { closingInFlight = undefined; });
+  const sendClosingNotice = async () => {
+    const now = ports.now();
+    if (journal.view.stop || ports.stopped() || now >= journal.view.expires || now < journal.view.expires - CLOSING_NOTICE_LEAD_MS
+      || journal.view.replies >= journal.view.limits.maxReplies - 1
+      || journal.view.order.some(turn => turn.closingNotices?.some(notice => notice.end === journal.view.expires))) return;
+    const lead = [...journal.view.order].reverse().find(turn => turn.accepted && fromOperator(turn));
+    if (!lead) return;
+    const end = journal.view.expires, zone = ports.timeZone ?? 'America/Los_Angeles';
+    const text = closingNoticeText(end, zone), chat = journal.view.genesis.chat;
+    const thread = lead.thread === undefined ? {} : { thread: lead.thread }, target = `closing-notice:${end}:${lead.id}`;
+    ports.checkOutbound(text);
+    const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
+    // An acknowledgement, a stop or the end can land while disclosure is awaited: the notice is then dropped, never a failed pass.
+    const current = () => journal.view.stop === null && !ports.stopped() && ports.now() < end && journal.view.expires === end
+      && (lead.closingNotices?.some(notice => notice.end === end) || journal.view.replies < journal.view.limits.maxReplies - 1);
+    const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: lead.update, current }, () => {
+      journal.append({ kind: 'held-notice-intent', id: lead.id, closing: { end, zone }, text, chat, ...thread, update: lead.update,
+        grant: journal.view.genesis.grant, provenance, at: ports.now() });
+    });
+    if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: lead.id, closing: end, message: outcome.message, at: ports.now() }); }
+    catch { /* the notice stays UNKNOWN; never repeated */ }
+  };
   /** Rules 2, 87, 88: a disclosure hold past the self-heal window is told once, content-free, per notice window; the
    * held turns are named only by this fixed text. Its intent precedes dispatch and an UNKNOWN is never repeated. */
   const noticeDisclosureHolds = async () => {
@@ -9879,7 +9971,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           } else if (fromOperator(turn) && (memoryReplyFailed && turn.memoryUndecided && reply === MEMORY_UNDECIDED_REPLY
             || turn.noticeClass === 'unknown-answer' && turn.modelState === 'uncertain' && reply === unknownAnswerNotice(turn))
             && (!previous || previous.path === 'holding' && previous.verdict === 'pass')) {
-            // Exact, content-free report of the durable validation outcome (Rules 4/42/95).
+            // Exact report of the durable outcome and the same request quoted back (Rules 4/42/95).
             // A model review cannot repair memory or turn an unknown outcome into an answer.
             // Added dates, continuity text and all model prose still take the normal review.
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'pass',
@@ -10377,6 +10469,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         wakeTopicDrain = pump; pump();
       });
       await noticeFailedReplies();
+      await noticeClosing();
       if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
       // held-notice rows still replay; no other held notice is ever pushed.
@@ -12378,7 +12471,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // Rules 4/15/77: review must not delay intake or the limited responder. The ordinary drain
     // awaits this same promise for final-send ordering and propagates any failure.
     for (const turn of acknowledgementTimers.keys()) void acknowledgeReply(turn).catch(() => {});
+    // The limited pass goes first so its one-pass claim is taken before anything here yields; yielding first let a
+    // concurrent drain send the same stop confirmation. It never waits on an ordinary model, so the warning is not delayed.
     await answerLimited();
+    await noticeClosing();
     await pollReviewRequests(); await issueRetractRequest(); };
   return { attributionOfNote, intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, recoverAfterSendReviews, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 

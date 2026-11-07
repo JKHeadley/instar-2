@@ -89,7 +89,7 @@ export default defineConfig({
     exclude,
     // Root setup runs once before any project: every fork/child inherits the same
     // per-run RAM-backed scratch directory. Real-disk qualification stays opt-in.
-    globalSetup: ['tests/setup/runtime.ts', 'tests/setup/test-tmp.ts'],
+    globalSetup: ['tests/setup/runtime.ts', 'tests/setup/test-tmp.ts', 'tests/setup/test-clock-env.ts'],
     fileParallelism: !serialGate,
     minWorkers: 1,
     maxWorkers: serialGate ? 1 : workerLimit,

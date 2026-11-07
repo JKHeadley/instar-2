@@ -290,13 +290,27 @@ it.each(['malformed', 'uncertain', 'throw'] as const)('delivers one honest outco
     expect(attempted).toBe(2);
     expect(f.journal.view.order[0]!.answerRetried).toBe(true);
     expect(f.sent).toHaveLength(1);
-    if (outcome === 'malformed') expect(f.sent[0]).toMatch(/couldn't|could not/);
-    else {
+    if (outcome === 'malformed') {
+      // A completed but unusable answer is distinct from an uncertain attempt.
+      expect(f.sent[0]).toMatch(/couldn't|could not/);
+    } else {
+      expect(f.sent[0]).toContain('Work on your request stopped before a finished answer was available.');
+      expect(f.sent[0]).toContain('The reason is unknown.');
       expect(f.sent[0]).toContain('Completion of your request is unconfirmed');
-      expect(f.sent[0]).toContain('This attempt is not automatically retried');
+      expect(f.sent[0]).toContain('Your request and this incomplete attempt are saved.');
+      expect(f.sent[0]).toContain('This attempt will not be repeated automatically.');
+      expect(f.sent[0]).toContain('Your request: “Please answer.”');
+      expect(f.speakers).toEqual(['infrastructure']);
+      expect(f.journal.view.order[0]).toMatchObject({ modelState: 'uncertain', noticeClass: 'unknown-answer' });
+      expect(f.journal.view.order[0]!.answer).toBeUndefined();
     }
+    const delivered = f.sent[0];
     await f.restart(); await f.worker.drain();
-    expect(f.sent).toHaveLength(1); expect(attempted).toBe(2);
+    expect(f.sent).toEqual([delivered]); expect(attempted).toBe(2);
+    if (outcome !== 'malformed') {
+      expect(f.journal.view.order[0]).toMatchObject({ modelState: 'uncertain', noticeClass: 'unknown-answer' });
+      expect(f.journal.view.order[0]!.answer).toBeUndefined();
+    }
     expect(await f.replay()).toBe(1); expect(f.sent).toHaveLength(1);
   } finally { await f.close(); }
 });

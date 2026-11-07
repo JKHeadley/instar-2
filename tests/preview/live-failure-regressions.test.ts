@@ -1,3 +1,4 @@
+import { unknownAnswerNotice } from './journal.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -152,11 +153,11 @@ it('uncertain effect: a charged unknown answer gets only its loss notice and is 
         usage: { inputTokens: 512, outputTokens: 3617, charge: null } } : answer('The next turn works.'); }, sent));
     worker.intake([update(1, 'Uncertain first turn')]); await worker.drain(); await worker.drain();
     expect(journal.view.order[0]).toMatchObject({ reserved: true, modelState: 'uncertain' });
-    expect(journal.view.order[0]?.intent).toBe(`${UNKNOWN_ANSWER_NOTICE}`);
+    expect(journal.view.order[0]?.intent).toBe(unknownAnswerNotice({ text: 'Uncertain first turn' }));
     worker.intake([update(2, 'Independent next turn')]); await worker.drain();
     expect(calls.filter(id => id.endsWith(':1'))).toHaveLength(1);
     expect(journal.view.order[1]?.intent).toBe('The next turn works.');
-    expect(sent).toEqual([`${UNKNOWN_ANSWER_NOTICE}`, 'The next turn works.']);
+    expect(sent).toEqual([unknownAnswerNotice({ text: 'Uncertain first turn' }), 'The next turn works.']);
   });
 });
 
