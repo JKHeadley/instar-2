@@ -1,7 +1,145 @@
 {
-  "generation": "sha256:90aa9038514671f2e121ec35e5796ea560658b612ff3ab82f2d7c21ae4675526",
-  "commit": "779fd1c841334adde91fa234bf1b53a5dc9ecb40",
+  "generation": "sha256:ba47e3999ac294148fbce9b022c455eff2b454882117125bdeace24a1e312cab",
+  "commit": "231549bdf01e93fbf56e8f29fd0b288cc4afa856",
   "launchers": {
+    "bin/instar2.mjs": [
+      {
+        "id": "fetch-inbound-media",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "switched-off",
+        "userFacing": false,
+        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+      },
+      {
+        "id": "harness-doorway-parity",
+        "status": "live",
+        "module": "src/assembly",
+        "availability": "available",
+        "userFacing": false,
+        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+      },
+      {
+        "id": "installed-update-verification",
+        "status": "live",
+        "module": "scripts",
+        "availability": "available",
+        "userFacing": false,
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner, and the standalone command attaches its own. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Details and row-87 evidence: `docs/update.md`."
+      },
+      {
+        "id": "intake-slice",
+        "status": "live",
+        "module": "src/intake",
+        "availability": "available",
+        "userFacing": false,
+        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+      },
+      {
+        "id": "preview-conversation",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+      },
+      {
+        "id": "preview-durable-memory",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+      },
+      {
+        "id": "preview-owned-obligations",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
+      },
+      {
+        "id": "preview-requested-actions",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+      },
+      {
+        "id": "preview-status-command",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+      },
+      {
+        "id": "preview-upcoming-date-mention",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "a saved date within 48 hours can get one short mention in the next reply."
+      },
+      {
+        "id": "preview.coherence-check",
+        "status": "live",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": false,
+        "text": "checks each reply against remembered earlier turns without a model call."
+      },
+      {
+        "id": "preview.rolling-summary",
+        "status": "live",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": false,
+        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+      },
+      {
+        "id": "register-tooling",
+        "status": "live",
+        "module": "src/register",
+        "availability": "available",
+        "userFacing": false,
+        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+      },
+      {
+        "id": "rungraph-core",
+        "status": "dark",
+        "module": "src/rungraph",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "records each run as signed facts and refuses a step outside its budget or grant."
+      },
+      {
+        "id": "slack-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof."
+      },
+      {
+        "id": "slack-ordinary-reply",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send."
+      },
+      {
+        "id": "telegram-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "switched-off",
+        "userFacing": true,
+        "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+      }
+    ],
     "bin/instar-production.mjs": [
       {
         "id": "fetch-inbound-media",
@@ -18,6 +156,14 @@
         "availability": "available",
         "userFacing": false,
         "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+      },
+      {
+        "id": "installed-update-verification",
+        "status": "live",
+        "module": "scripts",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner, and the standalone command attaches its own. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
@@ -150,6 +296,14 @@
         "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
       },
       {
+        "id": "installed-update-verification",
+        "status": "live",
+        "module": "scripts",
+        "availability": "available",
+        "userFacing": false,
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner, and the standalone command attaches its own. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Details and row-87 evidence: `docs/update.md`."
+      },
+      {
         "id": "intake-slice",
         "status": "live",
         "module": "src/intake",
@@ -278,6 +432,14 @@
         "availability": "available",
         "userFacing": false,
         "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+      },
+      {
+        "id": "installed-update-verification",
+        "status": "live",
+        "module": "scripts",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner, and the standalone command attaches its own. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
@@ -410,6 +572,14 @@
         "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
       },
       {
+        "id": "installed-update-verification",
+        "status": "live",
+        "module": "scripts",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner, and the standalone command attaches its own. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Details and row-87 evidence: `docs/update.md`."
+      },
+      {
         "id": "intake-slice",
         "status": "live",
         "module": "src/intake",
@@ -538,6 +708,14 @@
         "availability": "available",
         "userFacing": false,
         "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+      },
+      {
+        "id": "installed-update-verification",
+        "status": "live",
+        "module": "scripts",
+        "availability": "available",
+        "userFacing": false,
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner, and the standalone command attaches its own. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
