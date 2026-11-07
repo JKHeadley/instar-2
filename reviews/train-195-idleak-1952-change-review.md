@@ -15,7 +15,7 @@ Undo and recovery: Revert the writer and wording pins before deployment; after d
 Multi-machine posture: Publish the matching reader and writer to all hosts. Existing replicated journal, ownership, capture and send identities remain unchanged; no local state is added.
 Layer below: continuityFor disposition/reference derivation, projectRow persisted account validation, continuitySpoken identity-based suppression, reply digest binding, historical continuityDisclosure and existing stopped-task/ordinary worker tests.
 Bug class: user-facing
-Bug evidence: reproducer=tests/preview/journal-boundaries.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-195-idleak-1952-PROGRESS.md
+Bug evidence: reproducer=tests/preview/journal-boundaries.test.ts; live=tests/preview/journal-boundaries.test.ts
 Live evidence context: The authenticated assigned brief reports the delivered sentence naming frontier 46040892 and previous inbound 46040893 at 2026-11-06 19:30 PST. The test preserves that excerpt as a negative control; it does not claim a fresh live journal read or live fix delivery. The new ordinary-worker regression failed against unmodified 14748355 and is rerun against this repair.
 Hook bypass: none; core.hooksPath unset and common hooks directory contains sample files only.
 Convergence: none
