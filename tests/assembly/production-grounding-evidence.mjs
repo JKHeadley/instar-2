@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { productionGroundingSourceDigest } from '../../scripts/check-assembly-contracts.mjs';
+import { hostNow } from '../setup/host-clock.mjs';
 const root = realpathSync(fileURLToPath(new URL('../..', import.meta.url)));
 const hash = value => createHash('sha256').update(value).digest('hex');
 const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL' }).trim();
@@ -42,11 +43,11 @@ beforeEach(async context => {
   // never change a case's assertions, result or deadline.
   await new Promise(resolve => setImmediate(resolve));
   current = { file: realpathSync(context.task.file.filepath), fullName: expect.getState().currentTestName,
-    start: Date.now(), revision, sourceDigest, assertions: [] };
+    start: hostNow(), revision, sourceDigest, assertions: [] };
 });
 afterEach(async context => {
   if (!current) return;
-  current.end = Date.now(); current.assertionCalls = expect.getState().assertionCalls;
+  current.end = hostNow(); current.assertionCalls = expect.getState().assertionCalls;
   current.state = context.task.result?.state;
   mkdirSync(resolve(root, '.instar/lanes/round4b-artifacts'), { recursive: true });
   appendFileSync(resolve(root, '.instar/lanes/round4b-artifacts/assertions.jsonl'), JSON.stringify(current) + '\n');

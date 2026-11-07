@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, it } from 'vitest';
+import { realNow } from '../setup/test-clock-env.js';
 import { createAwareness, createLabelledFakeRecall, type ConversationMessage, type ObservedSession,
   type OpenCommitment } from '../../src/awareness/index.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
@@ -25,7 +26,7 @@ it.skipIf(!available)('a compacted or respawned session comes back with identity
   const t = (args: readonly string[]) => spawnSync(tmux!, ['-L', socket, ...args], { encoding: 'utf8', timeout: 10_000 });
   const io = createAwarenessIO({ stateDirectory: join(root, 'state'), inboxDirectory: join(root, 'inbox') });
   const claim = 'telegram:42';
-  const now0 = Date.now();
+  const now0 = realNow();
   const messages: ConversationMessage[] = [
     { at: now0 - 120_000, id: 'test-message-1', from: 'user', speaker: 'Justin', text: 'Port the compaction recovery to 2.0, please.' },
     { at: now0 - 100_000, id: 'test-message-2', from: 'agent', text: 'On it. I will report back once the continuity test passes.' },
@@ -64,7 +65,7 @@ it.skipIf(!available)('a compacted or respawned session comes back with identity
       },
       recoverContext: () => { throw new Error('not expected in this scenario'); },
     },
-    now: () => Date.now(), stopped: () => false,
+    now: () => realNow(), stopped: () => false,
     sentinel: { graceMs: 300, verifyMs: 5_000 },
   });
   const launch = (withHook: boolean) => {

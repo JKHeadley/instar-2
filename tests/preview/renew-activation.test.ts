@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { productionGroundingSourceDigest } from '../../scripts/check-assembly-contracts.mjs';
-import { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
+import { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY, subscriptionConversationPolicy,
   subscriptionInvocationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import { encoded } from './stage2-provider.js';
 import { renewActivation } from './renew-activation.mjs';
@@ -43,8 +43,8 @@ const conversation = (record, p = profile, now = NOW) =>
   validateSubscriptionActivation(record, p, model, now, SUBSCRIPTION_CONVERSATION_FRAMING);
 
 it('pins the reviewed expiry and completion policy while keeping expiry out of invocation policies', () => {
-  expect(SUBSCRIPTION_PREVIEW_EXPIRY).toBe(Date.UTC(2026, 10, 12, 21, 40));
-  expect(SUBSCRIPTION_PREVIEW_EXPIRY - PRIOR_EXPIRY).toBe(31 * 24 * 3600 * 1000 + 3600 * 1000);
+  expect(SUBSCRIPTION_PREVIEW_EXPIRY).toBe(Date.UTC(2026, 11, 12, 21, 40));
+  expect(SUBSCRIPTION_PREVIEW_EXPIRY - SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY).toBe(30 * 24 * 3600 * 1000);
   // The brief-rationale wording changes the policy, so existing installations need a policy-successor record.
   // The expiry itself never enters an invocation policy.
   const policy = subscriptionConversationPolicy(model);
@@ -215,7 +215,7 @@ it('the desk script writes new files only and the renew-expiry command binds tha
     // yes to bounded status-quo renewals), never under its reference strings. No record refuses;
     // a grant that does not cover this subject refuses; the in-scope grant renews with no new yes.
     // The launcher suppresses details; each reason is proven by activation-authority.test.ts.
-    const refusedWith = (_reason: string) => { expect(agent('renew-expiry', out, '2026-11-12T21:40:00Z').status).toBe(1);
+    const refusedWith = (_reason: string) => { expect(agent('renew-expiry', out, '2026-12-12T21:40:00Z').status).toBe(1);
       expect(expires()).toBe(PRIOR_EXPIRY); };
     // Rule 79: status names renewal as a phone action only when `--renewal-activation` validates exactly as `run`
     // validates it (activation, operator authority, a later end than the journal's); otherwise the host fallback.
@@ -275,12 +275,12 @@ it('the desk script writes new files only and the renew-expiry command binds tha
     authority();
     expect(renewSurface()).toBe(chatRoute);
     expect(renewSurface(currentPath)).toBe(fallback);                // the current record ends at the journal's end
-    const ok = agent('renew-expiry', out, '2026-11-12T21:40:00Z');
+    const ok = agent('renew-expiry', out, '2026-12-12T21:40:00Z');
     expect(ok.status, ok.stderr).toBe(0);
     const status = node(['tests/preview/journal-agent.mjs', 'status', '--root', root], env);
     expect(JSON.parse(status.stdout)).toMatchObject({ expires: SUBSCRIPTION_PREVIEW_EXPIRY,
       expiryAuthority: expect.stringMatching(/^status-quo renewal; preapproval note #30 \[grant observer-note-30; waiver waiver; record sha256:[a-f0-9]{64}\]$/u) });
-    expect(agent('renew-expiry', out, '2026-11-12T21:40:00Z').status).toBe(1); // one renewal per expiry
+    expect(agent('renew-expiry', out, '2026-12-12T21:40:00Z').status).toBe(1); // one renewal per expiry
     expect(expires()).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
     expect(renewSurface()).toBe(fallback);                           // renewed: no later reviewed end to renew to
   } finally { rmSync(root, { recursive: true, force: true }); }

@@ -17,8 +17,9 @@ import { installIntakeOwnerFixture } from '../register/intake-owner-fixture.js';
 import { runChild } from './async-child.js';
 // Preserve the enclosing-case child bound formerly supplied by bound-children.mjs
 // to synchronous calls; asynchronous children must not become unbounded.
+// The register checks real deadlines and model verification times, so these children stay on the actual clock.
 const runNode = (args: readonly string[], cwd?: string) => runChild(process.execPath, args,
-  { cwd, timeout: getCurrentTest()?.timeout ?? 300_000 });
+  { cwd, env: { ...process.env, INSTAR_TEST_CLOCK_SHIFT_MS: '0' }, timeout: getCurrentTest()?.timeout ?? 300_000 });
 // The fixture world runs at t=100. A real declared model doorway carries its real
 // verification time, which that clock correctly refuses as not-yet-verified. Shift those
 // declared times into the fixture world; the real build keeps checking them at real time.
