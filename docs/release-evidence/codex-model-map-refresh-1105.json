@@ -1,7 +1,8 @@
 {
-  "source": "/home/echo/.codex/models_cache.json",
-  "sourceSha256": "1f67ea74b4c796c635b707501b2025f9d833ecce7a23a3ebb7b597574f045f82",
-  "fetchedAt": "2026-11-06T04:47:35.900343061Z",
+  "source": "/Users/dabombstudio/.codex/models_cache.json",
+  "sourceHost": "Mac Studio (the Mama PC, used for the earlier receipt, was unreachable)",
+  "sourceSha256": "bb52f9472ee21745f485cedd8af8e0490fcee42419ffb3ab0507981c86586118",
+  "fetchedAt": "2026-11-06T21:59:24.081853Z",
   "clientVersion": "0.167.0",
   "model": {
     "slug": "gpt-5.6-sol",
@@ -9,15 +10,16 @@
     "visibility": "list",
     "supported_in_api": true
   },
-  "observedUtc": "2026-11-06T04:47:40.308175+00:00",
+  "observedUtc": "2026-11-06T21:59:30.050776+00:00",
   "loginStatus": "Logged in using ChatGPT",
   "loginStatusCommand": "codex login status",
-  "probeLimitation": "Fresh app-server model/list attempt refused by read-only filesystem; no bypass attempted. Catalog is the existing CLI provider-fetched artifact, not a new successful probe.",
-  "verifiedAt": 1793940455900,
+  "probeLimitation": "Catalog is the CLI provider-fetched cache, read minutes after its fetch; no app-server probe or generation. Which ChatGPT account is signed in is not observable from the CLI.",
+  "verifiedAt": 1794002364081,
   "subsidyReview": {
     "ratio": 1,
     "basis": "estimated",
-    "reason": "Existing subscription-only doorway and current ChatGPT login; retain the existing full subscription-coverage estimate, not measured billing, free capacity, or zero resource use.",
-    "freshFor": 2885119381
+    "reason": "Reviewed by Echo, the map maintainer, at reviewedAt: current ChatGPT login, subscription billing in this declaration, and the subscription-only invocation source unchanged since the last review. Retains the full subscription-coverage estimate; not measured billing, free capacity or zero resource use.",
+    "freshFor": 2885119381,
+    "reviewedAt": 1794002370050
   }
 }
