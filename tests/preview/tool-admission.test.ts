@@ -387,6 +387,28 @@ it('records each call and its result; a result with no admitted call before it m
   expect(toolTrace(['not json']).consistent).toBe(false);
 });
 
+it('keeps a failed call\'s error as its result: the t2 sandbox refusal is evidence, not a missing result (Rules 1, 57)', () => {
+  const t2 = JSON.parse(readFileSync(join(__dirname, 'fixtures/tool-turn/live-2026-11-07/proof-t2-refused-shell.json'), 'utf8'));
+  const { state } = turn();
+  const pre = JSON.stringify({ phase: 'pre', id: t2.failure.tool_use_id, n: 1, tool: 'Bash', input: t2.recorded.input, decision: 'allow', reason: t2.recorded.reason });
+  writeFileSync(join(state, 'admission.jsonl'), `${pre}\n`);
+  // The live record ended here: an admitted call with no result.
+  expect(toolTrace([pre])).toMatchObject({ consistent: true, calls: [{ result: null }] });
+  expect(hook(state, JSON.stringify(t2.failure), undefined, 'post').status).toBe(0);
+  const lines = readFileSync(join(state, 'admission.jsonl'), 'utf8').trim().split('\n');
+  expect(toolTrace(lines)).toMatchObject({ consistent: true, admitted: 1, calls: [{ tool: 'Bash', decision: 'allow',
+    result: expect.stringContaining('Operation not permitted') }] });
+  // A failure pairs as strictly as a result: never with a call the hook did not admit, and never twice.
+  expect(toolTrace([...lines, lines[1]!]).consistent).toBe(false);
+  expect(toolTrace([JSON.stringify({ phase: 'post-failure', id: 'toolu_unseen', tool: 'Bash', result: '"x"' })]).consistent).toBe(false);
+  expect(toolTrace([JSON.stringify({ phase: 'pre', id: 'a', n: 1, tool: 'Bash', decision: 'deny', reason: 'r' }),
+    JSON.stringify({ phase: 'post-failure', id: 'a', tool: 'Bash', result: '"x"' })]).consistent).toBe(false);
+  // A failed helper returned nothing: its edge stays open for the parent to settle.
+  const failedChild = toolTrace([JSON.stringify({ phase: 'pre', id: 'c', n: 1, tool: 'Agent', decision: 'allow', reason: 'r', kind: 'subagent' }),
+    JSON.stringify({ phase: 'post-failure', id: 'c', tool: 'Agent', result: '"failed"' })]);
+  expect(failedChild).toMatchObject({ consistent: true, children: [{ state: 'open', result: null }] });
+});
+
 it('replays every tool call the spike recorded under the real harness and reaches the recorded decision (Rule 106)', () => {
   const PREFIX = '/Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse-run';
   const runs: [string, number][] = [['b1-hook', 50], ['b3-hook-tight', 50], ['c1-task', 50], ['d1-turncap', 50],
