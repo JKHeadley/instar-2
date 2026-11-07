@@ -12,7 +12,7 @@ Declared tier: critical
 Tier rationale: Combines reviewed model-facing work (pre-send review order and the Rule 121 judge) with the live build; the integration itself adds no behaviour.
 Side effects: Live gains the member's pre-send review order and the off-by-default Rule 121 checks. The two sides share only generated files and one owner-pin manifest, where each side changed a different pin and the merged manifest keeps both. Base-side harness-probe, Codex catalog and review changes are untouched.
 Undo and recovery: Keep the current live build serving until the desk gates and switches. Reject or revert through ordinary git history (first parent) and replay the register; nothing here rewrites history or installed state.
-Multi-machine posture: 
+Multi-machine posture: Git distributes source and records. Runtime placement and machine-local state are unchanged by this integration. WSL ran portable targeted checks; the Studio owns macOS conformance, the full suite and the gate decision.
 Layer below: Read the constitution and both named reports. Compared both merge sides against merge base 5a5fdc9176676196fca2735740f19388ea2ef40b: 36 base-side paths, 32 member-side paths, overlap only generated/ and register-source/owner-references/preview.json. Traced each failing consumer below to its refusal: the production limit shim and transport files changed on neither side.
 Bug class: none
 Bug evidence: none
