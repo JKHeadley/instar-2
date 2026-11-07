@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { cp } from 'node:fs/promises';
+import { runChild } from '../e2e/async-child.js';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import ts from 'typescript';
@@ -68,18 +69,34 @@ describe('P4 owner source consumption', { timeout: 60_000 }, () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-owner-'));
   try {
    // A merged P5 manifest pins its real test artifacts as well as source/docs.
-   for (const p of ['src', 'docs', 'register-source', 'tests']) cpSync(p, join(root, p), { recursive: true });
+   for (const p of ['src', 'docs', 'register-source', 'tests']) await cp(p, join(root, p), { recursive: true });
    installOwnerFixture(root); installIntakeOwnerFixture(root);
-   const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8' }).trim();
-   git('init', '-q'); git('add', '.'); git('commit', '-qm', 'owners');
-   const commit = git('rev-parse', 'HEAD'), files = git('ls-tree', '-r', '--name-only', commit).split('\n');
+   const git = async (...args: string[]) => {
+    const result = await runChild('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { timeout: 30_000 });
+    expect(result.status, result.stderr).toBe(0); return result.stdout;
+   };
+   await git('init', '-q'); await git('add', '.'); await git('commit', '-qm', 'owners');
+   const commit = (await git('rev-parse', 'HEAD')).trim(), files = (await git('ls-tree', '-r', '--name-only', commit)).trim().split('\n');
    const p4 = 'register-source/owner-references/part-four.json', p5 = 'register-source/owner-references.json';
    const original = JSON.parse(readFileSync(join(root, p4), 'utf8'));
-   const load = (m = original, extra: Record<string, string> = { [p5]: readFileSync(join(root, p5), 'utf8') }) => loadOwnerReferences(root, { commit, files, sources: { ...extra, [p4]: JSON.stringify(m) } });
+   // The build supplies a committed-blob reader too. Read each referenced blob once,
+   // asynchronously: the matrix changes manifests, never this immutable commit. Hundreds
+   // of repeated synchronous git-show children can starve worker IPC under gate load.
+   const p5Text = readFileSync(join(root, p5), 'utf8');
+   const paths = new Set<string>();
+   for (const manifest of [original, JSON.parse(p5Text)]) {
+    for (const row of [...manifest.fixtures, ...manifest.probes, ...manifest.decoders, ...manifest.documents, ...(manifest.captures ?? [])]) {
+     paths.add(row.artifact.path); if (row.module) paths.add(row.module.path);
+    }
+   }
+   const blobs = new Map<string, string>();
+   for (const path of paths) blobs.set(path, await git('show', `${commit}:${path}`));
+   const show = (path: string) => { if (!blobs.has(path)) throw Error(`unread committed artifact: ${path}`); return blobs.get(path)!; };
+   const load = (m = original, extra: Record<string, string> = { [p5]: p5Text }) => loadOwnerReferences(root, { commit, files, show, sources: { ...extra, [p4]: JSON.stringify(m) } });
    expect(load().documents.map(d => d.id)).toEqual(['rungraph.contract', 'intake.contract']);
    expect(load().decoders.find(d => d.id === 'createFactStore.append')).toMatchObject({ symbol: 'createFactStore' });
    expect(load(original, {}).documents[0]).toMatchObject({ id: 'intake.contract', declarationPath: 'src/intake/port.declarations.json' });
-   expect(loadOwnerReferences(root, { commit, files, sources: { [p5]: JSON.stringify(original) } }).documents[0]?.id).toBe('intake.contract');
+   expect(loadOwnerReferences(root, { commit, files, show, sources: { [p5]: JSON.stringify(original) } }).documents[0]?.id).toBe('intake.contract');
    for (const mutate of [
     (m: typeof original) => { m.owner = 'part-five'; },
     (m: typeof original) => { m.owner = 'part-seven'; },

@@ -8,13 +8,12 @@ import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, PER_RULE_PASS } from './successive-fixture.js';
 import { openPreviewJournal, UNKNOWN_SEND_NOTICE } from './journal.js';
 
-// The launcher uses the real clock with a fixed fixture expiry. A due credential/activation reminder or a
+// The launcher runs on the real clock against a fixed fixture expiry, so a due activation reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride an answer as its own line. The answer itself stays exact,
 // and nothing else may be appended.
-// Each physical launch gets the existing status-cap fixture's 30-second startup budget.
-// Awaiting it keeps Vitest IPC responsive; multi-launch cases budget each stage separately.
+const NOTICE_LINE = /^(?:Reminder: your activation expires in [^.]+\. Smallest step for you: approve a renewed activation record\.|Model route check: .+\.)$/u;
+// Each physical launch keeps the existing 30-second startup budget.
 const CHILD_TIMEOUT = 30_000;
-const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Reminder: your activation expires in [^.]+\. Smallest step for you: approve a renewed activation record\.|Model route check: .+\.)$/u;
 const answerOf = (text: string) => {
   const [answer, ...notices] = text.split('\n\n');
   for (const notice of notices) {

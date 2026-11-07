@@ -38,6 +38,8 @@ Integration review: train-168 explicitly reopens this round because its combined
 
 Overlap disposition: The frozen binding sha256:094316dfd656ab51b6d7663e4bd9207c62d4593c8a3e743493d748b4dfe47228 is void. Carryover row 16 changed tests/preview/admission-gate.mjs to settle an exact delegated tool failure, and its repair regenerates dependent register publication. Browser custody, bounded reads and grants are unchanged. The narrow overlap is covered by the helper repair submission; this open record claims no renewed independent browser verdict. Historical review evidence is retained.
 
+Integration review: train-192 explicitly reopens this round because its register replay at the merged head 84d7bb0768f456fb3b38eb5df7dccf31e97bad03 regenerates the seven generated/ outputs (generated/capabilities.json, capabilities.md, coverage.md, glossary.md, register.json, rules.md and source.json), which this record's subject covers (Rule 109); no source, test, document or declaration in the subject changed, and the reviewed content cannot be restored because the publication must be true to the merged head. The previous frozen content and verdict remain in git history. reviews/train-192-change-review.md covers the merged candidate (decision train-192-review-rounds), whose desk review is still required.
+
 ## Closing block
 
 simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
