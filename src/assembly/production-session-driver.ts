@@ -53,7 +53,9 @@ export interface SessionIO {
   sleep(ms: number): void;
   load(): SessionJournal;
   save(journal: SessionJournal): void;
-  readInbox(name: string): readonly Readonly<{ kind: 'turn-closed' | 'compact'; sessionId: string; at: number; receiptId?: string }>[];
+  readInbox(name: string): readonly Readonly<{ kind: 'turn-closed' | 'compact'; sessionId: string; at: number; receiptId?: string;
+    /** Harness-reported background work still running at this Stop; absent when the harness reports none. */
+    background?: number }>[];
   /** Physical bridge terminal metadata; absent until a worker actually exits. */
   readTerminal?(name: string): Readonly<{ code: number | null; signal: string | null;
     workerExitClaim: Readonly<{ workerPid: number; code: number | null; signal: string | null }> | null }> | null;
@@ -660,9 +662,15 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         return delivery.evidence;
       });
     },
-    observe(input: { operation: string; processIdentity: string; resultAvailable?: boolean }): Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string; safetyDeadline?: number }>> {
+    observe(input: { operation: string; processIdentity: string; resultAvailable?: boolean; resultWrittenAt?: number | null }): Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string; safetyDeadline?: number }>> {
       return lockedBoundary('ProductionSessionObserve', input, () => {
         const session = loadSession(input.processIdentity);
+        // A Stop naming running background work is a pause, not the end of the answer: each finished task wakes the
+        // session for another turn, and the Stop with none left closes it, result or not. Such a Stop closes the turn
+        // early only for a result already written before it; a result written after it belongs to a later turn
+        // still running, whose own Stop closes it. The original deadline still bounds the wait.
+        const closesTurn = (hook: Readonly<{ at: number; background?: number }>) => !((hook.background ?? 0) > 0)
+          || input.resultAvailable === true && typeof input.resultWrittenAt === 'number' && input.resultWrittenAt < hook.at;
         if (config.stopped()) { stop(); return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'stop authority active' }; }
         if (session.deadlineHalt) return { phase: 'exit-observed' as const, evidence: `safety-ceiling:deadline:${session.identity}`, detail: 'per-turn deadline exceeded; closure must be reconciled', safetyDeadline: session.deadlineHalt.deadline };
         if (!alive(session.name)) {
@@ -671,7 +679,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           const delivery = config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1);
           const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
             && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
-          const closed = hook && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
+          const closed = hook && closesTurn(hook) && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
             && session.turnDeadline !== null && hook.at <= config.now() && hook.at <= session.turnDeadline;
           if (config.requireTurnHook && input.resultAvailable && delivery?.operation === input.operation
             && delivery.state === 'accepted' && session.rateRecovery?.state !== 'sending' && (session.turnCloseEvidence || closed)) {
@@ -712,7 +720,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
         // A throttle can emit Stop without completing work. A bounded result plus Stop
         // still wins over stale quota scrollback; the marker alone must retain recovery.
-        if (hook && (!throttled || input.resultAvailable === true)
+        if (hook && closesTurn(hook) && (!throttled || input.resultAvailable === true)
           && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
           && session.turnDeadline !== null && hook.at <= config.now() && hook.at <= session.turnDeadline) {
           config.io.save(replaceSession(config.io.load(), { ...closeTurn(session, hook.at),

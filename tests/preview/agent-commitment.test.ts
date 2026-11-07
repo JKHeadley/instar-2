@@ -58,3 +58,16 @@ it('keeps the legacy closure rule only for replaying journal rows written under 
   expect(legacyFulfillsReminder(legacy, 'Reminder: call the doctor.')).toBe(false);
   expect(legacyFulfillsReminder({ ...legacy, action: 'promised' }, 'Reminder: call the dentist.')).toBe(false);
 });
+
+it('fulfills owned reply promises from loops and summaries, but never operator requests or unowned notes', () => {
+  const reply = 'Here are the three planning priorities.';
+  const notes = [
+    { in: 'reply', owner: 'agent' },
+    { in: 'message', owner: 'agent' },
+    { in: 'reply' },
+    { owner: 'agent' },
+  ];
+  expect(fulfillmentSupported({ id: 0, quote: reply }, reply, notes)).toBe(true);
+  for (const id of [1, 2, 3, 4]) expect(fulfillmentSupported({ id, quote: reply }, reply, notes)).toBe(false);
+  expect(fulfillmentSupported({ id: 0, quote: 'an undelivered answer' }, reply, notes)).toBe(false);
+});

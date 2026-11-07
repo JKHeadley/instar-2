@@ -35,6 +35,10 @@ Hook bypass: none
 Convergence: none
 Convergence note: Resource-pressure retry is single flight on the existing waiter wake, at existing sample cadence; failed, stale, unreadable or live-member evidence retains the debit. Status remains a passive projection.
 Prompt review: No model prompt or parser behavior changed.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"
+Prompt finding: 849db3a6296a | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
+Prompt finding: 85544c20941f | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-conversation-session.test.ts: "your messages are kept and i'll answer them then; you don't need to resend them."
+Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 Decision: sampling-order-fence | Independent review found and actual fault-order reproduction confirmed raw-ledger recovery could settle before late membership publication; defer while sampling and exclude/recheck pending membership before settlement. | reported=docs/release-evidence/train-174-p2-report.md
 Decision: census-stream | Preserve the existing command projection and full population before materialization; direct comm substitution would change the Ten command contract. | reported=docs/release-evidence/train-174-p2-report.md
 Decision: same-owner-settlement | Existing crash recovery skips a live owner; use bounded nonsignalling current-owner completed-row re-observation on admission pressure and retain unknown/survivor allocations. | reported=docs/release-evidence/train-174-p2-report.md
@@ -68,6 +72,12 @@ Prompt finding: 4106b49fff07 | protocol-literal | Fixed obligation-decision clau
 Prompt finding: 849db3a6296a | protocol-literal | The agent's own fixed reply for an empty memory list, produced without a model; the startsWith branch recognizes that exact own output, never a person's words or a meaning; unchanged by this merge.
 Prompt finding: 85544c20941f | protocol-literal | Fixed infrastructure outage sentence sent with no model call; the test checks the actual notice, and the replay pattern matches only that own notice; unchanged by this merge.
 Prompt finding: e8708c7fea24 | protocol-literal | Fixed sourceLabel attribution instruction in delivered guidance; the regression checks the instruction is delivered, not a desired semantic answer; unchanged by this merge.
+
+Deferral: tests/preview/held-result-delivery.test.ts:86 | not-a-deferral=Product guidance or regression data about durable pending work; no builder deferral (as dispositioned in reviews/train-200-change-review.md)
+Deferral: tests/preview/held-result-delivery.test.ts:101 | not-a-deferral=Product guidance or regression data about durable pending work; no builder deferral (as dispositioned in reviews/train-200-change-review.md)
+Deferral: tests/preview/journal.ts:2750 | not-a-deferral=product guidance text telling the model an undecided report stays owed; it describes durable pending work, no builder deferral (held-result-delivery-1106)
+Deferral: tests/preview/journal.ts:2761 | not-a-deferral=product code comment describing the runner line for a result given in the agent's own words; no builder deferral (held-result-delivery-1106)
+Deferral: tests/preview/plain-task-stop.test.ts:29 | not-a-deferral=line carried verbatim from merged input aa570994, whose own record dispositions it
 
 ## Closing block
 

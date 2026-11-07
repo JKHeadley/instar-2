@@ -1,0 +1,45 @@
+{
+  "provenance": "Recorded-shape fixture from embedded builder brief d50d170820b127efae8cda77ba481693616ae59ed4e89cd18fe79541ec3c7c64. Not a journal replay. Summary, work and fulfillment declarations in the test are synthetic; original model declarations were not supplied.",
+  "reply-d1": {
+    "reply": "Got it, it's on my open list: which three things you've told me matter most for planning your week. I'll give you that answer in a later message, not now.",
+    "messages": 1,
+    "seconds": 69,
+    "source": "journal",
+    "update": 46040849
+  },
+  "reply-d1hi": {
+    "reply": "Hi Justin! As promised, here's the answer you asked me to hold for a later message, plus a quick note on your shopping-list sign-off.\n\nFollow-up on \"From now on, end every shopping list you write for me with \"\u2014 K\".\": Your \"\u2014 K\" sign-off is now in use: the pancake shopping list I wrote at 17:30 ended with \"\u2014 K\". I'll keep ending every shopping list I write for you that way until you change or cancel it.\n\nFollow-up on \"think over which three of the things I have told you matter most for planning my week, and give me that answer in a later message, not in this reply\": Here's the answer you asked me to hold: the three things you've told me that matter most for planning your week.\n\n1. Renew library card D-4. This is the only real task you've given me. I can't renew it myself because I have no login for the library's website. If you tell me which city's library it is, I'll look up their exact renewal steps.\n2. Pancakes. You asked for a pancake shopping list, so the ingredients (flour, baking powder, sugar, salt, milk, eggs, butter, plus syrup and any toppings) belong on this week's shopping.\n3. Your \"\u2014 K\" rule. Every shopping list I write for you this week will end with \"\u2014 K\".\n\nTo be honest, that's everything you've told me so far. I don't know your schedule, deadlines or appointments, so this is a short list. If you share those, I can help plan the week properly.\n\nOne more date to plan around, though it came from my notice rather than from you: my activation expires in about 5 days (around Nov 12). Approving a renewed activation record keeps me running.",
+    "messages": 1,
+    "seconds": 37,
+    "source": "journal",
+    "update": 46040850
+  },
+  "status-d1hi-before": {
+    "obligations": {
+      "awaitingDelivery": 3,
+      "workInFlight": 0,
+      "deliveryInhibition": "no grant for unsolicited sends; 3 finished results wait for your next message",
+      "byKind": {
+        "commitment": 4,
+        "directive": 0,
+        "blocker": 1,
+        "question": 0,
+        "request": 0
+      }
+    }
+  },
+  "status-d1hi": {
+    "obligations": {
+      "awaitingDelivery": 1,
+      "workInFlight": 0,
+      "deliveryInhibition": "no grant for unsolicited sends; 1 finished result waits for your next message",
+      "byKind": {
+        "commitment": 2,
+        "directive": 0,
+        "blocker": 1,
+        "question": 0,
+        "request": 0
+      }
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+ "provenance": "Recorded bytes from live proof preswitch-train-196-5a5fdc91-20261106-211831/D-proofroom4-ps, read through the Studio file API. Replies, the hi answer reason and status counters are recorded. The raw model declarations were not in the evidence, so the declarations in the test are labelled stand-ins.",
+ "reply-d1": {
+  "reply": "Got it. I have it as an open item: which three of the things you've told me matter most for planning your week. I won't answer it in this reply. So far you've told me one thing, the library card D-4 renewal. Anything you tell me before then will count too.",
+  "messages": 1,
+  "seconds": 42,
+  "source": "journal",
+  "update": 46040899
+ },
+ "reply-d1hi": {
+  "reply": "Hi Justin! Here's the answer I held for you: which three things you've told me matter most for planning your week.\n\nSo far you've told me only one thing, so I can't honestly name three:\n\n1. Renewing library card D-4. I can't do this for you because I can't sign in to accounts. Set aside a few minutes to sign in on the library website, usually under \"My Account\". You still haven't told me which city's library it is.\n\nI have nothing from you for spots 2 and 3, and I won't make things up to fill them.\n\nOne more thing for your week, though it came from me: my activation ends Thursday, Nov 12 at 1:40 PM. It needs your approval to renew it, or I'll stop working before the week is out.\n\nTell me your appointments, deadlines or goals and I'll pick a proper top three.",
+  "messages": 1,
+  "seconds": 47,
+  "source": "journal",
+  "update": 46040900
+ },
+ "reply-dfill-1": {
+  "reply": "Noted, Justin. All 27 bean rows look steady: watered at dawn, mulch still damp, one stake retied in each row, no pests, and the soil is loose after the light rain. Nothing for me to do.",
+  "messages": 1,
+  "seconds": 22,
+  "source": "journal",
+  "update": 46040902
+ },
+ "answerReason-d1hi": "Justin said \"hi\". The week-planning top three is owed now, so I'm giving it in this reply instead of attaching the two pending drafts. The drafts duplicate each other. Both also give a vague activation end (\"about 5 and a half days\") when the self-state source records the exact time: ends 2026-11-12 13:40 PST. The content still holds: history shows Justin has told me only one thing, the library card D-4 renewal. My earlier fulfilled declaration was refused. I now mark only my own promise (id 1) as fulfilled, quoting a sentence from this new reply word for word. No new facts, dates or preferences to save.",
+ "dfill-1-reason": "Justin sent a garden log and said it is for the record and needs no action. All 27 bean rows have the same note: watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. A short reply that confirms all 27 rows is enough. I used no tools. I made no memory write, so I don't claim the log was saved as a fact. It stays in the conversation record. The log has no dates to schedule, no reminder request and no named person. It also has nothing that changes the week-planning answer I already gave, so I picked no pending report.",
+ "status": {
+  "status-d1hi-before": {
+   "awaitingDelivery": 2,
+   "workInFlight": 0,
+   "rejectedDeclarations": 0
+  },
+  "status-d1hi": {
+   "awaitingDelivery": 1,
+   "workInFlight": 1,
+   "rejectedDeclarations": 1
+  },
+  "status-dfill-10": {
+   "awaitingDelivery": 2,
+   "workInFlight": 0,
+   "rejectedDeclarations": 1
+  }
+ }
+}

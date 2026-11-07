@@ -2337,12 +2337,12 @@ async function main() {
         },
         // The mind's one response to the objections on its draft: same envelope and grounding packet as review,
         // one disposition per objection, inside the loop's shared deadline.
-        revise: async ({ text, id, originalPrompt, ruleIds, reason, objections = ruleIds, findings, deadlineAt }) => {
+        revise: async ({ text, id, originalPrompt, ruleIds, reason, objections = ruleIds, findings, carried, deadlineAt }) => {
           // Revision needs the same admitted evidence as review: preserve a real limit and use prior tool results.
           const context = replyReviewContext(originalPrompt, text, ruleIds, declaredObligations(journal.view, id, wallNow()), credentialRegister());
           // Rule 29: the revision input (the objected draft in its review context) is written by the runner.
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}:reply-revision\n${context}`, wallNow()));
-          const prepared = modelEnvelope({ question: replyRevisionQuestion(objections, reason, findings), context, id: `${id}:reply-revision`,
+          const prepared = modelEnvelope({ question: replyRevisionQuestion(objections, reason, findings, carried), context, id: `${id}:reply-revision`,
             ...(writer ? { writer } : {}) });
           const result = await invokeSubscription(prepared, `${id}:reply-revision`, undefined, deadlineAt);
           const usage = result.usage ? { usage: recordedUsage(result.usage) } : {};
@@ -2352,6 +2352,7 @@ async function main() {
           return { state: 'complete', text: answered.text, dispositions: answered.dispositions,
             ...(answered.promises === undefined ? {} : { promises: answered.promises }),
             ...(answered.fulfills === undefined ? {} : { fulfills: answered.fulfills }),
+            ...(answered.carriedReports === undefined ? {} : { carriedReports: answered.carriedReports }),
             ...(answered.blocker === undefined ? {} : { blocker: answered.blocker }), ...usage };
         },
         summaryReview: async (state, through) => {
@@ -2769,6 +2770,7 @@ async function main() {
             }, stop: target => driver.stop(target) };
         },
         io: { readResult: (path, maxBytes) => binding.physical().readResult(path, maxBytes), clearResult: path => binding.physical().clearResult(path),
+          resultWrittenAt: path => binding.physical().resultWrittenAt(path),
           modelCalls: since => binding.physical().modelCalls(framework, project, binding.entry().profile.configDirectory, since), wait: delay,
           prepareAdmission: async (claim, edge) => {
             const identity = binding.harness() ? binding.harness().current() : null;
@@ -2890,7 +2892,7 @@ async function main() {
       }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(conversationSession ? sessionActivation : loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}${conversationSession ? ` bytes ${sha256(sessionBytes)}` : ''}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
         + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? config => createConversationTopicsPort({ ...config,
           maxSessions: sessionLimits.maxSessions, idleMs: sessionLimits.idleMs, topicConfig: topicConfiguration,
-          capacity: createTopicWorkerCapacity(sessionLimits),
+          capacity: createTopicWorkerCapacity(sessionLimits, undefined, line => process.stderr.write(`preview: ${line}\n`)),
           topicOf: operation => {
             // A repair inherits only its admitted parent's topic, never its execution identity.
             // The durable one-repair reservation is required; a suffix alone grants nothing.

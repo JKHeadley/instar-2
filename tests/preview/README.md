@@ -1648,6 +1648,16 @@ promise. Meaning remains the model's decision. The encrypted send intent records
 admitted promises and fulfillment ids. A promise closes only after the complete reply is
 API-accepted; an unknown or refused send leaves it open. Replay preserves that outcome.
 
+A finished work result waits for the next reply to the operator. The answering model sees each
+waiting result and decides every one: `selectedReports` appends it verbatim, `carriedReports` says
+the reply gave it in the model's own words and quotes those words exactly (the runner adds only a
+short marker line), and `rejectedReports` returns it to owned work with an objection. A result left
+undecided gets the one existing format re-ask; if it is still undecided nothing is appended and it
+stays owed. The quoted declaration, not a comparison of meaning, decides delivery, and only the
+accepted send settles it. The quote must still be in the agent's own words of the final reply, or
+the reply's revision must renew it; the marker is never evidence. A final reply that lost the
+words, including a reply cut down by claim excision, drops the marker and the result keeps waiting.
+
 The existing retrospective pass also reconciles missing work while grading delivered replies.
 It sees the whole final reply, its request, later messages and the conversation's existing
 commitments. Its `promises` grade field uses the same proposal shape, including undated
