@@ -338,7 +338,8 @@ describe('the launcher', () => {
 
   it('delivers every probe row through a pipe before exiting, and a short reply is refused (both sides)', () => {
     // A busy Studio probes thousands of /private/tmp entries; per-row pipe writes then process.exit lost the tail on macOS.
-    const specs = Array.from({ length: 9000 }, (_, i) => `r:${dir}/absent-${String(i).padStart(5, '0')}`);
+    // Short fixed paths keep the arguments far below macOS's 1 MiB ARG_MAX on any scratch root; the row count keeps the reply above 1 MiB.
+    const specs = Array.from({ length: 20_000 }, (_, i) => `r:/n/${String(i).padStart(5, '0')}`);
     for (let run = 0; run < 5; run++) {
       const rows = probeAccess(specs, { exec: (_command: string, args: string[], options: object) =>
         execFileSync(process.execPath, [launcher, ...args.slice(4)], options) });
