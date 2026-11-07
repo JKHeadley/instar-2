@@ -100,8 +100,8 @@ export const JEV_RESPONSE_MAX_BYTES = 4096;
 export interface ReplyFinding { rule: ReplyRule; verdict: 'pass' | 'violation'; reason: string }
 export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[]; confidence: number | null;
   path: ReplyPath; latencyMs: number; scores?: Record<JevRule, number>; reason?: string;
-  /** Content-free failure category; absent on historical rows. */
-  cause?: JevUnavailableCause; candidateDigest?: string;
+  /** Content-free failure category; absent on historical rows. `causeDetail` is one fixed token, never provider text. */
+  cause?: ReplyCheckCause; causeDetail?: string; candidateDigest?: string;
   /** Present only when the reviewer judged each selected rule on its own; absent on a legacy combined verdict. */
   findings?: ReplyFinding[];
   durationMeasured?: true;
@@ -362,6 +362,32 @@ export function jevUnavailableCause(error: unknown): JevUnavailableCause {
     || typeof cause === 'string' && /^http-[1-5][0-9]{2}$/u.test(cause)) return cause as JevUnavailableCause;
   return value?.name === 'TimeoutError' || value?.name === 'AbortError' ? 'timeout' : 'other';
 }
+export type ReviewUnavailableCause = 'timeout' | 'rate-limited' | 'provider-refused' | 'no-account' | 'malformed-output'
+  | 'process-exit' | 'call-cap' | 'interrupted' | 'other';
+export type ReplyCheckCause = JevUnavailableCause | ReviewUnavailableCause;
+const REVIEW_CAUSES: readonly unknown[] = ['timeout', 'rate-limited', 'provider-refused', 'no-account', 'malformed-output', 'process-exit'];
+const PROVIDER_CAUSES = new Map<unknown, ReviewUnavailableCause>([['limit', 'rate-limited'], ['policy', 'provider-refused'],
+  ['timeout', 'timeout'], ['transport', 'process-exit']]);
+/** A fixed token the caller chose, or the error's class name. A message is never read (the same floor as Jev's cause). */
+const causeDetailOf = (error: unknown): { causeDetail?: string } => {
+  const value = error as { causeDetail?: unknown; name?: unknown } | null;
+  const detail = typeof value?.causeDetail === 'string' ? value.causeDetail : `error:${String(value?.name)}`;
+  return /^[A-Za-z0-9:_-]{1,40}$/u.test(detail) ? { causeDetail: detail } : {};
+};
+/** The refusal for a provider result that gave no verdict, classified from the adapter's typed failure. */
+export function reviewResultFailure(result: { state: string; failureClass?: string; providerFailure?: string }): Error {
+  const known = PROVIDER_CAUSES.get(result.providerFailure);
+  return Object.assign(Error('preview: reply review unavailable'), {
+    reviewCause: known ?? (result.state === 'rejected' ? 'provider-refused' : result.state === 'complete' ? 'malformed-output' : 'other'),
+    causeDetail: `${result.state}:${result.providerFailure ?? result.failureClass ?? 'none'}` });
+}
+export function reviewUnavailableCause(error: unknown): { cause: ReviewUnavailableCause; causeDetail?: string } {
+  const value = error as { reviewCause?: ReviewUnavailableCause; name?: unknown; message?: unknown } | null;
+  const cause = REVIEW_CAUSES.includes(value?.reviewCause) ? value!.reviewCause!
+    : value?.name === 'TimeoutError' || value?.name === 'AbortError' ? 'timeout'
+    : value?.message === REVIEW_MALFORMED ? 'malformed-output' : 'other';
+  return { cause, ...causeDetailOf(error) };
+}
 export const JEV_REPLY_ATTEMPT_MS = 850;
 // Provider allowances start only after disclosure and host admission have completed.
 export const JEV_REPLY_RETRY_MS = 2500;
@@ -413,7 +439,7 @@ export interface ReplyCheckPorts {
 const expired = (ports: ReplyCheckPorts) => ports.deadlineAt !== undefined && ports.now !== undefined
   && ports.now() >= ports.deadlineAt;
 const budgetResult = (path: ReplyPath, ruleIds: ReplyRule[], latencyMs: number): ReplyCheckResult =>
-  ({ verdict: 'unavailable', ruleIds, confidence: null, path, latencyMs, reason: REPLY_CHECK_BUDGET_REASON });
+  ({ verdict: 'unavailable', ruleIds, confidence: null, path, latencyMs, reason: REPLY_CHECK_BUDGET_REASON, cause: 'timeout', causeDetail: 'budget' });
 export async function checkReply(text: string, id: string, ports: ReplyCheckPorts,
   originalPrompt?: string, approval?: ApprovalFacts): Promise<ReplyDecision> {
   let first: ReplyCheckResult;
@@ -437,8 +463,9 @@ export async function checkReply(text: string, id: string, ports: ReplyCheckPort
       if (approval) report = readApprovalReport(answer.value, approval.request);
       return result;
     } catch (error) {
+      const cause = received ? 'parse' : jevUnavailableCause(error);
       return { verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev',
-        latencyMs: Math.max(0, ports.elapsedMs() - began), cause: received ? 'parse' : jevUnavailableCause(error),
+        latencyMs: Math.max(0, ports.elapsedMs() - began), cause, ...(cause === 'other' ? causeDetailOf(error) : {}),
         ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON } : {}) };
     }
   };
@@ -566,7 +593,7 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
     return { outcome: 'unavailable', path: 'holding' };
   }
   if (!ports.reserveEscalation(text, originalPrompt)) {
-    ports.record({ verdict: 'unavailable', ruleIds, confidence: null, path: 'holding', latencyMs: 0 });
+    ports.record({ verdict: 'unavailable', ruleIds, confidence: null, path: 'holding', latencyMs: 0, cause: 'call-cap' });
     return { outcome: 'unavailable', path: 'holding', capRefused: true };
   }
   const fallbackStarted = ports.elapsedMs();
@@ -592,10 +619,11 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
 
     ports.record({ ...result, path: 'subscription' });
     return { outcome: result.verdict === 'pass' ? 'pass' : 'violation', path: 'subscription' };
-  } catch {
+  } catch (error) {
+    const failure = reviewUnavailableCause(error);
     ports.record({ verdict: 'unavailable', ruleIds, confidence: null, path: 'subscription',
-      latencyMs: Math.max(0, ports.elapsedMs() - fallbackStarted),
-      ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON } : {}) });
+      latencyMs: Math.max(0, ports.elapsedMs() - fallbackStarted), ...failure,
+      ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON, ...(failure.cause === 'other' ? { cause: 'timeout' as const } : {}) } : {}) });
     return { outcome: 'unavailable', path: 'subscription' };
   }
 }
