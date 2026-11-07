@@ -22,6 +22,8 @@ Decision: train187-merge-publish | Publish the existing generator's exact merged
 
 1.x comparison: Inherit reviews/train-187-repair-174141.md research at actual JKHeadley/instar main 1723950ceca23f0ae516e4cb9d3e675ae1c1eea3: src/core/GitSync.ts, src/core/LLMConflictResolver.ts, src/core/SafeGitExecutor.ts, docs/specs/INTER-AGENT-MESSAGING-SPEC.md and docs/specs/worktree-reaper-squash-merge-blindness.md; WorktreeManager history 5143e436, 269da957, def73b19 and ONEX-LESSONS section 6. Preserve both source intents and rebuild derived publication; no runtime sync transplant fits a development-branch merge.
 
+Deferral: generated/register.json:1 | not-a-deferral=Replayed serialized existing registry descriptions; this publication postpones no implementation.
+
 ## Closing block
 
 simplestRobustRoute: Use the existing replay generator on the committed merge. No new pin editor, runtime machinery or authority. Exact source commit is the start guard; final checks and independent Studio qualification are the end guards.
