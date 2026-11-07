@@ -1196,6 +1196,8 @@ export type JournalRecord =
     rejected?: RejectedObligations;
     /** Completed obligation work whose result this answer carries to the operator (Rules 8, 92). */
     reports?: string[];
+    /** Those of `reports` the agent gave in its own words: the runner's marker, not the stored text, is in this reply. */
+    carriedReports?: string[];
     rejectedReports?: { key: string; text: string; objection: string }[];
     /** Rules 8, 56, 100: the one fixed reminder line (credential expiry stage or failing doorway check) this answer carries. */
     notices?: ReplyNotice[];
@@ -1518,7 +1520,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   reservedAt?: number;
   /** Obligations the answer proposed; the intent of a reply that says them makes them durable. */
   answerLoops?: ReplyLoop[]; answerBlocker?: ProposedBlocker; answerRechecks?: BlockerRecheck[];
-  answerRejected?: RejectedObligations; answerReports?: string[]; answerRejectedReports?: { key: string; text: string; objection: string }[]; answerNotices?: ReplyNotice[];
+  answerRejected?: RejectedObligations; answerReports?: string[]; answerCarriedReports?: string[]; answerRejectedReports?: { key: string; text: string; objection: string }[]; answerNotices?: ReplyNotice[];
   /** Validated model proposals from the answer, and the fulfillments recorded with the reply intent. */
   proposedPromises?: PromiseProposal[]; proposedFulfills?: FulfillmentProposal[]; intentFulfills?: number[];
   /** The operator action this turn's answer proposed; its reply carries the exact request or the refusal. */
@@ -2704,10 +2706,18 @@ export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLI
  * Selection and delivery are separate; the existing size bound and receipt decide whether it was sent. */
 export const READY_RESULT = 'report awaiting current evidence review before delivery, otherwise a later message; not proof the work is done';
 const REPORT_SELECTION_GUIDANCE = 'Judge pendingReports.items against current-task evidence and your answer. '
-  + 'A prior answer or follow-up is not proof of current capabilities. Return selectedReports:[key] only for reports '
-  + 'whose claims remain supported and consistent now; the runner appends those verbatim. Return rejectedReports:[{key,objection}] '
-  + 'for offered unverifiable or contradictory reports, with a concise objection (at most 1000 bytes), to return them to owned rework. '
-  + 'Mere omission leaves reports unchanged; they remain owed, not completed or delivered. Explain relevant uncertainty without repeating unsupported claims.';
+  + 'A prior answer or follow-up is not proof of current capabilities. This reply is how each offered report reaches the operator, '
+  + 'so decide every one exactly once. selectedReports:[key]: its claims remain supported and consistent now; the runner appends it verbatim, '
+  + 'so do not also restate it. carriedReports:[key]: your reply itself gives this result in your own words; the runner appends only a short '
+  + 'marker. rejectedReports:[{key,objection}]: unverifiable or contradictory and your reply does not give the result, with a concise objection '
+  + '(at most 1000 bytes), to return it to owned rework. An undecided report stays owed, not completed or delivered. '
+  + 'Explain relevant uncertainty without repeating unsupported claims.';
+/** What the runner's line says for a result the agent gave in its own words. The agent's declaration decides delivery; these
+ * words only tell the operator which owed item the reply settled, and repeat no result (Rules 8, 22, 92). */
+const REPORT_CARRIED = 'answered above.';
+/** The exact text a reply must still hold for one result it carries: the stored report, or the carried marker. */
+const reportEvidence = (view: JournalView, key: string, carried: readonly string[] | undefined) =>
+  carried?.includes(key) ? REPORT_CARRIED : view.obligationWork[key]?.report?.text ?? '\u0000';
 /** Reads one work step's decision; anything malformed is a recorded failed attempt, never a guessed outcome. */
 export function obligationDecision(output: string, kind: 'commitment' | 'blocker', at: number, zone: string, previous: readonly RunCompletionItem[] = []):
   Pick<Extract<JournalRecord, { kind: 'obligation-result' }>, 'outcome' | 'report' | 'note' | 'waitsOn' | 'recheckAt' | 'assessment' | 'completion'> {
@@ -2791,7 +2801,7 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
     // Delivery of a completed work result in a reply actually sent settles the obligation (evidenced settlement).
     if (!Array.isArray(row.reports) || !row.reports.length || new Set(row.reports).size !== row.reports.length
       || row.reports.some(key => !turn.answerReports?.includes(key) || !attachableReport(view.obligationWork[key])
-        || !row.text.includes(view.obligationWork[key]!.report!.text))) throw Error('preview journal: invalid obligation report');
+        || !row.text.includes(reportEvidence(view, key, turn.answerCarriedReports)))) throw Error('preview journal: invalid obligation report');
     // The durable intent binds each result to this reply so no other reply carries it; only its sent receipt settles it.
     for (const key of row.reports) view.obligationWork[key]!.report!.boundTo = turn.id;
   }
@@ -3554,7 +3564,8 @@ function settleDeliveredReply(view: JournalView, turn: Turn, message: number, at
   for (const [key, work] of Object.entries(view.obligationWork)) if (work.report?.boundTo === turn.id && work.report.delivered === undefined) {
     work.report.delivered = turn.id;
     const id = Number(key.slice(11));
-    if (key.startsWith('commitment:') && !view.closed.has(id) && !completionPending(view, id)) closeCommitment(view, { id, source: turn.id, quote: work.report.text });
+    if (key.startsWith('commitment:') && !view.closed.has(id) && !completionPending(view, id)) closeCommitment(view, { id, source: turn.id,
+      quote: turn.answerCarriedReports?.includes(key) ? turn.intent! : work.report.text });
   }
   // An API-accepted reply closes the promises the model said it carries out; a legacy
   // intent (no fulfills field) keeps the closure rule it was recorded under.
@@ -5167,9 +5178,14 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (row.reports !== undefined) {
       if (!Array.isArray(row.reports) || !row.reports.length || new Set(row.reports).size !== row.reports.length
         || view.genesis.forum === true && row.reports.some(key => !pendingReports(view, { thread: turn.thread }).some(item => item.key === key))
-        || row.reports.some(key => !attachableReport(view.obligationWork[key]) || !row.text.includes(view.obligationWork[key]!.report!.text)))
+        || row.reports.some(key => !attachableReport(view.obligationWork[key]) || !row.text.includes(reportEvidence(view, key, row.carriedReports))))
         throw Error('preview journal: invalid obligation report');
       turn.answerReports = row.reports;
+    }
+    if (row.carriedReports !== undefined) {
+      if (!Array.isArray(row.carriedReports) || !row.carriedReports.length || new Set(row.carriedReports).size !== row.carriedReports.length
+        || row.carriedReports.some(key => !row.reports?.includes(key))) throw Error('preview journal: invalid carried report');
+      turn.answerCarriedReports = row.carriedReports;
     }
     if (row.rejectedReports !== undefined) {
       if (!Array.isArray(row.rejectedReports) || !row.rejectedReports.length || !operatorWriter(view, turn, true)
@@ -9078,6 +9094,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // failures quoted the old promise or changed the operator's words. Give these exact validation
           // failures the existing single format re-ask, before recording an answer or sending anything.
           // No meaning is inferred and no citation is repaired by code; the same validators decide again.
+          // Rules 8, 22, 92: a finished result leaves with the reply the operator is waiting on, so the answering mind
+          // decides each one it was shown. The existing single re-ask covers a miss; the runner never decides for it.
+          const undecidedReports = (value: Record<string, unknown>) => {
+            const named = (list: unknown) => Array.isArray(list) ? list as unknown[] : [];
+            const decided = [...named(value.selectedReports), ...named(value.carriedReports),
+              ...named(value.rejectedReports).map(item => (item as { key?: unknown } | null)?.key)];
+            const items = probeTurn(journal.view, turn) ? [] : (JSON.parse(context) as { pendingReports?: { items: { key: string }[] } }).pendingReports?.items ?? [];
+            const missing = items.filter(item => decided.filter(key => key === item.key).length !== 1).map(item => item.key);
+            return missing.length ? `decide each of ${missing.join(', ')} exactly once in selectedReports, carriedReports or rejectedReports` : undefined;
+          };
           const declarationDefect = (given: Answer): string | undefined => {
             const text = typeof given === 'string' ? given : 'text' in given ? given.text : undefined;
             if (text === undefined) return undefined;
@@ -9088,6 +9114,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const body = typeof reply === 'string' ? reply : reply && typeof reply === 'object' && !Array.isArray(reply)
               && 'answer' in reply && typeof reply.answer === 'string' ? reply.answer : undefined;
             if (body === undefined) return undefined;
+            const reportDefect = undecidedReports(value);
+            if (reportDefect !== undefined) return reportDefect;
             if (promiseProposals(value.promises, body) === undefined)
               return 'promises must quote an exact sentence of this reply; when, if present, must be copied from that sentence';
             if (fulfillmentProposals(value.fulfilled, body,
@@ -9245,19 +9273,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
               refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false,
               memoryFailure: MemoryFailureProposal | undefined;
-            let selectedReports: unknown[] = [], rejectedReports: { key: string; objection: string }[] = [];
+            let selectedReports: unknown[] = [], ownWordReports: unknown[] = [], rejectedReports: { key: string; objection: string }[] = [];
             const heldForgets: MemoryChange[] = [];
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; correction?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown; cancelDeliveries?: unknown;
                 directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown; blockerRechecks?: unknown;
-                selectedReports?: unknown; rejectedReports?: unknown; promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
+                selectedReports?: unknown; carriedReports?: unknown; rejectedReports?: unknown; promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
               const replyValue = parsed?.reply;
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
                 separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string; decided = true;
                 if (Array.isArray(parsed.selectedReports)) selectedReports = parsed.selectedReports;
+                if (Array.isArray(parsed.carriedReports)) ownWordReports = parsed.carriedReports;
                 if (Array.isArray(parsed.rejectedReports) && parsed.rejectedReports.every(item => item
                   && typeof item.key === 'string' && boundedText(item.objection, 1, 1000))
                   && new Set(parsed.rejectedReports.map(item => item.key)).size === parsed.rejectedReports.length)
@@ -9601,20 +9630,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // remains pending; absence, malformed output and stale selections never close a commitment.
             const offeredReports = (JSON.parse(context) as { pendingReports?: {
               items: { key: string; text: string }[] } }).pendingReports?.items ?? [];
-            const reports: string[] = [], carried = new Set(journal.view.order
+            const reports: string[] = [], carriedReports: string[] = [], carried = new Set(journal.view.order
               .filter(item => item.id !== turn.id && item.intent === undefined && !actionWithdrawn(journal.view, item)).flatMap(item => item.answerReports ?? []));
             if (replying)
               for (const item of pendingReports(journal.view, { thread: turn.thread }).filter(entry => !carried.has(entry.key)
-                && selectedReports.includes(entry.key) && !rejectedReports.some(rejected => rejected.key === entry.key)
+                && selectedReports.includes(entry.key) !== ownWordReports.includes(entry.key) && !rejectedReports.some(rejected => rejected.key === entry.key)
                 && offeredReports.some(offered => offered.key === entry.key && offered.text === entry.text)
                 && !obligations.deliveryCancels?.some(cancel => entry.key === `commitment:${cancel.id}`))) {
-                const line = reportLine(item);
+                const own = ownWordReports.includes(item.key), line = reportLine(own ? { ...item, text: REPORT_CARRIED } : item);
                 if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
                 text = `${text.trimEnd()}${line}`; reports.push(item.key);
+                if (own) carriedReports.push(item.key);
               }
             const rework = replying && text.trim() ? rejectedReports.flatMap(item => {
               const report = offeredReports.find(offered => offered.key === item.key);
-              return report && item.key.startsWith('commitment:') && !selectedReports.includes(item.key) && !carried.has(item.key)
+              return report && item.key.startsWith('commitment:') && !selectedReports.includes(item.key) && !ownWordReports.includes(item.key) && !carried.has(item.key)
                 && pendingReports(journal.view, { thread: turn.thread }).some(entry => entry.key === item.key && entry.text === report.text)
                 && !text.includes(report.text) && !obligations.deliveryCancels?.some(cancel => item.key === `commitment:${cancel.id}`)
                 ? [{ ...item, text: report.text, objection: clean(redact(item.objection).text, true) }] : [];
@@ -9643,7 +9673,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(obligations.deliveryCancels?.length ? { deliveryCancels: obligations.deliveryCancels } : {}),
               ...(obligations.blocker ? { blocker: obligations.blocker } : {}),
               ...(obligations.blockerRechecks?.length ? { blockerRechecks: obligations.blockerRechecks } : {}),
-              ...(Object.keys(rejectedNow).length ? { rejected: rejectedNow } : {}), ...(reports.length ? { reports } : {}), ...(rework.length ? { rejectedReports: rework } : {}),
+              ...(Object.keys(rejectedNow).length ? { rejected: rejectedNow } : {}), ...(reports.length ? { reports } : {}), ...(carriedReports.length ? { carriedReports } : {}), ...(rework.length ? { rejectedReports: rework } : {}),
               ...(notices.length ? { notices } : {}),
               ...(promises.length && text.trim() ? { promises: promises.filter(item => text.includes(item.quote)) } : {}),
               ...(keptFulfills.length ? { fulfills: keptFulfills } : {}),
@@ -9915,7 +9945,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // sb-w4-updaterecord 04bed622, room four, D1c: the revision folded three results into its own wording, so
             // none occurred verbatim and all three went back to owned work).
             const resultLines = pendingReports(journal.view).filter(item => turn.answerReports?.includes(item.key))
-              .map(reportLine).filter(line => reply.includes(line));
+              .map(item => reportLine(turn.answerCarriedReports?.includes(item.key) ? { ...item, text: REPORT_CARRIED } : item))
+              .filter(line => reply.includes(line));
             // A mandatory content objection can be removed without rewriting the answer, but the
             // resulting answer still needs its own contextual review. Keep part of the shared
             // deadline for that review when the reviewer named a locatable claim. T1's real
@@ -10827,7 +10858,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const blocker = declared && reply.includes(declared.claim) && declared.recheckAt > at ? declared : undefined;
     const rechecks = turn.answerRechecks?.every(item => open.has(item.id))
       ? turn.answerRechecks : undefined;
-    const reports = turn.answerReports?.filter(key => reply.includes(journal.view.obligationWork[key]?.report?.text ?? '\u0000')
+    const reports = turn.answerReports?.filter(key => reply.includes(reportEvidence(journal.view, key, turn.answerCarriedReports))
       && attachableReport(journal.view.obligationWork[key]));
     return { ...(loops?.length ? { loops } : {}), ...(blocker ? { blocker } : {}), ...(rechecks ? { blockerRechecks: rechecks } : {}),
       ...(reports?.length ? { reports } : {}) };
@@ -10838,7 +10869,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const withheldReports = (turn: Turn, reply: string, objection: string | undefined) => {
     const text = objection === undefined ? '' : clip(clean(redact(objection).text, true), 1000);
     const withheld = text ? turn.answerReports?.filter(key => key.startsWith('commitment:')
-      && attachableReport(journal.view.obligationWork[key]) && !reply.includes(journal.view.obligationWork[key]!.report!.text))
+      && attachableReport(journal.view.obligationWork[key]) && !reply.includes(reportEvidence(journal.view, key, turn.answerCarriedReports)))
       .map(key => ({ key, objection: text })) : undefined;
     const explicit = turn.answerRejectedReports?.filter(item => attachableReport(journal.view.obligationWork[item.key])
       && journal.view.obligationWork[item.key]?.report?.text === item.text && !reply.includes(item.text))
