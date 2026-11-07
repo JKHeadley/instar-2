@@ -313,6 +313,99 @@ it('the continuing host consumes real driver Stop receipts through the public ad
   await port.close(); expect(live).toBe(false);
 });
 
+/** The real driver and adapter under the host, with a scripted harness: each `step` is one poll's change to the world. */
+async function backgroundTurn(steps: readonly ((world: { result(text: string): void; stop(background?: number): void; exit(): void }) => void)[]) {
+  const { createSessionConversationAdapter } = await import('../../src/assembly/conversation-harness-adapter.js');
+  const { createProductionSessionDriver } = await import('../../src/assembly/production-session-driver.js');
+  const f = fixture(); let now = 1000, live = false, path = '', next = 0, polls = 0;
+  let journal: import('../../src/assembly/production-session-driver.js').SessionJournal = { sessions: [], deliveries: [], resumes: {} };
+  const files = new Map<string, string>();
+  const receipts: { kind: 'turn-closed'; sessionId: string; at: number; receiptId: string; background?: number }[] = [];
+  const world = { result: (text: string) => { files.set(path, text); }, exit: () => { live = false; },
+    stop: (background?: number) => { receipts.push({ kind: 'turn-closed', sessionId: '12345678-1234-1234-1234-123456789abc', at: now,
+      receiptId: `receipt-${receipts.length}`, ...(background === undefined ? {} : { background }) }); } };
+  const physical: import('../../src/assembly/production-session-driver.js').SessionIO = {
+    exclusive: run => run(), load: () => journal, save: value => { journal = structuredClone(value); },
+    sleep: ms => { now += ms; }, armDeadline: () => {}, transcriptExists: () => false, readInbox: () => receipts,
+    tmux: args => {
+      if (args[0] === 'new-session') live = true;
+      if (args[0] === 'has-session') return { code: live ? 0 : 1, stdout: '' };
+      if (args[0] === 'display-message') return { code: 0, stdout: '321:1000' };
+      if (args[0] === 'capture-pane') return { code: 0, stdout: `turn ${polls}\n❯ ` };
+      if (args[0] === 'kill-session') live = false;
+      return { code: 0, stdout: '' };
+    },
+  };
+  const io = { ...f.config.io, clearResult: (value: string) => { path = value; files.delete(path); },
+    readResult: (file: string) => files.get(file) ?? null, modelCalls: () => 1,
+    wait: async (ms: number) => { now += ms; polls++; const step = steps[next++]; if (step) step(world); else now += 1000; } };
+  const port = value(createConversationSessionPort({ ...f.config, io, now: () => now,
+    createAdapter: resolveDelivery => createSessionConversationAdapter({ io, resolveDelivery,
+      createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
+        framework: 'claude-code', executable: '/fake', cwd: '/scope', home: '/h', configHome: '/h', context: f.config.context,
+        io: physical, now: () => now, stopped: () => false, resolveIntake, maxSessions: 1, turnDeadlineMs: 20_000,
+        readyTimeoutMs: 1000, protectedSessions: [], requireTurnHook: true, hookScript: '/installed/stop.mjs', inboxDirectory: '/inbox',
+        toolAdmission: { command: () => '/installed/tool-hook', timeoutSeconds: 2 },
+        modelGate: claim => `http://127.0.0.1:1234/${'a'.repeat(32)}/${claim}` }) }) }));
+  const outcome = await port.run(f.request('one'));
+  return { outcome, polls, journal: () => journal, consumed: next, inputs: f.state().inputs };
+}
+const ANSWER = '{"reply":"both helpers finished"}';
+
+// Update 969390684, 2026-11-06: Stop at 22:14:24 with two helpers running and no result; helpers reported at
+// 22:14:26 and 22:16:16; the result was written at 22:16:24. Each later wake-up ends in its own Stop.
+it('a turn that stops with background work waits for the later turn and delivers its result once', async () => {
+  const run = await backgroundTurn([
+    world => world.stop(2),
+    () => {},
+    world => world.stop(1),
+    () => {},
+    world => world.result(ANSWER),
+    world => world.stop(0),
+  ]);
+  expect(run.outcome).toMatchObject({ state: 'complete', text: ANSWER });
+  expect(run.consumed).toBe(6);
+  expect(run.inputs.map(row => row.state)).toEqual(['settled']);
+  expect(run.journal().sessions[0]).toMatchObject({ turnDeadline: null });
+});
+
+it('background work that ends with no result takes the unknown-answer path instead of hanging', async () => {
+  const run = await backgroundTurn([world => world.stop(1), () => {}, world => world.stop(0)]);
+  expect(run.outcome).toMatchObject({ state: 'uncertain', detail: 'turn ended without a complete reply' });
+  expect(run.consumed).toBe(3);
+});
+
+it('a result written before Stop is delivered without waiting for work left running', async () => {
+  const run = await backgroundTurn([world => { world.result(ANSWER); world.stop(1); }]);
+  expect(run.outcome).toMatchObject({ state: 'complete', text: ANSWER });
+  expect(run.consumed).toBe(1);
+});
+
+it('a result from a turn still running waits for that turn to stop', async () => {
+  const run = await backgroundTurn([world => world.stop(1), world => world.result('{"reply":"partial"}'), () => {},
+    world => { world.result(ANSWER); world.stop(0); }]);
+  expect(run.outcome).toMatchObject({ state: 'complete', text: ANSWER });
+  expect(run.consumed).toBe(4);
+});
+
+it('a later Stop after that result closes even while other work still runs', async () => {
+  const run = await backgroundTurn([world => world.stop(2), world => world.result(ANSWER), world => world.stop(1)]);
+  expect(run.outcome).toMatchObject({ state: 'complete', text: ANSWER });
+  expect(run.consumed).toBe(3);
+});
+
+it('a harness that reports no background list closes on its Stop as before', async () => {
+  const run = await backgroundTurn([world => world.stop()]);
+  expect(run.outcome).toMatchObject({ state: 'uncertain', detail: 'turn ended without a complete reply' });
+  expect(run.consumed).toBe(1);
+});
+
+it('background work that never reports back stops at the existing deadline, never later', async () => {
+  const run = await backgroundTurn([world => world.stop(1)]);
+  expect(run.outcome.state).toBe('uncertain');
+  expect(run.outcome.detail).toMatch(/deadline/u);
+});
+
 it('process renewal never extends the already admitted parent lifetime', async () => {
   const f = fixture(); await f.port.run(f.request('one')); f.advance(100000);
   expect(f.port.available()).toBe(false); await f.port.maintain();

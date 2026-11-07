@@ -15,11 +15,15 @@ let parsed;
 try { parsed = JSON.parse(body); } catch { process.exit(2); }
 if (typeof parsed.session_id !== 'string') process.exit(2);
 const kind = process.argv[2] === 'compact' ? 'compact' : 'turn-closed';
+// The harness's own list of work still running at this Stop (Claude Code 2.1.280: helpers and shells). An older
+// harness sends none, and then the receipt says nothing about background work. Only the count crosses to the host.
+const background = Array.isArray(parsed.background_tasks)
+  ? { background: parsed.background_tasks.filter(task => task?.status === 'running' || task?.status === 'pending').length } : {};
 mkdirSync(inbox, { recursive: true, mode: 0o700 });
 const receiptId = randomUUID();
 const filename = `${name}.${Date.now()}.${receiptId}.json`;
 const temp = join(inbox, `${filename}.tmp`);
-writeFileSync(temp, JSON.stringify({ kind, sessionId: parsed.session_id, at: Date.now(), receiptId }), { mode: 0o600 });
+writeFileSync(temp, JSON.stringify({ kind, sessionId: parsed.session_id, at: Date.now(), receiptId, ...background }), { mode: 0o600 });
 const fd = openSync(temp, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
 renameSync(temp, join(inbox, filename));
 const directory = openSync(inbox, 'r'); try { fsyncSync(directory); } finally { closeSync(directory); }

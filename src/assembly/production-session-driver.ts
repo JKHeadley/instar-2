@@ -18,6 +18,9 @@ export interface SessionRecord {
   readonly closedAt: number | null; readonly turnBaseline?: string; readonly turnReceiptIds?: readonly string[];
   readonly continuation?: SessionContinuation;
   readonly turnCloseEvidence?: string | null;
+  /** The last Stop seen naming running background work with no result yet. A result first seen under this same
+   * receipt was written after that Stop, by a later turn still running, whose own Stop closes it. */
+  readonly backgroundStop?: string | null;
   /** One neutral continuation per admitted turn; intent survives host loss before input.
    * The original deadline remains the brake and open-turn/reaper exclusion. */
   readonly rateRecovery?: Readonly<{ dueAt: number; state: 'waiting' | 'sending' | 'accepted'; submittedAt?: number; fingerprint?: string | null }> | null;
@@ -53,7 +56,9 @@ export interface SessionIO {
   sleep(ms: number): void;
   load(): SessionJournal;
   save(journal: SessionJournal): void;
-  readInbox(name: string): readonly Readonly<{ kind: 'turn-closed' | 'compact'; sessionId: string; at: number; receiptId?: string }>[];
+  readInbox(name: string): readonly Readonly<{ kind: 'turn-closed' | 'compact'; sessionId: string; at: number; receiptId?: string;
+    /** Harness-reported background work still running at this Stop; absent when the harness reports none. */
+    background?: number }>[];
   /** Physical bridge terminal metadata; absent until a worker actually exits. */
   readTerminal?(name: string): Readonly<{ code: number | null; signal: string | null;
     workerExitClaim: Readonly<{ workerPid: number; code: number | null; signal: string | null }> | null }> | null;
@@ -373,7 +378,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const started = config.now();
     const deadline = Math.min(started + config.turnDeadlineMs, session.continuation?.pending?.deadline ?? Infinity);
     ensure(deadline > started, 'context continuation deadline exhausted');
-    const armed = { ...session, recovery, turnStartedAt: started, turnDeadline: deadline, closedAt: null, turnCloseEvidence: null,
+    const armed = { ...session, recovery, turnStartedAt: started, turnDeadline: deadline, closedAt: null, turnCloseEvidence: null, backgroundStop: null,
       rateRecovery: null, promptWait: null,
       connectionRetry: null,
       turnBaseline: digestOf(capture(session.name)),
@@ -662,7 +667,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     },
     observe(input: { operation: string; processIdentity: string; resultAvailable?: boolean }): Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string; safetyDeadline?: number }>> {
       return lockedBoundary('ProductionSessionObserve', input, () => {
-        const session = loadSession(input.processIdentity);
+        let session = loadSession(input.processIdentity);
         if (config.stopped()) { stop(); return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'stop authority active' }; }
         if (session.deadlineHalt) return { phase: 'exit-observed' as const, evidence: `safety-ceiling:deadline:${session.identity}`, detail: 'per-turn deadline exceeded; closure must be reconciled', safetyDeadline: session.deadlineHalt.deadline };
         if (!alive(session.name)) {
@@ -710,9 +715,19 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         const throttled = throttle === 'rate-limited' || throttle === 'provider-throttled';
         const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
           && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
+        // A Stop naming running background work is a pause, not the end of the answer: each finished task wakes the
+        // session for another turn, and the Stop with none left closes it, result or not. A result ends the wait
+        // early, because the agent has answered. The original deadline still bounds the wait.
+        const stopKey = hook?.receiptId ?? String(hook?.at);
+        const backgroundOpen = (hook?.background ?? 0) > 0
+          && (input.resultAvailable !== true || session.backgroundStop === stopKey);
+        if (backgroundOpen && input.resultAvailable !== true && session.backgroundStop !== stopKey) {
+          session = { ...session, backgroundStop: stopKey };
+          config.io.save(replaceSession(config.io.load(), session));
+        }
         // A throttle can emit Stop without completing work. A bounded result plus Stop
         // still wins over stale quota scrollback; the marker alone must retain recovery.
-        if (hook && (!throttled || input.resultAvailable === true)
+        if (hook && !backgroundOpen && (!throttled || input.resultAvailable === true)
           && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
           && session.turnDeadline !== null && hook.at <= config.now() && hook.at <= session.turnDeadline) {
           config.io.save(replaceSession(config.io.load(), { ...closeTurn(session, hook.at),
