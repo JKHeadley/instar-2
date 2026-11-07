@@ -1,7 +1,7 @@
 # Generated glossary
 
-Register generation: sha256:2d872b876aac38aead71772c2b0a3788817bea418cdc08eb746b02aa8d8d8e64
-Source commit: afe8faddc0051a048246197479e699c3f2ecabec
+Register generation: sha256:391a5c7ec9f7e810108e24787d000ef2bb9cdb2a722bfebd959aab10568b64f0
+Source commit: 81069a5372b261c6d06424e25719eb11239dd892
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
