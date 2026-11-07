@@ -2,7 +2,7 @@
 // Build 9: required proofs run on the live runner, status reports their actual results, a live proof binds to the
 // capability's own outcome, and an unwritable proof log never stops the conversation (Rules 9, 14, 26, 43, 62, 73, 95).
 import { expect, it } from 'vitest';
-import { spawnSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
@@ -10,6 +10,17 @@ import { initializeUpdateRuntime, writeUpdateRuntime } from '../../scripts/updat
 import { readProofs } from './proof-log.js';
 import { offlineProfile, successiveWorld } from './successive-fixture.js';
 import { SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
+
+// Await child completion so Vitest can service its reporting IPC during real launches.
+const command = (argv, env) => new Promise(resolve => {
+  execFile(process.execPath, argv, { cwd: process.cwd(), env, encoding: 'utf8', timeout: 30000 },
+    (error, stdout, stderr) => resolve({ status: error ? error.code ?? 1 : 0, stdout, stderr, error }));
+});
+const statusOf = async harness => {
+  const result = await harness.statusOf();
+  expect(result.status, result.stderr || `status child signal: ${result.signal}`).toBe(0);
+  return JSON.parse(result.stdout);
+};
 
 // The recorded activation has a fixed reviewed expiry. Exercise its valid window with an
 // injected child clock that advances consistently across processes; never extend the
@@ -27,16 +38,15 @@ const setup = (now = fixtureNow) => {
   const operator = Number(world.configuration.operatorSenderId), chat = Number(world.configuration.chatId);
   const message = (update_id, text) => ({ update_id, message: { message_id: 100 + update_id,
     from: { id: operator, is_bot: false, first_name: 'Justin' }, chat: { id: chat, type: 'private' }, date: Math.floor(now / 1000), text } });
-  const record = (capability, update, ...extra) => spawnSync(process.execPath, [...args, 'record-live-proof',
-    '--root', harness.liveRoot, '--capability', capability, '--update', String(update), ...extra],
-  { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key }, encoding: 'utf8', timeout: 20000 });
+  const record = (capability, update, ...extra) => command([...args, 'record-live-proof',
+    '--root', harness.liveRoot, '--capability', capability, '--update', String(update), ...extra], { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key });
   return { world, harness, message, record };
 };
 
-it('refuses the same recorded activation after its expiry without polling or sending', () => {
+it('refuses the same recorded activation after its expiry without polling or sending', async () => {
   const { harness } = setup(SUBSCRIPTION_PREVIEW_EXPIRY + 1);
   harness.setUpdates([]);
-  const launched = harness.launchLive(2);
+  const launched = (await harness.runLive(2));
   expect(launched.status).toBe(1);
   const runs = readFileSync(join(harness.liveRoot, 'runs.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
   expect(runs.at(-1)).toMatchObject({ reason: 'refused before launch', refused: 'subscription activation expired or clock differs' });
@@ -44,10 +54,10 @@ it('refuses the same recorded activation after its expiry without polling or sen
 }, 60000);
 
 // Held probe evidence (register-contract-map): each probe named here executes on the real launcher and passes.
-it('P9-PREVIEW-startup P9-PREVIEW-store-agreements P9-PREVIEW-journal-restore P9-PREVIEW-telegram-identity P9-PREVIEW-reply-delivered P9-PREVIEW-reply-drain P9-PREVIEW-reply-review-reached runs the startup and due proofs on the live runner and reports them against the declared inventory', () => {
+it('P9-PREVIEW-startup P9-PREVIEW-store-agreements P9-PREVIEW-journal-restore P9-PREVIEW-telegram-identity P9-PREVIEW-reply-delivered P9-PREVIEW-reply-drain P9-PREVIEW-reply-review-reached runs the startup and due proofs on the live runner and reports them against the declared inventory', async () => {
   const { harness, message } = setup();
   harness.setUpdates([message(1, 'What is the marker? Juniper.')]);
-  const launched = harness.launchLive(20);
+  const launched = (await harness.runLive(20));
   expect(launched.status, launched.stderr).toBe(0);
 
   const log = readProofs(join(harness.liveRoot, 'proofs.jsonl'));
@@ -68,7 +78,7 @@ it('P9-PREVIEW-startup P9-PREVIEW-store-agreements P9-PREVIEW-journal-restore P9
   expect(plans.indexOf('store-agreements')).toBe(1);
   expect(plans.length).toBe(new Set(plans).size);
 
-  const status = JSON.parse(harness.status().stdout);
+  const status = (await statusOf(harness));
   const posture = new Map(status.proofs.map(row => [row.plan, row]));
   for (const plan of ['startup', 'journal-restore', 'store-agreements', 'telegram-identity', 'reply-delivered']) expect(posture.get(plan).posture, plan).toBe('healthy');
   expect(status.storeAgreements.every(row => row.lastCheckedAt !== null)).toBe(true);
@@ -93,36 +103,36 @@ it('P9-PREVIEW-startup P9-PREVIEW-store-agreements P9-PREVIEW-journal-restore P9
 
   // A torn line in the durable log is counted, never read as a result.
   writeFileSync(join(harness.liveRoot, 'proofs.jsonl'), `${readFileSync(join(harness.liveRoot, 'proofs.jsonl'), 'utf8')}{"v":1,"plan":`);
-  expect(JSON.parse(harness.status().stdout).proofLog.unreadable).toBe(1);
+  expect((await statusOf(harness)).proofLog.unreadable).toBe(1);
 }, 60000);
 
-it('P9-PREVIEW-status-answered records a live proof only for the capability’s own outcome, never an unrelated turn or a disabled capability', () => {
+it('P9-PREVIEW-status-answered records a live proof only for the capability’s own outcome, never an unrelated turn or a disabled capability', async () => {
   const { harness, message, record } = setup();
   harness.setUpdates([message(1, 'What is the marker? Juniper.'), message(2, 'status')]);
-  expect(harness.launchLive(12).status).toBe(0);
+  expect((await harness.runLive(12)).status).toBe(0);
   // The status pull in this launch is answered and the status-answered probe proves Telegram accepted it.
   expect(readProofs(join(harness.liveRoot, 'proofs.jsonl')).proofs.find(row => row.plan === 'status-answered')).toMatchObject({ disposition: 'passed' });
   // Astra's counterexamples: each of these was accepted before.
-  expect(record('preview.reminders', 1).status).toBe(1);
-  expect(record('preview.channel-memory', 1, '--desk-observation', 'arrived').stderr).toMatch(/had preview\.channel-memory off/u);
-  expect(record('preview.status-pull', 1).status).toBe(1);
-  expect(record('preview.reply', 2).status).toBe(1);
-  expect(record('preview.memory', 1).stderr).toMatch(/desk-recorded semantic observation/u);
-  const reply = record('preview.reply', 1), status = record('preview.status-pull', 2);
+  expect((await record('preview.reminders', 1)).status).toBe(1);
+  expect((await record('preview.channel-memory', 1, '--desk-observation', 'arrived')).stderr).toMatch(/had preview\.channel-memory off/u);
+  expect((await record('preview.status-pull', 1)).status).toBe(1);
+  expect((await record('preview.reply', 2)).status).toBe(1);
+  expect((await record('preview.memory', 1)).stderr).toMatch(/desk-recorded semantic observation/u);
+  const reply = await record('preview.reply', 1), status = await record('preview.status-pull', 2);
   expect(reply.status, reply.stderr).toBe(0);
   expect(status.status, status.stderr).toBe(0);
   const startup = readProofs(join(harness.liveRoot, 'proofs.jsonl')).proofs.find(row => row.plan === 'startup');
   expect(JSON.parse(reply.stdout)).toMatchObject({ capability: 'preview.reply', update: 1, generation: startup.generation,
     version: startup.observed['version:preview.reply'], fact: 'outcome-observed' });
-  const rows = new Map(JSON.parse(harness.status().stdout).capabilities.map(row => [row.id, row]));
+  const rows = new Map((await statusOf(harness)).capabilities.map(row => [row.id, row]));
   expect(rows.get('preview.reply').liveProof).toMatchObject({ state: 'recorded', update: 1 });
   expect(rows.get('preview.status-pull').liveProof).toMatchObject({ state: 'recorded', update: 2 });
 }, 60000);
 
-it('answers the operator status pull with the proof posture', () => {
+it('answers the operator status pull with the proof posture', async () => {
   const { harness, message } = setup();
   harness.setUpdates([message(1, 'status')]);
-  const launched = harness.launchLive(3);
+  const launched = (await harness.runLive(3));
   expect(launched.status, launched.stderr).toBe(0);
   const sent = harness.calls().filter(call => call.kind === 'send').map(call => call.text);
   expect(sent).toHaveLength(1);
@@ -143,42 +153,41 @@ it('refuses a launch with the retired step check turned on, plainly, before poll
   expect(off.status, off.stderr).toBe(0);
 }, 120000);
 
-it('an unwritable proof log is reported and retried; intake and replies continue (Rules 14, 95)', () => {
+it('an unwritable proof log is reported and retried; intake and replies continue (Rules 14, 95)', async () => {
   const { harness, message } = setup();
   harness.setUpdates([]);
-  expect(harness.launchLive(2).status).toBe(0);
+  expect((await harness.runLive(2)).status).toBe(0);
   const path = join(harness.liveRoot, 'proofs.jsonl');
   rmSync(path); mkdirSync(path);
   harness.setUpdates([message(1, 'Can you reply?')]);
   const before = harness.calls().length;
-  const launched = harness.launchLive(3);
+  const launched = (await harness.runLive(3));
   expect(launched.status, launched.stderr).toBe(0);
   expect(launched.stderr).toMatch(/proof log unavailable/u);
   expect(harness.calls().slice(before).filter(call => call.kind === 'send')).toHaveLength(1);
-  const status = JSON.parse(harness.status().stdout);
+  const status = (await statusOf(harness));
   expect(status.proofLog.available).toBe(false);
   expect(status.proofs.every(row => row.posture !== 'healthy')).toBe(true);
   // Restoring the store lets proofs record again; nothing from the failed launch was counted.
   rmSync(path, { recursive: true });
-  expect(harness.launchLive(2).status).toBe(0);
+  expect((await harness.runLive(2)).status).toBe(0);
   expect(readProofs(path).proofs[0].plan).toBe('startup');
 }, 90000);
 
-it('records a stop live proof only after an observed latch with nothing sent past it', () => {
+it('records a stop live proof only after an observed latch with nothing sent past it', async () => {
   const { harness } = setup();
   harness.setUpdates([]);
-  expect(harness.launchLive(2).status).toBe(0);
+  expect((await harness.runLive(2)).status).toBe(0);
   const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key };
-  const run = (...rest) => spawnSync(process.execPath, [...args, ...rest, '--root', harness.liveRoot],
-    { cwd: process.cwd(), env, encoding: 'utf8', timeout: 20000 });
-  const cursor = String(JSON.parse(harness.status().stdout).cursor);
-  expect(run('record-live-proof', '--capability', 'preview.stop', '--update', cursor).status).toBe(1);
-  expect(run('stop').status).toBe(0);
-  expect(run('record-live-proof', '--capability', 'preview.stop', '--update', String(Number(cursor) + 1)).status).toBe(1);
-  const recorded = run('record-live-proof', '--capability', 'preview.stop', '--update', cursor);
+  const run = (...rest) => command([...args, ...rest, '--root', harness.liveRoot], env);
+  const cursor = String((await statusOf(harness)).cursor);
+  expect((await run('record-live-proof', '--capability', 'preview.stop', '--update', cursor)).status).toBe(1);
+  expect((await run('stop')).status).toBe(0);
+  expect((await run('record-live-proof', '--capability', 'preview.stop', '--update', String(Number(cursor) + 1))).status).toBe(1);
+  const recorded = await run('record-live-proof', '--capability', 'preview.stop', '--update', cursor);
   expect(recorded.status, recorded.stderr).toBe(0);
   expect(JSON.parse(recorded.stdout)).toMatchObject({ fact: 'outcome-observed', messageId: null, capability: 'preview.stop' });
-  expect(JSON.parse(harness.status().stdout).capabilities.find(row => row.id === 'preview.stop').outcomes[0]).toMatchObject({ posture: 'unavailable', confirmed: true });
+  expect((await statusOf(harness)).capabilities.find(row => row.id === 'preview.stop').outcomes[0]).toMatchObject({ posture: 'unavailable', confirmed: true });
 }, 60000);
 
 it("records a requested action's live proof by the operator's request message, bound to the sent due turn that answered it", async () => {
@@ -210,11 +219,11 @@ it("records a requested action's live proof by the operator's request message, b
     appendProof(join(root, 'proofs.jsonl'), { v: 1, plan: 'startup', planVersion: 'p', generation: 'g1', startedAt: start - 20, completedAt: start - 20,
       disposition: 'passed', observed: { stepCheck: false, agentState: false, 'version:preview.reminders': 'v1' }, detail: '', observedAt: null, capture: null });
     const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key };
-    const record = update => spawnSync(process.execPath, [...args, 'record-live-proof', '--root', root, '--capability', 'preview.reminders',
-      '--update', String(update)], { cwd: process.cwd(), env, encoding: 'utf8', timeout: 20000 });
-    expect(record(due.update).status).toBe(1); // the due turn is not an operator request message
-    expect(record(1.1).status).toBe(1); // off the journal's update grid
-    const recorded = record(1);
+    const record = update => command([...args, 'record-live-proof', '--root', root, '--capability', 'preview.reminders',
+      '--update', String(update)], env);
+    expect((await record(due.update)).status).toBe(1); // the due turn is not an operator request message
+    expect((await record(1.1)).status).toBe(1); // off the journal's update grid
+    const recorded = await record(1);
     expect(recorded.status, recorded.stderr).toBe(0);
     expect(JSON.parse(recorded.stdout)).toMatchObject({ capability: 'preview.reminders', update: 1, messageId: 2, version: 'v1' });
     const log = readProofs(join(root, 'proofs.jsonl'));

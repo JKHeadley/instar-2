@@ -9,7 +9,10 @@ export function parseWorktreeList(text) {
     const head = fields.find(field => field.startsWith('HEAD '))?.slice(5);
     if (!path?.startsWith('/') || !/^[a-f0-9]{40,64}$/u.test(head ?? '')
       || fields.includes('bare') || fields.some(field => field.startsWith('prunable'))) return null;
-    rows.push({ path, head });
+    // The short branch name, or null when detached. The clean-worktree reaper keeps a detached checkout.
+    const ref = fields.find(field => field.startsWith('branch '))?.slice(7);
+    const branch = ref === undefined || fields.includes('detached') ? null : ref.replace(/^refs\/heads\//u, '');
+    rows.push({ path, head, branch });
   }
   return new Set(rows.map(row => row.path)).size === rows.length ? rows : null;
 }
@@ -28,7 +31,7 @@ export function createWorktreeInventory(ports) {
         const status = await ports.query('git', ['--no-optional-locks', '-C', row.path, 'status', '--porcelain=v1', '-z', '--untracked-files=all']);
         if (status === null) { complete = false; continue; }
         const observation = await ports.observe(row.path);
-        worktrees.push({ ...row, dirty: status.length > 0, owner: observation?.owner ?? 'unknown',
+        worktrees.push({ path: row.path, head: row.head, dirty: status.length > 0, owner: observation?.owner ?? 'unknown',
           activity: observation?.activity ?? null });
       }
       // Re-enumeration refuses a path/head change during the per-checkout reads.

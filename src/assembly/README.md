@@ -49,6 +49,19 @@ and receipt path. Tool-worker checkpoints use the recorded model output, verifie
 process-allocation return and settled tool/child trace from that same journal, including
 after compaction. This adds no watcher, store, send authority or cross-machine lease.
 
+A helper (a subagent the delegated session starts) is a nested child edge recorded by the
+admission checkpoint before it starts. Its failure returns to the parent (carryover row 16,
+the 1.x HelperWatchdog/SubagentTracker outcome): a harness failure completion naming the
+exact call closes the edge `failed` with the carried 1.x signal classification only (never
+the error text), so the parent's own completed result is not held uncertain over a helper
+it already saw fail; a helper whose harness never reports back stays open and is closed
+`uncertain` before its parent's close, which names it, and collection after a restart
+returns that diagnosis with no automatic replay. The journal refuses a second close for the
+same edge and a re-opened edge id, so a late or duplicate result cannot re-settle a helper
+or re-charge its excess. A registered child still open one silence window past its own
+recorded deadline is stale (the 1.x 60-minute cap as a recorded fact): it is reported
+`action-needed` and no longer holds its parent in a wait; nothing is killed or retried.
+
 ## Continuing conversation session
 
 The conversation prompt keeps each prepared grounding packet once, with host clock and unresolved references separate. Ordinary questions retain their separate context; a batch preserves each complete envelope and arrival order.
@@ -261,12 +274,27 @@ backpressure at 64 pending inputs, 4096 retained inputs and 1 MiB per input, pre
 all already accepted records. A queued input remains queued after a proved non-dispatch;
 a dispatched but unresolved input becomes uncertain on restart and is never replayed.
 A repeated exact input returns its recorded outcome; conflicting bytes refuse.
+Terminal startup preserves the 1.x 90-second fresh and 120-second resume waits.
+A resumed process that dies before input gets one fresh start with complete agent-owned
+context through the existing continuation path. Live menus, uncertain retirement, stop,
+missing context and failure of that fresh start refuse; restoration still uses the
+original admission and model allowance. Explicit readiness overrides remain bounded
+by the host admission lifetime; structured protocol RPC keeps its own request timeout.
 Waiting messages use the largest arrival-order prefix whose serialized delivery fits
 1 MiB; the suffix stays queued and a lone message uses its ordinary prompt. On restart,
-a completed batch may be recovered from its correlated adapter receipt and the existing
-journal's process and completed child edges, even when the old admission gate is gone.
+a completed single input or batch may be recovered from its correlated adapter receipt
+and the existing journal's process and completed child edges, even when the old
+admission gate is gone. Recovery checks the exact worker, original delivery bytes,
+nonempty reply and completed turn before atomically recording results and cursors.
 Missing or invalid evidence retires the old worker and records uncertainty without
-replaying its tools or preventing later messages from draining.
+replaying its tools or preventing later messages from draining. After confirmed retirement,
+an adapter may positively prove a dispatching input never crossed its send boundary.
+Only that input returns to the queue, with its original envelope and batch membership,
+at most three existing dispatch attempts and bounded backoff. A new worker still passes
+normal admission using the original parent deadline and remaining allowance. Absent or
+ambiguous evidence, accepted input, failed retirement and exhausted attempts never
+authorize this retry. Terminal drivers prove a prepared, never-started send; protocol
+workers require a bound submission and a complete capture with no turn request.
 
 Each OS process gets a fresh claim and incarnation, its own 64-input/one-hour ceiling,
 and only the unused portion of the original 128-call reservation. Every process deadline
@@ -394,6 +422,36 @@ result delivery. No new store, watcher, model call, commit, cleanup or send
 path is introduced. The automated test uses real temporary git state and
 recorded journal shapes; live deployment and user delivery are proved by the
 desk's proof-room run, not asserted by the library test.
+
+Clean-worktree reclamation (carryover row 86; docs/18 §7 P14-NF-66) is the inverse
+population: `src/assembly/worktree-reaper.ts` ports the 1.x `AgentWorktreeReaper`
+classifier, pass, per-path breaker, action-time recheck, fail-visible enumeration and
+one-time initial pass, and `scripts/worktree-reaper-git.mjs` ports `agentWorktreeGit`
+(residue-aware status, patch-equivalence and exact-head merged-PR evidence, locks,
+build marker, non-forced `git worktree remove`) and the enumeration-failure history
+store, over the same read-only `query`, `exists`, `observe`, `census` and
+`ownership` ports as the census above plus one separate `mutate` port. A checkout
+is reap-eligible only when its owner is absent, no session or index lock or
+build marker is present, no live process from a complete fresh same-machine
+census works inside it, its ownership join resolves every live process as a
+non-owner, its activity coverage spans the quiet window with no activity inside
+it, it is on a branch, its status is empty, and its head is merged. Dirty,
+unmerged, detached, in-use, fresh, residue-only and every unreadable, partial,
+stale or foreign reading keep the checkout under a named reason. Staleness is a
+gate, never a reason. Immediately before removal the same classifier reruns on a
+fresh single-checkout observation and the branch and head must be unchanged; any
+difference keeps it. Removal is the non-forced form only, so git itself refuses a
+checkout with any change; a refusal stays a typed refusal, feeds the per-path
+breaker, and is never read as a removal. The reaper ships disabled and dry-run
+with a bounded removal count per pass. It owns no timer, store or process: the
+composition binds its clock and stop beside the adapter, asks `due(now)` on its
+own bounded cycle, runs `reap()` and reads `snapshot()`, where a failed or
+partial enumeration reports `reclaimable: null`, never zero. The installed-path
+test removes exactly the merged, clean, unused, quiet checkout of a real
+repository and keeps every other one with its bytes. The typed Eight/Ten
+`git-mutation` effect, Part Six restart-surviving due and breaker pressure, and
+the production composition are not landed: until they are, the `mutate` port is
+the desk's to bind and the shipped default removes nothing.
 
 While a continuing conversation is answering an admitted operator message, its live adapter
 observations feed the host's current tool-admission projection. The journal may send one short

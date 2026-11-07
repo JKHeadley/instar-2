@@ -50,7 +50,7 @@
       "holdsAgentMemory": "no",
       "machineScope": {
         "kind": "machine-local",
-        "reason": "Rule 113 and Rule 60: the delegated session's working scope on this machine: one sparse disk image beside the runner root, mounted at the scope and kept across steps so a step's work persists for the next; it grows only within its fixed size (the volume refuses writes past it), and nothing on it is shared, replicated or read as agent memory: the journal's session-work rows are the durable record."
+        "reason": "Rule 113 and Rule 60: the delegated session's working scope on this machine: one sparse disk image beside the runner root, mounted at the scope and kept across steps so a step's work persists for the next; it grows only in whole increments up to a fixed host bound, and only when full and unheld at a step boundary (the volume refuses writes past its current size), and nothing on it is shared, replicated or read as agent memory: the journal's session-work rows are the durable record."
       },
       "agreesWith": []
     },

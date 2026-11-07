@@ -5,7 +5,7 @@
  * This file: the floors (a turn in progress, the stop, a machine without history, half-declared flags).
  * D1(a): a reply waits until the other machine acknowledged its record; it is never sent on local durability. */
 import { expect, it } from 'vitest';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { REPLY_ACKNOWLEDGEMENT } from './journal.js';
@@ -53,10 +53,20 @@ it('the peer is lost in the middle of a turn: the next model call and the send b
   await t.stop(back); await t.stop(studio);
 }, 240000);
 
-it('the stop floor on two machines: a stop latched on one machine leaves the other unable to spend or send, and the stopped one never returns as a peer', async () => {
-  const t = await twoMachines();
+it.each([0, 4500])('the stop floor on two machines: a stop latched on one machine leaves the other unable to spend or send, and the stopped one never returns as a peer (%i ms poll stall)', async stallMs => {
+  // Reuse the shipped 30s authority term (train-175 timing repair 42c0952d4).
+  // The former 6s fixture term left only 4s locally, conflating slow startup/polling
+  // with the explicit operator stop this test is intended to exercise.
+  const t = await twoMachines(30000);
+  const barrier = join(t.world.directory, 'hold-poll-studio');
+  if (stallMs) writeFileSync(barrier, 'hold');
   const studio = t.start('studio', ['--journal-lineage', 'seed']);
   await until('the seeded machine serves', () => studio.output.stderr.includes('owner: epoch 1'));
+  if (stallMs) {
+    await until('the owner enters the sleeping poll barrier', () => existsSync(`${barrier}.entered`));
+    await pause(stallMs);
+    rmSync(barrier);
+  }
   const laptop = t.start('laptop');
   await until('the second machine stands by', () => laptop.output.stderr.includes('standby: held by studio'));
   t.harness.setUpdates([message(t.world, 1, 'What is the marker? Juniper.')]);

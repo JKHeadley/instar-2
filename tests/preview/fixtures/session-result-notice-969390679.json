@@ -1,0 +1,93 @@
+{
+  "provenance": "Read-only exact live b580 journal replay projection; fields selected, not raw encrypted frame bytes. Missing keys are absent in the real projection. No stub result.",
+  "target": {
+    "id": "telegram:8820318295:update:969390679",
+    "update": 969390679,
+    "at": 1793893230685,
+    "modelState": "uncertain",
+    "noticeClass": "unknown-answer",
+    "intent": "Earlier conversation up to #969390678 is now summarized for me; your previous message (#969390678, 2026-11-04 19:32 PST) was answered. The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.",
+    "sent": 756,
+    "sentAt": 1793897189976,
+    "heldNoticeIntent": "I got your message.",
+    "heldNoticeSent": 755,
+    "heldNoticeSentAt": 1793893251237
+  },
+  "neighbors": [
+    {
+      "id": "telegram:8820318295:update:969390673",
+      "update": 969390673,
+      "at": 1793806728910,
+      "modelState": "uncertain",
+      "noticeClass": "unknown-answer",
+      "intent": "The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.",
+      "sent": 744,
+      "sentAt": 1793807136766,
+      "heldNoticeIntent": "I got your message.",
+      "heldNoticeSent": 743,
+      "heldNoticeSentAt": 1793806738756
+    },
+    {
+      "id": "telegram:8820318295:update:969390674",
+      "update": 969390674,
+      "at": 1793807228304,
+      "modelState": "uncertain",
+      "noticeClass": "unknown-answer",
+      "intent": "The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.",
+      "sent": 746,
+      "sentAt": 1793807430990,
+      "heldNoticeIntent": "I got your message.",
+      "heldNoticeSent": 745,
+      "heldNoticeSentAt": 1793807237065
+    },
+    {
+      "id": "telegram:8820318295:update:969390675",
+      "update": 969390675,
+      "at": 1793808762581,
+      "modelState": "complete",
+      "answer": "There's nothing left to repair. PR #2671 was already merged before any of this morning's requests arrived, so I pushed nothing and made no changes. I checked just now with gh as EchoOfDawn.\n\nPR: https://github.com/JKHeadley/instar/pull/2671\n- State: MERGED by EchoOfDawn at 2026-11-03 15:13 PST (23:13:06 UTC). Merge commit 16225ddf2348b972ecb95548cc64f53e85366dfa.\n- Issue #2282 closed as completed one second later.\n- Final head commit: fe6a5be134129355442db01f945f6a90ece63b5d.\n\nThe branch has 3 commits:\n- e55fe8d7: my original fix.\n- 5bca1a1e (22:24 UTC): \"docs(auto-updater): release note and side-effects review for #2282\".\n- fe6a5be1 (22:46 UTC): \"docs(auto-updater): note isNewerVersion mirrors UpdateChecker.isNewer\".\n\nThose later commits already contain everything you asked for:\n- The release fragment: upgrades/next/reconcile-last-applied-version.md.\n- Side-effects and ELI16 notes under upgrades/side-effects/.\n- Decision and trace records under .instar/.\n- The docs text that fixes Docs Coverage (the PR body says the check now passes at class 55%).\n- The PR body was rewritten too. It now opens with a plain-language ELI16 section.\n\nThey were authored as EchoOfDawn. I don't have a record of which session made them, so I can't say it was me.\n\nChecks on the final commit:\n- 26 passed.\n- 1 skipped: Contract Tests (Live API).\n- 1 still shows pending: instar/local-verify. The PR merged with it in that state.\n- None failed. So there's no red CI left to fix.\n\nMy local working copy (/private/tmp/its-19af04d2834f/instar-1x) is unchanged. It's on main, and the old uncommitted #2282 and #2190 draft edits are still sitting there. Both are now redundant because both PRs are merged. I left them alone; tell me if you want them cleaned up.\n\nThe model login reached its configured usage threshold. I switched to the next approved login for this runner.",
+      "intent": "There's nothing left to repair. PR #2671 was already merged before any of this morning's requests arrived, so I pushed nothing and made no changes. I checked just now with gh as EchoOfDawn.\n\nPR: https://github.com/JKHeadley/instar/pull/2671\n- State: MERGED by EchoOfDawn at 2026-11-03 15:13 PST (23:13:06 UTC). Merge commit 16225ddf2348b972ecb95548cc64f53e85366dfa.\n- Issue #2282 closed as completed one second later.\n- Final head commit: fe6a5be134129355442db01f945f6a90ece63b5d.\n\nThe branch has 3 commits:\n- e55fe8d7: my original fix.\n- 5bca1a1e (22:24 UTC): \"docs(auto-updater): release note and side-effects review for #2282\".\n- fe6a5be1 (22:46 UTC): \"docs(auto-updater): note isNewerVersion mirrors UpdateChecker.isNewer\".\n\nThose later commits already contain everything you asked for:\n- The release fragment: upgrades/next/reconcile-last-applied-version.md.\n- Side-effects and ELI16 notes under upgrades/side-effects/.\n- Decision and trace records under .instar/.\n- The docs text that fixes Docs Coverage (the PR body says the check now passes at class 55%).\n- The PR body was rewritten too. It now opens with a plain-language ELI16 section.\n\nThey were authored as EchoOfDawn. I don't have a record of which session made them, so I can't say it was me.\n\nChecks on the final commit:\n- 26 passed.\n- 1 skipped: Contract Tests (Live API).\n- 1 still shows pending: instar/local-verify. The PR merged with it in that state.\n- None failed. So there's no red CI left to fix.\n\nMy local working copy (/private/tmp/its-19af04d2834f/instar-1x) is unchanged. It's on main, and the old uncommitted #2282 and #2190 draft edits are still sitting there. Both are now redundant because both PRs are merged. I left them alone; tell me if you want them cleaned up.\n\nThe model login reached its configured usage threshold. I switched to the next approved login for this runner.",
+      "sent": 748,
+      "sentAt": 1793808993480,
+      "heldNoticeIntent": "I got your message.",
+      "heldNoticeSent": 747,
+      "heldNoticeSentAt": 1793808775396
+    },
+    {
+      "id": "telegram:8820318295:update:969390676",
+      "update": 969390676,
+      "at": 1793822046155,
+      "modelState": "complete",
+      "answer": "#2243 was still a live problem, so I fixed both parts together and opened a PR: https://github.com/JKHeadley/instar/pull/2750 (branch fix/2243-threadline-mcp-publish-guard, commit 8d070fb1e). CI started a minute ago and every repo check was still pending when I wrote this, so I can't tell you yet whether it's green.\n\nWhat I found on current main (0aa1391fd):\n- Smoke test can never pass: the packed-package step still runs `pair status` and expects a pairing message. That command was removed in 0.5.1, and the package no longer reads any command-line arguments at all. I ran `pair status` against a fresh build and it just starts the server.\n- Surprise releases: the publish job still bumped the version on its own (`npm version patch`) whenever main matched npm, published, and pushed the bump to main. npm is at 0.6.1, so fixing the test alone would have shipped an unplanned 0.6.2 on the next merge.\n\nThe fix (workflow file only):\n- The smoke step now checks that the installed package is the version the repo builds.\n- It publishes only when package.json is strictly newer than npm. Equal or older skips with a notice.\n- The automatic bump and the push to main are gone.\n- An npm 404 counts as \"not published yet\". Any other registry error now fails the step instead of guessing.\n- Only source, package.json, the lockfile, tsconfig or the workflow file trigger a run now.\n\nChecks I ran locally:\n- New test file tests/unit/publish-threadline-mcp-workflow.test.ts has 10 tests. It runs the workflow's own version-check script against a fake npm. With the main version of the workflow swapped in, all 10 failed; with the fix, all 10 pass. The existing ci-workflow-concurrency test still passes.\n- I built threadline-mcp and ran the test job's two smoke steps exactly as written in the new file; both pass.\n- I ran the real version check against live npm: 0.6.1 equals npm's version, so publish=false with a notice.\n- The repo's destructive-op lint is clean on the new test.\n\nWhat I didn't run, and why:\n- The full repo test suite. The scratch disk was full (about 2 GB total), so I worked in a partial checkout. The test runner's setup builds the whole project, so I ran the new test with a minimal config instead.\n- The local git hooks. That partial checkout has no .husky folder, so they never ran on the commit.\n- To free space I removed my two old worktrees for #2190 and #2282. Both were clean and their PRs (#2641 and #2671) are merged. Their branches are still there.\n\nWhat to expect after merge:\n- The PR includes the release note (internal-only), the side-effects review and the plain-language ELI16 text that the repo gates ask for.\n- Merging will start one run of this workflow. The test job should pass and publishing should be skipped.\n- To release 0.6.2 later, bump the version in packages/threadline-mcp/package.json in a PR.\n\nThe model login reached its configured usage threshold. I switched to the next approved login for this runner.",
+      "intent": "#2243 was still a live problem, so I fixed both parts together and opened a PR: https://github.com/JKHeadley/instar/pull/2750 (branch fix/2243-threadline-mcp-publish-guard, commit 8d070fb1e). CI started a minute ago and every repo check was still pending when I wrote this, so I can't tell you yet whether it's green.\n\nWhat I found on current main (0aa1391fd):\n- Smoke test can never pass: the packed-package step still runs `pair status` and expects a pairing message. That command was removed in 0.5.1, and the package no longer reads any command-line arguments at all. I ran `pair status` against a fresh build and it just starts the server.\n- Surprise releases: the publish job still bumped the version on its own (`npm version patch`) whenever main matched npm, published, and pushed the bump to main. npm is at 0.6.1, so fixing the test alone would have shipped an unplanned 0.6.2 on the next merge.\n\nThe fix (workflow file only):\n- The smoke step now checks that the installed package is the version the repo builds.\n- It publishes only when package.json is strictly newer than npm. Equal or older skips with a notice.\n- The automatic bump and the push to main are gone.\n- An npm 404 counts as \"not published yet\". Any other registry error now fails the step instead of guessing.\n- Only source, package.json, the lockfile, tsconfig or the workflow file trigger a run now.\n\nChecks I ran locally:\n- New test file tests/unit/publish-threadline-mcp-workflow.test.ts has 10 tests. It runs the workflow's own version-check script against a fake npm. With the main version of the workflow swapped in, all 10 failed; with the fix, all 10 pass. The existing ci-workflow-concurrency test still passes.\n- I built threadline-mcp and ran the test job's two smoke steps exactly as written in the new file; both pass.\n- I ran the real version check against live npm: 0.6.1 equals npm's version, so publish=false with a notice.\n- The repo's destructive-op lint is clean on the new test.\n\nWhat I didn't run, and why:\n- The full repo test suite. The scratch disk was full (about 2 GB total), so I worked in a partial checkout. The test runner's setup builds the whole project, so I ran the new test with a minimal config instead.\n- The local git hooks. That partial checkout has no .husky folder, so they never ran on the commit.\n- To free space I removed my two old worktrees for #2190 and #2282. Both were clean and their PRs (#2641 and #2671) are merged. Their branches are still there.\n\nWhat to expect after merge:\n- The PR includes the release note (internal-only), the side-effects review and the plain-language ELI16 text that the repo gates ask for.\n- Merging will start one run of this workflow. The test job should pass and publishing should be skipped.\n- To release 0.6.2 later, bump the version in packages/threadline-mcp/package.json in a PR.\n\nThe model login reached its configured usage threshold. I switched to the next approved login for this runner.",
+      "sent": 750,
+      "sentAt": 1793822654191
+    },
+    {
+      "id": "telegram:8820318295:update:969390677",
+      "update": 969390677,
+      "at": 1793849366154,
+      "modelState": "complete",
+      "answer": "The check didn't get a read. The tool refused, so I have no page data to report.\n\nWhat I ran: one call to mcp__owner_github__observe with {\"pages\":[\"account-profile\",\"account-repositories\"]}. It returned this error:\n\n\"owner read scope or current grant unavailable\"\n\nSo for both pages:\n- Observed URL: none returned\n- Title: none returned\n- Account: none returned\n- observedAt: none returned\n\nNeither read happened, so I can't confirm a signed-in account from either page, or that both pages show the same one. The error says the owner read grant, or the grant for this request, isn't available to this session right now. It doesn't say the GitHub session has signed out. For comparison, last night's single-page call to the same tool (account-profile only) worked and showed EchoOfDawn.\n\nI made only that one call. I didn't retry, didn't use another browser path as a substitute, and changed nothing in the account, repositories or browser profile.\n\nTo make this check work, the two-page read (account-profile and account-repositories) needs to be covered by a recorded read grant for this session. Then the same call can be run again.\n\nThe model login reached its configured usage threshold. I switched to the next approved login for this runner.",
+      "intent": "The check didn't get a read. The tool refused, so I have no page data to report.\n\nWhat I ran: one call to mcp__owner_github__observe with {\"pages\":[\"account-profile\",\"account-repositories\"]}. It returned this error:\n\n\"owner read scope or current grant unavailable\"\n\nSo for both pages:\n- Observed URL: none returned\n- Title: none returned\n- Account: none returned\n- observedAt: none returned\n\nNeither read happened, so I can't confirm a signed-in account from either page, or that both pages show the same one. The error says the owner read grant, or the grant for this request, isn't available to this session right now. It doesn't say the GitHub session has signed out. For comparison, last night's single-page call to the same tool (account-profile only) worked and showed EchoOfDawn.\n\nI made only that one call. I didn't retry, didn't use another browser path as a substitute, and changed nothing in the account, repositories or browser profile.\n\nTo make this check work, the two-page read (account-profile and account-repositories) needs to be covered by a recorded read grant for this session. Then the same call can be run again.\n\nThe model login reached its configured usage threshold. I switched to the next approved login for this runner.",
+      "sent": 752,
+      "sentAt": 1793849439970,
+      "heldNoticeIntent": "I got your message.",
+      "heldNoticeSent": 751,
+      "heldNoticeSentAt": 1793849378327
+    },
+    {
+      "id": "telegram:8820318295:update:969390678",
+      "update": 969390678,
+      "at": 1793849549431,
+      "modelState": "complete",
+      "answer": "This time the check worked: both reads show the same signed-in account, EchoOfDawn.\n\nI made one call to mcp__owner_github__observe with pages [account-profile, account-repositories]. It returned overall status observed, with no refusal.\n\n1. account-profile\n- URL: https://github.com/settings/profile\n- Title: \"Your profile\"\n- Account: EchoOfDawn\n- observedAt: 1793849767917, which is 2026-11-04 19:36:07.917 PST (03:36:07.917 UTC on 2026-11-05)\n- Not truncated\n\n2. account-repositories\n- URL: https://github.com/EchoOfDawn?tab=repositories\n- Title: \"Your Repositories\"\n- Account: EchoOfDawn\n- observedAt: 1793849770213, which is 2026-11-04 19:36:10.213 PST (03:36:10.213 UTC on 2026-11-05)\n- Not truncated\n\nSame signed-in account on both reads: yes, EchoOfDawn, about 2.3 seconds apart.\n\nThe 19:29 refusal (\"owner read scope or current grant unavailable\") did not happen again. As you asked, I ran the call once and didn't retry it. I changed nothing in the account, repositories or browser profile.\n\nThe model login reached its configured usage threshold. I switched to the next approved login for this runner.",
+      "intent": "Earlier conversation up to #969390677 is now summarized for me; your previous message (#969390677, 2026-11-04 19:29 PST) was answered. This time the check worked: both reads show the same signed-in account, EchoOfDawn.\n\nI made one call to mcp__owner_github__observe with pages [account-profile, account-repositories]. It returned overall status observed, with no refusal.\n\n1. account-profile\n- URL: https://github.com/settings/profile\n- Title: \"Your profile\"\n- Account: EchoOfDawn\n- observedAt: 1793849767917, which is 2026-11-04 19:36:07.917 PST (03:36:07.917 UTC on 2026-11-05)\n- Not truncated\n\n2. account-repositories\n- URL: https://github.com/EchoOfDawn?tab=repositories\n- Title: \"Your Repositories\"\n- Account: EchoOfDawn\n- observedAt: 1793849770213, which is 2026-11-04 19:36:10.213 PST (03:36:10.213 UTC on 2026-11-05)\n- Not truncated\n\nSame signed-in account on both reads: yes, EchoOfDawn, about 2.3 seconds apart.\n\nThe 19:29 refusal (\"owner read scope or current grant unavailable\") did not happen again. As you asked, I ran the call once and didn't retry it. I changed nothing in the account, repositories or browser profile.\n\nThe model login reached its configured usage threshold. I switched to the next approved login for this runner.",
+      "sent": 754,
+      "sentAt": 1793849833152,
+      "heldNoticeIntent": "I got your message.",
+      "heldNoticeSent": 753,
+      "heldNoticeSentAt": 1793849746443
+    }
+  ]
+}

@@ -163,6 +163,45 @@ it('a delegation whose return is interrupted keeps its open edge: the obligation
   expect((await hook(s.state, call('Agent', { prompt: 'z' }, 'toolu_after'))).decision).toBe('deny');
 });
 
+it('a harness-reported helper failure closes its edge failed with the carried 1.x signal; other failures and duplicates settle nothing (row 16)', async () => {
+  const s = await step();
+  const post = (input: object) => hook(s.state, JSON.stringify(input), 'post');
+  const closes = () => s.rows.filter(row => row.type === 'SessionWorkEdgeClose');
+  expect((await hook(s.state, call('Agent', { prompt: 'x' }, 'toolu_fail'))).decision).toBe('allow');
+  expect((await hook(s.state, call('Agent', { prompt: 'y' }, 'toolu_live'))).decision).toBe('allow');
+  // The recorded live failures (fixtures/progress-stale-2026-10-16/failed-completions.json, three Bash completions with
+  // isError) replay in the documented failure envelope: none is a delegation, so none touches an edge.
+  const captured = JSON.parse(readFileSync(join(__dirname, 'fixtures/progress-stale-2026-10-16/failed-completions.json'), 'utf8')) as {
+    failures: { use: { id: string; name: string; input: object }; completion: { result: string } }[] };
+  expect(captured.failures.length).toBeGreaterThan(0);
+  for (const { use, completion } of captured.failures)
+    expect((await post({ hook_event_name: 'PostToolUseFailure', tool_use_id: use.id, tool_name: use.name, tool_input: use.input, error: completion.result })).status).toBe(0);
+  expect(closes()).toEqual([]);
+  expect(s.gate.state(s.claim).openDelegations).toHaveLength(2);
+  // The helper's own failure completion names its exact call: its edge closes failed with the 1.x-classified reason and
+  // without the failure text (which stays with the parent that received it); the other helper stays open.
+  expect((await post({ hook_event_name: 'PostToolUseFailure', tool_use_id: 'toolu_fail', tool_name: 'Agent', tool_input: { prompt: 'x' },
+    error: 'Error: 429 rate limit — please retry later (token sk-DUMMY-SECRET-0001)' })).status).toBe(0);
+  expect(closes()).toEqual([expect.objectContaining({ id: `${s.edge.id}:delegated:toolu_fail:close`, edge: `${s.edge.id}:delegated:toolu_fail`,
+    child: 'delegated:toolu_fail', state: 'failed', evidence: 'tool-failure:toolu_fail', resultBytes: null,
+    detail: "the harness reported this delegated agent's invocation failed before a result returned (signal: rate-limit)" })]);
+  expect(JSON.stringify(s.rows)).not.toContain('DUMMY-SECRET');
+  expect(s.gate.state(s.claim).openDelegations.map((edge: SessionWorkEdge) => edge.child)).toEqual(['delegated:toolu_live']);
+  // Duplicate-result refusal: a second failure or a late success for the same call closes nothing more.
+  await post({ hook_event_name: 'PostToolUseFailure', tool_use_id: 'toolu_fail', tool_name: 'Agent', tool_input: { prompt: 'x' }, error: 'again' });
+  await post({ tool_name: 'Agent', tool_use_id: 'toolu_fail', tool_input: { prompt: 'x' }, tool_response: { content: 'late result' } });
+  expect(closes()).toHaveLength(1);
+  // The parent closes the claim: a late failure report is refused there, and the live helper is still reported open for
+  // the parent to settle as uncertain.
+  expect(s.gate.close(s.claim).openDelegations.map((edge: SessionWorkEdge) => edge.child)).toEqual(['delegated:toolu_live']);
+  await post({ hook_event_name: 'PostToolUseFailure', tool_use_id: 'toolu_live', tool_name: 'Agent', tool_input: { prompt: 'y' }, error: 'Request timed out after 60s' });
+  expect(closes()).toHaveLength(1);
+  expect(s.gate.state(s.claim).openDelegations).toHaveLength(1);
+  // The hook's own durable record keeps every failure completion, the admission trace's evidence of each stop.
+  expect(recordOf(s.state)).toContain('"phase":"post-failure","id":"toolu_fail"');
+  expect(recordOf(s.state)).toContain('"phase":"post-failure","id":"toolu_live"');
+});
+
 it('an asynchronous spawn acknowledgement is not completion: the edge stays open until the child\'s result', async () => {
   const spawned = JSON.parse(readFileSync(join(CAPABILITIES, 'hook-input.jsonl'), 'utf8').split('\n')
     .find(line => line.includes('"PostToolUse"') && line.includes('collaborationspawn_agent'))!);

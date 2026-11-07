@@ -16,6 +16,8 @@ Two runs recorded unhandled runner errors `[vitest-worker]: Timeout calling "onT
 
 **Second cause found and repaired (2026-09-28, cint-5):** the cint-5 gate at `ed66cfcb` passed every test but exited 1 on one `onTaskUpdate` timeout. A full traced run (worker-side RPC trace, per-file) showed task-update replies left unanswered while a single case ran blocking child processes: `tests/e2e/transport-loop-a1.test.ts` 65 s (24 `spawnSync` vitest children in one case; that run's error), `tests/e2e/register.test.ts` 41 s (the synchronous P3-P5 CLI case), `tests/e2e/harness-adapters-round12-regression.test.ts` 37 s, `tests/e2e/harness-adapters-round9-regression.test.ts` 26 s, and `tests/conversation/telegram.round24.integration.test.ts` 28 s (a synchronous 21-case matrix). The four spawning files now use one async child helper, `tests/e2e/async-child.ts` (spawnSync's result shape and SIGTERM timeout), and the round24 matrix yields a real event-loop turn per case, as round20 already did. No assertion or timeout changed. Re-traced, the worst unanswered interval in those files is 2.3 s. The remaining blocks under 22 s are mostly module import at file start.
 
+**Train-188 recurrence (2026-11-05):** the supplied `fast-train-188-b0f4776a/fast.log` reports one `onTaskUpdate` timeout alongside a 79-second synchronous case in `tests/e2e/harness-adapters-round7-regression.test.ts`. That case started nineteen `vite-node` children without yielding. This file now awaits the existing `tests/e2e/async-child.ts` runner and uses the shipped TypeScript loader; the nine append cuts and successful control each have their own case, and the poison matrix is split by seed condition. Every crash, uncertainty, stale-write and reconnect assertion remains. Child waits retain their 30-second timeout. The full file passes 14 cases in 36 seconds without an RPC error in the targeted run. This removes an identified starvation source; closure still requires the desk's full run and does not assert that all host-starvation causes are gone.
+
 **Repair and closure:** the owner (1) identifies the starving file or the host condition from the worker trace, (2) confirms the resolved vitest package is the worktree's intended version, not a sibling's, and (3) repairs the cause, for example by an async yield in a long synchronous file, lower worker count or a per-worktree install. Closure needs a full run with zero runner errors under the original conditions. If a later run shows the error again, this record reopens.
 
 **Multi-machine posture:** runner and host are machine-local. This record travels with the repository.
@@ -78,3 +80,78 @@ must use different process ids. Discovery checks compare the actual runner inven
 all tracked test files in unsplit, macOS-only and non-macOS modes. Full-suite qualification
 and repeated real-fixture runs are recorded in the builder's absolute lanes progress record;
 this defect remains open until that evidence establishes zero runner errors.
+
+## train-177 targeted repair, 2026-11-05
+
+The supplied Studio gate at `1cdebb160e9bdc97690fee8043a25e227e4973a7` reports one
+unattributed `onTaskUpdate` timeout. In that run, the round-seven harness adapter
+boundary case took 66,411 ms against its 60,000 ms ceiling while making nineteen
+consecutive blocking child calls (nine cuts, nine readers, one control). This is
+an observed event-loop blocking path beyond the RPC deadline; the excerpt does
+not establish that it caused the unattributed error.
+
+`tests/e2e/harness-adapters-round7-regression.test.ts` now uses the existing
+`async-child.ts` helper throughout, preserving the 30-second child bounds. Each
+independent append cut and the uninterrupted control has its own test; all nine
+cuts, refusal checks, concurrent-reader checks and the twelve poison cases
+remain. The torn-state reconstructions and twelve poison combinations also have
+separate case bounds after the first targeted run exposed their aggregate deadlines.
+No child deadline, worker concurrency or product behavior is changed.
+Targeted verification covers the repaired file, not full-suite closure.
+The defect remains open pending the pipeline's full run with zero runner errors.
+
+## train-181 recurrence, 2026-11-05
+
+The retained gate at b95fc4f6ad08e02d180ab476eb6e744a0ed1e53a reports one
+unattributed `onTaskUpdate` timeout, 11 failing assertions and 9,304 passing tests.
+No worker trace in the supplied bounded excerpt identifies its cause. This repair
+adds an event-loop yield between the integration peer test's twelve synchronous
+receiver restarts and forwards the selected transpile cache to those children.
+That removes a known starvation opportunity, not proof of attribution for this run.
+The defect remains OPEN with the existing desk owner and closure condition: trace
+any recurrence and qualify the final candidate with a full run reporting zero
+runner errors. No test is skipped, quarantined or relabelled; the retained run is RED.
+Only the desk runs that full qualification; targeted passing tests do not close it.
+
+## train-181 READY-gate register recurrence, 2026-11-05
+
+The subsequent eight-file READY run at 995b147a reports two register CLI case
+timeouts and one unattributed onTaskUpdate error (118 passed, two failed;
+797.73s). The bridge case still used synchronous children for four builds and
+two wiring checks; the earlier conversion had not covered it. All six remaining
+CLI/wiring call sites in tests/e2e/register.test.ts now use its existing async
+runNode/runChild path, including the malformed-source matrix. This closes that
+concrete starvation path, without claiming attribution of the untraced RPC error.
+The ten-build defaults case becomes three fresh groups of at most four builds;
+the bridge case becomes four fresh groups of at most two calls. Their 120s
+and 60s case bounds remain unchanged, and every prior assertion is retained.
+A real CLI preload waits for its parent worker to release a file barrier: the
+async path releases it and builds, while the unreleased neighbor refuses before
+the CLI runs. This demonstrates event-loop progress without artificial CPU load.
+The isolated original cases took 82.391s and 30.560s and passed; that rerun does
+not erase the retained READY failure. The existing desk owner and full-run
+closure condition remain in force; no case is quarantined.
+
+The first train-181 affected-file run also retained a 300.015s timeout in the nineteen-build malformed-source matrix. Its holder/deadline, colocated-construct and shape/anchor groups now own fresh fixtures, at most nine builds each, and the same 300s case bound. Async register children explicitly receive the enclosing case timeout, preserving a finite child duration formerly supplied by the synchronous-child wrapper. Neither observation attributes the desk's untraced RPC error to a particular child.
+
+That local run also timed out in the three-call ambient-wiring group at 60.442s. Clean and ambient wiring now each prepare their own committed output and run one wiring check (two CLI calls per group), keeping 60s and both assertions. The committed-clone comparison remains paired within one group.
+
+## train-187 cumulative wiring budget, 2026-11-05
+
+The imported 99db9a096 affected-file run retained one clean-wiring timeout at 60,008ms, with 14 tests passing in 770.58s and no reported RPC error. Both parent-release controls and current-time CLI replay passed. The existing owner 7b78ea242 already repairs the same two-scan fixture budget: its independent review measured valid wiring at 52,387ms and untracked wiring timing out at 60,013ms. Train-187 reuses that 120s cumulative case budget over the four isolated bridge groups, with each build/wiring child explicitly retaining its 60s SIGTERM bound. No assertion, scan, model ability or production latency contract changes. The old red remains and the defect stays OPEN for desk full-run qualification.
+
+## train-192 recurrence, 2026-11-06
+
+The supplied M5 Pro gate for `7ef1ab43fe974d468c72c51dadbb1332993c5344` recorded
+one unattributed `onTaskUpdate` error and a 115,602 ms timeout in the intake owner
+manifest matrix, against its 60,000 ms limit. The same matrix passed unchanged
+in 4,824 ms on WSL with one worker. This does not exonerate the original failure
+or identify the worker responsible for the unattributed error.
+
+The fixture now copies asynchronously, uses the existing bounded async child helper
+for Git, and reads each unique referenced blob from its real fixture commit once.
+The matrix uses the loader's existing `show` port, as the register build does. Each
+manifest still undergoes all owner, path, dependency and hash checks; the timeout
+and assertions are unchanged. This removes repeated blocking Git children inside
+one case without serializing unrelated files or increasing runner deadlines.
+Full-gate qualification remains with the pipeline; this record stays OPEN.
