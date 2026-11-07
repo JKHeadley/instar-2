@@ -2770,6 +2770,7 @@ async function main() {
             }, stop: target => driver.stop(target) };
         },
         io: { readResult: (path, maxBytes) => binding.physical().readResult(path, maxBytes), clearResult: path => binding.physical().clearResult(path),
+          resultWrittenAt: path => binding.physical().resultWrittenAt(path),
           modelCalls: since => binding.physical().modelCalls(framework, project, binding.entry().profile.configDirectory, since), wait: delay,
           prepareAdmission: async (claim, edge) => {
             const identity = binding.harness() ? binding.harness().current() : null;

@@ -11,7 +11,8 @@ export function enforceSessionDeadline(io, name, identity, deadline, now) {
     const journal = io.load();
     const session = journal.sessions.find(row => row.name === name && row.identity === identity);
     if (!session || session.turnDeadline !== deadline || session.closedAt !== null || now < deadline) return null;
-    const closed = io.readInbox(name).some(event => event.kind === 'turn-closed'
+    // A Stop that names running background work leaves the turn open, so it cannot excuse the ceiling.
+    const closed = io.readInbox(name).some(event => event.kind === 'turn-closed' && !(event.background > 0)
       && event.at >= session.turnStartedAt && event.at <= deadline
       && (event.receiptId ? !session.turnReceiptIds?.includes(event.receiptId) : event.at > session.turnStartedAt));
     return closed && !session.rateRecovery ? null : { journal, session };
