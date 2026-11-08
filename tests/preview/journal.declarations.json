@@ -13,7 +13,7 @@
       ],
       "gate": {
         "test": "PREVIEW-CONVERSATION",
-        "deadline": 1794096000000
+        "deadline": 1794268800000
       }
     },
     "profile": {
@@ -50,7 +50,7 @@
       ],
       "gate": {
         "test": "PREVIEW-DURABLE-MEMORY",
-        "deadline": 1794096000000
+        "deadline": 1794268800000
       }
     },
     "profile": {
@@ -84,7 +84,7 @@
       ],
       "gate": {
         "test": "PREVIEW-STATUS-COMMAND",
-        "deadline": 1794096000000
+        "deadline": 1794268800000
       }
     },
     "profile": {
@@ -116,7 +116,7 @@
       ],
       "gate": {
         "test": "PREVIEW-UPCOMING-DATE",
-        "deadline": 1794096000000
+        "deadline": 1794268800000
       }
     },
     "profile": {
@@ -149,7 +149,7 @@
       ],
       "gate": {
         "test": "PREVIEW-REQUESTED-ACTIONS",
-        "deadline": 1794096000000
+        "deadline": 1794268800000
       }
     },
     "profile": {
@@ -186,7 +186,7 @@
       ],
       "gate": {
         "test": "PREVIEW-OWNED-OBLIGATIONS",
-        "deadline": 1794096000000
+        "deadline": 1794268800000
       }
     },
     "profile": {
