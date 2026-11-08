@@ -12,6 +12,9 @@
 //     governed-document versions (Rule 90: a changed governed document adds a new changelog
 //     version and keeps every earlier one byte-identical; any landing commit it names exists).
 //     Only unrelated prompt dispositions on records untouched by this change count as debt.
+//     A record answers only for text it wrote: a Deferral/Skip line an earlier record in its own
+//     range wrote (git blame), or a prompt finding present at its base or validly dispositioned by
+//     such an earlier record, is not demanded again; findings in files the current change touches are.
 //     CHANGE_REVIEW_BASE overrides the remote-reachability boundary for own commits.
 //
 // Authoring:
@@ -41,7 +44,7 @@ import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, re
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { RED_CLASSES, RESIDUE_SEVERITIES, addedLineHits, artifactDecision, isPromptSourceFile, isTestFile, landingVerdict, parseRecord,
+import { PROMPT_DISPOSITIONS, RED_CLASSES, RESIDUE_SEVERITIES, addedLineHits, artifactDecision, isPromptSourceFile, isTestFile, landingVerdict, parseRecord,
   scanPrompts, subjectDigest, suggestTier, validateRecord } from './change-review.mjs';
 import { indexedSections, isGeneratedOutput, isGoverned } from './check-governed-docs.mjs';
 
@@ -99,6 +102,68 @@ function promptSourcesReviewed(entry) {
   const sources = new Set([entry.base, entry.last].flatMap(commit => scanPrompts(
     lines(git('ls-tree', '--name-only', commit, '--', ...candidates)).map(path => ({ path, text: git('show', `${commit}:${path}`) }))).promptSources));
   return candidates.filter(path => sources.has(path));
+}
+// A record answers for the text its own commits wrote. Re-editing an older record moves its last
+// commit, so its base..last range can come to span merges whose inputs carry their own records.
+// Text that an EARLIER record inside this range already covers is that record's to answer: a
+// commit covered by another valid record whose last edit lies strictly inside this range. The
+// earliest covering record has no earlier one, so every line is still answered by some record.
+function earlierRecords(entry, all, required) {
+  return all.filter(x => x !== entry && x.valid && x.last !== entry.last && entry.range.has(x.last) && required.has(x.last));
+}
+// Deferral/Skip hits ("path:line" at the record's last commit) with no row of their own, whose
+// line an earlier record actually answered: blame at the record's last commit names a commit in
+// that earlier record's range, AND the line is carried unchanged from the earlier record's last
+// commit, where it is one of the hits of the earlier record's own checked endpoint diff. Range
+// membership alone is not enough: a line the earlier record's endpoint diff deleted (and a later
+// merge restored) was never checked by it, so it stays on this record.
+const endpointHitsCache = new Map();
+const endpointHits = x => { if (!endpointHitsCache.has(x.path)) endpointHitsCache.set(x.path, addedLineHits(addedLines(x.base, x.last))); return endpointHitsCache.get(x.path); };
+const blameHeaders = out => out.split('\n').map(l => /^([0-9a-f]{40}) (\d+) (\d+)/.exec(l)).filter(Boolean);
+const lineArgs = nos => nos.flatMap(n => ['-L', `${n},${n}`]);
+function inheritedHits(entry, hits, label, earlier) {
+  const answered = new Set(entry.record.all(label).map(row => row.split('|')[0].trim()));
+  const open = hits.filter(h => !answered.has(h));
+  if (!open.length || !earlier.length) return new Set();
+  const byPath = new Map();
+  for (const hit of open) { const at = hit.lastIndexOf(':'); const path = hit.slice(0, at);
+    byPath.set(path, [...(byPath.get(path) ?? []), Number(hit.slice(at + 1))]); }
+  const kind = label === 'Deferral' ? 'deferrals' : 'skips';
+  const inherited = new Set();
+  for (const [path, nos] of byPath) {
+    const out = tryGit('blame', '--porcelain', ...lineArgs(nos), entry.last, '--', path);
+    if (out === null) continue; // unreadable blame: the record keeps the line
+    const candidates = new Map(); // earlier record -> lines (at entry.last) whose writer it covers
+    for (const [, sha, , final] of blameHeaders(out))
+      for (const x of earlier) if (x.range.has(sha)) candidates.set(x, [...(candidates.get(x) ?? []), Number(final)]);
+    for (const [x, finals] of candidates) {
+      const checked = new Set(endpointHits(x)[kind]);
+      // Lines unchanged since x.last are blamed to that boundary, with their line number there.
+      const traced = tryGit('blame', '--porcelain', ...lineArgs(finals), `${x.last}..${entry.last}`, '--', path);
+      if (traced === null) continue; // untraceable: the record keeps the line
+      for (const [, sha, orig, final] of blameHeaders(traced))
+        if (sha === x.last && checked.has(`${path}:${orig}`)) inherited.add(`${path}:${final}`);
+    }
+  }
+  return inherited;
+}
+// A prompt finding is not this record's when it was already present at the record's own base (read
+// by scanning the finding's own files there), or when an earlier record inside this range already
+// carries a valid disposition for it: the carried text keeps that input's disposition.
+const findingAtCache = new Map();
+function findingAt(commit, finding) {
+  const key = `${commit}\0${finding.id}\0${finding.fixtureFile ?? ''}`;
+  if (!findingAtCache.has(key)) {
+    const files = [finding.promptFile, finding.fixtureFile].filter(Boolean).map(path => ({ path, text: tryGit('show', `${commit}:${path}`) }));
+    findingAtCache.set(key, files.every(f => f.text !== null) && scanPrompts(files).findings.some(f => f.id === finding.id));
+  }
+  return findingAtCache.get(key);
+}
+const dispositions = entry => entry.record.all('Prompt finding').map(row => row.split('|').map(part => part.trim()));
+function inheritedFinding(entry, finding, earlier) {
+  return earlier.some(x => dispositions(x).some(([id, disposition, reason]) => id === finding.id
+    && Object.hasOwn(PROMPT_DISPOSITIONS, disposition) && PROMPT_DISPOSITIONS[disposition] && !!reason))
+    || findingAt(entry.base, finding);
 }
 function json(commit, path) { const t = tryGit('show', `${commit}:${path}`); if (t === null) return null; try { return JSON.parse(t); } catch { return undefined; } }
 
@@ -177,13 +242,19 @@ function check({ quiet = false } = {}) {
   for (const r of current.filter(x => x.valid)) {
     if (!r.subject.length) { errors.push(`Rule 74: ${r.path} reviews an empty subject`); continue; }
     const hits = addedLineHits(addedLines(r.base, r.last));
+    // Text an earlier record in this range already covers is not this record's to answer. A
+    // finding in files the current change touches stays owed by the changed records.
+    let earlier = null; const earlierOf = () => (earlier ??= earlierRecords(r, all, required));
+    const lineOwned = label => list => { if (!list.length) return list; const inherited = inheritedHits(r, list, label, earlierOf()); return list.filter(h => !inherited.has(h)); };
+    const answeredFindings = new Set(r.record.all('Prompt finding').map(row => row.split('|')[0].trim()));
+    const inSubject = f => r.subject.includes(f.promptFile) || (f.fixtureFile && r.subject.includes(f.fixtureFile));
     // Rule 109: a frozen record is compared with the candidate's content, whichever record
     // covers the later commits; only an explicit reopen of THIS record voids its round.
     const ctx = { subject: r.subject, digest: digestAt('HEAD', r.subject),
-      promptFindings: scan.findings.filter(f => r.subject.includes(f.promptFile) || (f.fixtureFile && r.subject.includes(f.fixtureFile))
-        || (changed.has(r.path) && touchedFindings.includes(f))),
+      promptFindings: scan.findings.filter(f => (changed.has(r.path) && touchedFindings.includes(f))
+        || (inSubject(f) && !(changed.has(r.path) && !answeredFindings.has(f.id) && inheritedFinding(r, f, earlierOf())))),
       promptSourcesChanged: promptSourcesReviewed(r),
-      deferrals: hits.deferrals, skips: hits.skips, exists: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null,
+      deferrals: lineOwned('Deferral')(hits.deferrals), skips: lineOwned('Skip')(hits.skips), exists: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null,
       read: p => tryGit('show', `${r.last}:${p}`),
       resolvesEvidence: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null || (isAbsolute(p) && existsSync(p) && statSync(p).isFile()),
       readEvidence: p => (isAbsolute(p) ? (existsSync(p) && statSync(p).isFile() ? readFileSync(p, 'utf8') : null) : tryGit('show', `${r.last}:${p}`)) };
