@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:b70ddd7f2e636a78f0cb13de81c7e97c38fa814b66b896bbfeaf94dab4a556ba",
-  "commit": "42edc3ad01d990b72cd670418eb22cf82b28db8b",
+  "generation": "sha256:58523047c6c03a1deb39ef1e79ee38929729045d8b3d6f3c8dc0d378a6cf8888",
+  "commit": "1bb3dfd3dbbba22b7bfb82455f7f01ed9b607956",
   "launchers": {
     "bin/instar2.mjs": [
       {
@@ -9,7 +9,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files under bounded admission; a refused one keeps its message."
       },
       {
         "id": "harness-doorway-parity",
@@ -82,6 +82,14 @@
         "availability": "switched-off",
         "userFacing": true,
         "text": "a saved date within 48 hours can get one short mention in the next reply."
+      },
+      {
+        "id": "preview.attribution-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "switched-off",
+        "userFacing": false,
+        "text": "with --attribution, checks quotes credited in notes."
       },
       {
         "id": "preview.coherence-check",
@@ -147,7 +155,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files under bounded admission; a refused one keeps its message."
       },
       {
         "id": "harness-doorway-parity",
@@ -220,6 +228,14 @@
         "availability": "not-loaded",
         "userFacing": true,
         "text": "a saved date within 48 hours can get one short mention in the next reply."
+      },
+      {
+        "id": "preview.attribution-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "with --attribution, checks quotes credited in notes."
       },
       {
         "id": "preview.coherence-check",
@@ -285,7 +301,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files under bounded admission; a refused one keeps its message."
       },
       {
         "id": "harness-doorway-parity",
@@ -358,6 +374,14 @@
         "availability": "not-loaded",
         "userFacing": true,
         "text": "a saved date within 48 hours can get one short mention in the next reply."
+      },
+      {
+        "id": "preview.attribution-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "with --attribution, checks quotes credited in notes."
       },
       {
         "id": "preview.coherence-check",
@@ -423,7 +447,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files under bounded admission; a refused one keeps its message."
       },
       {
         "id": "harness-doorway-parity",
@@ -496,6 +520,14 @@
         "availability": "not-loaded",
         "userFacing": true,
         "text": "a saved date within 48 hours can get one short mention in the next reply."
+      },
+      {
+        "id": "preview.attribution-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "with --attribution, checks quotes credited in notes."
       },
       {
         "id": "preview.coherence-check",
@@ -561,7 +593,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files under bounded admission; a refused one keeps its message."
       },
       {
         "id": "harness-doorway-parity",
@@ -634,6 +666,14 @@
         "availability": "not-loaded",
         "userFacing": true,
         "text": "a saved date within 48 hours can get one short mention in the next reply."
+      },
+      {
+        "id": "preview.attribution-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "with --attribution, checks quotes credited in notes."
       },
       {
         "id": "preview.coherence-check",
@@ -699,7 +739,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files under bounded admission; a refused one keeps its message."
       },
       {
         "id": "harness-doorway-parity",
@@ -772,6 +812,14 @@
         "availability": "available",
         "userFacing": true,
         "text": "a saved date within 48 hours can get one short mention in the next reply."
+      },
+      {
+        "id": "preview.attribution-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": false,
+        "text": "with --attribution, checks quotes credited in notes."
       },
       {
         "id": "preview.coherence-check",
