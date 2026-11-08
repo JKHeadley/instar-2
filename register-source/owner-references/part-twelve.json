@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/conversation/slack-preparation.test.ts",
-        "hash": "sha256:d79f9e43767b8eec3be6d06a98d59c99f503ee42b09c0ad96c3b2cb544b9c669"
+        "hash": "sha256:4cdaf91a67bf3ef35d625cab4e8dced1d791406ec5015b32b52b81b88a24cef7"
       }
     },
     {
@@ -16,6 +16,22 @@
       "artifact": {
         "path": "tests/conversation/slack-reply-hold.test.ts",
         "hash": "sha256:749dc67c67a1af9c4cf2a27bfa24783ef38146b63bd195a8e733fc10158f1db7"
+      }
+    },
+    {
+      "id": "P12-TELEGRAM-UPDATE-ON-CAPTURE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/conversation/telegram-update-capture.test.ts",
+        "hash": "sha256:a268e4a468e681e9c578315aac010bb4f6baf0efb3f643dde8a2216e7e68a583"
+      }
+    },
+    {
+      "id": "P12-SLACK-EVENT-ON-CAPTURE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/conversation/slack-envelope-capture.test.ts",
+        "hash": "sha256:7e43796d047405570ec9bd61318e2c60463aa374ef758a2bf75d3f95bfb942ae"
       }
     }
   ],
@@ -33,12 +49,30 @@
       }
     },
     {
+      "id": "P12-TELEGRAM-UPDATE-CAPTURE",
+      "origin": "captured",
+      "source": "Genuine Telegram Bot API update 715672737, one ordinary text message from a person's account, received 2026-10-01T02:09:52Z by proof-room bot 8994258214 and read back from that room's journal (root proofroom-2026-09-30); the person's first and last name (four fields) are replaced by REDACTED and the user and private-chat id by 1000000001; nothing else changed (tests/fixtures/captures/README.md).",
+      "artifact": {
+        "path": "tests/fixtures/captures/telegram-update.json",
+        "hash": "sha256:53380ddb0344d93f12aee0e0a555abd15eb625fb74c1ba3b1381aa57222f2786"
+      }
+    },
+    {
       "id": "P12-SLACK-ENVELOPE-CAPTURE",
       "origin": "synthetic",
       "source": "Hand-written Slack Events API envelope shape; the Slack adapter is dark and has no genuine capture.",
       "artifact": {
         "path": "tests/conversation/fixtures/slack/dm-message.json",
         "hash": "sha256:52dc16786dfbbc2f12186ad77a81e6ab8263aacc0b93c0f73554a188b91e62a7"
+      }
+    },
+    {
+      "id": "P12-SLACK-EVENT-CAPTURE",
+      "origin": "captured",
+      "source": "Genuine Slack Socket Mode events_api envelope, one ordinary DM message event a person's account (Gear Test, through its own signed-in Slack web session) sent to the nimbus test app, received 2026-11-08T01:51:27Z on a capture-only connection on instar-proof-1; the user, bot-user, team, app, channel, envelope and event ids are digit-masked to the same length (also inside event_context, re-encoded), and the app verification token is replaced by REDACTEDREDACTEDREDACTED; nothing else changed (tests/fixtures/captures/README.md).",
+      "artifact": {
+        "path": "tests/fixtures/captures/slack-envelope.json",
+        "hash": "sha256:f1517f192bb7ed4799346791a6f3b6a88e4db3742bd1c54a61ee5d90c063779a"
       }
     }
   ]
