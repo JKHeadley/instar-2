@@ -25,6 +25,8 @@ function setup(directory?: string, bind = true, selected: SlackSelection = selec
   const parser = sourceParser.map(declaration => ({ ...declaration, status: 'live' }));
   Object.assign(f.r.context, { references: [...f.r.context.references ?? [],
     { provider: 'fixture', id: 'P12-SLACK-ENVELOPE-CAPTURE', kind: 'captured-bytes' },
+    { provider: 'fixture', id: 'P12-SLACK-EVENT-CAPTURE', kind: 'captured-bytes' },
+    { provider: 'fixture', id: 'P12-SLACK-EVENT-ON-CAPTURE' },
     { provider: 'fixture', id: 'P12-NF-19' },
     { provider: 'fixture', id: 'P12-NF-28' }] });
   const features = JSON.parse(readFileSync('src/conversation/slack.declarations.json', 'utf8')) as object[];

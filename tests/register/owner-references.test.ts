@@ -50,11 +50,12 @@ describe('P3-P5 committed owner reference resolver', () => {
       for (const path of ['docs', 'register-source']) cpSync(path, join(root, path), { recursive: true });
       installOwnerFixture(root);
       mkdirSync(join(root, 'tests/conversation'), { recursive: true });
-      for (const file of ['slack-preparation.test.ts', 'slack-reply-hold.test.ts', 'telegram-update-capture.test.ts'])
+      for (const file of ['slack-preparation.test.ts', 'slack-reply-hold.test.ts', 'telegram-update-capture.test.ts', 'slack-envelope-capture.test.ts'])
         cpSync(join('tests/conversation', file), join(root, 'tests/conversation', file));
       cpSync('tests/conversation/fixtures', join(root, 'tests/conversation/fixtures'), { recursive: true });
       mkdirSync(join(root, 'tests/fixtures/captures'), { recursive: true });
-      cpSync('tests/fixtures/captures/telegram-update.json', join(root, 'tests/fixtures/captures/telegram-update.json'));
+      for (const file of ['telegram-update.json', 'slack-envelope.json'])
+        cpSync(join('tests/fixtures/captures', file), join(root, 'tests/fixtures/captures', file));
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
       git('init'); git('add', '.'); git('commit', '-qm', 'owner fixture');
       const commit = git('rev-parse', 'HEAD'); const files = git('ls-tree', '-r', '--name-only', commit).split('\n');
@@ -62,12 +63,12 @@ describe('P3-P5 committed owner reference resolver', () => {
       const original = JSON.parse(readFileSync(join(root, path), 'utf8'));
       const load = (manifest = original) => loadOwnerReferences(root, { commit, files, sources: { [path]: JSON.stringify(manifest) } });
       expect(load().references).toEqual([{ provider: 'fixture', id: 'P12-NF-19' }, { provider: 'fixture', id: 'P12-NF-28' },
-        { provider: 'fixture', id: 'P12-TELEGRAM-UPDATE-ON-CAPTURE' },
+        { provider: 'fixture', id: 'P12-TELEGRAM-UPDATE-ON-CAPTURE' }, { provider: 'fixture', id: 'P12-SLACK-EVENT-ON-CAPTURE' },
         { provider: 'fixture', id: 'P12-TELEGRAM-REPLY-CAPTURE', kind: 'captured-bytes' }, { provider: 'fixture', id: 'P12-TELEGRAM-UPDATE-CAPTURE', kind: 'captured-bytes' },
-        { provider: 'fixture', id: 'P12-SLACK-ENVELOPE-CAPTURE', kind: 'captured-bytes' }]);
+        { provider: 'fixture', id: 'P12-SLACK-ENVELOPE-CAPTURE', kind: 'captured-bytes' }, { provider: 'fixture', id: 'P12-SLACK-EVENT-CAPTURE', kind: 'captured-bytes' }]);
       // Rule 36: capture rows state their origin; the hand-written adapter fixtures are recorded as synthetic and the
-      // Telegram update reader's genuine, redacted capture as captured.
-      expect(load().captures.map((c: { id: string; origin: string }) => `${c.id}:${c.origin}`)).toEqual(['P12-TELEGRAM-REPLY-CAPTURE:synthetic', 'P12-TELEGRAM-UPDATE-CAPTURE:captured', 'P12-SLACK-ENVELOPE-CAPTURE:synthetic']);
+      // Telegram update and Slack envelope readers' genuine, redacted captures as captured.
+      expect(load().captures.map((c: { id: string; origin: string }) => `${c.id}:${c.origin}`)).toEqual(['P12-TELEGRAM-REPLY-CAPTURE:synthetic', 'P12-TELEGRAM-UPDATE-CAPTURE:captured', 'P12-SLACK-ENVELOPE-CAPTURE:synthetic', 'P12-SLACK-EVENT-CAPTURE:captured']);
       const mutations = [
         (m: typeof original) => { m.captures[0].origin = 'assumed'; },
         (m: typeof original) => { m.captures[0].source = ''; },
@@ -76,6 +77,8 @@ describe('P3-P5 committed owner reference resolver', () => {
         (m: typeof original) => { m.captures[1].artifact.hash = hash('stale'); },
         // The genuine Telegram capture id cannot be repointed at the hand-written fixture, even at its true hash.
         (m: typeof original) => { m.captures[1].artifact = structuredClone(m.captures[0].artifact); },
+        // Likewise the genuine Slack capture id cannot be repointed at the hand-written Slack fixture.
+        (m: typeof original) => { m.captures[3].artifact = structuredClone(m.captures[2].artifact); },
         (m: typeof original) => { m.fixtures[0].id = 'P12-NF-20'; },
         (m: typeof original) => { m.fixtures[0].artifact.path = 'tests/conversation/slack-reply-hold.test.ts'; },
         (m: typeof original) => { m.fixtures[1].artifact.hash = hash('stale'); },
