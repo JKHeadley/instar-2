@@ -1,6 +1,6 @@
 # Parsers without genuinely captured bytes (Rule 36 deferred holds)
 
-**Status:** CLOSED for both Rule 36 holds: the Telegram update reader closed on 2026-11-07 and the Slack envelope reader on 2026-11-08 (UTC capture time). Both are tested on genuine redacted bytes, and neither carries a deferred Rule 36 hold. OPEN: one Slack reader finding the genuine bytes exposed (below), owned here until the reader is changed.
+**Status:** OPEN for one Slack reader finding the genuine bytes exposed (below), owned here until the reader is changed. Both Rule 36 holds are CLOSED: the Telegram update reader on 2026-11-07 and the Slack envelope reader on 2026-11-08 (UTC capture time). Both are tested on genuine redacted bytes, and neither carries a deferred Rule 36 hold.
 
 **Owner:** Echo (agent), as owner of the preview trial and its channel adapters.
 
