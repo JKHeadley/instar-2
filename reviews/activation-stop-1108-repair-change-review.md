@@ -14,8 +14,8 @@ Side effects: none at runtime. The certificate now matches the composition the n
 Undo and recovery: revert the repair commits; the R105 finding returns.
 Multi-machine posture: machine-local. The certificate is Darwin- and runtime-exact (node-24.14.1), with no new cross-machine authority.
 Layer below: tests/preview/self-host-harness.mjs selfHostCompositionEvidence and tests/preview/native-harness-contract.test.ts produce and check the certificate; scripts/check-architecture.mjs R105 compares it to the composition bytes. All unchanged.
-Bug class: unit
-Bug evidence: reproducer=tests/preview/native-harness-contract.test.ts
+Bug class: none
+Bug evidence: none
 Hook bypass: none
 Convergence: none
 Decision: activation-renew-from-contract | renew only the conformance value, after the named native contract case passed on the final composition, and confirm with the full 10/10 contract; supported claim, runtime, entries and evidence reference are unchanged, so no hash-only substitution | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/activation-stop-1108-PROGRESS.md
