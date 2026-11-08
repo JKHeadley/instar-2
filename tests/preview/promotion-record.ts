@@ -20,6 +20,8 @@ const DAY = 86_400_000;
 const RECORDED_2026_09_28 = 1790553600000;
 /** 2026-10-20 22:00 PDT (2026-10-21 05:00 UTC), the operator review that retired step-check. */
 const RECORDED_2026_10_20_22_00_PDT = 1792558800000;
+/** 2026-11-07 22:10 PST (2026-11-08 06:10 UTC), the round-two repair that dated attribution's graduation. */
+const RECORDED_2026_11_08_06_10_UTC = 1794118200000;
 
 export const PROMOTION_RECORD: readonly PromotionEntry[] = Object.freeze([
   { capability: 'preview.step-check', decision: 'new-deadline', recordedAt: RECORDED_2026_09_28, by: 'agent (build unit U1)',
@@ -50,6 +52,19 @@ export const PROMOTION_RECORD: readonly PromotionEntry[] = Object.freeze([
     reason: 'retired 2026-10-20 by the operator\'s review (Justin, observer 22:00): no live evidence; never observed working. '
       + 'The deadline is not extended again. The launcher refuses --step-check true; no stage was reached, so none is recorded.',
     rollback: 'revert this entry and the declaration\'s retired status through review, with a new graduation gate and deadline' },
+  { capability: 'preview.attribution-check', decision: 'new-deadline', recordedAt: RECORDED_2026_11_08_06_10_UTC, by: 'agent (attribution-cut-1107 round-two repair)',
+    deadline: 1795219200000, // 2026-11-21 00:00 UTC
+    reason: 'Rule 121\'s write check ships dark (on only with --attribution record|enforce). Graduation conditions, read from the '
+      + 'status command\'s attributionChecks counts and the journal\'s attribution-check rows (docs/defects/attribution-rule121-owed-parts.md, '
+      + '"Graduation"): (1) development-agent stage: a real Telegram run under --attribution enforce on the live route in which a falsely '
+      + 'credited note is refused before the file changes and a correctly sourced note is written; (2) a record period of at least 7 '
+      + 'consecutive days under --attribution record on the live build with at least 20 checked note writes, unchecked (any cause) at most 10% of '
+      + 'them, and zero refusals of a note whose source and words match on review of every refuse row. Met conditions raise '
+      + 'it to the recurring review; nothing flips by itself. This is not graduation or protection: until then it is reported dark.',
+    owner: 'Echo: run the enforce proof and the record period, record development-agent reached with the run and the counts, then '
+      + 'land a reviewed change making --attribution enforce the default (fleet, default-on) or record a user-preference decision '
+      + 'keeping it off; by the deadline, graduate, retire, or bring the miss to the operator. No extension by Echo alone.',
+    rollback: 'relaunch without --attribution; no attribution rows are written and notes are admitted as before' },
 ]);
 
 /** The UTC calendar day of an epoch millisecond (civil-from-days), without an ambient clock. */

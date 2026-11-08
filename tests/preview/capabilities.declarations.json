@@ -92,6 +92,40 @@
   {
     "type": "Declaration",
     "schemaVersion": 1,
+    "id": "preview.attribution-check",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "attributionChecks"
+      ],
+      "gate": {
+        "test": "PREVIEW-ATTRIBUTION-CHECK",
+        "deadline": 1795219200000
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "attention",
+      "reversibility": "reversible",
+      "reach": "agent",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      39,
+      72,
+      73,
+      121
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
     "id": "preview.reply.delivered",
     "kind": "critical outcomes",
     "status": "live",

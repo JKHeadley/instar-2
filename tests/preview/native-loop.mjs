@@ -14,7 +14,7 @@ import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NATIVE_TOOL_LIMITS, NATIVE_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS } from '../../src/assembly/production-provider.js';
-import { SHELL_HOST_CONFIG_READS, SHELL_HOST_RECORD_READS } from './tool-admission.mjs';
+import { HOOK_PRE_MAX_MS, SHELL_HOST_CONFIG_READS, SHELL_HOST_RECORD_READS } from './tool-admission.mjs';
 
 /** The message role that carries the loop's state to the model; the system prompt names it. */
 export const NATIVE_STEPS_ROLE = 'tool-steps';
@@ -91,8 +91,10 @@ export function nativeStepEnvelope(prepared, steps, remaining, limit) {
   return Buffer.byteLength(bytes) <= limit ? bytes : null;
 }
 
-/** Runs the turn's admission hook executable (`pre` or `post`) on one call. Any failure of `pre` is a refusal (fail closed). */
-export function runHook(hook, stateDirectory, mode, payload, timeoutMs = 30000) {
+/** Runs the turn's admission hook executable (`pre` or `post`) on one call. Any failure of `pre` is a refusal (fail closed).
+ * The kill bound covers the hook's own longest legitimate wait (a note's Rule 121 answer, then its checkpoint ask), so a
+ * slow attribution answer is never turned into a refusal here. */
+export function runHook(hook, stateDirectory, mode, payload, timeoutMs = HOOK_PRE_MAX_MS) {
   return new Promise(done => {
     const child = spawn(hook.node, [hook.script, mode, stateDirectory], { stdio: ['pipe', 'pipe', 'pipe'], env: {} });
     let stdout = '', stderr = '';
