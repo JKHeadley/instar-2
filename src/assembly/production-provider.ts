@@ -450,7 +450,9 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
       filesystem: { allowWrite: [turn.scratch], denyWrite: [...subscriptionToolDefaultWrites(home)],
         denyRead: ['/'], allowRead: [turn.scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS, ...SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS, ...egressReads] } },
     permissions: { allow: [...SUBSCRIPTION_TOOL_NAMES, ...(turn.mcp?.servers ?? []).map(name => `mcp__${name}`)] },
-    hooks: { PreToolUse: hook('pre'), PermissionRequest: hook('permission'), PostToolUse: hook('post'), SubagentStart: hook('child-start'), SubagentStop: hook('child-stop') },
+    // A tool call that fails (a sandbox refusal is a non-zero exit) ends in PostToolUseFailure, never PostToolUse: without
+    // this hook the admission record holds no result for it.
+    hooks: { PreToolUse: hook('pre'), PermissionRequest: hook('permission'), PostToolUse: hook('post'), PostToolUseFailure: hook('post'), SubagentStart: hook('child-start'), SubagentStop: hook('child-stop') },
   });
 }
 /** Extended thinking off for every subscription call. Claude Code 2.1.280 maps

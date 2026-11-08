@@ -30,14 +30,14 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { boundedCorrection, checkReply, reviewReply, replyReviewContext, repeatsOperatorOnly, HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, jevConfidentPass, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, confidentReplyNeedsReview, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
+import { boundedCorrection, checkReply, reviewReply, reviewUnavailableCause, replyReviewContext, repeatsOperatorOnly, HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, jevConfidentPass, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, confidentReplyNeedsReview, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { latestRecurringDay, nextRecurringDay, parseDatedItem, relativeDelay, resolvedDatedItem, requestedTimeReached, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, localMinute, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, carriedProposals, type CarriedReport, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, reconcilePromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
 import { TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
 import { renderCapabilityReply, renderCapabilityRevision } from './capability-render.js';
-import type { ObjectionDisposition, ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyFinding, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
+import type { ObjectionDisposition, ReplyCheckCause, ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyFinding, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
 import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJev, summaryFaithfulnessEvidence, summaryJevScore, summaryJevUsage } from './summary-faithfulness.js';
 
@@ -1277,7 +1277,7 @@ export type JournalRecord =
     rejectedBlocker?: true; blockerReason?: string; usage?: ModelUsage; at: number }
   /** One bounded held-class review of the revised text, inside the same call cap; no result is UNKNOWN, never repeated. */
   | { kind: 'reply-revision-review-reserve'; id: string; remainder?: string; correctionCandidate?: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
-  | { kind: 'reply-revision-review'; id: string; verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string;
+  | { kind: 'reply-revision-review'; id: string; verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; cause?: ReplyCheckCause; causeDetail?: string;
     findings?: ReplyFinding[]; usage?: ModelUsage; at: number }
   /** One bounded re-ask after a format miss (Rule 116): records the refused first call and reserves the second against the same cap. */
   /** A re-ask after a `malformed` answer. `undecided` (answer only) is read, never written: build cint-L5 128e8799 re-asked plain replies on canary copies. */
@@ -1538,7 +1538,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   release?: ReplyRelease; heldReview?: ReplyHeld;
   revisionReviewReserved?: true;
   /** Exact claim-trimmed candidate using the existing revision-review operation. */
-  revisionReviewRemainder?: string; correctionCandidate?: string; revisionReview?: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[] };
+  revisionReviewRemainder?: string; correctionCandidate?: string; revisionReview?: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[]; cause?: ReplyCheckCause; causeDetail?: string };
   /** Admitted by the minimal reserve past the ordinary turn allowance. */
   reserve?: true;
   /** The limited answer covering this message (`lead` names the turn that carries the send). */
@@ -1818,6 +1818,17 @@ export function claimScopedWithholds(view: JournalView): { trimmed: number; sent
   return { trimmed, sentencesRemoved, heldWithNothingLeft, unlocatedClaims, byRule };
 }
 /** Content-free status: reply intents released with an unavailable review, including checks without Jev flags. */
+/** Rule 39: one turn's unavailable checks and revision review, with what each recorded about why. */
+export const unavailableChecks = (turn: Turn): { path: string; cause: string; causeDetail?: string; reason?: string }[] =>
+  [...(turn.replyChecks ?? []), ...(turn.revisionReview ? [{ ...turn.revisionReview, path: 'revision' }] : [])]
+    .filter(check => check.verdict === 'unavailable').map(check => ({ path: check.path, cause: check.cause ?? 'unrecorded',
+      ...(check.causeDetail === undefined ? {} : { causeDetail: check.causeDetail }), ...(check.reason === undefined ? {} : { reason: check.reason }) }));
+/** Counts by `path:cause`. A row from before causes were recorded reads `unrecorded`, never a guess. */
+export function replyCheckCauses(view: Pick<JournalView, 'order'>): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const turn of view.order) for (const { path, cause } of unavailableChecks(turn)) counts[`${path}:${cause}`] = (counts[`${path}:${cause}`] ?? 0) + 1;
+  return counts;
+}
 export function reviewUnavailableReleases(view: JournalView): { total: number; byRule: Partial<Record<ReplyRule, number>> } {
   const byRule: Partial<Record<ReplyRule, number>> = {};
   let total = 0;
@@ -5027,6 +5038,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       throw Error('preview journal: revision review result order');
     turn.checkDoneAt = row.at;
     turn.revisionReview = { verdict: row.verdict, ruleIds: [...row.ruleIds], ...(row.reason === undefined ? {} : { reason: row.reason }),
+      ...(row.cause === undefined ? {} : { cause: row.cause }), ...(row.causeDetail === undefined ? {} : { causeDetail: row.causeDetail }),
       ...(row.findings === undefined ? {} : { findings: row.findings.map(item => ({ ...item })) }) };
     if (row.verdict !== 'unavailable') settleTokens(view, `revision-review:${row.id}`, row.usage);
     return;
@@ -8810,7 +8822,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             && !confidentReplyNeedsReview(projectedReplyPrompt(turn.prompt));
         if (!terminal) journal.append({ kind: 'reply-check', id: turn.id, result: {
           verdict: 'unavailable', ruleIds: review?.ruleIds ?? [], confidence: null, path: 'holding', latencyMs: 0,
-          reason: 'retrospective review interrupted; no paid call replayed'
+          cause: 'interrupted', reason: 'retrospective review interrupted; no paid call replayed'
             + (review ? `; recorded ${review.path} ${review.verdict}: ${review.reason ?? 'no reason recorded'}` : ''),
         }, at: ports.now() });
         checkCoherence(turn);
@@ -9951,7 +9963,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // A failed or interrupted paid review is UNKNOWN: it is never repeated.
             if (previous?.path !== 'subscription') journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
               ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0, candidateDigest,
-              reason: REVIEW_INTERRUPTED_REASON }, at: ports.now() });
+              reason: REVIEW_INTERRUPTED_REASON, cause: 'interrupted' }, at: ports.now() });
             decision = 'unavailable';
           } else {
             const checkPorts = { ...ports.replyCheck, now: ports.now,
@@ -9988,12 +10000,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (refusedObligation(turn) && !turn.jevReserved) checked = await reviewReply(reply, turn.id, checkPorts, [], reviewPrompt);
             else if (turn.jevReserved) {
               if (!previous || turn.jevRetried && turn.replyChecks?.filter(check => check.path === 'jev').length === 1)
-                checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0, cause: 'other' });
+                checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0, cause: 'other', causeDetail: 'interrupted' });
               // Older durable Jev verdicts omitted uncertain rules when another rule was positive.
               // On recovery, review every rule rather than treating those omitted rules as cleared.
               checked = await reviewReply(reply, turn.id, checkPorts, [], projectedReplyPrompt(turn.prompt));
             } else if (journal.view.jevChecks >= journal.view.limits.maxReplies) {
-              if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'holding', latencyMs: 0 });
+              if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'holding', latencyMs: 0, cause: 'call-cap' });
               checked = await reviewReply(reply, turn.id, checkPorts, [], reviewPrompt);
             } else {
               // The approval-account exception: only where an answer to the operator may report a shared-access approval
@@ -10156,10 +10168,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const claims = named.findings.flatMap(finding => namedClaimsIn(finding.reason, body));
               // An own-words marker is set aside while the claims are cut and returns only if its declared words survived.
               const ownLines = carriedLines.map(item => item.line);
-              const cut = exciseNamedClaims(ownLines.reduce((text, line) => text.replace(line, ''), body), claims);
+              // Rules 8, 22, 86: a runner result line is attached verbatim and settles only verbatim, so a named claim
+              // inside it withholds that whole result, never a sentence of it. The result is left out of this reply and
+              // returns to owned work with the objection (withheldReports); the rest of the answer is judged as a
+              // remainder. Live pre-switch train-209 3ad4ec04, room two, update 6236928 (D1c): one cut sentence of an
+              // appended cannot-do result left its next sentence for the remainder review to hold, and the whole reply,
+              // with the owed answer it carried, became the holding notice.
+              const lineClaims = (line: string) => claims.filter(claim => exciseNamedClaims(line, [claim]).removed.length > 0);
+              const cutLines = resultLines.filter(line => !ownLines.includes(line) && body.includes(line) && lineClaims(line).length > 0);
+              const inCutLines = new Set(cutLines.flatMap(lineClaims));
+              const cut = exciseNamedClaims([...ownLines, ...cutLines].reduce((text, line) => text.replace(line, ''), body), claims);
+              const removed = [...cutLines.map(line => line.trim()), ...cut.removed];
               const remainder = `${cut.text}${ownLines.filter(line => supportedLine(line, cut.text, turn.answerCarriedReports ?? [])).join('')}`;
-              withheld = { rules: named.rules, removed: cut.removed, unlocated: cut.unlocated };
-              if (cut.removed.length) {
+              withheld = { rules: named.rules, removed, unlocated: cut.unlocated.filter(claim => !inCutLines.has(claim)) };
+              if (removed.length) {
                 nothingLeft = true; // Held until the full-context reviewer clears this exact remainder.
                 const candidate = actionHeader === undefined ? disclosed(remainder) : `${actionHeader}\n${remainder}`;
                 if ((turn.revisionReviewRemainder === undefined || turn.revisionReviewRemainder === candidate)
@@ -10181,7 +10203,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 gate();
                 journal.append({ kind: 'reply-revision-review-reserve', id: turn.id, ...(scoped === undefined ? {} : { remainder: scoped }),
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
-                let result: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[]; usage?: ModelUsage };
+                let result: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[]; usage?: ModelUsage; cause?: ReplyCheckCause; causeDetail?: string };
                 try {
                   const reviewed = await ports.replyCheck.escalate(revised, turn.id, (scoped !== undefined || keepCurrentAnswer) && originalPrompt !== undefined
                     ? replyRemainderPrompt(originalPrompt, withheld?.removed ?? []) : originalPrompt, [...revisionReviewRules(originalPrompt),
@@ -10193,7 +10215,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                     ...(typeof reviewed.reason === 'string' ? { reason: reviewed.reason } : {}),
                     ...(Array.isArray(reviewed.findings) ? { findings: reviewed.findings } : {}),
                     ...(reviewed.usage ? { usage: reviewed.usage } : {}) };
-                } catch { result = { verdict: 'unavailable', ruleIds: [] }; }
+                } catch (error) { result = { verdict: 'unavailable', ruleIds: [], ...reviewUnavailableCause(error) }; }
                 journal.append({ kind: 'reply-revision-review', id: turn.id, ...result, at: ports.now() });
               }
               // Rules 42/57/99: PASS cannot release a revised declaration whose admission still
@@ -10271,14 +10293,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               gate();
               journal.append({ kind: 'reply-revision-review-reserve', id: turn.id, correctionCandidate: candidate,
                 maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
-              let result: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[]; usage?: ModelUsage };
+              let result: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[]; usage?: ModelUsage; cause?: ReplyCheckCause; causeDetail?: string };
               try {
                 const checked = await ports.replyCheck.escalate(candidate, turn.id, projectedReplyPrompt(turn.prompt),
                   [...revisionReviewRules(turn.prompt), 'raw_path', 'self_state_claim', 'breaks_preference'], deadline, 'revision');
                 result = { verdict: checked.verdict, ruleIds: checked.ruleIds,
                   ...(checked.reason ? { reason: checked.reason } : {}), ...(checked.findings ? { findings: checked.findings } : {}),
                   ...(checked.usage ? { usage: checked.usage } : {}) };
-              } catch { result = { verdict: 'unavailable', ruleIds: [] }; }
+              } catch (error) { result = { verdict: 'unavailable', ruleIds: [], ...reviewUnavailableCause(error) }; }
               journal.append({ kind: 'reply-revision-review', id: turn.id, ...result, at: ports.now() });
             }
             if (turn.correctionCandidate === candidate && turn.revisionReview?.verdict === 'pass' && ports.now() < deadline) {

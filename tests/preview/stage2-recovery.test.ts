@@ -296,7 +296,10 @@ else {appendFileSync(${JSON.stringify(log)},JSON.stringify({args:process.argv.sl
   writeFileSync(preload, `import cp from 'node:child_process';import {syncBuiltinESMExports} from 'node:module';import {writeFileSync} from 'node:fs';
 ${launcherClockSource(epoch)}
 const calls=[];let polled=false;
-cp.spawnSync=(exe,args)=>{const q=JSON.parse(Buffer.from(args[1],'base64url').toString('utf8'));calls.push(q);let result;
+// Only the Telegram transport child (the limit shim file, request at argv[1]) is faked; every other
+// synchronous child, such as the resource owner's limit-shell probe, runs for real.
+const realSpawnSync=cp.spawnSync;
+cp.spawnSync=(exe,args,...rest)=>{if(!String(args?.[0]??'').endsWith('/limit-exec.sh'))return realSpawnSync(exe,args,...rest);const q=JSON.parse(Buffer.from(args[1],'base64url').toString('utf8'));calls.push(q);let result;
 if(q.method==='getMe')result={id:8820318295,is_bot:true,username:'echo_mmtest_seam_b27x_bot',first_name:'Offline'};
 else if(q.method==='getUpdates'){result=polled?[]:[{update_id:1,message:{message_id:1001,from:{id:7812716706,is_bot:false,first_name:'Offline'},chat:{id:7812716706,type:'private'},date:Math.floor(Date.now()/1000),text:'Give a brief answer.'}}];polled=true;}
 else result={message_id:2001,chat:{id:7812716706,type:'private'},text:q.body.text.replace(/&lt;/gu,'<').replace(/&gt;/gu,'>').replace(/&amp;/gu,'&')};

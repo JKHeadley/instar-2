@@ -1,0 +1,362 @@
+// Copied from 1.x UpdateGate.test.ts at 1cb59f787; import and callback types adapted.
+import { describe, expect, it } from 'vitest';
+// @ts-expect-error Carried-over host module.
+import { UpdateGate } from '../../scripts/update-gate.mjs';
+
+describe('UpdateGate', () => {
+  it('does not block restart on idle background job sessions when process tree is idle', () => {
+    const gate = new UpdateGate();
+    const result = gate.canRestart({
+      listRunningSessions: () => [
+        { name: 'job-commitment-detection', tmuxSession: 'instar-job-commitment-detection', jobSlug: 'commitment-detection' },
+      ],
+      hasActiveProcesses: () => false,
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(result.nonBlockingJobSessions).toEqual(['job-commitment-detection']);
+    expect(gate.getStatus().blockingSessions).toEqual([]);
+  });
+
+  it('still blocks restart while a background job is actively executing', () => {
+    const gate = new UpdateGate();
+    const result = gate.canRestart({
+      listRunningSessions: () => [
+        { name: 'job-commitment-detection', tmuxSession: 'instar-job-commitment-detection', jobSlug: 'commitment-detection' },
+      ],
+      hasActiveProcesses: () => true,
+    }, {
+      getStatus: () => ({
+        sessionHealth: [
+          { sessionName: 'job-commitment-detection', topicId: 0, status: 'healthy', idleMinutes: 0 },
+        ],
+      }),
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.blockingSessions).toEqual(['job-commitment-detection']);
+    expect(gate.getStatus().blockingSessions).toEqual(['job-commitment-detection']);
+  });
+
+  it('keeps interactive sessions conservative even when they have no active child process', () => {
+    const gate = new UpdateGate();
+    const result = gate.canRestart({
+      listRunningSessions: () => [
+        { name: 'topic-458', tmuxSession: 'instar-topic-458' },
+      ],
+      hasActiveProcesses: () => false,
+    }, {
+      getStatus: () => ({
+        sessionHealth: [
+          { sessionName: 'topic-458', topicId: 458, status: 'healthy', idleMinutes: 0 },
+        ],
+      }),
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.blockingSessions).toEqual(['topic-458']);
+  });
+
+  // getBlockingSessions — the pure, side-effect-free idle probe used by the
+  // AutoUpdater restart-window gate (#41 restart-when-idle).
+  describe('getBlockingSessions (pure idle probe)', () => {
+    const activeManager = {
+      listRunningSessions: () => [{ name: 'topic-458', tmuxSession: 'instar-topic-458' }],
+      hasActiveProcesses: () => false,
+    };
+    const activeMonitor = {
+      getStatus: () => ({
+        sessionHealth: [{ sessionName: 'topic-458', topicId: 458, status: 'healthy' as const, idleMinutes: 0 }],
+      }),
+    };
+
+    it('returns [] when there are no running sessions (idle box)', () => {
+      const gate = new UpdateGate();
+      expect(gate.getBlockingSessions({ listRunningSessions: () => [] })).toEqual([]);
+    });
+
+    it('returns [] when the only sessions are idle background jobs (non-blocking)', () => {
+      const gate = new UpdateGate();
+      const blockers = gate.getBlockingSessions({
+        listRunningSessions: () => [
+          { name: 'job-commitment-detection', tmuxSession: 'instar-job-commitment-detection', jobSlug: 'commitment-detection' },
+        ],
+        hasActiveProcesses: () => false,
+      });
+      expect(blockers).toEqual([]);
+    });
+
+    it('returns the names of active (healthy, interactive) sessions', () => {
+      const gate = new UpdateGate();
+      expect(gate.getBlockingSessions(activeManager, activeMonitor)).toEqual(['topic-458']);
+    });
+
+    it('classification matches canRestart exactly (no drift between probe and gate)', () => {
+      // Same inputs → getBlockingSessions().length>0 iff canRestart() blocks.
+      const gateA = new UpdateGate();
+      const probe = gateA.getBlockingSessions(activeManager, activeMonitor);
+      const gateB = new UpdateGate();
+      const decision = gateB.canRestart(activeManager, activeMonitor);
+      expect(probe.length > 0).toBe(!decision.allowed);
+      expect(probe).toEqual(decision.blockingSessions);
+    });
+
+    it('is PURE — does NOT start the deferral clock or set blocking state', () => {
+      // This is the whole reason getBlockingSessions exists separately from
+      // canRestart: the restart-window gate must probe idle-ness WITHOUT
+      // perturbing deferral bookkeeping. canRestart on active sessions starts
+      // the deferral clock; getBlockingSessions must not.
+      const gate = new UpdateGate();
+      gate.getBlockingSessions(activeManager, activeMonitor); // active → would block
+      const status = gate.getStatus();
+      expect(status.deferring).toBe(false);
+      expect(status.deferralStartedAt).toBeNull();
+      expect(status.blockingSessions).toEqual([]);
+      expect(status.firstWarningSent).toBe(false);
+      expect(status.finalWarningSent).toBe(false);
+    });
+  });
+
+  // #47 regression — in production SessionMonitor keys health by the tmux
+  // session name (slug, e.g. "echo-codey-collaboration"), while listRunningSessions
+  // returns the human-facing display name ("Codey Collaboration"). The gate must
+  // join them via session.tmuxSession. Before the fix it looked up by session.name,
+  // always missed, and fell into the conservative "treat as active" default — so
+  // EVERY interactive session blocked regardless of idle status, and the
+  // restart-when-idle bypass (#41) never fired. These fixtures use the REAL
+  // production key shape (health keyed by slug ≠ display name).
+  describe('health key shape — tmuxSession (slug) vs display name (#47)', () => {
+    const idleSlugKeyedMonitor = {
+      getStatus: () => ({
+        sessionHealth: [
+          { sessionName: 'echo-codey-collaboration', topicId: 13435, status: 'idle' as const, idleMinutes: 120 },
+        ],
+      }),
+    };
+    const displayNameManager = {
+      listRunningSessions: () => [{ name: 'Codey Collaboration', tmuxSession: 'echo-codey-collaboration' }],
+      hasActiveProcesses: () => false,
+    };
+
+    it('does NOT block an IDLE session when health is keyed by tmuxSession slug (was the dead-code bug)', () => {
+      const gate = new UpdateGate();
+      // Pre-fix: lookup by display name missed → conservative-active → ['Codey Collaboration'].
+      expect(gate.getBlockingSessions(displayNameManager, idleSlugKeyedMonitor)).toEqual([]);
+    });
+
+    it('canRestart ALLOWS the restart when the only session is idle (slug-keyed health)', () => {
+      const gate = new UpdateGate();
+      const result = gate.canRestart(displayNameManager, idleSlugKeyedMonitor);
+      expect(result.allowed).toBe(true);
+      expect(gate.getStatus().blockingSessions).toEqual([]);
+    });
+
+    it('still BLOCKS a HEALTHY session keyed by tmuxSession slug (active work stays protected)', () => {
+      const gate = new UpdateGate();
+      const healthyMonitor = {
+        getStatus: () => ({
+          sessionHealth: [
+            { sessionName: 'echo-codey-collaboration', topicId: 13435, status: 'healthy' as const, idleMinutes: 0 },
+          ],
+        }),
+      };
+      expect(gate.getBlockingSessions(displayNameManager, healthyMonitor)).toEqual(['Codey Collaboration']);
+    });
+
+    it('does NOT block a DEAD session keyed by tmuxSession slug', () => {
+      const gate = new UpdateGate();
+      const deadMonitor = {
+        getStatus: () => ({
+          sessionHealth: [
+            { sessionName: 'echo-codey-collaboration', topicId: 13435, status: 'dead' as const, idleMinutes: 999 },
+          ],
+        }),
+      };
+      expect(gate.getBlockingSessions(displayNameManager, deadMonitor)).toEqual([]);
+    });
+
+    it('falls back to display-name health key when tmuxSession has no slug-keyed entry (back-compat)', () => {
+      // Older/test fixtures key health by session.name; the fallback must still find it.
+      const gate = new UpdateGate();
+      const nameKeyedMonitor = {
+        getStatus: () => ({
+          sessionHealth: [{ sessionName: 'topic-458', topicId: 458, status: 'idle' as const, idleMinutes: 30 }],
+        }),
+      };
+      const mgr = {
+        listRunningSessions: () => [{ name: 'topic-458', tmuxSession: 'instar-topic-458' }],
+        hasActiveProcesses: () => false,
+      };
+      expect(gate.getBlockingSessions(mgr, nameKeyedMonitor)).toEqual([]); // idle via name-key fallback
+    });
+  });
+
+  // Primary-developer mode (updates.restartImmediately) — the agent never defers
+  // a restart for active sessions. A server restart does not kill the agent's
+  // tmux sessions (CONTINUATION), so being-on-latest wins over the restart blip.
+  // Spec: docs/specs/restart-immediately-spec.md.
+  describe('alwaysRestartImmediately (primary-developer mode)', () => {
+    // The exact fixture that BLOCKS by default — a healthy interactive session.
+    const healthyManager = {
+      listRunningSessions: () => [{ name: 'Codey Collaboration', tmuxSession: 'echo-codey-collaboration' }],
+      hasActiveProcesses: () => true,
+    };
+    const healthyMonitor = {
+      getStatus: () => ({
+        sessionHealth: [
+          { sessionName: 'echo-codey-collaboration', topicId: 13435, status: 'healthy' as const, idleMinutes: 0 },
+        ],
+      }),
+    };
+
+    it('ALLOWS the restart even with a healthy active session that would otherwise block', () => {
+      const blocked = new UpdateGate().canRestart(healthyManager, healthyMonitor);
+      expect(blocked.allowed).toBe(false); // baseline: default gate blocks
+
+      const gate = new UpdateGate({ alwaysRestartImmediately: true });
+      const result = gate.canRestart(healthyManager, healthyMonitor);
+      expect(result.allowed).toBe(true);
+      expect(result.blockingSessions).toBeUndefined();
+    });
+
+    it('does NOT start the deferral clock or set blocking state (pure allow)', () => {
+      const gate = new UpdateGate({ alwaysRestartImmediately: true });
+      gate.canRestart(healthyManager, healthyMonitor);
+      const status = gate.getStatus();
+      expect(status.deferring).toBe(false);
+      expect(status.deferralStartedAt).toBeNull();
+      expect(status.blockingSessions).toEqual([]);
+      expect(status.alwaysRestartImmediately).toBe(true);
+    });
+
+    it('short-circuits without even consulting the session monitor', () => {
+      let monitorConsulted = false;
+      const gate = new UpdateGate({ alwaysRestartImmediately: true });
+      const result = gate.canRestart(healthyManager, {
+        getStatus: () => { monitorConsulted = true; return { sessionHealth: [] }; },
+      });
+      expect(result.allowed).toBe(true);
+      expect(monitorConsulted).toBe(false);
+    });
+
+    it('default (false) still blocks a healthy active session — fleet behavior unchanged', () => {
+      const gate = new UpdateGate(); // default
+      expect(gate.getStatus().alwaysRestartImmediately).toBe(false);
+      expect(gate.canRestart(healthyManager, healthyMonitor).allowed).toBe(false);
+    });
+
+    it('setAlwaysRestartImmediately(true) flips a deferring gate to allowed and clears the deferral', () => {
+      const gate = new UpdateGate();
+      // First, start a deferral against a healthy session.
+      expect(gate.canRestart(healthyManager, healthyMonitor).allowed).toBe(false);
+      expect(gate.getStatus().deferring).toBe(true);
+
+      // Operator turns on primary-developer mode at runtime (config edit, no restart).
+      gate.setAlwaysRestartImmediately(true);
+      const status = gate.getStatus();
+      expect(status.alwaysRestartImmediately).toBe(true);
+      expect(status.deferring).toBe(false); // deferral cleared
+      expect(gate.canRestart(healthyManager, healthyMonitor).allowed).toBe(true);
+    });
+
+    it('setAlwaysRestartImmediately(false) restores session-aware deferral', () => {
+      const gate = new UpdateGate({ alwaysRestartImmediately: true });
+      expect(gate.canRestart(healthyManager, healthyMonitor).allowed).toBe(true);
+      gate.setAlwaysRestartImmediately(false);
+      expect(gate.getStatus().alwaysRestartImmediately).toBe(false);
+      expect(gate.canRestart(healthyManager, healthyMonitor).allowed).toBe(false);
+    });
+  });
+
+  // Restart-safe blocker classification (Step 1 — observability only). A
+  // resolver splits the blockers into restart-safe vs hard; the restart
+  // DECISION is unchanged (a restart-safe blocker still defers exactly as
+  // today). See docs/specs/restart-safe-blocker-classification-spec.md.
+  describe('restart-safe blocker classification', () => {
+    // One interactive session (not restart-safe) + one resumable autonomous
+    // session (restart-safe via the resolver). Both healthy → both block.
+    const mixedManager = {
+      listRunningSessions: () => [
+        { name: 'topic-458', tmuxSession: 'instar-topic-458', topicId: 458 },
+        { name: 'topic-13435', tmuxSession: 'instar-topic-13435', topicId: 13435 },
+      ],
+      hasActiveProcesses: () => false,
+    };
+    const mixedMonitor = {
+      getStatus: () => ({
+        sessionHealth: [
+          { sessionName: 'instar-topic-458', topicId: 458, status: 'healthy' as const, idleMinutes: 0 },
+          { sessionName: 'instar-topic-13435', topicId: 13435, status: 'healthy' as const, idleMinutes: 0 },
+        ],
+      }),
+    };
+    // The autonomous topic (13435) resumes cleanly → restart-safe.
+    const onlyAutonomousSafe = (s: { topicId?: number }) => s.topicId === 13435;
+
+    it('mixed blockers still DEFER, but split into restart-safe vs hard in status', () => {
+      const gate = new UpdateGate({ restartSafetyResolver: onlyAutonomousSafe });
+      const result = gate.canRestart(mixedManager, mixedMonitor);
+
+      // Decision unchanged: a restart-safe blocker still blocks exactly as today.
+      expect(result.allowed).toBe(false);
+      expect(result.blockingSessions).toEqual(['topic-458', 'topic-13435']);
+      // Observability split surfaced on the result...
+      expect(result.restartSafeSessions).toEqual(['topic-13435']);
+      expect(result.hardBlockingSessions).toEqual(['topic-458']);
+      // ...and persisted into getStatus().
+      const status = gate.getStatus();
+      expect(status.restartSafeSessions).toEqual(['topic-13435']);
+      expect(status.hardBlockingSessions).toEqual(['topic-458']);
+      expect(status.blockingSessions).toEqual(['topic-458', 'topic-13435']);
+    });
+
+    it('with only restart-safe blockers, zero hard blockers — but STILL defers (no behavior change)', () => {
+      const gate = new UpdateGate({ restartSafetyResolver: () => true });
+      const result = gate.canRestart(mixedManager, mixedMonitor);
+
+      // The crucial invariant for Step 1: even when every blocker is
+      // restart-safe, the gate does NOT yet restart through them.
+      expect(result.allowed).toBe(false);
+      expect(result.blockingSessions).toEqual(['topic-458', 'topic-13435']);
+      expect(result.restartSafeSessions).toEqual(['topic-458', 'topic-13435']);
+      expect(result.hardBlockingSessions).toBeUndefined(); // none → omitted
+      expect(gate.getStatus().hardBlockingSessions).toEqual([]);
+      expect(gate.getStatus().restartSafeSessions).toEqual(['topic-458', 'topic-13435']);
+    });
+
+    it('without a resolver, every blocker is hard and the restart-safe list is empty (back-compat)', () => {
+      const gate = new UpdateGate();
+      const result = gate.canRestart(mixedManager, mixedMonitor);
+
+      expect(result.allowed).toBe(false);
+      expect(result.blockingSessions).toEqual(['topic-458', 'topic-13435']);
+      expect(result.restartSafeSessions).toBeUndefined();
+      expect(result.hardBlockingSessions).toEqual(['topic-458', 'topic-13435']);
+      expect(gate.getStatus().restartSafeSessions).toEqual([]);
+    });
+
+    it('a throwing resolver fails safe to hard (never changes gating)', () => {
+      const gate = new UpdateGate({
+        restartSafetyResolver: () => { throw new Error('resolver boom'); },
+      });
+      const result = gate.canRestart(mixedManager, mixedMonitor);
+
+      expect(result.allowed).toBe(false);
+      expect(result.restartSafeSessions).toBeUndefined();
+      expect(result.hardBlockingSessions).toEqual(['topic-458', 'topic-13435']);
+    });
+
+    it('clears the classification on reset (restart proceeds / no sessions)', () => {
+      const gate = new UpdateGate({ restartSafetyResolver: onlyAutonomousSafe });
+      gate.canRestart(mixedManager, mixedMonitor);
+      expect(gate.getStatus().restartSafeSessions).toEqual(['topic-13435']);
+
+      // No running sessions → reset() → split cleared.
+      gate.canRestart({ listRunningSessions: () => [] });
+      const status = gate.getStatus();
+      expect(status.restartSafeSessions).toEqual([]);
+      expect(status.hardBlockingSessions).toEqual([]);
+      expect(status.blockingSessions).toEqual([]);
+    });
+  });
+});

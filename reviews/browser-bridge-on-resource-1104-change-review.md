@@ -44,6 +44,44 @@ Deferral: docs/evidence/train-192-notice-owner/constitution-attributed-statement
 Deferral: docs/evidence/train-192-notice-owner/constitution-one-constitution-change-review.md:30 | not-a-deferral=Copied historical review evidence quotes the old deferred:slack-intake-v1:36 deadline refusal; this integration preserves that evidence verbatim and makes no new deferral. Current register verification passes.
 Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-change-review.md:29 | not-a-deferral=Copied historical review evidence quotes the old deferred:slack-intake-v1:36 deadline refusal; this integration preserves that evidence verbatim and makes no new deferral. Current register verification passes.
 
+## Voided frozen round — row 87 resource continuation
+
+The checker reported a Rule 109 mismatch before this continuation. The frozen
+round reviewed `sha256:094316dfd656ab51b6d7663e4bd9207c62d4593c8a3e743493d748b4dfe47228`; the predecessor report reproduced
+`sha256:6ef05f3cb6f83cf6ca81ddb3f782676e0c1306c2f536a8edfca515c2a8fc3251` already at base
+`68a3d1a24f7105f417a427883365cf89bb8ddf0b`. These are historical evidence,
+not a digest of the current subject. The normal `check-change-review.mjs open`
+command voided that round. No old review is carried forward as acceptance of
+changed bytes. The original scope and evidence above remain; independent review
+of the current subject is required before release. This is a review-state repair,
+not a waiver or a new browser verification claim.
+
+## Reopened-subject annotations
+
+Reopening retains the original subject base, so the current subject also includes
+row 87 runtime holds and prerequisite tests. These annotations retain the r2
+classification of implemented runtime deferral, not deferred development work.
+
+Deferral: scripts/update-auto.mjs:234 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: scripts/update-auto.mjs:447 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: scripts/update-auto.mjs:467 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: scripts/update-auto.mjs:506 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: scripts/update-auto.mjs:555 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: scripts/update-auto.mjs:567 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: scripts/update-auto.mjs:627 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: scripts/update-auto.mjs:639 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: scripts/update-dampener.mjs:38 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: scripts/update-gate.mjs:62 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: scripts/update-gate.mjs:143 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: tests/preview/update-gate.test.ts:112 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: tests/preview/update-gate.test.ts:226 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: tests/preview/update-gate.test.ts:248 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: tests/preview/update-gate.test.ts:252 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: tests/preview/update-gate.test.ts:258 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Deferral: tests/preview/update-gate.test.ts:296 | not-a-deferral=This is the implemented restart hold/cooldown state or its executable test assertion, not deferred development work. The gate retains active work and schedules its runtime retry.
+Skip: tests/preview/update-runner-process.test.ts:11 | scope=The real transport requires /bin/sh process-limit support; WSL dash rejects ulimit -S -u. The test runs where that prerequisite is available, with original custody and timeout intact. Studio execution remains required and unproven here.
+Skip: tests/preview/update-lifecycle.test.ts:11 | scope=The real transport requires /bin/sh process-limit support; WSL dash rejects ulimit -S -u. The r3 Studio report records the actual lifecycle proof; no WSL skip is counted as proof.
+
 ## Closing block
 
 Integration record repair: train-188 explicitly reopens this inherited frozen record because regenerated combined outputs changed its subject digest. The old frozen bytes and review history remain in git; this is not a new independent acceptance claim. The train review covers the exact combined candidate.

@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readlinkSync, existsSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readlinkSync, existsSync, rmSync, chmodSync, symlinkSync, cpSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync, execFileSync } from 'node:child_process';
 // @ts-expect-error Shipped installer JavaScript.
 import { updateRoot } from '../../scripts/update.mjs';
+// @ts-expect-error Shipped governance adapter uses the real constitutional binder.
+import { bindUpdateCheckpoints } from '../../scripts/update-governance.mjs';
 const roots: string[] = [];
 const scratch = () => { const p = mkdtempSync(join(tmpdir(), 'instar-update-')); roots.push(p); return p; };
 const originalCache = process.env.npm_config_cache;
@@ -14,12 +16,32 @@ afterEach(() => {
   roots.splice(0).forEach(p => rmSync(p, { recursive: true, force: true }));
 });
 const json = (p: string) => JSON.parse(readFileSync(p, 'utf8'));
+it('binds the actual candidate checkpoint and refuses missing, retired or weakened declarations', () => {
+  const declarations = json('scripts/update.declarations.json');
+  expect(bindUpdateCheckpoints(declarations)).toBe('update.updateRoot');
+  expect(() => bindUpdateCheckpoints([])).toThrow('needs exactly one');
+  for (const mutate of [
+    (d: any) => { d.status = 'retired'; },
+    (d: any) => { d.requiredFacts.failDirection = 'open'; },
+    (d: any) => { d.requiredFacts.decidesAloneBasis = 'spend-past-a-cap'; },
+  ]) {
+    const altered = structuredClone(declarations);
+    mutate(altered.find((d: { id: string }) => d.id === 'update.updateRoot'));
+    expect(() => bindUpdateCheckpoints(altered)).toThrow('P3-NF-19');
+  }
+});
 function fixture(version = '0.2.0', body = 'export const migrations = [];', schema = 1) {
   const p = scratch(); mkdirSync(join(p, 'scripts')); mkdirSync(join(p, 'bin'));
-  writeFileSync(join(p, 'package.json'), JSON.stringify({ name: '@instar/constitutional-types', version, type: 'module' }));
+  writeFileSync(join(p, 'package.json'), JSON.stringify({ name: '@instar/constitutional-types', version, type: 'module',
+    dependencies: { typescript: `file:${resolve('node_modules/typescript')}` } }));
+  cpSync('src', join(p, 'src'), { recursive: true });
   writeFileSync(join(p, 'bin/instar2.mjs'), readFileSync('bin/instar2.mjs'));
   writeFileSync(join(p, 'scripts/update.mjs'), readFileSync('scripts/update.mjs'));
+  writeFileSync(join(p, 'scripts/update-governance.mjs'), readFileSync('scripts/update-governance.mjs'));
+  writeFileSync(join(p, 'scripts/update.declarations.json'), readFileSync('scripts/update.declarations.json'));
   writeFileSync(join(p, 'scripts/agent-paths.mjs'), readFileSync('scripts/agent-paths.mjs'));
+  for (const name of ['resource-owner.mjs', 'process-inventory.mjs', 'process-census-query.mjs'])
+    writeFileSync(join(p, 'scripts', name), readFileSync(join('scripts', name)));
   writeFileSync(join(p, 'scripts/slice-ts-loader.mjs'), readFileSync('scripts/slice-ts-loader.mjs'));
   writeFileSync(join(p, 'scripts/update-release.mjs'), `export const schemaVersion = ${schema};\nexport const readableSchemas = [1, ${schema}];\n${body}\n`);
   return `file:${p}`;
@@ -54,6 +76,33 @@ it('adopts an unstamped root, backs up settings, installs with npm and repeats w
   const before = readFileSync(join(root, 'update-state.json'), 'utf8');
   expect((await updateRoot(root, { release: 'v0.2.0', source: 'file:/does-not-exist' })).status).toBe('unchanged');
   expect(readFileSync(join(root, 'update-state.json'), 'utf8')).toBe(before);
+});
+it('automatic installation refuses a schema the prior runner cannot read before migration, while a readable schema proceeds', async () => {
+  const root = scratch();
+  await updateRoot(root, { release: 'v0.2.0', source: fixture(), fallbackSchemas: [1] });
+  const pointer = readlinkSync(join(root, 'current')), version = readFileSync(join(root, 'version.json'), 'utf8');
+  const source = fixture('0.3.0', `import { writeFileSync } from 'node:fs';
+    export const migrations = [{ id: 'schema-change', run(root) { writeFileSync(root + '/schema-effect', 'changed'); } }];`, 2);
+  await expect(updateRoot(root, { release: 'v0.3.0', source, fallbackSchemas: [1] })).rejects.toThrow('prior runner unable');
+  expect(existsSync(join(root, 'schema-effect'))).toBe(false);
+  expect(readlinkSync(join(root, 'current'))).toBe(pointer);
+  expect(readFileSync(join(root, 'version.json'), 'utf8')).toBe(version);
+  await updateRoot(root, { release: 'v0.3.0', source, fallbackSchemas: [1, 2] });
+  expect(existsSync(join(root, 'schema-effect'))).toBe(true);
+});
+it('installer process operations use supplied admission and a capacity refusal cannot publish a release', async () => {
+  const root = scratch(), calls: string[] = [];
+  const source = fixture();
+  const execute = async (input: { executable: string; args: string[]; cwd: string; timeout: number; maxBytes: number }) => {
+    calls.push(input.executable);
+    if (input.executable === process.execPath) return { code: 0, limited: true, localLimit: 'capacity' };
+    const result = spawnSync(input.executable, input.args, { cwd: input.cwd, timeout: input.timeout, maxBuffer: input.maxBytes, encoding: 'utf8' });
+    return { code: result.status, limited: false };
+  };
+  await expect(updateRoot(root, { release: 'v0.2.0', source, execute })).rejects.toThrow('syntax check failed');
+  expect(calls).toEqual(['npm', process.execPath]);
+  expect(existsSync(join(root, 'current'))).toBe(false);
+  expect(existsSync(join(root, 'releases/v0.2.0'))).toBe(false);
 });
 it('records migration intent before effect; a failed migration resumes without flipping or changing the stamp', async () => {
   const root = scratch();
@@ -183,4 +232,73 @@ it('keeps history and skips applied migration ids across releases; malformed sta
   writeFileSync(join(root, 'version.json'), '{broken');
   await expect(updateRoot(root, { release: 'v0.3.0' })).rejects.toThrow();
   expect(readFileSync(join(root, 'version.json'), 'utf8')).toBe('{broken');
+});
+
+// Carryover 87: adapted from 1.x UpdateChecker's exact-version/failed-candidate
+// tests, using real npm and the shipped installer instead of an exec mock.
+it('refuses a successful npm install with the wrong pinned version before running migrations', async () => {
+  const root = scratch(); await updateRoot(root, { release: 'v0.2.0', source: fixture() });
+  const before = readFileSync(join(root, 'version.json'), 'utf8'), pointer = readlinkSync(join(root, 'current'));
+  const source = fixture('0.2.0', "export const migrations = [{ id: 'bad', run() { throw Error('must not run'); } }];");
+  await expect(updateRoot(root, { release: 'v0.3.0', source })).rejects.toThrow('does not match');
+  expect(readFileSync(join(root, 'version.json'), 'utf8')).toBe(before);
+  expect(readlinkSync(join(root, 'current'))).toBe(pointer);
+  expect((await updateRoot(root, { release: 'v0.3.0', source: fixture('0.3.0') })).status).toBe('updated');
+});
+it.each(['missing', 'broken'])('rechecks a completed release and refuses a %s CLI without overwriting it', async failure => {
+  const root = scratch(); await updateRoot(root, { release: 'v0.2.0', source: fixture() });
+  const cli = join(root, 'current/bin/instar2.mjs'), before = readFileSync(join(root, 'update-state.json'), 'utf8');
+  if (failure === 'missing') rmSync(cli); else writeFileSync(cli, 'this is not JavaScript {');
+  await expect(updateRoot(root, { release: 'v0.2.0' })).rejects.toThrow(/Invalid installed release|syntax check failed/);
+  expect(readFileSync(join(root, 'update-state.json'), 'utf8')).toBe(before);
+  if (failure === 'missing') expect(existsSync(cli)).toBe(false);
+  else expect(readFileSync(cli, 'utf8')).toBe('this is not JavaScript {');
+});
+const verifiedFixture = (run = "writeFileSync(join(root, 'template'), 'current');") => fixture('0.2.0', `
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+export const migrations = [{ id: 'verified-template',
+  verify(root) { return existsSync(join(root, 'template')) && readFileSync(join(root, 'template'), 'utf8') === 'current'; },
+  run(root) { ${run} }
+} ];`);
+it('repairs stale installed content despite a completed id and records intent before the repair', async () => {
+  const root = scratch(), source = verifiedFixture(`
+const state = JSON.parse(readFileSync(join(root, 'update-state.json'), 'utf8'));
+if (state.phase !== 'migrating' || state.steps[0].status !== 'started') throw Error('repair intent missing');
+writeFileSync(join(root, 'template'), 'current');`);
+  await updateRoot(root, { release: 'v0.2.0', source });
+  const prior = json(join(root, 'update-state.json'));
+  writeFileSync(join(root, 'template'), 'stale');
+  expect((await updateRoot(root, { release: 'v0.2.0', source })).status).toBe('updated');
+  expect(readFileSync(join(root, 'template'), 'utf8')).toBe('current');
+  const repaired = json(join(root, 'update-state.json'));
+  expect(readFileSync(join(repaired.backup, 'template'), 'utf8')).toBe('stale');
+  expect(json(join(root, 'update-history', `${prior.id}.json`))).toEqual(prior);
+  expect((await updateRoot(root, { release: 'v0.2.0' })).status).toBe('unchanged');
+});
+it('does not mark a no-op migration complete and retries it after the repair becomes possible', async () => {
+  const root = scratch(), source = verifiedFixture("if (existsSync(join(root, 'allow'))) writeFileSync(join(root, 'template'), 'current');");
+  await expect(updateRoot(root, { release: 'v0.2.0', source })).rejects.toThrow('postcondition failed');
+  expect(existsSync(join(root, 'current'))).toBe(false);
+  expect(json(join(root, 'update-state.json')).steps[0].status).toBe('started');
+  writeFileSync(join(root, 'allow'), 'yes');
+  await updateRoot(root, { release: 'v0.2.0', source });
+  expect(json(join(root, 'update-state.json')).phase).toBe('complete');
+});
+it('refuses a later migration that makes an earlier verified template stale', async () => {
+  const root = scratch(), source = fixture('0.2.0', `
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+export const migrations = [
+ { id: 'template', verify(root) { return existsSync(join(root, 'template')) && readFileSync(join(root, 'template'), 'utf8') === 'current'; },
+   run(root) { writeFileSync(join(root, 'template'), 'current'); } },
+ { id: 'stale', run(root) { writeFileSync(join(root, 'template'), 'stale'); } }
+];`);
+  await expect(updateRoot(root, { release: 'v0.2.0', source })).rejects.toThrow('postcondition failed');
+  expect(existsSync(join(root, 'current'))).toBe(false);
+});
+it.each(['"yes"', 'null', 'undefined'])('refuses ambiguous verifier result %s before mutation', async result => {
+  const root = scratch(), source = fixture('0.2.0', `export const migrations = [{ id: 'v', verify() { return ${result}; }, run() { throw Error('must not run'); } }];`);
+  await expect(updateRoot(root, { release: 'v0.2.0', source })).rejects.toThrow('must return a boolean');
+  expect(existsSync(join(root, 'current'))).toBe(false);
 });

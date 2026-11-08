@@ -14,7 +14,7 @@ const resolveSpec = (from, spec, exists) => {
 };
 /** `read(path)` returns text or null and `exists(path)` a boolean, both for repository-relative paths.
  * Built core output (`dist/`) is the core itself, reached through its public index, and is not walked. */
-export function importClosure(entries, read, exists, core = path => path.startsWith('dist/')) {
+export function importClosure(entries, read, exists, core = path => path.startsWith('dist/'), externalLoad = () => false) {
   const files = new Set(), unresolved = [], computed = [], stack = [...entries];
   while (stack.length) {
     const file = stack.pop();
@@ -38,7 +38,8 @@ export function importClosure(entries, read, exists, core = path => path.startsW
         if (!core(target)) { if (exists(target)) stack.push(target); else unresolved.push({ from: file, specifier: node.arguments[0].text }); }
       }
       if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword
-        && !(node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])))
+        && !(node.arguments[0] && ts.isStringLiteralLike(node.arguments[0]))
+        && !externalLoad(file, node.getText(source)))
         computed.push({ from: file, line: source.getLineAndCharacterOfPosition(node.getStart()).line + 1 });
       ts.forEachChild(node, visit);
     };

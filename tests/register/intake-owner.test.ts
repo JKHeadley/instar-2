@@ -23,14 +23,14 @@ const sources = () => ({ ...committed,
 // ten-second default reported those cases as semantic failures under load (Rule 37,
 // evidence in the unit report). The assertions and the work are unchanged.
 describe('P4 owner source consumption', { timeout: 60_000 }, () => {
- it.each(['dedup', 'admission', 'receiver'])('R1 executable %s helper replacement removes real input flow and source credit', async scope => {
-  for (const replacementForm of ['unchanged', 'direct', 'array', 'object', 'loop']) {
-   // Let the fork worker's task-update IPC be answered between whole-tree scans. The
-   // afterEach yield only runs between cases, so a case that scans five times without
-   // returning to the event loop starves the channel past the runner's fixed 60s RPC
-   // deadline and the run reports `Timeout calling "onTaskUpdate"` as an unhandled
-   // error. Same landed pattern as tests/e2e/register.test.ts. Rule 37.
-   await new Promise<void>(done => setImmediate(done));
+ // One whole-tree scan per case. The five replacement forms were one case per scope,
+ // so a single case paid five whole-tree scans and its budget shrank as src grew: the
+ // train-204 full run (m5pro) and a single-worker WSL run (78 s) exceeded the 60 s
+ // budget with every assertion passing. Each (scope, form) pair is now its own case,
+ // and the afterEach yield answers worker IPC between scans. Assertions unchanged. Rule 37.
+ it.each(['dedup', 'admission', 'receiver'].flatMap(scope =>
+  ['unchanged', 'direct', 'array', 'object', 'loop'].map(replacementForm => [scope, replacementForm] as const)))(
+  'R1 executable %s helper replacement (%s) removes real input flow and source credit', async (scope, replacementForm) => {
    const replaced = replacementForm !== 'unchanged';
    const input = sources();
    const name = scope === 'dedup' ? 'read' : 'context';
@@ -63,8 +63,10 @@ describe('P4 owner source consumption', { timeout: 60_000 }, () => {
     requiredFacts: { decidesAlone: 'governed-state', criticality: 'standing', failDirection: 'closed', preservesInput: 'receipt', enforces: { record: 'intake.contract', decoder } } };
    const issues = checkWiring({ entries: [{ declaration }] }, input, scanned).issues.filter(i => i.startsWith('P3-NF-26'));
    expect(issues.length).toBe(replaced ? 1 : 0);
-  }
  });
+ // Copies src, docs, register-source and tests (about 50 MB), then commits them with real
+ // git children: its cost is file I/O that grows with the tree, not owner latency. The
+ // train-204 full run (m5pro, four workers) exceeded the shared 60 s budget. Rule 37.
  it('accepts P4 and P5 independently and together without accepting another owner or an unpinned dependency', async () => {
   const root = mkdtempSync(join(tmpdir(), 'p4-owner-'));
   try {
@@ -116,7 +118,7 @@ describe('P4 owner source consumption', { timeout: 60_000 }, () => {
    ]) { const m = structuredClone(original); mutate(m); expect(() => load(m)).toThrow(); await new Promise<void>(done => setImmediate(done)); }
    expect(() => load(original, { [p5]: JSON.stringify(original) })).toThrow('duplicate owner');
   } finally { rmSync(root, { recursive: true, force: true }); }
- }); // Committed artifact verification includes real git subprocesses.
+ }, 180_000); // Committed artifact verification includes real git subprocesses.
  it('proves the real P2 chain and the registration used by each admission form', () => {
   const input = sources(), report = scanSources(input).reports[Object.keys(input).indexOf('src/intake/port.ts')]!;
   expect(report.scopes.dedup?.invokes).toEqual(['readProjection', 'intakeDedupDefinition']);
