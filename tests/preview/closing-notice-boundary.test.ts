@@ -19,13 +19,13 @@ function fixture(unknown = false, maxReplies = 20) {
   const worker = () => createJournalWorker(journal, { now: () => now, stopped: () => stopped, timeZone: 'UTC',
     checkOutbound: () => {}, model: async () => 'Answer.', send: async input => {
       sent.push(input.expectedText);
-      if (unknown && input.expectedText.startsWith('This agent will stop at')) throw Error('connection lost after dispatch');
+      if (unknown && input.expectedText.startsWith('Reminder: this agent')) throw Error('connection lost after dispatch');
       return sent.length;
     } });
   let w = worker();
   w.intake([{ update_id: 1, message: { message_id: 11, chat: { id: 7654321, type: 'private' },
     from: { id: 7654321 }, text: 'Hello' } }]);
-  return { get journal() { return journal; }, get worker() { return w; }, sent, get notices() { return sent.filter(text => text.startsWith('This agent will stop at')); }, advance: (at: number) => { now = at; },
+  return { get journal() { return journal; }, get worker() { return w; }, sent, get notices() { return sent.filter(text => text.startsWith('Reminder: this agent')); }, advance: (at: number) => { now = at; },
     stop: () => { stopped = true; }, restart: () => { journal.compact(); journal.close(); journal = openPreviewJournal(path, key); w = worker(); },
     close: () => journal.close() };
 }
@@ -44,13 +44,46 @@ it('emits exactly at the lead boundary, survives an unknown send plus compaction
     expect(f.journal.view.order[0]!.closingNotices).toHaveLength(2);
   } finally { f.close(); }
 });
-it.each(['expiry', 'stop'] as const)('never sends after %s', async reason => {
+it('never sends after an operator stop', async () => {
   const f = fixture();
   try {
-    f.advance(reason === 'expiry' ? end : end - CLOSING_NOTICE_LEAD_MS);
-    if (reason === 'stop') f.stop();
+    f.advance(end - CLOSING_NOTICE_LEAD_MS); f.stop();
     await expect(f.worker.minimal()).rejects.toThrow('preview stopped');
     expect(f.sent).toEqual([]);
+  } finally { f.close(); }
+});
+// activation-stop-1108: the activation end date is a reminder, never a stop.
+it('past the end date the runner still answers, shows the reminder once, and latches no stop', async () => {
+  const f = fixture();
+  try {
+    f.advance(end + 60_000); await f.worker.drain(); await f.worker.drain();
+    expect(f.sent).toContain('Answer.');
+    expect(f.notices).toEqual([closingNoticeText(end)]);
+    expect(f.journal.view.stop).toBeNull();
+    f.restart(); f.advance(end + 3_600_000); await f.worker.minimal();
+    expect(f.notices).toHaveLength(1);
+    f.worker.intake([{ update_id: 2, message: { message_id: 12, chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: 'Still there?' } }]);
+    await f.worker.drain();
+    expect(f.sent.filter(text => text === 'Answer.')).toHaveLength(2);
+    expect(f.notices).toHaveLength(1);
+    expect(f.journal.view.stop).toBeNull();
+    renewJournalExpiry(f.journal, { expires: RENEWED, activation: `sha256:${'b'.repeat(64)}`, authority: 'fixture renewal', at: end + 3_600_001 });
+    expect(f.journal.view.expires).toBe(RENEWED);
+  } finally { f.close(); }
+});
+it('replays a journal that recorded the earlier stop wording', () => {
+  const f = fixture();
+  try {
+    const j = f.journal, lead = j.view.order[0]!, at = end - 1;
+    const legacy = `This agent will stop at ${new Date(end).toISOString().slice(0, 16).replace('T', ' ')} (UTC) because its activation ends then. `
+      + 'After that it cannot read or answer messages here. Its activation must be renewed before it stops; '
+      + 'once stopped, this installation refuses renewal.';
+    const subject = { target: `closing-notice:${end}:${lead.id}`, chat: j.view.genesis.chat, body: legacy };
+    j.append({ kind: 'held-notice-intent', id: lead.id, closing: { end, zone: 'UTC' }, text: legacy, chat: j.view.genesis.chat,
+      update: lead.update, grant: j.view.genesis.grant, at, provenance: j.signOutbound('infrastructure', subject) });
+    f.restart();
+    expect(f.journal.view.order[0]!.closingNotices).toHaveLength(1);
   } finally { f.close(); }
 });
 it('requires the exact fixed text, current end, operator channel and infrastructure signature', () => {
@@ -61,7 +94,7 @@ it('requires the exact fixed text, current end, operator channel and infrastruct
     const row = { kind: 'held-notice-intent' as const, id: lead.id, closing: { end, zone: 'UTC' }, text: correct,
       chat: j.view.genesis.chat, update: lead.update, grant: j.view.genesis.grant, at };
     for (const patch of [{ text: correct + ' extra instruction' }, { closing: { end: end + 1, zone: 'UTC' } },
-      { chat: '9999999' }, { at: end }, { at: end - CLOSING_NOTICE_LEAD_MS - 1 }]) {
+      { chat: '9999999' }, { at: end - CLOSING_NOTICE_LEAD_MS - 1 }]) {
       const candidate = { ...row, ...patch };
       const provenance = j.signOutbound('infrastructure', { target: `closing-notice:${candidate.closing.end}:${lead.id}`, chat: candidate.chat, body: candidate.text });
       expect(() => j.append({ ...candidate, provenance })).toThrow('closing notice refused');

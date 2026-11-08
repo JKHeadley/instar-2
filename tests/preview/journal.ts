@@ -585,9 +585,13 @@ export const loginOutageReply = (resetAt: number | null, zone = 'UTC') => "My mo
   + (resetAt === null ? "I don't know yet when it will be available; I'll answer as soon as it is."
     : `I expect to answer again after ${localStamp(resetAt, zone)} (${zone}).`)
   + " Your messages are kept and I'll answer them then; you don't need to resend them.";
-/** The one message a person gets before the activation end stops this agent: once, this long before the end, on a fixed text. */
+/** activation-stop-1108: the activation end date is a reminder, never a stop. The person is told once per end, from this long
+ * before it onward (also after it, when the runner was down then), on a fixed text with no model call. */
 export const CLOSING_NOTICE_LEAD_MS = 5 * 60_000;
-export const closingNoticeText = (end: number, zone = 'UTC') => `This agent will stop at ${localStamp(end, zone)} (${zone}) because its activation ends then. `
+export const closingNoticeText = (end: number, zone = 'UTC') => `Reminder: this agent's activation record ends at ${localStamp(end, zone)} (${zone}). `
+  + 'The agent keeps reading and answering here after that. Approving a renewed activation record keeps the approval on file current.';
+/** The wording journals recorded before activation-stop-1108, accepted on replay only. */
+const legacyClosingNoticeText = (end: number, zone = 'UTC') => `This agent will stop at ${localStamp(end, zone)} (${zone}) because its activation ends then. `
   + 'After that it cannot read or answer messages here. Its activation must be renewed before it stops; '
   + 'once stopped, this installation refuses renewal.';
 // Accept the previous fixed wording on replay; new notices make no unsupported cause claim.
@@ -3298,7 +3302,7 @@ function checkCaps(view: JournalView, row: Extract<JournalRecord, {kind:'caps'}>
  * activation expiry; replay accepts any earlier monotonic renewal. */
 function checkExpiry(view: JournalView, row: Extract<JournalRecord, {kind:'expiry'}>, admission: 'new' | 'replay'): void {
   if (row.genesisHash !== genesisHash(view.genesis) || view.stop || !view.imported && view.genesis.importSource !== undefined
-    || !Number.isSafeInteger(row.at) || row.at <= 0 || row.at >= view.expires
+    || !Number.isSafeInteger(row.at) || row.at <= 0
     || !Number.isSafeInteger(row.expires) || row.expires <= view.expires
     || admission === 'new' && row.expires !== SUBSCRIPTION_PREVIEW_EXPIRY
     || typeof row.activation !== 'string' || !/^sha256:[a-f0-9]{64}$/u.test(row.activation)
@@ -3555,7 +3559,7 @@ function addOperatorRequest(view: JournalView, request: OperatorRequest, carrier
   const rendered = review === undefined ? operatorRequestText(request, current, null, retractRendering(view, request))
     : operatorReviewRequestText(request, current, reviewLink(review.repository, review.pullRequest), null, retractRendering(view, request));
   if (!wellFormedRequest(request, carrier, view.genesis.grant) || request.base !== approvalBase(view) || view.stop !== null
-    || request.issuedAt > at || request.expiresAt > view.expires || view.operatorRequests.some(item => item.request.id === request.id)
+    || request.issuedAt > at || view.operatorRequests.some(item => item.request.id === request.id)
     || review !== undefined && (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(review.repository)
       || !Number.isSafeInteger(review.pullRequest) || review.pullRequest <= 0 || !/^[0-9a-f]{40}$/u.test(review.head))
     || (via === 'retract') !== (request.action === 'retract-turns')
@@ -4151,7 +4155,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       || row.surface !== 'telegram-private-chat' || row.scope !== 'initiated-dated-reminders'
       || row.custodian !== view.genesis.operator || row.recovery !== 'unknown-never-retry'
       || typeof row.reference !== 'string' || !row.reference.trim() || Buffer.byteLength(row.reference) > 1024
-      || !Number.isSafeInteger(row.at) || row.at <= 0 || row.at >= view.expires)
+      || !Number.isSafeInteger(row.at) || row.at <= 0)
       throw Error('preview journal: reminder grant refused');
     view.reminderGrant = row.reference; return;
   }
@@ -4293,7 +4297,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     const batches = [...view.reminders.values()].filter(batch => batch.requested).length;
     if (!items.length || [...items, ...overflow].some(item => !item || reminderDue(item) > localStamp(row.at, item.zone)
         || view.turns.get(item.source)?.thread !== row.thread) || new Set([...items, ...overflow]).size !== items.length + overflow.length
-      || row.batch !== batches || view.stop || view.replies >= view.limits.maxReplies || row.at >= view.expires
+      || row.batch !== batches || view.stop || view.replies >= view.limits.maxReplies
       || !row.text.startsWith('PREVIEW reminder you asked for on ') || row.body !== reminderBody(row.text)
       || Buffer.byteLength(row.body) > 4096 || row.chat !== view.genesis.chat || row.grant !== view.genesis.grant)
       throw Error('preview journal: requested reminder intent refused');
@@ -4700,7 +4704,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (!first || refs.length > REQUEST_ITEM_LIMIT || new Set(refs.map(ref => ref.key)).size !== refs.length
       || authorities.some(authority => !authority || authority.thread !== first.thread)
       || row.items.length || row.overflow !== undefined || view.turns.has(row.id)
-      || row.id !== owedResultId(refs) || view.stop || row.at >= view.expires
+      || row.id !== owedResultId(refs) || view.stop
       || row.update !== nextSyntheticUpdate(view) || view.order.length >= view.limits.maxTurns
       || view.order.some(turn => turn.intent === undefined && !actionWithdrawn(view, turn) && turn.requestedAction?.owed?.some(ref => refs.some(item => item.key === ref.key)))
       || !row.writer || !(system ?? (() => false))(row.writer, 'requested-action',
@@ -4727,7 +4731,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     const number = view.order.filter(turn => turn.requestedAction !== undefined && turn.requestedAction.legacy === undefined).length;
     if (!source || items.length > REQUEST_ITEM_LIMIT || all.some(item => !item || reminderDue(item) > localStamp(row.at, item.zone)
         || requestSource(view, item)?.thread !== source.thread) || new Set(all).size !== all.length
-      || row.id !== `requested-action:${String(number)}` || view.turns.has(row.id) || view.stop || row.at >= view.expires
+      || row.id !== `requested-action:${String(number)}` || view.turns.has(row.id) || view.stop
       || view.order.length >= view.limits.maxTurns || row.update !== nextSyntheticUpdate(view)
       // Rule 29: the scheduler writes this turn as a verified system principal, signed by the owner over these exact requests.
       || !row.writer || !(system ?? (() => false))(row.writer, 'requested-action', requestOccurrence(row.id, [...row.items, ...row.overflow ?? []])))
@@ -4785,8 +4789,8 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (!turn.accepted || !operatorWriter(view, turn, true) || row.closing.end !== view.expires
       || view.order.some(item => item.closingNotices?.some(notice => notice.end === row.closing!.end))
       || typeof row.closing.zone !== 'string' || row.closing.zone.length > 64
-      || row.text !== closingNoticeText(row.closing.end, row.closing.zone)
-      || view.stop !== null || row.at >= view.expires || row.at < view.expires - CLOSING_NOTICE_LEAD_MS
+      || row.text !== closingNoticeText(row.closing.end, row.closing.zone) && row.text !== legacyClosingNoticeText(row.closing.end, row.closing.zone)
+      || view.stop !== null || row.at < view.expires - CLOSING_NOTICE_LEAD_MS
       || view.replies >= view.limits.maxReplies - 1
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant
       || row.workingProgress || row.waitingProgress || row.deliveryUnknown || row.loginOutage || row.acknowledgement || row.acknowledgementMode || row.covers
@@ -4807,7 +4811,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       || turn.requestedAction || turn.editOf || turn.loginOutageNotice || loginOutageOpen(view)
       || !(resetAt === null || Number.isSafeInteger(resetAt) && resetAt > 0) || !LOGIN_OUTAGE_TEXT.test(row.text)
       || (resetAt === null) !== row.text.includes("I don't know yet when")
-      || view.stop !== null || row.at >= view.expires || view.replies >= view.limits.maxReplies - 1
+      || view.stop !== null || view.replies >= view.limits.maxReplies - 1
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
       || row.grant !== view.genesis.grant || row.workingProgress || row.waitingProgress || row.deliveryUnknown
       || row.acknowledgement || row.acknowledgementMode || row.covers
@@ -4825,7 +4829,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     const progress = row.workingProgress, prior = turn.workingProgress ?? [];
     if (!turn.accepted || !operatorWriter(view, turn, true) || !turn.reserved || turn.intent !== undefined
       || turn.held !== undefined || turn.limited !== undefined || turn.requestedAction || turn.editOf
-      || view.stop !== null || row.at >= view.expires || view.replies >= view.limits.maxReplies - 1
+      || view.stop !== null || view.replies >= view.limits.maxReplies - 1
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
       || row.grant !== view.genesis.grant || row.waitingProgress || row.deliveryUnknown || row.acknowledgement || row.covers
       || !row.provenance || admission === 'new' && row.provenance.speaker !== 'infrastructure'
@@ -4849,7 +4853,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       && item.accepted && item.reserved && item.intent === undefined);
     if (!operatorWriter(view, turn, true) || turn.requestedAction || turn.editOf || turn.reserved || turn.intent
       || turn.waitingProgress || !earlier || row.text !== WAITING_PROGRESS || row.at < turn.at + WAITING_PROGRESS_AFTER_MS
-      || last > 0 && row.at < last + WAITING_PROGRESS_AFTER_MS || view.stop !== null || row.at >= view.expires
+      || last > 0 && row.at < last + WAITING_PROGRESS_AFTER_MS || view.stop !== null
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
       || row.grant !== view.genesis.grant || row.deliveryUnknown || row.acknowledgement || row.covers
       || view.replies >= view.limits.maxReplies - 1) throw Error('preview journal: waiting progress not due');
@@ -4867,7 +4871,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     const text = covered.every(item => item && replyOutcomeOf(view, item).outcome.kind === 'refused')
       ? REFUSED_SEND_NOTICE : UNKNOWN_SEND_NOTICE;
     if (row.deliveryUnknown !== true || row.acknowledgement !== undefined || row.text !== text
-      || view.stop !== null || view.replies >= view.limits.maxReplies || row.at >= view.expires
+      || view.stop !== null || view.replies >= view.limits.maxReplies
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
       || row.grant !== view.genesis.grant || new Set(covered).size !== covered.length
       || covered.some(item => !item || !needsDeliveryNotice(view, item) || item.thread !== turn.thread))
@@ -5908,7 +5912,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
 export function importChannelItems(journal: ReturnType<typeof openPreviewJournal>, rows: readonly unknown[], agentAccount: string, now: number,
   stopped: () => boolean = () => false, origin?: 'stored-log') {
   if (journal.view.genesis.forum === true) throw Error('preview journal: external history has no group disclosure grant');
-  if (journal.readOnly || journal.view.stop || stopped() || now >= journal.view.expires) throw Error('preview journal: channel import stopped');
+  if (journal.readOnly || journal.view.stop || stopped()) throw Error('preview journal: channel import stopped');
   if (!agentAccount.trim() || rows.length > 2000) throw Error('preview journal: channel import scope or capacity');
   const clean = (value: unknown, max: number) => {
     if (typeof value !== 'string' || !value.trim() || Buffer.byteLength(value) > max) throw Error('preview journal: malformed channel item');
@@ -6233,7 +6237,7 @@ export interface PreviewPorts {
     review?: ReviewYesSource;
     renewalActivation?(expires: number): string | null;
     /** How long a request stays answerable (plan #373; default OPERATOR_REQUEST_MS, at most OPERATOR_REQUEST_MAX_MS),
-     * never past the trial's current end. */
+     * whatever the activation end (a reminder, never a stop). */
     requestWindowMs?: number;
     /** Plan #389: the desk's current retraction proposal, read from the root by the host (propose-retract), or none. */
     retractProposal?(): RetractProposal | undefined };
@@ -6438,16 +6442,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const unknownSince = new Map([...journal.view.summaryReservations].map(([through, at]) =>
     [through, ports.elapsed ? elapsed() : at]));
   // An orphaned reservation may have completed at the provider. Never repeat it.
-  /** The stop latch and expiry, read without appending: a format re-ask is simply not made once either holds. */
-  const halted = () => journal.view.stop !== null || ports.stopped() || ports.now() >= journal.view.expires;
+  /** The stop latch, read without appending: a format re-ask is simply not made once it holds. The activation end
+   * date is a reminder, never a stop (activation-stop-1108; purpose: a limit names the rule that requires it). */
+  const halted = () => journal.view.stop !== null || ports.stopped();
   const gate = () => {
     if (journal.view.stop || ports.stopped())
       throw Error('preview stopped');
-    const now = ports.now();
-    if (now >= journal.view.expires) {
-      if (!journal.readOnly) journal.append({ kind: 'stop', reason: 'trial expired', at: now });
-      throw Error('preview stopped');
-    }
   };
   /** Updates to request now: ordinary turn slots, else the minimal reserve's free slots.
    * Ordinary caps never stop reading the operator (Rules 14, 15). */
@@ -7261,8 +7261,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const reminderRefusal = (item: DatedItem) => item.day === undefined || item.ambiguity !== undefined
     ? 'its day or time is not settled; restate it with a day and time such as Friday at 9 am'
     : !item.recurrence && relativeDelay(item.when) === undefined
-      && reminderDue(item) <= localStamp(ports.now(), item.zone) ? 'that time has already passed'
-      : reminderDue(item) >= localStamp(journal.view.expires, item.zone) ? 'this preview ends before then' : null;
+      && reminderDue(item) <= localStamp(ports.now(), item.zone) ? 'that time has already passed' : null;
   const clean = (value: string, _derived = false, source?: string | number) => projectMemoryClause(journal.view, value, source);
   const restoredHistorical = (change: MemoryChange, changes: readonly MemoryChange[] = journal.view.memory) =>
     restoredHistoricalChange(change, changes);
@@ -8587,7 +8586,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * become ONE durable runner-authored turn; the ordinary answer path then answers, checks and sends it once. A
    * conversation whose due turn is still on its way to a send gets no second one (Rule 52). */
   const scheduleRequests = () => {
-    if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires) return;
+    if (journal.view.stop || ports.stopped()) return;
     // Background summaries can exhaust memory retries after the last ordinary drain. Settle that evidence
     // on idle polls too, before testing the hold: otherwise only a new inbound turn can free a due request
     // (live 2026-10-09, updates 6233067/6233075; Rules 93, 95). Later unanswered withdrawals still hold below.
@@ -8778,7 +8777,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const now = ports.now();
     if (!ports.loginCapacity || halted() || !fromOperator(turn) || !turn.reserved || turn.intent !== undefined
       || turn.requestedAction || turn.editOf || turn.loginOutageNotice || loginOutageOpen(journal.view)
-      || now >= journal.view.expires || journal.view.replies >= journal.view.limits.maxReplies - 1) return;
+      || journal.view.replies >= journal.view.limits.maxReplies - 1) return;
     let outage: { resetAt: number | null } | null;
     try { outage = ports.loginCapacity(); } catch { return; } // an unreadable pool is not evidence of an outage
     if (!outage) return;
@@ -8794,13 +8793,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: turn.id, loginOutage: true, message: outcome.message, at: ports.now() }); }
     catch { /* the notice stays UNKNOWN; never repeated */ }
   };
-  /** Silence is the worst way to end: the person is told once, before the activation end, with a fixed text and no model call.
-   * It goes where they last wrote. Its intent precedes dispatch, so a crash or an UNKNOWN never repeats it. */
+  /** The activation end is a reminder: the person is told once per end, from the lead window on, with a fixed text and no
+   * model call. It goes where they last wrote. Its intent precedes dispatch, so a crash or an UNKNOWN never repeats it. */
   let closingInFlight: Promise<void> | undefined;
   const noticeClosing = () => closingInFlight ??= sendClosingNotice().finally(() => { closingInFlight = undefined; });
   const sendClosingNotice = async () => {
     const now = ports.now();
-    if (journal.view.stop || ports.stopped() || now >= journal.view.expires || now < journal.view.expires - CLOSING_NOTICE_LEAD_MS
+    if (journal.view.stop || ports.stopped() || now < journal.view.expires - CLOSING_NOTICE_LEAD_MS
       || journal.view.replies >= journal.view.limits.maxReplies - 1
       || journal.view.order.some(turn => turn.closingNotices?.some(notice => notice.end === journal.view.expires))) return;
     const lead = [...journal.view.order].reverse().find(turn => turn.accepted && fromOperator(turn));
@@ -8811,7 +8810,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     ports.checkOutbound(text);
     const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
     // An acknowledgement, a stop or the end can land while disclosure is awaited: the notice is then dropped, never a failed pass.
-    const current = () => journal.view.stop === null && !ports.stopped() && ports.now() < end && journal.view.expires === end
+    const current = () => journal.view.stop === null && !ports.stopped() && journal.view.expires === end
       && (lead.closingNotices?.some(notice => notice.end === end) || journal.view.replies < journal.view.limits.maxReplies - 1);
     const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: lead.update, current }, () => {
       journal.append({ kind: 'held-notice-intent', id: lead.id, closing: { end, zone }, text, chat, ...thread, update: lead.update,
@@ -8824,7 +8823,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * held turns are named only by this fixed text. Its intent precedes dispatch and an UNKNOWN is never repeated. */
   const noticeDisclosureHolds = async () => {
     const now = ports.now();
-    if (journal.view.stop || ports.stopped() || now >= journal.view.expires || journal.view.replies >= journal.view.limits.maxReplies
+    if (journal.view.stop || ports.stopped() || journal.view.replies >= journal.view.limits.maxReplies
       || now < lastHeldNoticeAt(journal.view) + HELD_NOTICE_WINDOW_MS) return;
     const held = journal.view.order.filter(turn => turn.accepted && turn.held === GROUP_DISCLOSURE_HOLD && turn.intent === undefined
       && turn.heldNoticeIntent === undefined && turn.heldNoticeCoveredBy === undefined && turn.heldSince !== undefined);
@@ -10836,7 +10835,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       consumeResult(surface.verifier.issue({ request: id, requestDigest: digest, renderingDigest: rendering, action: 'raise-caps',
         scope: { type: 'Scope', schemaVersion: 1, kind: 'conversation', members: [view.genesis.chat] } as unknown as Scope,
         audience: 'operator-private-chat', operator: approvalOperator(view), requestedBy: 'preview-agent', artifact: digest, base,
-        issuedAt: now, expiresAt: Math.min(view.expires, now + APPROVAL_CHALLENGE_MS), singleUse: true,
+        issuedAt: now, expiresAt: now + APPROVAL_CHALLENGE_MS, singleUse: true,
         surface: 'preview-approval-surface', generation: PREVIEW_REGISTER_GENERATION }),
       { Success: value => { challenge = value; }, Refused: () => { challenge = null; } });
     } catch { challenge = null; }
@@ -10859,7 +10858,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       consumeResult(surface.verifier.issue({ request, requestDigest: digest, renderingDigest: digest, action: 'emergency-stop',
         scope: { type: 'Scope', schemaVersion: 1, kind: 'conversation', members: [view.genesis.chat] } as unknown as Scope,
         audience: 'independent-emergency-stop', operator, requestedBy: operator, artifact: digest, base: view.genesis.grant,
-        issuedAt: now, expiresAt: Math.min(view.expires, now + STOP_CHALLENGE_MS), singleUse: true,
+        issuedAt: now, expiresAt: now + STOP_CHALLENGE_MS, singleUse: true,
         surface: 'preview-approval-surface', generation: PREVIEW_REGISTER_GENERATION }),
       { Success: value => { challenge = value; }, Refused: () => { challenge = null; } });
     } catch { challenge = null; }
@@ -12147,8 +12146,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         completion: journal.view.commitments.flatMap((item, id) => item.source === turn.id || turn.requestedAction?.owed?.some(ref => ref.key === `commitment:${id}`)
           || commitmentOpen(journal.view, id) && completionPending(journal.view, id)
           ? [{ obligation: `commitment:${id}`, work: journal.view.obligationWork[`commitment:${id}`] ?? null, open: commitmentOpen(journal.view, id) }] : []),
-        halt: journal.view.stop ?? (ports.now() >= journal.view.expires ? 'trial expired'
-          : journal.view.calls >= journal.view.limits.maxCalls ? 'model-call allowance used' : null),
+        halt: journal.view.stop ?? (journal.view.calls >= journal.view.limits.maxCalls ? 'model-call allowance used' : null),
         memoryChanges: journal.view.memory.filter(change => change.trigger === turn.id),
         memoryPending: turn.memoryPending === true, memoryUndecided: turn.memoryUndecided === true,
         replyIntent: turn.intent ?? null, delivery: turn.intent === undefined ? 'no send intent' : deliveryEvidence(turn) } };
@@ -12191,7 +12189,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         evidence: unavailableReason ? JSON.stringify({ step: stepId, error: unavailableReason }) : state,
         at: ports.now() });
       let result: StepCheckResult;
-      if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires)
+      if (journal.view.stop || ports.stopped())
         result = { verdict: 'unavailable', reason: 'preview stopped before Jev dispatch', score: null, latencyMs: 0 };
       else if (unavailableReason) result = { verdict: 'unavailable', reason: unavailableReason, score: null, latencyMs: 0 };
       else try {
@@ -12210,7 +12208,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     checkingSteps = true;
     try {
       for (const [stepId, step] of journal.view.stepChecks) {
-        if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires) return;
+        if (journal.view.stop || ports.stopped()) return;
         if (step.result || presendStep(stepId) || stepsInFlight.has(stepId)) continue;
         if (!step.reserved && [...journal.view.stepChecks.values()].filter(item => item.reserved).length >= journal.view.limits.maxCalls) return;
         await runStep(stepId, step.reserved ? {} : stepEvidence(stepId, step));
@@ -12241,7 +12239,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             ...(followUp.heldUsage ? { usage: followUp.heldUsage } : {}), at: ports.now() });
         } else journal.append({ kind: 'retro', pass: last.pass, state: 'unknown', reason: 'interrupted before its result was recorded; never replayed', at: ports.now() });
       }
-      if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires) return;
+      if (journal.view.stop || ports.stopped()) return;
       const population = retrospectiveCases(journal.view);
       const evidence = ports.retrospectiveEvidence?.() ?? {};
       const plan = retrospectivePlan(journal.view, population, ports.now(), contextDigest, evidence);
@@ -12310,7 +12308,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const view = journal.view, asked = dutiesLeftUninspected(held);
     const kept = (detail: string) => ({ result: held, detail });
     if (view.limits.maxCalls - view.calls - retroCallReserve(view.limits.maxCalls) < 1) return kept('not run, model attempts kept in reserve for replies');
-    if (view.stop || ports.stopped() || ports.now() >= view.expires) return kept('not run, the preview stopped');
+    if (view.stop || ports.stopped()) return kept('not run, the preview stopped');
     journal.append({ kind: 'retro-duty-reserve', pass, duties: asked, held, ...(heldUsage ? { heldUsage } : {}), at: ports.now() });
     const settle = (state: 'complete' | 'failed' | 'unknown', reason: string | undefined, usage: ModelUsage | undefined) =>
       journal.append({ kind: 'retro-duty', pass, state, ...(reason === undefined ? {} : { reason }), ...(usage ? { usage } : {}), at: ports.now() });

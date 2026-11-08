@@ -67,8 +67,9 @@ it('renews into a record this build accepts and refuses the old record', () => {
   expect(record).toMatchObject({ ...observation, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY, profileDigest: current.profileDigest,
     invocationPolicyDigest: current.invocationPolicyDigest, waiver: current.waiver, acceptedResiduals: current.acceptedResiduals,
     predecessor: { reference: current.reference, digest: `sha256:${createHash('sha256').update(currentBytes).digest('hex')}` } });
-  expect(() => conversation(current)).toThrow('subscription activation expired or clock differs');
-  expect(() => conversation(record, profile, SUBSCRIPTION_PREVIEW_EXPIRY)).toThrow('expired or clock differs');
+  expect(() => conversation(current)).toThrow('subscription activation clock differs or its end is not reviewed');
+  // activation-stop-1108: the end date is a reminder, never a stop; the record stays valid past it.
+  expect(() => conversation(record, profile, SUBSCRIPTION_PREVIEW_EXPIRY + 86_400_000)).not.toThrow();
 });
 
 it('writes a profile successor only for a new reference and refuses a different account or stale observation', () => {
@@ -80,7 +81,7 @@ it('writes a profile successor only for a new reference and refuses a different 
   expect(() => conversation(record, profile)).toThrow('artifact or policy differs');
   for (const [changed, message] of [[{ observedAccount: 'other@example.invalid' }, 'observed account differs'],
     [{ subscriptionLimit: 'exhausted' }, 'not available'], [{ expiresAt: 1 }, 'not renewable'],
-    [{ observedAt: NOW + 1 }, 'expired or clock differs'], [{ assertedAt: observation.observedAt + 1 }, 'expired or clock differs']])
+    [{ observedAt: NOW + 1 }, 'clock differs'], [{ assertedAt: observation.observedAt + 1 }, 'clock differs']])
     expect(() => renewActivation({ current, currentBytes, profile, observation: { ...observation, ...changed }, now: NOW }))
       .toThrow(message);
   const { method: _omitted, ...missing } = observation;
@@ -138,7 +139,7 @@ it('extends a live journal once to exactly the reviewed expiry and survives repl
     const journal = openPreviewJournal(path, key, genesis(PRIOR_EXPIRY));
     const renew = (input: object) => renewJournalExpiry(journal, { expires: SUBSCRIPTION_PREVIEW_EXPIRY, activation: digest,
       authority: 'status-quo renewal; standing preapproval note #30', at: NOW, ...input });
-    for (const refused of [{ expires: SUBSCRIPTION_PREVIEW_EXPIRY + 1 }, { expires: PRIOR_EXPIRY }, { at: PRIOR_EXPIRY },
+    for (const refused of [{ expires: SUBSCRIPTION_PREVIEW_EXPIRY + 1 }, { expires: PRIOR_EXPIRY },
       { authority: ' ' }, { activation: 'not-a-digest' }])
       expect(() => renew(refused)).toThrow('expiry renewal refused');
     expect(journal.view.expires).toBe(PRIOR_EXPIRY);
@@ -160,13 +161,14 @@ it('extends a live journal once to exactly the reviewed expiry and survives repl
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('refuses renewal of a stopped or already expired trial', () => {
+// activation-stop-1108: the end date is a reminder, never a stop, so a trial past it still renews; a stopped one never does.
+it('renews a trial past its end date and refuses renewal of a stopped trial', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-renew-stop-')));
   try {
-    const expired = openPreviewJournal(join(root, 'expired.encrypted'), key, genesis(NOW - 1));
-    expect(() => renewJournalExpiry(expired, { expires: SUBSCRIPTION_PREVIEW_EXPIRY, activation: digest, authority: 'a', at: NOW }))
-      .toThrow('expiry renewal refused');
-    expired.close();
+    const ended = openPreviewJournal(join(root, 'expired.encrypted'), key, genesis(NOW - 1));
+    renewJournalExpiry(ended, { expires: SUBSCRIPTION_PREVIEW_EXPIRY, activation: digest, authority: 'a', at: NOW });
+    expect(ended.view.expires).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
+    ended.close();
     const stopped = openPreviewJournal(join(root, 'stopped.encrypted'), key, genesis(PRIOR_EXPIRY));
     stopped.append({ kind: 'stop', reason: 'operator', at: NOW - 1 });
     expect(() => renewJournalExpiry(stopped, { expires: SUBSCRIPTION_PREVIEW_EXPIRY, activation: digest, authority: 'a', at: NOW }))

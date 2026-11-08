@@ -13,7 +13,8 @@ import type { ExplicitYesInstallation } from '../../src/operator/explicit-yes.js
 // Plan row #373 (observer #143; Purpose lines 85 and 101 require only an "unexpired" request). Live on the operator's
 // preview the requests lapsed one hour after issue: raise 2a9e7a52e98077e6 (opened 01:33, lapsed 02:33) and renewal
 // 2582df96e288e6cd (opened 04:02, lapsing 05:02), both at night, unseen. A request now stays answerable for 18 hours by
-// default (configurable on the root), never past the trial's current end, and its lapse is stated in UTC and, where the
+// default (configurable on the root), whatever the activation end (a reminder, never a stop: activation-stop-1108,
+// request-lifetimes-unclamped), and its lapse is stated in UTC and, where the
 // root knows the operator's time zone, in local time. Replays the recorded request turns of 2026-10-03 (updates
 // 969390038 and 969390039, their journaled answers and proposals) on a root shaped like the live one (P-05 review route,
 // 2,500 calls after host raises, trial ending 2026-10-05 20:40 UTC, the reviewed 2026-10-12 activation installed).
@@ -81,7 +82,7 @@ const state = (over: Partial<ProposalState> = {}): ProposalState => ({ limits: {
   expires: SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY, governedExpiry: SUBSCRIPTION_PREVIEW_EXPIRY, renewalActivation: RENEWAL,
   unknownCalls: 0, stopped: false, grant: TRIAL, base: 'base:test', ...over });
 
-it('defaults to an 18-hour window, takes a configured one, and never outlives the trial\'s current end', () => {
+it('defaults to an 18-hour window, takes a configured one, and keeps it across the activation end', () => {
   expect(OPERATOR_REQUEST_MS).toBe(18 * HOUR);
   const now = recorded(RENEW).now;
   for (const proposal of [{ action: 'raise-caps' as const }, { action: 'renew-expiry' as const }]) {
@@ -89,10 +90,11 @@ it('defaults to an 18-hour window, takes a configured one, and never outlives th
     expect(made.kind === 'request' && made.request.expiresAt).toBe(now + 18 * HOUR);
     const six = proposeOperatorRequest(state(), proposal, 'turn-1', now, 6 * HOUR);
     expect(six.kind === 'request' && six.request.expiresAt).toBe(now + 6 * HOUR);
-    // Three hours before the governing deadline (the current end, for a raise and for a renewal alike), it lapses there.
-    const near = SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY - 3 * HOUR;
-    const clamped = proposeOperatorRequest(state(), proposal, 'turn-1', near);
-    expect(clamped.kind === 'request' && clamped.request.expiresAt).toBe(SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY);
+    // Three hours before the activation end, and after it, the request keeps its whole window: the end is a reminder.
+    for (const at of [SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY - 3 * HOUR, SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY + HOUR]) {
+      const across = proposeOperatorRequest(state(), proposal, 'turn-1', at);
+      expect(across.kind === 'request' && across.request.expiresAt).toBe(at + 18 * HOUR);
+    }
     for (const bad of [0, -1, 1.5, OPERATOR_REQUEST_MAX_MS + 1])
       expect(() => proposeOperatorRequest(state(), proposal, 'turn-1', now, bad)).toThrow('window out of bounds');
     if (made.kind !== 'request') continue;
@@ -106,7 +108,7 @@ it('defaults to an 18-hour window, takes a configured one, and never outlives th
   }
 });
 
-it('states the lapse in UTC, in the operator\'s local time where known, and names the trial end when it cut the window', () => {
+it('states the lapse in UTC and in the operator\'s local time where known, and never claims the activation end cut it', () => {
   const now = recorded(RENEW).now, current = { limits: state().limits, expires: state().expires };
   const made = proposeOperatorRequest(state(), { action: 'renew-expiry' }, 'turn-1', now);
   if (made.kind !== 'request') throw Error('no request');
@@ -119,12 +121,13 @@ it('states the lapse in UTC, in the operator\'s local time where known, and name
   // The replayed form (no detail) is a prefix of every issued form, so earlier recorded requests replay unchanged.
   expect(local.startsWith(operatorRequestText(made.request, current, null))).toBe(true);
   expect(operatorReviewBodyText(made.request, current, ZONE)).toContain('05:01 UTC. That is Sat, Oct 3, 22:01 PDT your time');
-  const clamped = proposeOperatorRequest(state(), { action: 'raise-caps' }, 'turn-1', SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY - 3 * HOUR);
-  if (clamped.kind !== 'request') throw Error('no request');
-  expect(operatorLapseDetail(clamped.request, current, ZONE))
-    .toBe(' That is Thu, Nov 12, 13:40 PST your time (America/Los_Angeles), and the trial\'s current end, which a request cannot outlast.');
-  expect(operatorLapseDetail(clamped.request, current)).toBe(' That is the trial\'s current end, which a request cannot outlast.');
-  expect(operatorLapseDetail(made.request, current)).toBe('');
+  const across = proposeOperatorRequest(state(), { action: 'raise-caps' }, 'turn-1', SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY - 3 * HOUR);
+  if (across.kind !== 'request') throw Error('no request');
+  // Even a request lapsing exactly at the activation end says nothing about that end: the end no longer cuts a window.
+  const atEnd = { ...across.request, expiresAt: SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY };
+  expect(operatorLapseDetail(across.request, current, ZONE)).toBe(' That is Fri, Nov 13, 04:40 PST your time (America/Los_Angeles).');
+  expect(operatorLapseDetail(atEnd, current, ZONE)).toBe(' That is Thu, Nov 12, 13:40 PST your time (America/Los_Angeles).');
+  for (const request of [across.request, atEnd, made.request]) expect(operatorLapseDetail(request, current)).toBe('');
 });
 
 it('replays the recorded raise and renewal: both open 18 hours, and both approvals after the old one-hour mark apply', async () => {
@@ -168,20 +171,22 @@ it('refuses an approval that arrives after the new lapse, and closes the lapsed 
   });
 });
 
-it('cuts the window at the trial\'s current end when that is nearer, says so, and still applies an approval before it', async () => {
+it('keeps the whole window across the activation end, says nothing of that end, and applies an approval after it', async () => {
   await withRoot(async path => {
     const root = liveRoot(path, { timeZone: ZONE });
     const near = SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY - 3 * HOUR;
     await root.ask(RAISE, near, recorded(RAISE).message, () => journaled(RAISE));
     await root.ask(RENEW, near + 60_000, recorded(RENEW).message, () => journaled(RENEW));
     const raise = root.request('raise-caps'), renew = root.request('renew-expiry');
-    expect([raise.request.expiresAt, renew.request.expiresAt]).toEqual([SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY, SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY]);
-    const stated = 'This request lapses at 2026-11-12 21:40 UTC. That is Thu, Nov 12, 13:40 PST your time (America/Los_Angeles), and the trial\'s current end, which a request cannot outlast.';
-    for (const id of [raise.request.id, renew.request.id])
-      expect(root.sent.some(item => item.text.includes(`Request ${id}:`) && item.text.includes(stated))).toBe(true);
-    expect(root.opened.map(item => item.body.includes(`${stated}\n\nMerging is not needed.`) && item.content.includes(stated))).toEqual([true, true]);
-    root.approve(146, '7301', near + 2 * HOUR); root.approve(147, '7302', near + 2 * HOUR);
-    await root.pollAt(near + 2 * HOUR + 60_000);
+    expect([raise.request.expiresAt, renew.request.expiresAt]).toEqual([near + 18 * HOUR, near + 60_000 + 18 * HOUR]);
+    const stated = [raise, renew].map(item => `This request lapses at ${new Date(item.request.expiresAt).toISOString().slice(0, 16).replace('T', ' ')} UTC.`);
+    expect(stated[0]).toBe('This request lapses at 2026-11-13 12:40 UTC.');
+    for (const [index, id] of [raise.request.id, renew.request.id].entries())
+      expect(root.sent.some(item => item.text.includes(`Request ${id}:`) && item.text.includes(stated[index]!) && !item.text.includes('current end'))).toBe(true);
+    expect(root.opened.map((item, index) => item.body.includes(stated[index]!) && !item.body.includes('current end'))).toEqual([true, true]);
+    // Approved five hours after the activation end, inside the window: both still apply.
+    root.approve(146, '7301', near + 8 * HOUR); root.approve(147, '7302', near + 8 * HOUR);
+    await root.pollAt(near + 8 * HOUR + 60_000);
     expect([raise.applied, renew.applied]).toEqual([true, true]);
     expect(root.journal.view.expires).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
     root.journal.close();

@@ -11,7 +11,7 @@ const genesis = { kind: 'genesis' as const, bot: '123', chat: '456', operator: '
 const intake = { kind: 'intake' as const, id: 'telegram:123:update:1', update: 1, text: 'question',
   raw: '{}', accepted: true, cursor: 2, at: 1000 };
 
-it('separates emergency stop from expiry and keeps every ordinary capacity from ending polling', () => {
+it('stops only on the emergency stop: neither the activation end nor any ordinary capacity ends polling', () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'gate-bases-')));
   const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis);
   let stopped = false, now = 1999;
@@ -33,10 +33,11 @@ it('separates emergency stop from expiry and keeps every ordinary capacity from 
     expect(journal.view.stop).toBeNull();
     stopped = false;
     expect(() => worker.gate()).not.toThrow();
+    // activation-stop-1108: past the activation end the runner keeps polling and latches no stop.
     now = 2000;
-    expect(() => worker.pollGate()).toThrow('preview stopped');
-    expect(journal.view.stop).toBe('trial expired');
-    expect(() => worker.gate()).toThrow('preview stopped');
+    expect(() => worker.pollGate()).not.toThrow();
+    expect(() => worker.gate()).not.toThrow();
+    expect(journal.view.stop).toBeNull();
   } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
