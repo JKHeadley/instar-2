@@ -18,7 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/reply-noise-1108.test.ts
 Hook bypass: none
 Deferral: tests/preview/reply-noise-1108.test.ts:1 | not-a-deferral=quotes the recorded 11:54 runner marker "Follow-up on ...: answered above." as the incident being tested; no work is deferred
-Deferral: tests/preview/reply-noise-1108.test.ts:23 | not-a-deferral=builds the recorded marker tail as test data the reply must not contain; no work is deferred
+Deferral: tests/preview/reply-noise-1108.test.ts:26 | not-a-deferral=builds the recorded marker tail as test data the reply must not contain; no work is deferred
 Convergence: none
 Decision: reply-noise-login-only-when-unusable | Offer a login reply line only while no approved login can be used, because the brief requires it only when the person's work is affected, and Rules 87/88 put a self-healed exclusion on the pull surface; a timed hold of every login stays the outage notice's. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/reply-noise-1108-PROGRESS.md
 Decision: reply-noise-passage-per-result | Judge a shared passage by stored result equality, not promise wording, because the live D1c shape records one request twice under two wordings with one result, and Rule 10 forbids deciding "same promise" from words; result equality is an exact test on recorded state (Rule 4). | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/reply-noise-1108-PROGRESS.md
