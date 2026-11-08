@@ -361,7 +361,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         if (input.state === 'dispatching' && input.delivery && input.attempts < 3 && adapter.notDispatched) {
           try { unsent = await adapter.notDispatched(input.delivery); } catch { /* Unknown remains uncertain. */ }
         }
-        if (unsent) update(input.request.operation, { state: 'queued', delivery: null, retryDelivery: input.delivery!, cursor: 0, reply: null,
+        if (unsent) update(input.request.operation, { state: 'queued', delivery: null, retryDelivery: input.delivery!, cursor: 0, reply: null, rerunFor: null,
           retryAt: config.now() + config.pollMs * 2 ** input.attempts });
         else if (typeof input.rerunFor === 'string' && input.rerunFor === input.delivery?.claim && input.attempts < 3
           && state.claimTools !== undefined && input.toolsAtDispatch === state.claimTools

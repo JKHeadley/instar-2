@@ -1538,3 +1538,32 @@ it.each(['proved', 'unknown', 'throws', 'accepted', 'exhausted', 'stop', 'unconf
     if (mode !== 'proved') expect(f.delivered).toHaveLength(1);
     await next.close();
   });
+
+it('review: non-dispatch transfer must not retain a previous claim replay marker', async () => {
+  const f = fixture(); f.finish(false);
+  Object.assign(f.config, { contextRecoveryAllowed: () => true, recoveryEdges: () => f.edges });
+  const deliver = f.adapter.deliver, observe = f.adapter.observe;
+  let firstCut: ConversationState | null = null;
+  f.adapter.deliver = async () => { firstCut = f.state(); throw Error('cut before adapter dispatch'); };
+  await f.port.run(f.request('asked')); f.restore(firstCut!);
+  expect(firstCut!.inputs[0]!.state).toBe('dispatching');
+  const lost = new Set([firstCut!.claim!]);
+  f.config.io.admissionState = claim => lost.has(claim) ? null : ({ refused: false, refusalReason: null, openDelegations: [], uncertainEffects: 0 });
+  f.adapter.observe = async input => input.delivery && lost.has(input.claim)
+    ? { observations: [], cursor: input.cursor, complete: true } : observe(input);
+  f.adapter.notDispatched = async () => true;
+  f.adapter.deliver = deliver;
+  const second = f.restart();
+  expect((await second.collect('asked'))?.outcome.state).toBe('queued');
+  f.advance(200);
+  let secondCut: ConversationState | null = null;
+  f.config.io.wait = async () => { secondCut = f.state(); throw Error('cut after replacement accepts'); };
+  await second.maintain();
+  expect(secondCut!.inputs[0]).toMatchObject({ state: 'accepted', attempts: 2, toolsAtDispatch: 0 });
+  f.restore(secondCut!); lost.add(secondCut!.claim!);
+  f.config.io.wait = async ms => { f.advance(ms); }; f.finish(true);
+  const third = f.restart(); await third.maintain();
+  expect((await third.collect('asked'))?.outcome.state).toBe('complete');
+  expect(f.delivered).toHaveLength(2);
+  await third.close();
+});
