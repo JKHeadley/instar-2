@@ -1191,6 +1191,52 @@ it.each(['none', 'tool', 'child', 'uncertain-send', 'exhausted', 'legacy', 'no-e
     await again.close();
   });
 
+// Review regression (Astra, round 1): the re-run disposition must survive a second host cut right after the
+// durable retirement that clears the claim. The eligibility is recorded on the input, bound to the retired claim.
+it.each(['none', 'not-allowed', 'other-claim', 'tool-count'] as const)(
+  'carryover 08 re-run survives a host cut after durable retirement only with its recorded evidence: %s', async mode => {
+    const f = fixture(); f.finish(false);
+    Object.assign(f.config, { contextRecoveryAllowed: () => true, recoveryEdges: () => f.edges });
+    let interrupted: ConversationState | null = null;
+    f.config.io.wait = async () => { interrupted = f.state(); throw Error('first host cut'); };
+    await f.port.run(f.request('asked'));
+    f.restore(interrupted!);
+    const old = interrupted!.claim!;
+    f.config.io.admissionState = claim => claim === old ? null : ({ refused: false, refusalReason: null, openDelegations: [], uncertainEffects: 0 });
+    const observe = f.adapter.observe;
+    f.adapter.observe = async input => input.delivery && input.launch === 'process-0'
+      ? { observations: [], cursor: input.cursor, complete: true } : observe(input);
+    f.config.io.wait = async ms => { f.advance(ms); }; f.finish(true);
+    const save = f.config.store.save;
+    let retired: ConversationState | null = null;
+    f.config.store.save = next => {
+      save(next);
+      if (!retired && next.claim === null && next.inputs[0]?.state === 'accepted') {
+        retired = structuredClone(next); throw Error('second host cut after durable retirement');
+      }
+    };
+    await f.restart().maintain().catch(() => {});
+    expect(retired).not.toBeNull();
+    expect(retired!.inputs[0]).toMatchObject({ state: 'accepted', rerunFor: old });
+    f.config.store.save = save;
+    const cut = retired! as ConversationState & { claimTools?: number };
+    if (mode === 'other-claim') f.restore({ ...cut, inputs: cut.inputs.map(row => ({ ...row, rerunFor: 'conversation-other-9' })) });
+    else if (mode === 'tool-count') f.restore({ ...cut, claimTools: 1 });
+    else f.restore(cut);
+    if (mode === 'not-allowed') Object.assign(f.config, { contextRecoveryAllowed: () => false });
+    const next = f.restart(); await next.maintain();
+    const collected = await next.collect('asked');
+    if (mode === 'none') {
+      expect(collected?.outcome).toMatchObject({ state: 'complete' });
+      expect(f.delivered.map(row => row.operation)).toEqual(['asked', 'asked']);
+      expect(f.state().inputs[0]).toMatchObject({ state: 'settled', attempts: 2, rerunFor: null });
+    } else {
+      expect(collected?.outcome).toMatchObject({ state: 'uncertain', detail: expect.stringContaining('no automatic replay') });
+      expect(f.delivered).toHaveLength(1);
+    }
+    await next.close();
+  });
+
 it.each(capturedShapes.otherShapes)('host restart re-runs an accepted recorded $kind ($id) and settles its recorded answer once', async sample => {
   const f = fixture(); f.finish(false); f.answer(sample.raw);
   Object.assign(f.config, { contextRecoveryAllowed: () => true, recoveryEdges: () => f.edges });

@@ -43,6 +43,9 @@ export interface ConversationInput {
   readonly effectsAtDispatch?: number;
   /** Durable tool preparations by this claim when the input was dispatched; absent means unknown. */
   readonly toolsAtDispatch?: number;
+  /** The retiring claim whose settled process proved this input eligible for one re-run; durable so a cut
+   * after retirement clears the claim cannot lose the disposition. Cleared when the input is requeued. */
+  readonly rerunFor?: string | null;
   readonly contextRecovery?: 'compacting' | 'restoring' | 'continued';
   readonly workerRecovery?: 'restoring' | 'continued';
 }
@@ -337,12 +340,16 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       // re-run by this host, bounded by the same three dispatch attempts. 2.0 keeps its no-duplicate floor:
       // only a single, never-recovered input whose claim durably noted no tool since dispatch and whose
       // process left no open child work. The outward-send and allowance checks follow retirement.
+      // The claim-bound evidence is recorded on the input before retirement clears the claim, so a host cut after
+      // that durable retirement still finds it. The tool count is rechecked after confirmed closure below.
       const settledProcess = state.claim !== null && processSettled();
-      const rerun = new Set(state.inputs.filter(input => settledProcess
+      const eligible = state.inputs.filter(input => settledProcess && !input.rerunFor
         && (input.state === 'accepted' || input.state === 'dispatching') && input.delivery?.claim === state.claim
         && (input.batch ?? [input.request.operation]).length === 1 && input.attempts < 3
         && !input.workerRecovery && !input.contextRecovery && state.claimTools !== undefined
-        && input.toolsAtDispatch === state.claimTools).map(input => input.request.operation));
+        && input.toolsAtDispatch === state.claimTools).map(input => input.request.operation);
+      if (eligible.length > 0) persist({ inputs: state.inputs.map(item => eligible.includes(item.request.operation)
+        ? { ...item, rerunFor: state.claim! } : item) });
       await retire();
       ensure(!state.edge || state.reserved, 'reservation interrupted; reconcile parent liability before continuing');
       ensure(!state.edge || Number.isSafeInteger(state.edge.budget.deadline) && state.edge.budget.deadline > 0, 'recorded parent lifetime invalid');
@@ -356,8 +363,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         }
         if (unsent) update(input.request.operation, { state: 'queued', delivery: null, retryDelivery: input.delivery!, cursor: 0, reply: null,
           retryAt: config.now() + config.pollMs * 2 ** input.attempts });
-        else if (rerun.has(input.request.operation) && config.contextRecoveryAllowed?.() === true && state.spent < config.maxCalls)
-          update(input.request.operation, { state: 'queued', delivery: null, cursor: 0, reply: null, retryAt: config.now() });
+        else if (typeof input.rerunFor === 'string' && input.rerunFor === input.delivery?.claim && input.attempts < 3
+          && state.claimTools !== undefined && input.toolsAtDispatch === state.claimTools
+          && config.contextRecoveryAllowed?.() === true && state.spent < config.maxCalls)
+          update(input.request.operation, { state: 'queued', delivery: null, cursor: 0, reply: null, rerunFor: null, retryAt: config.now() });
         else settle(input.request.operation, outcome('host restarted with an unresolved turn; no automatic replay'));
       }
       recovered = true;
