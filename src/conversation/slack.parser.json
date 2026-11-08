@@ -6,7 +6,7 @@
     "kind": "parsers",
     "status": "dark",
     "requiredFacts": {
-      "fixture": "P12-SLACK-ENVELOPE-CAPTURE",
+      "fixture": "P12-SLACK-EVENT-CAPTURE",
       "authenticationClass": [
         {
           "stimulusType": "message",
@@ -47,11 +47,13 @@
     "holds": [
       {
         "rule": 36,
-        "class": "deferred",
-        "part": 4,
-        "ceiling": 1794096000000,
-        "owner": "echo (agent)",
-        "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
+        "class": "held",
+        "evidence": {
+          "kind": "fixture",
+          "id": "P12-SLACK-EVENT-ON-CAPTURE",
+          "stage": "build"
+        },
+        "semanticallyReviewed": "never"
       }
     ]
   }

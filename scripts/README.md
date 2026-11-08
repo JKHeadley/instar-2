@@ -22,6 +22,13 @@ process at its next controlled restart; a standalone status command only proves 
 No passkey setup, new Telegram user or paid phone number is needed for this existing review route.
 The operator still supplies every real approval; the agent never approves as the operator.
 
+## Capabilities
+
+- `installed-update-verification`: updates itself; a failure keeps the current release.
+  Details: The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner, and the standalone command attaches its own. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Details and row-87 evidence: `docs/update.md`.
+
+## Placement
+
 `agent-paths.mjs` implements the operator's Mac placement rule (Rules 4/26/93/103):
 setup, boot, storage/session creation and workspace mounts refuse an agent directory in
 `~/Documents`, `~/Desktop`, `~/Downloads` or `~/Library/Mobile Documents`, including

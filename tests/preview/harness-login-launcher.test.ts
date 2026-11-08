@@ -201,7 +201,8 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     const diagnostic = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
     const detail = {modelCalls:diagnostic.view.modelCalls, calls:diagnostic.view.calls, limits:diagnostic.view.limits, turns:diagnostic.view.order.map(turn => ({ id: turn.id, held: turn.held, failure: turn.failureClass, state: turn.modelState, answer: turn.answer, notices: turn.answerNotices, reserved:turn.reserved, accepted:turn.accepted }))};
     diagnostic.close();
-    expect(sends.filter(row => row.text.includes('next approved login')), JSON.stringify({ sends, detail, rows, stdout:first.stdout, stderr:first.stderr })).toHaveLength(pooled && !missing && !signedOut ? 1 : 0);
+    // stale-login-line-1107: the switch above is durable, but no reply announces a successful one (Rules 87/88).
+    expect(sends.filter(row => row.text.includes('next approved login')), JSON.stringify({ sends, detail, rows, stdout:first.stdout, stderr:first.stderr })).toHaveLength(0);
     if (missing && !custodyCase) expect(sends.filter(row => row.text.includes('removed from selection'))).toHaveLength(1);
     expect(sends.some(row => row.text.includes(encodedPrimary))).toBe(false);
     if (!secretAnswer) expect(sends.some(row => row.text.includes('second approved login answered'))).toBe(true);

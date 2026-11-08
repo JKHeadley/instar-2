@@ -80,6 +80,14 @@ it('a change to executed code outside the import graph (the Telegram bridge, the
   // The imported-file neighbour and the two executed-only artifacts each change the installed code.
   for (const target of ['tests/preview/installation.ts', 'src/assembly/telegram-bot-api-bridge.mjs', 'scripts/slice-ts-loader.mjs'])
     expect(changed(target).codeDigest, target).not.toBe(current.codeDigest);
+  expect(changed('scripts/update-release.mjs').codeDigest).not.toBe(current.codeDigest);
+  // The candidate manifest is an explicitly accounted external load. A second
+  // computed import or a changed target is still refused, including in its loader.
+  expect(() => installedCodeOf(path => path === 'scripts/update.mjs'
+    ? Buffer.concat([read(path)!, Buffer.from('\nawait import(unaccountedTarget);\n')]) : read(path), exists, 'rev1')).toThrow('closure unresolved');
+  expect(() => installedCodeOf(path => path === 'scripts/update.mjs'
+    ? read(path)!.toString().replace("join(installed, 'scripts/update-release.mjs')", "join(installed, 'other.mjs')")
+    : read(path), exists, 'rev1')).toThrow('closure unresolved');
   // A file the runner never executes does not.
   expect(changed('tests/preview/journal-installation.test.ts').codeDigest).toBe(current.codeDigest);
   const bridgeOnly = changed('src/assembly/telegram-bot-api-bridge.mjs');

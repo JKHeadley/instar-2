@@ -1,0 +1,6 @@
+{
+  "note": "Group T scenario t2 from preswitch-train-199-d7a9666c-20261107-044803 (T-proofroom4-ps, update 46040954). The admission record held the admitted Bash call and no result, so T2c read UNTESTED. The refusal text is the turn's own answerReason. The failure envelope has the fields of a real PostToolUseFailure captured from Claude Code 2.1.319 on 2026-11-07 (a failed Bash, hook input keys tool_name, tool_use_id, tool_input, error, is_interrupt, duration_ms); this envelope carries the t2 command and refusal text, so it is reconstructed, not a capture of the proof room's own event.",
+  "recorded": { "tool": "Bash", "input": { "command": "head -n 1 /etc/hosts", "description": "Read first line of hosts file" }, "decision": "allow", "reason": "sandboxed command", "result": null },
+  "answerReason": "My only tool call this turn, Bash (head -n 1 /etc/hosts), failed with \"head: /etc/hosts: Operation not permitted\".",
+  "failure": { "hook_event_name": "PostToolUseFailure", "tool_name": "Bash", "tool_use_id": "toolu_t2_hosts", "tool_input": { "command": "head -n 1 /etc/hosts", "description": "Read first line of hosts file" }, "error": "Exit code 1\nhead: /etc/hosts: Operation not permitted", "is_interrupt": false, "duration_ms": 41 }
+}

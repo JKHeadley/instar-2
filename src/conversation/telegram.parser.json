@@ -6,7 +6,7 @@
     "kind": "parsers",
     "status": "live",
     "requiredFacts": {
-      "fixture": "P12-TELEGRAM-REPLY-CAPTURE",
+      "fixture": "P12-TELEGRAM-UPDATE-CAPTURE",
       "authenticationClass": [
         { "stimulusType": "message", "class": "channel-attested" },
         { "stimulusType": "stop", "class": "channel-attested" }
@@ -30,8 +30,9 @@
     },
     "standards": [28, 29, 36, 42, 46, 110],
     "holds": [
-      { "rule": 36, "class": "deferred", "part": 4, "ceiling": 1794096000000, "owner": "echo (agent)",
-        "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial." }
+      { "rule": 36, "class": "held",
+        "evidence": { "kind": "fixture", "id": "P12-TELEGRAM-UPDATE-ON-CAPTURE", "stage": "build" },
+        "semanticallyReviewed": "never" }
     ]
   }
 ]

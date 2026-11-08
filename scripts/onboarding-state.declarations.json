@@ -1,0 +1,12 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "onboarding-state.publishSetupRecord",
+    "kind": "stores", "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded", "holdsAgentMemory": "yes",
+      "machineScope": { "kind": "machine-local", "reason": "Durable no-replace records belong to the local installation's setup conversation; this installer does not replicate or establish peer authority." },
+      "agreesWith": []
+    },
+    "standards": [7, 32], "holds": []
+  }
+]

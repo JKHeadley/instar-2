@@ -165,6 +165,16 @@ it('prepares policy successors under each existing exact grant, and excludes a s
 });
 
 
+it('names an exhausted pool as no-account, so a failed review can record why', () => {
+  const f = fixture(); f.install(f.logins[0]); f.install(f.logins[1]);
+  const options = installedHarnessLaunch({ root: f.root, options: { model: f.world.model, 'harness-user': 'offline' }, prepare: () => f.prepare() }).options;
+  const pool = createHarnessLoginPool({ statePath: join(f.root, 'harness-login-pool.json'), now: () => Date.now(),
+    validate: verifyPreparedHarnessLogin, configuration: loadHarnessLogins(options) });
+  pool.observe(pool.select(), { failure: { failureClass: 'limit', resetAt: null } });
+  pool.observe(pool.select(), { failure: { failureClass: 'limit', resetAt: null } });
+  expect(() => pool.select()).toThrow(expect.objectContaining({ reviewCause: 'no-account' }));
+});
+
 it('keeps a missing secondary profile only as history across preparation and predecessor verification', () => {
   const f = fixture(); f.install(f.logins[0]); f.install(f.logins[1]);
   const launch = () => installedHarnessLaunch({ root: f.root, options: { model: f.world.model, 'harness-user': 'offline' }, prepare: () => f.prepare() });

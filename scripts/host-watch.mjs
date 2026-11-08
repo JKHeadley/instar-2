@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createUpdateLaunch } from './update-product.mjs';
 import { recordScheduledCrash } from '../src/scheduled/shedding.ts';
 
 const previewAgent = fileURLToPath(new URL('../tests/preview/agent.mjs', import.meta.url));
@@ -294,7 +295,7 @@ export async function superviseJournal(config, io = {}) {
   if (![maxRestarts, base, maximum, hangAfterMs].every(Number.isSafeInteger) || maxRestarts < 1 || maxRestarts > 100 || base < 1 || maximum < base
     || hangAfterMs < 50 || hangAfterMs > 3600000)
     throw Error('host watch: invalid journal restart bounds');
-  const launch = io.launch ?? io.spawnRunner ?? spawnJournal;
+  const launch = io.launch ?? io.spawnRunner ?? createUpdateLaunch(config, spawnJournal);
   const notify = io.notify ?? sendNotice;
   const now = io.now ?? Date.now, wait = io.wait ?? waitUnlessStopped;
   const limits = { ...JOURNAL_INCIDENT_LIMITS, ...(config.limits ?? {}) };
@@ -424,14 +425,18 @@ function beatOf(root, pid) {
     return beat?.v === 1 && beat.pid === pid && Number.isSafeInteger(beat.seq) ? beat.seq : null;
   } catch { return null; }
 }
-function spawnJournal(config) {
+function spawnJournal(config, observeUpdate = () => {}) {
   const hangAfterMs = config.hangAfterMs ?? JOURNAL_HANG_LIMITS.hangAfterMs;
   const child = spawn(config.agent[0], config.agent.slice(1), { cwd: config.cwd, env: process.env, stdio: ['ignore', 'inherit', 'inherit'] });
   // Progress is judged by this supervisor's own clock: the time it last saw the beat sequence advance.
   let seen = null, progressAt = Date.now(), hung = false;
   const monitor = setInterval(() => {
     const seq = beatOf(config.root, child.pid);
-    if (seq !== null && seq !== seen) { seen = seq; progressAt = Date.now(); return; }
+    if (seq !== null && seq !== seen) {
+      seen = seq; progressAt = Date.now();
+      try { observeUpdate(JSON.parse(readFileSync(join(config.root, RUNNER_BEAT_FILE), 'utf8')).update); } catch { /* evidence only */ }
+      return;
+    }
     if (!hung && Date.now() - progressAt > hangAfterMs) {
       hung = true;
       // SIGKILL also ends a stopped (SIGSTOP) process; the runner's journal is crash-safe.

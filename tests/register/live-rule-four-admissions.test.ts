@@ -49,7 +49,11 @@ describe('the live enumeration rule 4 asks for', () => {
       // Rule 4's live-secret-leaving admission: custody protects model-visible derivatives;
       // a refusal retains the encrypted original in inbound media custody and the journal.
       'preview.media-understanding.protectMediaBytes', 'recall.redact',
-      'resource-owner.admit', 'rungraph.exhaustion', 'rungraph.stop', 'rungraph.unreachable']);
+      'resource-owner.admit', 'rungraph.exhaustion', 'rungraph.stop', 'rungraph.unreachable',
+      // Rule 4's recorded-governed-state admission for the updater (scripts/update.declarations.json):
+      // installation state, release schema and migration postconditions must match exactly; a refusal
+      // keeps the staging, the current release and the migration intent, and publishes nothing.
+      'update.updateRoot', 'update.writeUpdateRuntime']);
   });
   it('rules 60 and 61 each have a live holder, and its honesty class says what is still owed', () => {
     for (const rule of [60, 61]) {

@@ -108,7 +108,8 @@ it('replays the exact live review, revision and unavailable revision review: sen
   expect(sends).toEqual([HOLDING_REPLY]);
   expect(sends).not.toContain(fixture.recorded.delivered);
   expect(journal.view.order[0]!.answer).toBe(fixture.recorded.answer);
-  expect(journal.view.order[0]!.revisionReview).toEqual(fixture.recorded.revisionReview);
+  // The recorded row predates the optional cause; the replayed failure now also says why (Rule 2).
+  expect(journal.view.order[0]!.revisionReview).toEqual({ ...fixture.recorded.revisionReview, cause: 'other', causeDetail: 'error:Error' });
   journal.close();
 });
 
