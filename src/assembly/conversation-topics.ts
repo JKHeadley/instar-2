@@ -305,6 +305,13 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
         if (state.edge?.charge === 'per-call') config.append({ type: 'SessionWorkCall', schemaVersion: 1,
           edge: state.edge.id, ordinal: spent(), at: config.now() });
       },
+      noteToolPreparation: (claim: string, ordinal: number) => {
+        const topic = Object.keys(state.topics).find(key => state.topics[key]!.claim === claim);
+        ensure(topic !== undefined, 'unknown topic claim');
+        const host = hostFor(topic!);
+        ensure(host.noteToolPreparation !== undefined, 'tool preparation record unavailable');
+        host.noteToolPreparation!(claim, ordinal);
+      },
       retireIdle: async () => {
         if ([...busy.values()].some(count => count > 0)) return false;
         for (const host of hosts.values()) if (!await host.retireIdle()) return false;
