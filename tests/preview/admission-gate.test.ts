@@ -129,6 +129,28 @@ it('exposes unfinished effects and retains the prepared count after completion f
   expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 0, toolPreparations: 2 });
 });
 
+it('durably notes every tool preparation before allowing it and refuses one it cannot record (carryover 08)', async () => {
+  const w = await world({ held: () => 'clear' }); const noted: number[] = []; let fail = false;
+  w.gate.open('claim-noted', { framework: 'claude-code', allowance: 3, edge: w.edge, noteTool: (ordinal: number) => {
+    if (fail) throw Error('disk unavailable');
+    noted.push(ordinal);
+  } });
+  const url = `${w.gate.base('claim-noted')}/admit`;
+  const post = async (call: object) => JSON.parse((await w.send(url, 'POST', JSON.stringify(call))).body);
+  expect((await post({ kind: 'tool', tool_name: 'Write', tool_use_id: 'write-1' })).decision).toBe('allow');
+  expect((await post({ kind: 'effect', phase: 'pre', tool_name: 'webrun', tool_use_id: 'read-1',
+    tool_input: { open: [{ ref_id: 'https://8.8.8.8/' }] } })).decision).toBe('allow');
+  expect(noted).toEqual([1, 2]);
+  expect(w.gate.state('claim-noted')).toMatchObject({ toolPreparations: 2 });
+  fail = true;
+  expect(await post({ kind: 'tool', tool_name: 'Bash', tool_use_id: 'bash-1' })).toMatchObject({ decision: 'deny',
+    reason: expect.stringContaining('could not be recorded') });
+  expect(w.gate.state('claim-noted')).toMatchObject({ toolPreparations: 2 });
+  fail = false;
+  expect((await post({ kind: 'tool', tool_name: 'Bash', tool_use_id: 'bash-2' })).decision).toBe('allow');
+  expect(noted).toEqual([1, 2, 3]);
+});
+
 it('persists conversation charges before forwarding and refuses a failed durable reservation', async () => {
   const w = await world(); const reserved: number[] = [];
   w.gate.open('claim-durable', { framework: 'claude-code', allowance: 3, edge: w.edge, reserveCall: (ordinal: number) => {

@@ -1142,6 +1142,79 @@ it('host restart during native connection backoff keeps spent attempts and never
   await next.close();
 });
 
+// Carryover 08 (1.x stuckMessageRecovery.recoverStuckMessages): a question the agent accepted before a host
+// restart is re-run by the new host and answered exactly once, but only on durable proof that the lost turn
+// prepared no tool, left no open child work and has no unknown outward send; every other case stays uncertain.
+it.each(['none', 'tool', 'child', 'uncertain-send', 'exhausted', 'legacy', 'no-edges'] as const)(
+  'host restart re-runs an accepted question once only without evidence of effects: %s', async mode => {
+    const f = fixture(); f.finish(false);
+    Object.assign(f.config, { contextRecoveryAllowed: () => mode !== 'uncertain-send',
+      ...(mode === 'no-edges' ? {} : { recoveryEdges: () => f.edges }) });
+    let interrupted: ConversationState | null = null;
+    f.config.io.wait = async () => {
+      if (mode === 'tool') f.port.noteToolPreparation!(f.state().claim!, 1);
+      interrupted = f.state();
+      throw Error('host cut mid-turn');
+    };
+    expect((await f.port.run(f.request('asked'))).state).toBe('uncertain');
+    const cut = structuredClone(interrupted!) as ConversationState & { claimTools?: number };
+    expect(cut.inputs[0]).toMatchObject({ state: 'accepted', attempts: 1, toolsAtDispatch: 0 });
+    expect(cut.claimTools).toBe(mode === 'tool' ? 1 : 0);
+    const old = cut.claim!;
+    if (mode === 'exhausted') f.restore({ ...cut, inputs: cut.inputs.map(row => ({ ...row, attempts: 3 })) });
+    else if (mode === 'legacy') f.restore({ ...cut, inputs: cut.inputs.map(({ toolsAtDispatch: _, ...row }) => row) });
+    else f.restore(cut);
+    if (mode === 'child') f.edges.push({ ...f.admissions[0]!, id: `${old}:process:helper`, parent: `${old}:process`, child: 'helper' });
+    // A real restart: the old claim's in-memory admission gate is gone; the old worker shows no result.
+    f.config.io.admissionState = claim => claim === old ? null : ({ refused: false, refusalReason: null, openDelegations: [], uncertainEffects: 0 });
+    const observe = f.adapter.observe;
+    f.adapter.observe = async input => input.delivery && input.launch === 'process-0'
+      ? { observations: [], cursor: input.cursor, complete: true } : observe(input);
+    f.config.io.wait = async ms => { f.advance(ms); };
+    f.finish(true);
+    const next = f.restart(); await next.maintain();
+    const collected = await next.collect('asked');
+    if (mode === 'none') {
+      expect(collected?.outcome).toMatchObject({ state: 'complete', text: '{"answer":"hello"}' });
+      expect(f.delivered.map(row => row.operation)).toEqual(['asked', 'asked']);
+      expect(f.launches).toHaveLength(2); expect(f.closed).toContain(old);
+      expect(f.state().inputs[0]).toMatchObject({ state: 'settled', attempts: 2 });
+    } else {
+      expect(collected?.outcome).toMatchObject({ state: 'uncertain', detail: expect.stringContaining('no automatic replay') });
+      expect(f.delivered).toHaveLength(1); expect(f.launches).toHaveLength(1);
+    }
+    // Exactly once: a further restart and tick neither re-runs nor changes the settled outcome.
+    const settled = f.state().inputs[0];
+    const again = f.restart(); await again.maintain();
+    expect(f.state().inputs[0]).toEqual(settled);
+    expect(f.delivered).toHaveLength(mode === 'none' ? 2 : 1);
+    await again.close();
+  });
+
+it.each(capturedShapes.otherShapes)('host restart re-runs an accepted recorded $kind ($id) and settles its recorded answer once', async sample => {
+  const f = fixture(); f.finish(false); f.answer(sample.raw);
+  Object.assign(f.config, { contextRecoveryAllowed: () => true, recoveryEdges: () => f.edges });
+  const request = preparedRequest(sample.id, JSON.stringify({ recorded: sample.raw }));
+  let interrupted: ConversationState | null = null;
+  f.config.io.wait = async () => { interrupted = f.state(); throw Error('host cut mid-turn'); };
+  expect((await f.port.run(request)).state).toBe('uncertain');
+  const old = interrupted!.claim!; f.restore(interrupted!);
+  f.config.io.admissionState = claim => claim === old ? null : ({ refused: false, refusalReason: null, openDelegations: [], uncertainEffects: 0 });
+  const observe = f.adapter.observe;
+  f.adapter.observe = async input => input.delivery && input.launch === 'process-0'
+    ? { observations: [], cursor: input.cursor, complete: true } : observe(input);
+  f.config.io.wait = async ms => { f.advance(ms); }; f.finish(true);
+  const next = f.restart(); await next.maintain();
+  const outcome = (await next.collect(sample.id))!.outcome;
+  // An empty recorded answer is not completion: it takes the existing unknown-answer path, never a second re-run.
+  expect(outcome.state).toBe(sample.raw.trim() ? 'complete' : 'uncertain');
+  if (outcome.state === 'complete') expect(outcome.text).toBe(sample.raw);
+  expect(f.delivered.map(row => row.operation)).toEqual([sample.id, sample.id]);
+  expect(f.delivered[1]!.text).toContain(request.question);
+  await f.restart().maintain(); expect(f.delivered).toHaveLength(2);
+  await next.close();
+});
+
 it('durably halts deadline-exhausted work before resource closure and never revives it on restart', async () => {
   const f = fixture(); f.finish(false);
   const control = f.adapter.control;
