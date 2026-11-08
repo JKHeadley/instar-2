@@ -203,7 +203,8 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     diagnostic.close();
     // stale-login-line-1107: the switch above is durable, but no reply announces a successful one (Rules 87/88).
     expect(sends.filter(row => row.text.includes('next approved login')), JSON.stringify({ sends, detail, rows, stdout:first.stdout, stderr:first.stderr })).toHaveLength(0);
-    if (missing && !custodyCase) expect(sends.filter(row => row.text.includes('removed from selection'))).toHaveLength(1);
+    // reply-noise-1108: the missing member is dropped while the other serves; no reply carries a line about it.
+    expect(sends.filter(row => row.text.includes('removed from selection') || row.text.includes('model logins can be used'))).toHaveLength(0);
     expect(sends.some(row => row.text.includes(encodedPrimary))).toBe(false);
     if (!secretAnswer) expect(sends.some(row => row.text.includes('second approved login answered'))).toBe(true);
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);

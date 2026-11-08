@@ -2773,7 +2773,7 @@ const REPORT_SELECTION_GUIDANCE = 'Judge pendingReports.items against current-ta
   + 'A prior answer or follow-up is not proof of current capabilities. This reply is how each offered report reaches the operator, '
   + 'so decide every one exactly once. selectedReports:[key]: its claims remain supported and consistent now; the runner appends it verbatim, '
   + 'so do not also restate it. carriedReports:[{key,quote}]: your reply itself gives this result in your own words, and quote copies word for word the part of your reply that gives it; the runner appends only a short '
-  + 'marker. rejectedReports:[{key,objection}]: unverifiable or contradictory and your reply does not give the result, with a concise objection '
+  + 'marker; one passage gives one result, so never quote the same words for items with different results, and an item your reply does not answer is selected or rejected instead. rejectedReports:[{key,objection}]: unverifiable or contradictory and your reply does not give the result, with a concise objection '
   + '(at most 1000 bytes), to return it to owned rework. An undecided report stays owed, not completed or delivered. '
   + 'Explain relevant uncertainty without repeating unsupported claims.';
 /** What the runner's line says for a result the agent gave in its own words. The agent's declaration decides delivery; these
@@ -2785,6 +2785,15 @@ const replyProse = (text: string) => { const at = text.indexOf('Follow-up on "')
 /** The declared words that show this text still gives an own-words result; the marker line is never that evidence (Rule 26). */
 const carriedEvidence = (declared: readonly CarriedReport[] | undefined, key: string, text: string) =>
   declared?.find(item => item.key === key && replyProse(text).includes(item.quote));
+/** reply-noise-1108 (Rules 8, 26): one passage of a reply gives one result. A quote that also stands for an owed item with
+ * a different stored result (the same words, or one inside the other) shows neither result was given on its own, so those
+ * declarations count for nothing: the items stay owed and are decided again. Items carrying the same result may share it. */
+const separateCarried = (view: JournalView, declared: readonly CarriedReport[]): CarriedReport[] => {
+  const result = new Map(pendingReports(view).map(item => [item.key, item.text]));
+  return declared.filter(item => !declared.some(other => other.key !== item.key
+    && (other.quote.includes(item.quote) || item.quote.includes(other.quote))
+    && (result.get(other.key) === undefined || result.get(other.key) !== result.get(item.key))));
+};
 /** Whether a reply still holds one result: the stored report verbatim, or the words declared for an own-words result. */
 const reportEvidenced = (view: JournalView, key: string, text: string, declared: readonly CarriedReport[] | undefined) =>
   declared?.some(item => item.key === key) ? carriedEvidence(declared, key, text) !== undefined
@@ -9312,11 +9321,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // decides each one it was shown. The existing single re-ask covers a miss; the runner never decides for it.
           const undecidedReports = (value: Record<string, unknown>, body: string) => {
             const named = (list: unknown) => Array.isArray(list) ? list as unknown[] : [];
-            const decided = [...named(value.selectedReports), ...carriedProposals(value.carriedReports, replyProse(body)).map(item => item.key),
+            const decided = [...named(value.selectedReports), ...separateCarried(journal.view, carriedProposals(value.carriedReports, replyProse(body))).map(item => item.key),
               ...named(value.rejectedReports).map(item => (item as { key?: unknown } | null)?.key)];
             const items = probeTurn(journal.view, turn) ? [] : (JSON.parse(context) as { pendingReports?: { items: { key: string }[] } }).pendingReports?.items ?? [];
             const missing = items.filter(item => decided.filter(key => key === item.key).length !== 1).map(item => item.key);
-            return missing.length ? `decide each of ${missing.join(', ')} exactly once in selectedReports, carriedReports (as {key,quote}, quote copied word for word from this reply) or rejectedReports` : undefined;
+            return missing.length ? `decide each of ${missing.join(', ')} exactly once in selectedReports, carriedReports (as {key,quote}, quote copied word for word from this reply, words that give that item's result and no different one) or rejectedReports` : undefined;
           };
           const declarationDefect = (given: Answer): string | undefined => {
             const text = typeof given === 'string' ? given : 'text' in given ? given.text : undefined;
@@ -9500,7 +9509,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
                 separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string; decided = true;
                 if (Array.isArray(parsed.selectedReports)) selectedReports = parsed.selectedReports;
-                ownWordReports = carriedProposals(parsed.carriedReports, replyProse(text));
+                ownWordReports = separateCarried(journal.view, carriedProposals(parsed.carriedReports, replyProse(text)));
                 if (Array.isArray(parsed.rejectedReports) && parsed.rejectedReports.every(item => item
                   && typeof item.key === 'string' && boundedText(item.objection, 1, 1000))
                   && new Set(parsed.rejectedReports.map(item => item.key)).size === parsed.rejectedReports.length)
@@ -10223,8 +10232,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   ...(text && outcome.promises !== undefined ? { promises: promiseProposals(outcome.promises, text) ?? [] } : {}),
                   ...(text && outcome.fulfills !== undefined ? { fulfills: fulfillmentProposals(outcome.fulfills, text,
                     item => offered.has(item.id) && fulfillmentSupported(item, text, journal.view.commitments)) ?? [] } : {}),
-                  ...(text && carriedProposals(outcome.carriedReports, replyProse(text)).some(item => turn.answerCarriedReports?.some(own => own.key === item.key))
-                    ? { carriedReports: carriedProposals(outcome.carriedReports, replyProse(text)).filter(item => turn.answerCarriedReports?.some(own => own.key === item.key)) } : {}),
+                  ...(text && separateCarried(journal.view, carriedProposals(outcome.carriedReports, replyProse(text))).some(item => turn.answerCarriedReports?.some(own => own.key === item.key))
+                    ? { carriedReports: separateCarried(journal.view, carriedProposals(outcome.carriedReports, replyProse(text))).filter(item => turn.answerCarriedReports?.some(own => own.key === item.key)) } : {}),
                   ...(answered ? { dispositions: answered } : {}), ...(proposed?.blocker ? { blocker: proposed.blocker } : {}),
                   ...(proposed?.rejected?.blocker ? { rejectedBlocker: true, blockerReason: proposed.rejected.blockerReason } : {}),
                   ...(outcome.usage ? { usage: outcome.usage } : {}), at: revisionAt });
