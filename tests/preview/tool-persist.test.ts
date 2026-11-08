@@ -14,7 +14,7 @@ import { prepareJournalEnvelope, withWorkspaceNotice } from './journal-envelope.
 import { decisionWithinFloor } from './model-call-boundary.js';
 import { conclusionText, parseModelJson } from './model-json.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
-import { subscriptionSessionArgs, subscriptionToolsPolicy, SUBSCRIPTION_TOOL_SESSION_ENV } from '../../src/assembly/production-provider.js';
+import { subscriptionSessionArgs, subscriptionToolsPolicy, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_SESSION_ENV } from '../../src/assembly/production-provider.js';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { conversationWorkspace, detachScratch, forgottenQuotes, planSession, readSession, reconcileWorkspace, removeSessionFiles, removeWorkspaceSessions, runToolTurn, sessionFactsDigest, sessionTranscript, toolStatusLines, TOOL_SESSION_LIMITS, TOOL_WORKSPACES_KEPT, WORKSPACE_LOST_NOTE, WORKSPACE_STALE_NOTE, workspaceNotice } from './tool-turn.mjs';
 
@@ -102,8 +102,10 @@ it('recovers the recorded zero-work rejected resume once, from the journal with 
   expect(harness.seen[2]!.session!.id).not.toBe(harness.seen[1]!.session!.id);
   expect(harness.seen[2]!.history).toBe('');
   expect(harness.seen[2]!.prepared).toBe('durable current packet');
-  // Every invocation's full liability is reserved before dispatch; recovery adds its base call too.
-  expect(seenCalls).toEqual([15, 30, 46]);
+  // Every invocation's full liability (its extra model turns and both helpers' whole budgets) is reserved before dispatch;
+  // recovery adds its base call too. Derived from the limits, so a change to a helper's turn bound (helper-limits-1107) moves it.
+  const liability = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1 + SUBSCRIPTION_TOOL_LIMITS.maxChildren * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns;
+  expect(seenCalls).toEqual([liability, 2 * liability, 3 * liability + 1]);
   expect(traceSession(journal)).toMatchObject({ resumed: 1, fresh: 2, ended: 1 });
   const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key, undefined, undefined, true);
   expect(reopened.view.toolTurns).toEqual(journal.view.toolTurns);
