@@ -67,6 +67,14 @@
       }
     },
     {
+      "id": "PREVIEW-ATTRIBUTION-CHECK",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/attribution.test.ts",
+        "hash": "sha256:bd12050ca125d27382b35d42458c003f9d76412eaa755814bfcfc1e7f908409d"
+      }
+    },
+    {
       "id": "PREVIEW-MODEL-JSON-ON-CAPTURE",
       "stage": "build",
       "artifact": {
