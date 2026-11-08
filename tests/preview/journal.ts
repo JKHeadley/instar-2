@@ -10168,10 +10168,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const claims = named.findings.flatMap(finding => namedClaimsIn(finding.reason, body));
               // An own-words marker is set aside while the claims are cut and returns only if its declared words survived.
               const ownLines = carriedLines.map(item => item.line);
-              const cut = exciseNamedClaims(ownLines.reduce((text, line) => text.replace(line, ''), body), claims);
+              // Rules 8, 22, 86: a runner result line is attached verbatim and settles only verbatim, so a named claim
+              // inside it withholds that whole result, never a sentence of it. The result is left out of this reply and
+              // returns to owned work with the objection (withheldReports); the rest of the answer is judged as a
+              // remainder. Live pre-switch train-209 3ad4ec04, room two, update 6236928 (D1c): one cut sentence of an
+              // appended cannot-do result left its next sentence for the remainder review to hold, and the whole reply,
+              // with the owed answer it carried, became the holding notice.
+              const lineClaims = (line: string) => claims.filter(claim => exciseNamedClaims(line, [claim]).removed.length > 0);
+              const cutLines = resultLines.filter(line => !ownLines.includes(line) && body.includes(line) && lineClaims(line).length > 0);
+              const inCutLines = new Set(cutLines.flatMap(lineClaims));
+              const cut = exciseNamedClaims([...ownLines, ...cutLines].reduce((text, line) => text.replace(line, ''), body), claims);
+              const removed = [...cutLines.map(line => line.trim()), ...cut.removed];
               const remainder = `${cut.text}${ownLines.filter(line => supportedLine(line, cut.text, turn.answerCarriedReports ?? [])).join('')}`;
-              withheld = { rules: named.rules, removed: cut.removed, unlocated: cut.unlocated };
-              if (cut.removed.length) {
+              withheld = { rules: named.rules, removed, unlocated: cut.unlocated.filter(claim => !inCutLines.has(claim)) };
+              if (removed.length) {
                 nothingLeft = true; // Held until the full-context reviewer clears this exact remainder.
                 const candidate = actionHeader === undefined ? disclosed(remainder) : `${actionHeader}\n${remainder}`;
                 if ((turn.revisionReviewRemainder === undefined || turn.revisionReviewRemainder === candidate)
