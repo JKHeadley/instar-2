@@ -6,14 +6,15 @@ import { runChild } from '../e2e/async-child.js';
 import { cpSync, existsSync, readFileSync, renameSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { successiveWorld, offlineProfile, offlineActivationAuthority, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
+import { successiveWorld, offlineProfile, offlineActivationAuthority, offlineOperatorMessage, writeOperatorRecords, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
+import { authoritySealKey, sealAuthorityRecord, singleMachineProfileDigest, SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { encoded } from './stage2-provider.js';
-import { CREDENTIAL_SHAPE_NOTICE, openPreviewJournal } from './journal.js';
+import { CREDENTIAL_SHAPE_NOTICE, MODEL_FAILURE_REPLY, MODEL_NOT_STARTED_REPLY, openPreviewJournal } from './journal.js';
 import { harnessLoginPath, storeHarnessLogin } from './harness-user.mjs';
 
 // Two installations, run, status and withdrawal each retain their 30s child ceiling.
 // Leave room for all five and cleanup; awaited children keep worker IPC responsive.
-it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', 'imported', 'missing-custody', 'missing-custody-secret', 'intact-custody-secret', 'renamed', 'copied', 'lost-build'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
+it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', 'imported', 'missing-custody', 'missing-custody-secret', 'intact-custody-secret', 'renamed', 'copied', 'lost-build', 'signed-out', 'signed-out-unaccepted', 'refused-token'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
   const world = successiveWorld(), directory = world.directory;
   let root = join(directory, 'pool-runner');
   const absolute = relative => pathToFileURL(join(process.cwd(), relative)).href;
@@ -23,6 +24,14 @@ it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', '
   const secretAnswer = mode.endsWith('custody-secret');
   const encodedPrimary = Buffer.from('sk-ant-oat01-synthetic-serving-a-only').toString('base64');
   const missing = mode === 'missing-profile' || custodyCase;
+  // The first login's own CLI login check reports it signed out (1.x QuotaPoller needs-reauth evidence).
+  const signedOut = mode.startsWith('signed-out') || mode === 'refused-token';
+  // The plain not-started line is a reserve (limited) answer: on one machine it speaks only under the operator's
+  // accepted P-08 single-machine policy, as every live proof room records. Without it the turn is kept and the
+  // outage is owned on the status surface (minimal-path-live.test.ts); this variant proves that side here.
+  const unaccepted = mode === 'signed-out-unaccepted';
+  // A handed-over token the provider refuses: status still says signed in; the model frame is the genuine 401.
+  const refusedToken = mode === 'refused-token';
   const pooled = mode !== 'legacy', automatic = custodyCase || ['installed', 'fresh', 'missing', 'missing-profile', 'imported', 'renamed', 'copied', 'lost-build'].includes(mode);
   const logins = (pooled ? ['serving-a', 'serving-b'] : ['serving-b']).map(name => {
     const profile = { ...offlineProfile, reference: name, activationReference: `${name}-activation`, expectedAccount: `${name}@example.invalid`,
@@ -41,6 +50,18 @@ it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', '
     }
     return row;
   });
+  if (signedOut && !unaccepted) {
+    // The desk's recorded step, as in minimal-path-live.test.ts: the acceptance message and the sealed policy.
+    const words = 'I accept the single-machine profile and its loss model for this preview.', activation = JSON.parse(readFileSync(logins[0].activation, 'utf8'));
+    const accepted = offlineOperatorMessage(1, 3, words);
+    writeOperatorRecords(join(directory, 'operator-records'), [offlineOperatorMessage(1, 1, 'offline approval stand-in'),
+      offlineOperatorMessage(1, 2, 'offline waiver stand-in'), accepted]);
+    const { seal: _seal, ...body } = JSON.parse(readFileSync(logins[0].authority, 'utf8'));
+    writeFileSync(logins[0].authority, JSON.stringify(sealAuthorityRecord({ ...body, installationPolicies: [{ id: 'p08-single-machine', policy: 'P-08',
+      shape: 'single-machine', grantor: String(world.configuration.operatorSenderId), words, source: { kind: 'telegram-message', topicId: 1, messageId: 3 },
+      acceptedAt: Date.parse(accepted.message.timestamp), subject: { trial: activation.trial, profile: SINGLE_MACHINE_PROFILE.id, profileDigest: singleMachineProfileDigest() } }] },
+    authoritySealKey(OFFLINE_STORAGE_KEY))));
+  }
   const manifest = join(directory, 'pool.json'); writeFileSync(manifest, JSON.stringify({ version: 1, logins }));
   const quota = join(directory, 'quota.mjs');
   writeFileSync(quota, `export const createClaudePoolQuota = () => ({ refresh: async () => {}, read: () => ({version:1, accounts:[]}) });`);
@@ -56,7 +77,7 @@ export const harnessGate = ({profile,migrateLegacy}) => gate({profile,migrateLeg
   writeFileSync(io, `export * from ${JSON.stringify(absolute('scripts/production-boot-io.mjs'))};
 import {appendFileSync,readFileSync} from 'node:fs';
 import {productionProviderIO} from ${JSON.stringify(absolute('scripts/production-boot-io.mjs'))};
-const captured = readFileSync(${JSON.stringify(join(process.cwd(), 'tests/fixtures/provider-failure/claude-limit-result.json'))},'utf8');
+const captured = readFileSync(${JSON.stringify(join(process.cwd(), `tests/fixtures/provider-failure/${refusedToken ? 'claude-auth-401-result.json' : 'claude-limit-result.json'}`))},'utf8');
 export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...productionProviderIO,
  descriptorLogin:true,realpath:p=>p,executableBytes:()=>Buffer.from('offline executable bytes'),
  inspectSubscriptionProfile:profile=>({loginProfileIdentity:profile.loginProfileIdentity,managedConfigurationDigest:profile.managedConfigurationDigest}),
@@ -67,11 +88,12 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
   if(token!=='sk-ant-oat01-synthetic-'+account+'-only')throw Error('login crossed accounts');
   let stdout,code=0;
   if(command.args[0]==='--version')stdout='2.1.280 (Claude Code)';
+  else if(command.args[0]==='auth'&&account==='serving-a'&&${JSON.stringify(signedOut && !refusedToken)}){stdout=JSON.stringify({loggedIn:false,authMethod:'none',apiProvider:'firstParty'});code=1;}
   else if(command.args[0]==='auth')stdout=JSON.stringify({loggedIn:true,authMethod:'oauth_token',apiProvider:'firstParty',analyticsDisabled:false,
     configDirectory:command.env.CLAUDE_CONFIG_DIR,projectsDirectory:command.env.CLAUDE_CONFIG_DIR+'/projects'});
   else {
    appendFileSync(${JSON.stringify(calls)},JSON.stringify({account,home:command.env.HOME,config:command.env.CLAUDE_CONFIG_DIR,evidence:JSON.parse(JSON.parse(command.stdin).messages[1].content).bindings.evidence})+'\\n');
-   if(account==='serving-a' && ${JSON.stringify(!missing)}){stdout=captured;code=1;}
+   if(account==='serving-a' && ${JSON.stringify(!missing && (!signedOut || refusedToken))}){stdout=captured;code=1;}
    else stdout=JSON.stringify({type:'result',subtype:'success',is_error:false,result:JSON.stringify({reasoning:'The operator asked an ordinary question.',answer:${JSON.stringify(secretAnswer ? encodedPrimary : 'The second approved login answered.')}}),
     session_id:'offline-b',usage:{input_tokens:10,output_tokens:20,cache_creation_input_tokens:0,cache_read_input_tokens:0}});
   }
@@ -102,7 +124,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       'tests/preview/journal-agent.mjs', 'run', '--root', root, '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id, '--configuration-digest', trial.configurationDigest,
       '--expires-at', String(trial.expiresAt), '--tools', 'off', '--activation-record', logins[0].activation, '--login-profile', logins[0].profile,
-      ...(mode === 'pool' ? ['--login-pool', manifest] : []), '--harness-user', 'offline-harness', '--operator-records', join(directory, 'operator-records'), '--model', world.model,
+      ...(mode === 'pool' || signedOut ? ['--login-pool', manifest] : []), '--harness-user', 'offline-harness', '--operator-records', join(directory, 'operator-records'), '--model', world.model,
       '--bot-username', world.configuration.botUsername, '--max-cycles', '6', '--max-poll-seconds', '1'];
     const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'synthetic', INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
@@ -159,13 +181,18 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       throw Error(first.stderr + JSON.stringify(detail));
     }
     const rows = readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
-    expect(rows[0].account).toBe(custodyCase || ['pool', 'installed', 'missing', 'missing-profile', 'imported', 'renamed', 'copied', 'lost-build'].includes(mode) ? 'serving-a' : 'serving-b');
+    expect(rows[0].account).toBe(custodyCase || ['pool', 'installed', 'missing', 'missing-profile', 'imported', 'renamed', 'copied', 'lost-build', 'refused-token'].includes(mode) ? 'serving-a' : 'serving-b');
     expect(rows.slice(1).every(row => row.account === (missing ? 'serving-a' : 'serving-b'))).toBe(true);
     expect(rows.length).toBeGreaterThan(1);
     if (pooled) {
       const state = JSON.parse(readFileSync(join(root, 'harness-login-pool.json'), 'utf8'));
       expect(state.active).toBe(missing ? 0 : 1); expect(state.switches).toHaveLength(missing ? 0 : 1);
       if (mode === 'fresh') expect(state.switches[0].reason).toBe('usage-threshold');
+      if (signedOut) {
+        expect(state.switches[0].reason).toBe('member-unavailable');
+        expect(state.signedOut['0']).toMatchObject({ credential: expect.stringMatching(/^[a-f0-9]{16}$/u) });
+        expect(JSON.stringify(state)).not.toContain('sk-ant-'); // Only a truncated fingerprint is recorded.
+      }
     } else {
       expect(existsSync(join(root, 'harness-login-pool.json'))).toBe(false);
       expect(existsSync(harnessLoginPath(JSON.parse(readFileSync(logins[0].profile, 'utf8')), join(directory, 'custody')))).toBe(true);
@@ -180,7 +207,8 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     expect(sends.some(row => row.text.includes(encodedPrimary))).toBe(false);
     if (!secretAnswer) expect(sends.some(row => row.text.includes('second approved login answered'))).toBe(true);
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
-    expect(journal.view.order[0].modelState).toBe(['pool', 'installed', 'imported', 'missing', 'renamed', 'copied', 'lost-build'].includes(mode) ? 'rejected' : 'complete');
+    expect(journal.view.order[0].modelState).toBe(['pool', 'installed', 'imported', 'missing', 'renamed', 'copied', 'lost-build', 'refused-token'].includes(mode) ? 'rejected'
+      : signedOut ? undefined : 'complete');
     expect(journal.view.order.map(turn => turn.update)).toEqual([1, 2, 3]);
     const completed = journal.view.order.filter(turn => turn.modelState === 'complete');
     if (secretAnswer) {
@@ -202,6 +230,27 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       expect(failed).toHaveLength(1); expect(failed[0].update).toBe(1);
       expect(failed[0].failureClass).toBe('capacity'); expect(failed[0].sent).toBeUndefined();
       expect(failed[0].raw).toContain('Please say hello.'); // Retained failed work, never replayed as another attempt.
+    } else if (refusedToken) {
+      // The refused call is settled as the one ordinary failure line; it is never retried. Later turns run on B.
+      expect(failed).toHaveLength(1); expect(failed[0].update).toBe(1); expect(failed[0].failureClass).toBe('rejected');
+      expect(sends.filter(row => row.text.includes(MODEL_FAILURE_REPLY))).toHaveLength(1);
+      expect(completed.map(turn => turn.update)).toEqual([2, 3]);
+    } else if (signedOut) {
+      // Nothing reached the model on the signed-out login; the person gets one plain line for that turn,
+      // and every later turn is answered on the second approved login without a restart.
+      expect(failed).toHaveLength(1); expect(failed[0].update).toBe(1); expect(failed[0].modelState).toBeUndefined();
+      expect(failed[0].answer).toBeUndefined();
+      if (unaccepted) {
+        // No accepted policy: nothing is sent for it, the message is kept, and the missing policy is owned and visible.
+        expect(sends.filter(row => row.text.includes(MODEL_NOT_STARTED_REPLY))).toHaveLength(0);
+        expect(failed[0].minimalOutage?.missing).toEqual(['installation-policy']);
+        expect(first.stderr).toContain('limited answers past a cap are inhibited');
+      } else {
+        expect(first.stderr).not.toContain('inhibited');
+        expect(sends.filter(row => row.text.includes(MODEL_NOT_STARTED_REPLY))).toHaveLength(1);
+        expect(failed[0].limited).toBeDefined(); expect(failed[0].minimalOutage).toBeUndefined();
+      }
+      expect(completed.map(turn => turn.update)).toEqual([2, 3]);
     } else { expect(failed).toHaveLength(0); expect(completed).toHaveLength(3); }
     journal.close();
     const statusArgs = args.map(value => value === 'run' ? 'status' : value);
