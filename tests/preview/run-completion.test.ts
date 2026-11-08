@@ -82,18 +82,20 @@ it.each([true, false])('retains created work across snapshot restart and account
     expect(await w.workObligations()).toBe(true);
     expect(journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'continue', completion: prior });
     expect(journal.view.obligationWork['commitment:0']).not.toHaveProperty('report');
+    // activation-stop-1108: the activation end no longer halts; the operator's stop is the safety halt that remains.
     if (halt) {
-      now = genesis.expires;
+      now = genesis.expires + LOOP_REVISIT_MS;
+      w.stop('operator');
       await expect(w.workObligations()).rejects.toThrow('preview stopped');
       expect(packets).toHaveLength(1);
-      expect(journal.view.stop).toBe('trial expired');
+      expect(journal.view.stop).not.toBeNull();
     } else now += LOOP_REVISIT_MS;
     expect(loopStatusLines(journal.view, now).join('\n')).toContain(prior[0]!.work);
     journal.compact(); journal.close();
     journal = openPreviewJournal(path, key);
     expect(journal.view.obligationWork['commitment:0']?.completion).toEqual(prior);
     if (halt) {
-      expect(loopStatusLines(journal.view, now).join('\n')).toContain('trial expired');
+      expect(loopStatusLines(journal.view, now).join('\n')).toContain(journal.view.stop!);
       await expect(worker().workObligations()).rejects.toThrow('preview stopped');
       expect(packets).toHaveLength(1);
       return;

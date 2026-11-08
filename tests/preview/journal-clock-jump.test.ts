@@ -30,7 +30,7 @@ it('advances through a backward correction, accepts a forward correction, and se
   expect(reopened.now()).toBe(start + 91_000);
 });
 
-it('keeps dated answers and journal time ordered, and never reopens expiry after a forward jump', async () => {
+it('keeps dated answers and journal time ordered across clock jumps, and the activation end never stops it', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-clock-jump-')));
   try {
     const path = join(root, 'journal.encrypted');
@@ -68,22 +68,23 @@ it('keeps dated answers and journal time ordered, and never reopens expiry after
     wall = start + 599_999;
     expect(() => worker.gate()).not.toThrow();
     expect(dueState(journal.view.dated[0]!, resumed.now())).toBe('upcoming');
+    // activation-stop-1108: the activation end date is a reminder, never a stop.
     wall = start + 600_000;
-    expect(() => worker.gate()).toThrow('preview stopped');
-    expect(journal.view.stop).toBe('trial expired');
+    expect(() => worker.gate()).not.toThrow();
+    expect(journal.view.stop).toBeNull();
     wall = start + 2 * 86_400_000;
     expect(dueState(journal.view.dated[0]!, resumed.now())).toBe('overdue');
     wall = start - 3_600_000; elapsed += 1000;
-    expect(() => worker.gate()).toThrow('preview stopped');
+    expect(() => worker.gate()).not.toThrow();
     expect(sends).toBe(2);
     journal.close();
     journal = openPreviewJournal(path, key);
     const rolledBack = createPreviewClock(() => wall, () => elapsed);
     rolledBack.seed(journal.view.clockFloor);
     worker = createJournalWorker(journal, { ...ports, now: rolledBack.now });
-    expect(rolledBack.now()).toBeGreaterThanOrEqual(journal.view.expires);
-    expect(() => worker.gate()).toThrow('preview stopped');
-    expect(() => worker.intake([update(3, 'Try again')])).toThrow('preview stopped');
+    expect(rolledBack.now()).toBeGreaterThanOrEqual(journal.view.clockFloor);
+    expect(() => worker.gate()).not.toThrow();
+    expect(journal.view.stop).toBeNull();
     expect(sends).toBe(2);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

@@ -514,7 +514,8 @@ function validateClaudeActivation(record: SubscriptionActivationRecord,
     ensure(typeof value === 'string' && value.trim().length > 0 && value.length <= 1024, 'subscription activation field absent');
   ensure(Number.isSafeInteger(now) && Number.isSafeInteger(record.observedAt) && Number.isSafeInteger(record.assertedAt)
     && record.assertedAt > 0 && record.assertedAt <= record.observedAt && record.observedAt <= now
-    && now < record.expiresAt && subscriptionActivationEndAllowed(record.expiresAt, journalEnd), 'subscription activation expired or clock differs');
+    // activation-stop-1108: the end date is a reminder, never a stop; only its reviewed value is checked here.
+    && subscriptionActivationEndAllowed(record.expiresAt, journalEnd), 'subscription activation clock differs or its end is not reviewed');
   ensure(/^claude-[a-z0-9][a-z0-9.-]+$/u.test(model) && !['auto', 'default'].includes(model)
     && record.model === model, 'subscription exact model absent');
   ensure(record.reference === profile.activationReference && record.profileDigest === encoded(profile).hash

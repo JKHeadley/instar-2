@@ -190,3 +190,15 @@ it('P-08: nothing else settles the peer question: absent, unsealed, another tria
   refused(policy(record({ installationPolicies: [acceptance()], revocations: [{ grantId: 'p08-single-machine', at: NOW - 10,
     by: '7654321', source: 'telegram 4' }] })), /revoked/u);
 });
+
+// activation-stop-1108: the activation's end date is a reminder, never a stop. Past it, the recorded authority still
+// resolves (the record stays the authority record: who approved what), and a revoked or unsealed record still refuses.
+it('past the activation end the recorded authority still resolves, and revoked or unsealed authority still refuses', () => {
+  const later = activation.expiresAt + 86_400_000;
+  const at = (r: unknown, asGiven = false) => resolveActivationAuthority(activation, asGiven ? r : sealed(r), '7654321', BASE, later, owner(), KEY);
+  expect(at(record())).toMatchObject({ kind: 'resolved', action: 'renew-subscription-activation', grant: 'observer-note-30' });
+  expect(at(record({ revocations: [{ grantId: 'observer-note-30', at: later - 10, by: '7654321', source: 'telegram 3' }] })))
+    .toMatchObject({ kind: 'refused', reason: expect.stringMatching(/revoked/u) });
+  expect(at(record(), true)).toMatchObject({ kind: 'refused', reason: expect.stringMatching(/sealed/u) });
+  expect(resolveActivationAuthority(activation, sealed(record()), '99', BASE, later, owner(), KEY)).toMatchObject({ kind: 'refused' });
+});

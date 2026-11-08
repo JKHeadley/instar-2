@@ -330,7 +330,7 @@ it('withdraws a queued due turn when one of its requests is cancelled before it 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('refuses a request whose time is unsettled, already past, or after the preview ends, and says why', async () => {
+it('refuses a request whose time is unsettled or already past, says why, and schedules one after the activation end', async () => {
   const root = tmp('refuse');
   try {
     const { state, open, pushes } = harness(root);
@@ -338,18 +338,20 @@ it('refuses a request whose time is unsettled, already past, or after the previe
     worker.intake([update(1, 'remind me Friday at 9 to call Priya'), update(2, 'remind me Sep 26 to stretch'),
       update(3, 'remind me Oct 20 to renew')]);
     await worker.drain();
-    expect(journal.view.dated.every(item => item.remind === undefined)).toBe(true);
+    expect(journal.view.dated.filter(item => item.remind)).toHaveLength(1);
     expect(state.sent[0]!.text).toContain('I did not schedule what you asked for: its day or time is not settled');
     expect(state.sent[1]!.text).toContain('I did not schedule what you asked for: that time has already passed.');
-    expect(state.sent[2]!.text).toContain('I did not schedule what you asked for: this preview ends before then.');
+    // activation-stop-1108: the activation end date is a reminder, never a stop, so a later request is scheduled.
+    expect(state.sent[2]!.text).not.toContain('I did not schedule');
     state.now = friday9; await worker.sendRequested();
     expect(pushes()).toEqual([]);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('sends nothing while stopped, after an operator stop, after expiry, or at the reply or call cap', async () => {
-  for (const guard of ['stopped', 'operator-stop', 'expired', 'reply-cap', 'call-cap'] as const) {
+it('sends nothing while stopped, after an operator stop, or at the reply or call cap', async () => {
+  // activation-stop-1108: the activation end is no longer a guard; past it a due request is sent like any other.
+  for (const guard of ['stopped', 'operator-stop', 'reply-cap', 'call-cap'] as const) {
     const root = tmp(guard);
     try {
       const { state, open, pushes } = harness(root, guard === 'reply-cap' ? 1 : genesis.maxReplies, guard === 'call-cap' ? { maxCalls: 1 } : {});
@@ -365,9 +367,6 @@ it('sends nothing while stopped, after an operator stop, after expiry, or at the
         worker.stop('operator');
         await worker.sendRequested().catch(() => undefined);
         expect(journal.view.stop).not.toBeNull();
-      } else if (guard === 'expired') {
-        state.now = genesis.expires + 60_000;
-        await worker.sendRequested();
       } else await worker.sendRequested(); // the request's own reply used the only reply slot, or its only call.
       expect(pushes()).toEqual([]);
       expect(state.dueCalls).toBe(0);

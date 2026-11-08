@@ -64,7 +64,8 @@ it('publishes the exact chat status answer and each recorded message with the jo
   expect(snapshot).toMatchObject({ state: 'running', chat: 'example_agent_bot' });
   // Both sides of the state decision.
   expect(dashboardSnapshot(view, { now: at, zone, statusText, bot: null, stopped: true }).state).toBe('stopped');
-  expect(dashboardSnapshot(view, { now: view.expires, zone, statusText, bot: null, stopped: false }).state).toBe('ended');
+  // activation-stop-1108: past the activation end the agent is still running; the end is only a reminder date.
+  expect(dashboardSnapshot(view, { now: view.expires, zone, statusText, bot: null, stopped: false }).state).toBe('running');
   expect(dashboardSnapshot(view, { now: at, zone, statusText, bot: 'not a username!', stopped: false }).chat).toBeNull();
   // The recorded 3.6 KB status (a 1,900-character line of update ids) passes whole, never clipped.
   const long = dashboardSnapshot(view, { now: at, zone, statusText: recorded.statusLong.text, bot: null, stopped: false });
