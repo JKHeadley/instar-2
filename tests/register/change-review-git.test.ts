@@ -429,6 +429,23 @@ describe('a record answers only for text its own commits wrote (Rules 6, 12, 27,
     expect(checked.status, checked.out).toBe(0);
   }, 120_000);
 
+  it('still needs a restored line that no earlier record checked in its own endpoint diff', () => {
+    // The earlier record's range holds the commit blame names, but its endpoint diff deleted the
+    // file, so it never answered the line; a merge that restores the file owes the Deferral row.
+    const r = repo();
+    r.write('README.md', 'fixture\n'); const base = r.commit('base'); adopt(r);
+    r.write('src/x.ts', '// TODO implement remaining behavior\n'); r.commit('deferral written');
+    r.git('branch', 'feature');
+    r.git('rm', '-q', 'src/x.ts'); r.write('reviews/earlier.md', record(base)); r.commit('remove it, with the earlier record');
+    r.git('checkout', '-q', 'feature'); r.write('src/y.ts', 'export const y = 1;\n'); r.commit('unrelated feature change');
+    r.git('checkout', '-q', 'main'); r.git('merge', '--no-ff', '--no-commit', 'feature'); r.git('checkout', 'feature', '--', 'src/x.ts');
+    r.write('reviews/merge.md', record(base)); r.commit('merge, restoring the deferral');
+    const held = r.check('check'); expect(held.status, held.out).toBe(1);
+    expect(held.out).toContain("reviews/merge.md: Rule 71: src/x.ts:1 needs 'Deferral: src/x.ts:1");
+    r.write('reviews/merge.md', record(base, 'Deferral: src/x.ts:1 | not-a-deferral=fixture')); r.commit('merge record answers it');
+    const answered = r.check('check'); expect(answered.status, answered.out).toBe(0);
+  }, 120_000);
+
   it("still needs the record's own deferral lines, new and original", () => {
     const { r, base } = setup();
     r.write('src/older.ts', 'export const older = 1; // follow-up finished in this change\n// TODO later: the older record wrote this\n');

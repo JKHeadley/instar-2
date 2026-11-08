@@ -112,7 +112,15 @@ function earlierRecords(entry, all, required) {
   return all.filter(x => x !== entry && x.valid && x.last !== entry.last && entry.range.has(x.last) && required.has(x.last));
 }
 // Deferral/Skip hits ("path:line" at the record's last commit) with no row of their own, whose
-// line an earlier record's commit wrote (git blame at the record's last commit).
+// line an earlier record actually answered: blame at the record's last commit names a commit in
+// that earlier record's range, AND the line is carried unchanged from the earlier record's last
+// commit, where it is one of the hits of the earlier record's own checked endpoint diff. Range
+// membership alone is not enough: a line the earlier record's endpoint diff deleted (and a later
+// merge restored) was never checked by it, so it stays on this record.
+const endpointHitsCache = new Map();
+const endpointHits = x => { if (!endpointHitsCache.has(x.path)) endpointHitsCache.set(x.path, addedLineHits(addedLines(x.base, x.last))); return endpointHitsCache.get(x.path); };
+const blameHeaders = out => out.split('\n').map(l => /^([0-9a-f]{40}) (\d+) (\d+)/.exec(l)).filter(Boolean);
+const lineArgs = nos => nos.flatMap(n => ['-L', `${n},${n}`]);
 function inheritedHits(entry, hits, label, earlier) {
   const answered = new Set(entry.record.all(label).map(row => row.split('|')[0].trim()));
   const open = hits.filter(h => !answered.has(h));
@@ -120,13 +128,21 @@ function inheritedHits(entry, hits, label, earlier) {
   const byPath = new Map();
   for (const hit of open) { const at = hit.lastIndexOf(':'); const path = hit.slice(0, at);
     byPath.set(path, [...(byPath.get(path) ?? []), Number(hit.slice(at + 1))]); }
+  const kind = label === 'Deferral' ? 'deferrals' : 'skips';
   const inherited = new Set();
   for (const [path, nos] of byPath) {
-    const out = tryGit('blame', '--porcelain', ...nos.flatMap(n => ['-L', `${n},${n}`]), entry.last, '--', path);
+    const out = tryGit('blame', '--porcelain', ...lineArgs(nos), entry.last, '--', path);
     if (out === null) continue; // unreadable blame: the record keeps the line
-    for (const l of out.split('\n')) {
-      const m = /^([0-9a-f]{40}) \d+ (\d+)/.exec(l);
-      if (m && earlier.some(x => x.range.has(m[1]))) inherited.add(`${path}:${m[2]}`);
+    const candidates = new Map(); // earlier record -> lines (at entry.last) whose writer it covers
+    for (const [, sha, , final] of blameHeaders(out))
+      for (const x of earlier) if (x.range.has(sha)) candidates.set(x, [...(candidates.get(x) ?? []), Number(final)]);
+    for (const [x, finals] of candidates) {
+      const checked = new Set(endpointHits(x)[kind]);
+      // Lines unchanged since x.last are blamed to that boundary, with their line number there.
+      const traced = tryGit('blame', '--porcelain', ...lineArgs(finals), `${x.last}..${entry.last}`, '--', path);
+      if (traced === null) continue; // untraceable: the record keeps the line
+      for (const [, sha, orig, final] of blameHeaders(traced))
+        if (sha === x.last && checked.has(`${path}:${orig}`)) inherited.add(`${path}:${final}`);
     }
   }
   return inherited;
