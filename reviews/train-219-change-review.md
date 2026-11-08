@@ -1,0 +1,35 @@
+# Change review — train-219 (carryover-01-promised-result-delivery-1108 onto live train-217)
+
+Subject base: 82a4c739a77d3f52291242c5bb89235ab3c768d4
+Review state: open
+Reviewed content: none
+Outcome: Land the reviewed carryover-01-promised-result-delivery-1108 head 3b4df990b3a5b409fad24e517b62f339ef5a6c2c (origin/fix/carryover-01-promised-result-delivery-1108: a coalesced work wake selects the earliest eligible durable deadline instead of declaration order, plus a two-conversation restart and lost-worker test pinning exactly-once, own-conversation delivery) on the live build 82a4c739, re-derive the one owner-reference pin its test change moved, and replay the register. 1.x comparison inherited from the member: JKHeadley/instar main fa13c1c8345778af7847c8517c24bb2b7363d8e6 src/monitoring/PromiseBeacon.ts (one timer per commitment at its own durable deadline, so the earliest-due promise fires first) and src/monitoring/CommitmentTracker.ts, commits a62ab55f6 and 28527b241 (per-promise, per-topic suppression across restart), ONEX-LESSONS area 5; the member reuses deadline-directed selection inside 2.0's existing coalesced wake, not 1.x's timers.
+Affected rules: 1, 2, 4, 8, 26, 34, 36, 37, 46, 49, 52, 55, 60, 63, 66, 68, 69, 70, 74, 83, 87, 90, 101, 102, 111, 112, 113, 116
+Affected floors: Secrets: no credential path touched. Spend cap: no model call added; the existing one-step work admission is unchanged. Stop: unchanged. No duplicate sends: unchanged slot identity and receipt settlement, now also proven across two conversations and a lost worker by the member's test. Durable intake: no row kind or field added.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Carried from the member (critical): it changes the order in which existing promised work takes its bounded step. The train itself adds only an ordinary conflict-free merge, one mechanical owner-reference repin and a register replay; the desk's exact-head full gate, independent review and live proof still follow this push.
+Side effects: register-source/owner-references/preview.json re-pins tests/preview/journal-obligations.test.ts to its merged bytes (sha256:31b5a618efc119c9c6f04ce210074e9a1e46569178a337bb812af6250685e48b), committed as 7c57c3ca4f062504f22df406b4470cc64151738a; generated/ now names that commit (generation sha256:60d1c2fff47c4a60372040966b9685996042a1628bd18332b51716236336cdfb, 307 entries, 122 rules). Otherwise only what the member's record declares (tests/preview/journal.ts, tests/preview/journal-obligations.test.ts, tests/preview/owed-delivery.test.ts, its review record). No src/ file changes. Always-sent bytes +0.
+Undo and recovery: Reset train-219 to 82a4c739a77d3f52291242c5bb89235ab3c768d4; the fast-forwarded member commits, the repin commit, the replay commit and this record sit on top of it, and nothing outside the repository is written.
+Multi-machine posture: Carried from the member: the owner journal supplies every deadline and each result's conversation; existing owner/peer admission still gates work and delivery. No new local or shared state; restart and ownership transfer rebuild the same order and destinations.
+Layer below: Read docs/00-the-purpose.md and docs/01-the-rules.md in full at the base, the member report carryover-01-promised-result-delivery-1108 and the cint-L37 desk chain in full through the Studio API (sha256 verified), and the member's change-review record reviews/carryover-01-promised-result-delivery-1108-change-review.md, including its layer-below reading of workObligations, dueObligationWork and owedResultAuthority.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/journal-obligations.test.ts
+Hook bypass: none; core.hooksPath is unset and the clone's hooks directory holds only sample hooks, so no hook ran or was bypassed; plain git commit, no stash.
+Convergence: none
+Prompt review: No model instruction, prompt, parse or accept/refuse rule changes in this train; the member changes work-selection order in the preview journal only, and its recorded-shape replay (update 46040219, fixtures/requested-report-proofroom4-2026-10-17.json) runs on the merged tree.
+Decision: train-219-merge | Ordinary merge of reviewed carryover-01-promised-result-delivery-1108 head 3b4df990b3a5b409fad24e517b62f339ef5a6c2c (origin/fix/carryover-01-promised-result-delivery-1108, built on train-217 82a4c739) onto live 82a4c739; the member was built on this exact base, so the merge fast-forwarded with no conflicts and every member file lands byte-identical to the reviewed head; member report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-01-promised-result-delivery-1108-PROGRESS.md read in full. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-219-PROGRESS.md
+Decision: train-219-A | Preserve the member's behaviour and tests byte for byte; it is the only member and the base is its own recorded base, so there are no overlapping edits to combine. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-219-PROGRESS.md
+Decision: train-219-B | Branch created directly at the exact live base 82a4c739a77d3f52291242c5bb89235ab3c768d4 (origin/main already contained); no main merge, no branch movement. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-219-PROGRESS.md
+Decision: train-219-C | No product conflict and no omitted member; generated/ regenerated by replay, never hand-merged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-219-PROGRESS.md
+Decision: train-219-D | Host-dependent checks in files this train did not change are reported exactly and left to the Studio gate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-219-PROGRESS.md
+Decision: train-219-desk | Ran the desk chain (repin 0, tsc 0, rehash 1: the journal-obligations owner-reference pin the member report named as the desk handoff), committed the repin as 7c57c3ca and replayed the register at it; build-register --check is true. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-219-PROGRESS.md
+Deferral: generated/register.json:1 | not-a-deferral=generated register output replayed mechanically, not prose authored by this train
+Verification: Member tests, direct importers of the changed preview journal module, register, subscription, context-floor and READY-gate pinned tests; architecture, lint, typecheck, register and change-review checks. Exact outcomes, including host-dependent ones, in the desk report.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: one ordinary merge of the exact reviewed head and the existing regeneration tools. No added machinery. Existing authorization, secrets, spend, stop, durable intake and unique dispatch guards remain. No fresh unattended-completion claim.
+80/20: Targeted and explicitly requested checks only; no full suite and no second base worktree.
+VERDICT: author submission for desk gate, not independent convergence or live acceptance
