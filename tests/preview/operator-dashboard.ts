@@ -123,7 +123,7 @@ export function dashboardSnapshot(view: JournalView, input: { now: number; zone:
   const sessionTurns = view.order.filter(turn => conversationIds.has(turn.id)).map(detail);
   const bot = input.bot?.replace(/^@/u, '') ?? null;
   return { type: DASHBOARD_SNAPSHOT, schemaVersion: 1, asOf: now, zone,
-    state: input.stopped || view.stop !== null ? 'stopped' : now >= view.expires ? 'ended' : 'running', until: stamp(view.expires, zone),
+    state: input.stopped || view.stop !== null ? 'stopped' : 'running', until: stamp(view.expires, zone),
     status: input.statusText.split('\n').slice(0, L.statusLines).map(line => clip(line, L.lineChars)),
     counts: { turnsToday: turnsToday(view, now, zone), held: [...heldReplies(view).values()].reduce((a, b) => a + b, 0),
       waiting: requests.filter(item => item.open).length },

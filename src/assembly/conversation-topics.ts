@@ -48,13 +48,18 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     ensure(state.allowanceDeadline === undefined || Number.isSafeInteger(state.allowanceDeadline) && state.allowanceDeadline > 0,
       'allowance lifetime malformed');
     ensure(!state.renewal || state.edge && state.renewal.id === `${state.edge.id}:renew`
-      && state.renewal.edge === state.edge.id && state.renewal.calls === state.edge.budget.calls
+      && state.renewal.edge === state.edge.id && Number.isSafeInteger(state.renewal.calls)
+      && state.renewal.calls! <= state.edge.budget.calls
       && state.renewal.reserved === state.edge.budget.calls, 'allowance renewal intent malformed');
     const persist = (patch: Partial<ConversationTopicsState>) => {
       const next = freeze({ ...state, ...patch }); config.store.save(next); state = next;
     };
     const parentDeadline = () => Math.min(config.allowanceDeadline, state.allowanceDeadline ?? config.allowanceDeadline,
       state.edge?.budget.deadline ?? config.allowanceDeadline);
+    /** activation-stop-1108: a recorded lifetime that has passed renews (a new epoch with its own finite budget, Rules 55,
+     * 60, 114) when this launch names a later one, as an exhausted call allowance renews; it is never extended in place,
+     * and never past the launch's own lifetime. The activation end date is a reminder, never a stop. */
+    const lifetimeRenewable = () => config.now() >= parentDeadline() && config.now() < config.allowanceDeadline;
     const spent = () => Object.values(state.topics).reduce((sum, row) => sum + row.spent,
       state.allowanceEpoch ? 0 : state.legacy?.spent ?? 0);
     const allowanceCalls = () => state.edge?.budget.calls ?? config.maxCalls;
@@ -191,36 +196,42 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     let renewing: Promise<void> | null = null;
     const renewIfIdle = (): Promise<void> => {
       if (renewing) return renewing;
-      if (!state.edge || (spent() !== allowanceCalls()
-          && !(config.callAccounting === 'per-call' && state.edge.charge !== 'per-call'))
+      const byTime = lifetimeRenewable();
+      // The lifetime floor: an ordinary renewal never crosses the recorded lifetime; a lifetime renewal never crosses this launch's.
+      const ended = () => config.now() >= (byTime ? config.allowanceDeadline : parentDeadline());
+      if ((!byTime && (!state.edge || (spent() !== allowanceCalls()
+          && !(config.callAccounting === 'per-call' && state.edge.charge !== 'per-call'))))
         || [...busy.values()].some(count => count > 0)
-        || stopped || config.stopped() || !config.authorized() || config.now() >= parentDeadline()
+        || stopped || config.stopped() || !config.authorized() || ended()
         || cleanupInhibited()) return Promise.resolve();
       renewing = (async () => {
         // Fence every old admission before clearing its counters. Custody and epoch
         // identities survive; no dispatched or uncertain input is replayed.
         for (const host of hosts.values()) if (!await host.retireIdle()) return;
-        if (stopped || config.stopped() || !config.authorized() || config.now() >= parentDeadline()) return;
+        if (stopped || config.stopped() || !config.authorized() || ended()) return;
         for (const host of hosts.values()) await host.close();
-        if (stopped || config.stopped() || !config.authorized() || config.now() >= parentDeadline()) return;
-        const edge = state.edge!;
+        if (stopped || config.stopped() || !config.authorized() || ended()) return;
+        const edge = state.edge;
         const pending = state.renewal;
-        if (!pending) persist({ renewal: { type: 'SessionWorkEdgeClose', schemaVersion: 1,
+        if (edge && !pending) persist({ renewal: { type: 'SessionWorkEdgeClose', schemaVersion: 1,
           id: `${edge.id}:renew`, edge: edge.id, child: null, state: 'complete',
-          detail: 'Exhausted allowance retired; topic custody retained for renewal.', evidence: edge.id,
+          detail: byTime ? 'Elapsed lifetime retired; topic custody retained for renewal.'
+            : 'Exhausted allowance retired; topic custody retained for renewal.', evidence: edge.id,
           resultBytes: null, closedAt: config.now(), calls: spent(), reserved: allowanceCalls() } });
         // An interrupted append is reconciled against the durable journal, never
         // inferred from an in-memory flag. Closing does not refund spent calls.
-        if (pending) ensure(config.recoveryEdges, 'allowance renewal needs journal reconciliation');
-        const recorded = pending ? config.recoveryEdges!().find(row => row.id === pending.id) : undefined;
-        if (recorded) ensure(JSON.stringify(recorded) === JSON.stringify(pending), 'allowance renewal evidence differs');
-        else config.append(state.renewal!);
+        if (edge) {
+          if (pending) ensure(config.recoveryEdges, 'allowance renewal needs journal reconciliation');
+          const recorded = pending ? config.recoveryEdges!().find(row => row.id === pending.id) : undefined;
+          if (recorded) ensure(JSON.stringify(recorded) === JSON.stringify(pending), 'allowance renewal evidence differs');
+          else config.append(state.renewal!);
+        }
         const topics = Object.fromEntries(Object.entries(state.topics).map(([topic, row]) => {
           const { halt, ...retained } = row;
           return [topic, { ...retained, edge: null, reserved: false, spent: 0, claimCalls: 0, close: null,
-            ...(halt && halt.reason !== 'calls' ? { halt } : {}) }];
+            ...(halt && halt.reason !== 'calls' && !(byTime && halt.reason === 'deadline') ? { halt } : {}) }];
         }));
-        persist({ topics, edge: null, reserved: false, renewal: null, allowanceDeadline: parentDeadline(),
+        persist({ topics, edge: null, reserved: false, renewal: null, allowanceDeadline: byTime ? config.allowanceDeadline : parentDeadline(),
           allowanceEpoch: (state.allowanceEpoch ?? 0) + 1 });
         hosts.clear();
       })().finally(() => { renewing = null; });
@@ -238,7 +249,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     const run = async (request: SessionWorkRequest) => (await runBatch([request]))[0]!;
     const maintain = async () => {
       await recover();
-      if (config.stopped() || config.now() >= parentDeadline()) { await close(); return; }
+      if (config.stopped() || config.now() >= parentDeadline() && !lifetimeRenewable()) { await close(); return; }
       await renewIfIdle();
       for (const topic of Object.keys(state.topics)) hostFor(topic);
       const pressured = config.capacity && (await config.capacity()).memoryPressure;
@@ -270,7 +281,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       return results.find(row => row?.state === 'uncertain') ?? results.find(row => row !== null) ?? null;
     };
     return Object.freeze({ owner: 'part-eight' as const,
-      available: () => !stopped && !config.stopped() && config.authorized() && config.now() < parentDeadline(),
+      available: () => !stopped && !config.stopped() && config.authorized() && (config.now() < parentDeadline() || lifetimeRenewable()),
       run, runBatch, maintain, close,
       idleCleanupStatus: () => {
         const rows = Object.values(state.topics);

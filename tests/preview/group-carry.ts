@@ -116,7 +116,7 @@ export function appendGroupCarry(destination: ReturnType<typeof openPreviewJourn
   const g = destination.view.genesis;
   if (permission.kind !== 'resolved' || !Object.entries(scope).every(([field, value]) =>
     permission.scope[field as keyof GroupCarryScope] === value) || permission.expiresAt !== undefined && permission.expiresAt <= now || !audienceVerified) throw Error('group carry: disclosure permission or audience refused');
-  if (source.readOnly || destination.readOnly || destination.view.stop || stopped() || now >= destination.view.expires)
+  if (source.readOnly || destination.readOnly || destination.view.stop || stopped())
     throw Error('group carry: stopped or incorrect read/write posture');
   if (g.forum !== true || g.chat !== scope.chat || g.operator !== scope.operator || g.bot !== scope.bot
     || (source.view.genesis.origin ?? 'production') !== (g.origin ?? 'production')) throw Error('group carry: destination scope or origin differs');

@@ -186,7 +186,7 @@ const clip = (text: string) => Buffer.byteLength(text) <= 480 ? text : `${Buffer
 
 export function createLiveSentinels(journal: { readonly view: JournalView; append(row: JournalRecord): void }, ports: LiveSentinelPorts) {
   const failures = { context: 0, presence: 0, promise: 0 } as Record<SentinelFamily, number>;
-  const stopped = () => ports.stopped() || journal.view.stop !== null || ports.now() >= journal.view.expires;
+  const stopped = () => ports.stopped() || journal.view.stop !== null;
   /** Runs on the same outer cycle even while the ordinary lane is occupied. Observation only:
    * it cannot enqueue effects or consume recovery attempts ahead of ordinary admission. */
   const observeWork = (): void => {

@@ -122,7 +122,7 @@ const importSource = (journal, state, source, stopped) => {
       journal.append({ kind: 'channel-source-error', source, error: null, at: wallNow() });
     return result;
   } catch (error) {
-    if (!stopped() && !journal.view.stop && wallNow() < journal.view.expires
+    if (!stopped() && !journal.view.stop
       && journal.view.channelSourceErrors.get(source) !== 'import refused')
       journal.append({ kind: 'channel-source-error', source, error: 'import refused', at: wallNow() });
     throw error;
@@ -215,6 +215,12 @@ const reviewSourceOf = (options, installation) => {
   return createReviewYesSource({ installation, repository, context, now: wallNow,
     client: createGitHubReviewClient({ token: githubToken(), http: globalThis.fetch.bind(globalThis), signal: ms => AbortSignal.timeout(ms) }) });
 };
+/** activation-stop-1108: delegated session work keeps a finite lifetime (Rules 55, 60, 114), but it is counted from this
+ * launch, never the activation end date, which is a reminder and never a stop. A lifetime recorded by an earlier launch
+ * renews once it passes (conversation-topics). A runner up longer than this without a restart holds session-routed turns
+ * until its next launch names a later lifetime; a year is far beyond any observed uninterrupted run. */
+const SESSION_WORK_LIFETIME_MS = 365 * 24 * 3600 * 1000;
+const sessionWorkLifetime = (view, now) => Math.max(view.expires, now + SESSION_WORK_LIFETIME_MS);
 /** The reviewed activation a renewal may name (`--renewal-activation`), validated exactly as `renew-expiry` validates it;
  * its digest when it is valid now and ends at `expires`, else null. */
 const renewalActivationOf = (options, view) => expires => {
@@ -1067,7 +1073,7 @@ async function main() {
         second: { source: item.second.source, quote: redact(item.second.quote).text }, winner: item.winner ?? null })),
       undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
         change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
-      holds: heldNotices(view.view, existsSync(stopPath) || view.view.stop !== null || wallNow() >= view.view.expires),
+      holds: heldNotices(view.view, existsSync(stopPath) || view.view.stop !== null),
       tooLong: view.view.order.filter(t => t.noticeClass === 'too-long-input' || t.intent === TOO_LONG_REPLY_NOTICE)
         // Rule 42: delivery reads the one durable send-outcome lookup; a definite refusal stays refused, with its reason.
         .map(t => { const holding = t.noticeClass === 'too-long-input' && t.intent !== TOO_LONG_INPUT_NOTICE ? 'holding reply ' : '';
@@ -1469,7 +1475,6 @@ async function main() {
       if (existsSync(stopPath)) throw Error('preview: stop latched');
       renewJournal = openPreviewJournal(journalPath, key());
       const now = wallNow();
-      if (now >= renewJournal.view.expires) throw Error('preview: expired');
       const bytes = readFileSync(required(options, 'activation-record'), 'utf8');
       const activation = JSON.parse(bytes);
       const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
@@ -1488,7 +1493,6 @@ async function main() {
     try {
       if (existsSync(stopPath)) throw Error('preview: stop latched');
       capJournal = openPreviewJournal(journalPath, key());
-      if (wallNow() >= capJournal.view.expires) throw Error('preview: expired');
       // docs/09: an explicit, operator-authorized conservative write-off of every pending UNKNOWN call, each
       // counted as its full reserved call. It names the exact calls; it never raises a cap by itself.
       if (options['write-off-unknown'] !== undefined && options['write-off-unknown'] !== 'true')
@@ -1802,8 +1806,7 @@ async function main() {
         context)) });
     // Rule 100: credentials handed over in chat are stored before anything consumes them.
     const custody = createSecretCustody(root, key(), wallNow);
-    const mediaStopped = () => signalled || workerStop.value || existsSync(stopPath) || journal.view.stop !== null
-      || wallNow() >= journal.view.expires || !ownerHeld();
+    const mediaStopped = () => signalled || workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !ownerHeld();
     const mediaAdmission = createMediaAdmission({ root, incarnation: `media:${process.pid}:${launchedAt}`,
       now: wallNow, monotonic: () => performance.now(), stopped: mediaStopped, policy: () => effectPolicyOf(),
       source: (source, media) => journalMediaSource(journal.view, source, media),
@@ -1943,8 +1946,7 @@ async function main() {
     // replicated(1): a provider call is an irreversible act too. On two machines its reservation row (already in the
     // journal) is acknowledged by the other machine before the call launches; until then the call waits. It ends
     // only in the states that already end a call: a stop, the expiry, or a lost conversation.
-    const peerHolds = async () => await shared.replicated(() => workerStop.value || existsSync(stopPath)
-      || wallNow() >= journal.view.expires || journal.view.stop || !ownerHeld() ? 'stopped' : null) === null;
+    const peerHolds = async () => await shared.replicated(() => workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld() ? 'stopped' : null) === null;
     const callSubscription = async (judgment, prepared, id, invocation, toolTurn, selectedLogin) => {
       try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
       assertLiveJudgment(judgment, 'preview-subscription');
@@ -2045,7 +2047,7 @@ async function main() {
     const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt, toolTurn, selectedLogin) => {
       const policy = doorway.policyFor(required(options, 'model'),
         toolTurn ? doorway.toolsFraming ?? doorway.conversationFraming : doorway.conversationFraming);
-      const deadline = Math.min(journal.view.expires, deadlineAt ?? wallNow() + policy.timeout + 60000);
+      const deadline = deadlineAt ?? wallNow() + policy.timeout + 60000;
       if (deadline - wallNow() <= 100) throw Object.assign(Error('preview: reply check budget exceeded'), { reviewCause: 'timeout', causeDetail: 'budget' });
       const result = await callSubscription(judgmentOf(id), prepared, id, { operation: id, deadline,
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
@@ -2190,7 +2192,7 @@ async function main() {
     const noticeInvoke = (method, body, timeoutMs) => physical.invoke({ token: secretRef('telegram-bot-token'),
       method, body, timeoutMs }, token());
     const noticeAllowed = () => !workerStop.value && !existsSync(stopPath) && ownerHeld()
-      && !journal.view.stop && wallNow() < journal.view.expires;
+      && !journal.view.stop;
     const typing = createReplyTyping({ invoke: noticeInvoke, now: wallNow,
       allowed: async () => {
         if (!noticeAllowed()) return false;
@@ -2453,7 +2455,7 @@ async function main() {
         if (copied && (chat !== g.chat || copied.lineage.forum === true && chat === copied.lineage.chat))
           return { kind: 'refused', reason: 'test copy sends only to its test chat' };
         const thread = copied ? undefined : signedThread;
-        if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop)
+        if (workerStop.value || existsSync(stopPath) || journal.view.stop)
           return { kind: 'refused', reason: 'stopped before dispatch' };
         // Rule 63: the fence is consumed immediately before dispatch. Without it nothing is sent: a definite
         // refusal (Rule 42), never repeated.
@@ -2463,7 +2465,7 @@ async function main() {
           && !(target?.startsWith('held-notice:') && text === GROUP_DISCLOSURE_HOLD_NOTICE && expectedText === GROUP_DISCLOSURE_HOLD_NOTICE))
           try { await requireGroupDisclosure(journal.view); }
           catch { return { kind: 'refused', reason: 'group disclosure grant or audience refused before dispatch' }; }
-        if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
+        if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop)
           return { kind: 'refused', reason: 'stopped during audience check' };
         if (current && !current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
         observeSendPhase?.('audienceAdmittedAt');
@@ -2471,7 +2473,7 @@ async function main() {
         if (shared) {
           // replicated(1): the journal through this send's signed intent is on the other machine, and the one
           // dispatch-claim for this target is taken, immediately before the physical send. Until then it waits.
-          const refused = await shared.admit(target, () => workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop
+          const refused = await shared.admit(target, () => workerStop.value || existsSync(stopPath) || journal.view.stop
             ? 'stopped before dispatch' : !ownerHeld() ? 'conversation ownership lost before dispatch'
               : current && !current() ? 'acknowledgement cancelled' : null);
           if (refused !== null) return refused;
@@ -2480,7 +2482,7 @@ async function main() {
         // Settle every post-claim exit, including refusals before physical dispatch.
         let outcome = { kind: 'unknown', reason: 'send port failed' };
         try {
-          if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
+          if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop)
             return outcome = { kind: 'refused', reason: 'stopped before physical dispatch' };
           if (current && !current()) return outcome = { kind: 'refused', reason: 'acknowledgement cancelled' };
           const noticeTurn = target?.startsWith('held-notice:') ? journal.view.turns.get(target.slice('held-notice:'.length)) : null;
@@ -2519,8 +2521,7 @@ async function main() {
               invoke: body => physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage', body, timeoutMs: 30000 }, token()),
               classify: (reply, shown) => classifyTelegramSend(reply, { chat, expectedText: shown, forum: g.forum === true,
                 ...(thread === undefined ? {} : { thread }) }),
-              mayResend: () => !workerStop.value && !existsSync(stopPath) && ownerHeld() && !journal.view.stop
-                && wallNow() < journal.view.expires && (!current || current()) });
+              mayResend: () => !workerStop.value && !existsSync(stopPath) && ownerHeld() && !journal.view.stop && (!current || current()) });
           } finally { observeSendPhase?.('transportReturnedAt'); }
           if (reaction && outcome.kind === 'accepted') {
             outcome = { ...outcome, acknowledgementPath: 'text' };
@@ -2682,8 +2683,7 @@ async function main() {
     // effect doorway's four tests under the installation's current effect policy (read at each decision, so a policy
     // withdrawn or unreadable mid-step refuses), exactly as an unchecked tool turn's hook does.
     if (sessionSetup !== null || doorway.toolTurn?.harness) {
-      const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
-        || wallNow() >= journal.view.expires || !active() || sessionAccountsChanged();
+      const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null || !active() || sessionAccountsChanged();
       const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
       gate = await createAdmissionGate({
         ownerBrowser: conversationSession ? createOwnerBrowser({ binding: () => readOwnerBrowserBinding(root),
@@ -2724,8 +2724,7 @@ async function main() {
         home: profile.home, configHome: profile.configDirectory, cwd: project,
         ...(conversationSession && layout ? { lifecycleDirectory: join(layout.admission, 'lifecycle') } : {}) });
       let physical = physicalFor();
-      const hostStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
-        || wallNow() >= journal.view.expires || !active();
+      const hostStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null || !active();
       const stoppedNow = () => hostStopped() || !sessionActive() || sessionAccountsChanged();
       // The step's preflights run as the identity its session will (harness-user: held, never the runner's, while unready).
       const admissionIO = () => observeSignIn(selectedSession, createSubscriptionProviderIO({ repository: process.cwd(), stopped: stoppedNow, work: 'maintenance',
@@ -2782,7 +2781,7 @@ async function main() {
             options['harness-user'],
             realpathSync(binding.entry().profilePath), '--'] } : {}) });
         return ({
-        ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
+        ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: sessionWorkLifetime(journal.view, wallNow()),
           contextRecoveryAllowed: () => journal.view.order.every(turn => !turn.intent || turn.sent !== undefined),
           authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
           workingActivity: (operation, claim, phase) => workingActivities.observe(operation, claim, phase),
@@ -3022,7 +3021,7 @@ async function main() {
     proofLaunch = runningLaunch([startup]);
     /** One due plan per cycle, bounded by its own probe; a failed durable write backs off instead of retrying every cycle. */
     const runDueProof = () => {
-      if (workerStop.value || existsSync(stopPath) || journal.view.stop || wallNow() >= journal.view.expires || clock.elapsed() < proofBackoffUntil) return;
+      if (workerStop.value || existsSync(stopPath) || journal.view.stop || clock.elapsed() < proofBackoffUntil) return;
       const plan = nextDuePlan(PREVIEW_PROOF_PLANS, proofRecords, generation, proofPorts, wallNow());
       if (plan) recordProof(executeProof(plan, proofPorts, generation, clock.elapsed));
     };
@@ -3177,7 +3176,7 @@ async function main() {
     // One disposable wake reconstructed from Five's durable promise/work population.
     // It only requests work; result delivery still waits for the withdrawal-aware post-poll pass.
     dueWake = createNextDueWake({ now: wallNow,
-      next: () => signalled || workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires
+      next: () => signalled || workerStop.value || existsSync(stopPath)
         || !ownerHeld() || !activationMatchesJournal(journal.view, activation) ? null : nextObligationAt(journal.view),
       after: (ms, fire) => { const timer = setTimeout(fire, ms); timer.unref(); return () => clearTimeout(timer); },
       wake: () => workCycle(false, true) });
@@ -3187,8 +3186,7 @@ async function main() {
     if (updateEnabled) {
       try {
         updateController = createProductUpdater(root, { runningVersion: () => updateVersion,
-          stopped: () => signalled || workerStop.value || existsSync(stopPath) || Boolean(journal.view.stop)
-            || wallNow() >= journal.view.expires || !ownerHeld(),
+          stopped: () => signalled || workerStop.value || existsSync(stopPath) || Boolean(journal.view.stop) || !ownerHeld(),
           readiness: () => ({ idle: updateHealthy && updateIdle(), verifying: updateVerifying() }) });
       } catch { /* Preserve corrupt optional update state; serving remains available. */ }
     }
@@ -3214,7 +3212,7 @@ async function main() {
       // Attempting another poll is not restoration: while a poll-failure episode is open the owner stays
       // non-servable with its typed reason; only a successful poll (below) restores service.
       const unrestored = failedPolls > 0 || conflictedPolls > 0;
-      serviceBeat(!journal.view.stop && wallNow() < journal.view.expires && !unrestored, journal.view.stop ? 'stop latched'
+      serviceBeat(!journal.view.stop && !unrestored, journal.view.stop ? 'stop latched'
         : unrestored ? (conflictedPolls ? 'Telegram reports another poller' : 'polling Telegram is failing') : 'serving');
       if (shared) {
         await shared.sync();
@@ -3244,7 +3242,7 @@ async function main() {
       runDueProof();
       checkDoorways();
       publishDashboard();
-      if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
+      if (existsSync(stopPath)) break;
       let pollLimit;
       try { pollLimit = worker.pollLimit(); } catch { break; }
       if (signalled || workerStop.value || existsSync(stopPath)) break;
@@ -3276,7 +3274,7 @@ async function main() {
       groupAudience.observe(updates.result);
       // A successful poll is the restoration evidence that closes the episode, recorded before it is relied on.
       if (failedPolls || conflictedPolls) appendRun(runsPath, { v: 1, launch: launchedAt, poll: 'restored', at: wallNow() });
-      if (failedPolls || conflictedPolls) serviceBeat(!journal.view.stop && wallNow() < journal.view.expires, 'poll restored');
+      if (failedPolls || conflictedPolls) serviceBeat(!journal.view.stop, 'poll restored');
       failedPolls = 0; conflictedPolls = 0; routeHealthy = true; updateHealthy = !ended();
       try { updateController?.start(); updateController?.updater.recheckRestartHolds(); observeUpdateBoot(root, { version: updateVersion, launch: String(launchedAt), healthy: !ended() }); }
       catch { /* The pending handshake remains unverified; a later poll can retry. */ }
@@ -3399,8 +3397,6 @@ async function main() {
         appendRun(runsPath, { v: 1, launch: at, pid: process.pid });
         appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: 'refused before launch', refused: detail || 'unknown' });
       } catch { /* the refusal still exits non-zero; only its record is lost */ }
-      if (journal && !journal.view.stop && !journal.readOnly && wallNow() >= journal.view.expires)
-        journal.append({ kind: 'stop', reason: 'trial expired', at: wallNow() });
       if (launchedAt !== null) {
         const reason = signalName ? `paused by signal ${signalName}` : journal?.view.stop === 'trial expired' ? 'trial expired'
           : existsSync(stopPath) || journal?.view.stop ? 'operator stop latched' : endReason ?? 'error (details suppressed)';
@@ -3411,7 +3407,7 @@ async function main() {
         let end = {};
         try {
           const health = journal ? loopHealth(journal.view, wallNow()) : null;
-          const inhibited = pressureUnknown || signalName !== null || existsSync(stopPath) || journal?.view.stop || wallNow() >= (journal?.view.expires ?? 0)
+          const inhibited = pressureUnknown || signalName !== null || existsSync(stopPath) || journal?.view.stop
             || journal && (journal.view.calls >= journal.view.limits.maxCalls || journal.view.replies >= journal.view.limits.maxReplies);
           // Every still-owned item counts: a result waiting for the next message and a dependency awaiting the
           // operator need a live runner as much as due or scheduled work does.
