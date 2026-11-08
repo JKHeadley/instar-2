@@ -447,17 +447,22 @@ export function observeHarnessSessionLimit(pool, entry, observation) {
   return observation;
 }
 
-/** The harness CLI's own login check (`auth status --json`) is the exact signed-out signal, as 1.x QuotaPoller
- * treats the CLI's signed-out report: `loggedIn: false` holds that login so the next selection takes another
- * approved login with room. The preflight carries no prompt, so nothing reached the model; no other output is read. */
+/** The harness CLI's own signed-out evidence, as 1.x QuotaPoller treats the CLI's signed-out report: its login
+ * check (`auth status --json`) reporting `loggedIn: false`, or a model result frame whose provider status is 401
+ * (tests/fixtures/provider-failure/claude-auth-401-result.json: a handed-over token the provider refuses still
+ * reports `loggedIn: true`). Either holds that login so the next selection takes another approved login with
+ * room. Only those two exact fields are read; the turn's own outcome is unchanged and never retried here. */
 export function observeHarnessSignIn(pool, entry, io) {
   if (!pool) return io;
   return { ...io, execute: async input => {
     const result = await io.execute(input);
-    if (input.args?.[0] === 'auth' && input.args[1] === 'status') {
-      let status = null;
-      try { status = JSON.parse(result.stdout); } catch { /* not a status report: no signal */ }
-      if (status && typeof status === 'object' && status.loggedIn === false) pool.observeSignedOut(entry);
+    const status = input.args?.[0] === 'auth' && input.args[1] === 'status';
+    const model = typeof input.stdin === 'string' && input.stdin.length > 0;
+    if (status || model) {
+      let frame = null;
+      try { frame = JSON.parse(result.stdout); } catch { /* not a status report or result frame: no signal */ }
+      if (frame && typeof frame === 'object' && !Array.isArray(frame) && (status ? frame.loggedIn === false
+        : frame.type === 'result' && frame.is_error === true && frame.api_error_status === 401)) pool.observeSignedOut(entry);
     }
     return result;
   } };

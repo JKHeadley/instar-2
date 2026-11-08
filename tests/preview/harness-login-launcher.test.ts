@@ -8,12 +8,12 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, offlineActivationAuthority, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
 import { encoded } from './stage2-provider.js';
-import { CREDENTIAL_SHAPE_NOTICE, MODEL_NOT_STARTED_REPLY, openPreviewJournal } from './journal.js';
+import { CREDENTIAL_SHAPE_NOTICE, MODEL_FAILURE_REPLY, MODEL_NOT_STARTED_REPLY, openPreviewJournal } from './journal.js';
 import { harnessLoginPath, storeHarnessLogin } from './harness-user.mjs';
 
 // Two installations, run, status and withdrawal each retain their 30s child ceiling.
 // Leave room for all five and cleanup; awaited children keep worker IPC responsive.
-it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', 'imported', 'missing-custody', 'missing-custody-secret', 'intact-custody-secret', 'renamed', 'copied', 'lost-build', 'signed-out'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
+it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', 'imported', 'missing-custody', 'missing-custody-secret', 'intact-custody-secret', 'renamed', 'copied', 'lost-build', 'signed-out', 'refused-token'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
   const world = successiveWorld(), directory = world.directory;
   let root = join(directory, 'pool-runner');
   const absolute = relative => pathToFileURL(join(process.cwd(), relative)).href;
@@ -24,7 +24,9 @@ it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', '
   const encodedPrimary = Buffer.from('sk-ant-oat01-synthetic-serving-a-only').toString('base64');
   const missing = mode === 'missing-profile' || custodyCase;
   // The first login's own CLI login check reports it signed out (1.x QuotaPoller needs-reauth evidence).
-  const signedOut = mode === 'signed-out';
+  const signedOut = mode === 'signed-out' || mode === 'refused-token';
+  // A handed-over token the provider refuses: status still says signed in; the model frame is the genuine 401.
+  const refusedToken = mode === 'refused-token';
   const pooled = mode !== 'legacy', automatic = custodyCase || ['installed', 'fresh', 'missing', 'missing-profile', 'imported', 'renamed', 'copied', 'lost-build'].includes(mode);
   const logins = (pooled ? ['serving-a', 'serving-b'] : ['serving-b']).map(name => {
     const profile = { ...offlineProfile, reference: name, activationReference: `${name}-activation`, expectedAccount: `${name}@example.invalid`,
@@ -58,7 +60,7 @@ export const harnessGate = ({profile,migrateLegacy}) => gate({profile,migrateLeg
   writeFileSync(io, `export * from ${JSON.stringify(absolute('scripts/production-boot-io.mjs'))};
 import {appendFileSync,readFileSync} from 'node:fs';
 import {productionProviderIO} from ${JSON.stringify(absolute('scripts/production-boot-io.mjs'))};
-const captured = readFileSync(${JSON.stringify(join(process.cwd(), 'tests/fixtures/provider-failure/claude-limit-result.json'))},'utf8');
+const captured = readFileSync(${JSON.stringify(join(process.cwd(), `tests/fixtures/provider-failure/${refusedToken ? 'claude-auth-401-result.json' : 'claude-limit-result.json'}`))},'utf8');
 export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...productionProviderIO,
  descriptorLogin:true,realpath:p=>p,executableBytes:()=>Buffer.from('offline executable bytes'),
  inspectSubscriptionProfile:profile=>({loginProfileIdentity:profile.loginProfileIdentity,managedConfigurationDigest:profile.managedConfigurationDigest}),
@@ -69,12 +71,12 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
   if(token!=='sk-ant-oat01-synthetic-'+account+'-only')throw Error('login crossed accounts');
   let stdout,code=0;
   if(command.args[0]==='--version')stdout='2.1.280 (Claude Code)';
-  else if(command.args[0]==='auth'&&account==='serving-a'&&${JSON.stringify(signedOut)}){stdout=JSON.stringify({loggedIn:false,authMethod:'none',apiProvider:'firstParty'});code=1;}
+  else if(command.args[0]==='auth'&&account==='serving-a'&&${JSON.stringify(signedOut && !refusedToken)}){stdout=JSON.stringify({loggedIn:false,authMethod:'none',apiProvider:'firstParty'});code=1;}
   else if(command.args[0]==='auth')stdout=JSON.stringify({loggedIn:true,authMethod:'oauth_token',apiProvider:'firstParty',analyticsDisabled:false,
     configDirectory:command.env.CLAUDE_CONFIG_DIR,projectsDirectory:command.env.CLAUDE_CONFIG_DIR+'/projects'});
   else {
    appendFileSync(${JSON.stringify(calls)},JSON.stringify({account,home:command.env.HOME,config:command.env.CLAUDE_CONFIG_DIR,evidence:JSON.parse(JSON.parse(command.stdin).messages[1].content).bindings.evidence})+'\\n');
-   if(account==='serving-a' && ${JSON.stringify(!missing)}){stdout=captured;code=1;}
+   if(account==='serving-a' && ${JSON.stringify(!missing && (!signedOut || refusedToken))}){stdout=captured;code=1;}
    else stdout=JSON.stringify({type:'result',subtype:'success',is_error:false,result:JSON.stringify({reasoning:'The operator asked an ordinary question.',answer:${JSON.stringify(secretAnswer ? encodedPrimary : 'The second approved login answered.')}}),
     session_id:'offline-b',usage:{input_tokens:10,output_tokens:20,cache_creation_input_tokens:0,cache_read_input_tokens:0}});
   }
@@ -162,7 +164,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       throw Error(first.stderr + JSON.stringify(detail));
     }
     const rows = readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
-    expect(rows[0].account).toBe(custodyCase || ['pool', 'installed', 'missing', 'missing-profile', 'imported', 'renamed', 'copied', 'lost-build'].includes(mode) ? 'serving-a' : 'serving-b');
+    expect(rows[0].account).toBe(custodyCase || ['pool', 'installed', 'missing', 'missing-profile', 'imported', 'renamed', 'copied', 'lost-build', 'refused-token'].includes(mode) ? 'serving-a' : 'serving-b');
     expect(rows.slice(1).every(row => row.account === (missing ? 'serving-a' : 'serving-b'))).toBe(true);
     expect(rows.length).toBeGreaterThan(1);
     if (pooled) {
@@ -187,7 +189,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     expect(sends.some(row => row.text.includes(encodedPrimary))).toBe(false);
     if (!secretAnswer) expect(sends.some(row => row.text.includes('second approved login answered'))).toBe(true);
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
-    expect(journal.view.order[0].modelState).toBe(['pool', 'installed', 'imported', 'missing', 'renamed', 'copied', 'lost-build'].includes(mode) ? 'rejected'
+    expect(journal.view.order[0].modelState).toBe(['pool', 'installed', 'imported', 'missing', 'renamed', 'copied', 'lost-build', 'refused-token'].includes(mode) ? 'rejected'
       : signedOut ? undefined : 'complete');
     expect(journal.view.order.map(turn => turn.update)).toEqual([1, 2, 3]);
     const completed = journal.view.order.filter(turn => turn.modelState === 'complete');
@@ -210,6 +212,11 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       expect(failed).toHaveLength(1); expect(failed[0].update).toBe(1);
       expect(failed[0].failureClass).toBe('capacity'); expect(failed[0].sent).toBeUndefined();
       expect(failed[0].raw).toContain('Please say hello.'); // Retained failed work, never replayed as another attempt.
+    } else if (refusedToken) {
+      // The refused call is settled as the one ordinary failure line; it is never retried. Later turns run on B.
+      expect(failed).toHaveLength(1); expect(failed[0].update).toBe(1); expect(failed[0].failureClass).toBe('rejected');
+      expect(sends.filter(row => row.text.includes(MODEL_FAILURE_REPLY))).toHaveLength(1);
+      expect(completed.map(turn => turn.update)).toEqual([2, 3]);
     } else if (signedOut) {
       // Nothing reached the model on the signed-out login; the person gets one plain line for that turn,
       // and every later turn is answered on the second approved login without a restart.

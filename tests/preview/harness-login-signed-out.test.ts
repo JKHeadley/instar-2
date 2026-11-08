@@ -117,3 +117,22 @@ it('the continuing-session handoff moves a signed-out topic login to B when B ha
   expect(f.pool.selectSession(0).profile.reference).toBe('serving-b');
   expect(f.pool.state.handoffAttempts.at(-1)).toMatchObject({ from: 'serving-a', to: 'serving-b', reason: 'member-unavailable', phase: 'prepared' });
 });
+
+it('replays the genuine signed-out captures: a refused handed-over token holds the login, a usage limit does not', async () => {
+  const read = name => readFileSync(new URL(`../fixtures/provider-failure/${name}`, import.meta.url), 'utf8');
+  const refused = read('claude-auth-401-result.json'), limited = read('claude-limit-result.json');
+  expect(JSON.parse(refused)).toMatchObject({ type: 'result', is_error: true, api_error_status: 401, usage: { input_tokens: 0, output_tokens: 0 } });
+  // The same invalid token's genuine `auth status --json` (paths replaced): the preflight cannot see this case.
+  const status = JSON.stringify({ loggedIn: true, authMethod: 'oauth_token', apiProvider: 'firstParty', analyticsDisabled: false,
+    projectsDirectory: '/offline/config/projects', configDirectory: '/offline/config', loginExpiresAt: null });
+  const replay = async (pool, entry, args, stdin, stdout) => observeHarnessSignIn(pool, entry,
+    { execute: async () => ({ code: 1, limited: false, stdout, stdoutBytes: Buffer.from(stdout) }) }).execute({ args, stdin });
+  const f = fixture(), a = f.configuration.entries[0];
+  await replay(f.pool, a, ['auth', 'status', '--json'], '', status);
+  await replay(f.pool, a, ['-p'], 'prompt', limited);
+  expect(f.pool.state.holds[0]).toBeUndefined(); // The limit stays the existing typed observe() path's evidence.
+  await replay(f.pool, a, ['-p'], 'prompt', refused);
+  expect(f.pool.state.holds[0]).toMatchObject({ reason: 'signed-out', credential: f.credentials['serving-a'] });
+  expect(f.pool.select().profile.reference).toBe('serving-b');
+  expect(f.pool.state.switches.at(-1).reason).toBe('member-unavailable');
+});
