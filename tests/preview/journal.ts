@@ -6234,7 +6234,7 @@ export interface PreviewPorts {
     review?: ReviewYesSource;
     renewalActivation?(expires: number): string | null;
     /** How long a request stays answerable (plan #373; default OPERATOR_REQUEST_MS, at most OPERATOR_REQUEST_MAX_MS),
-     * never past the trial's current end. */
+     * whatever the activation end (a reminder, never a stop). */
     requestWindowMs?: number;
     /** Plan #389: the desk's current retraction proposal, read from the root by the host (propose-retract), or none. */
     retractProposal?(): RetractProposal | undefined };

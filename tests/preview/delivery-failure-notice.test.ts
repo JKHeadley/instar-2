@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, replyOutcomeOf } from './journal-test-worker.js';
+import { closingNoticeText } from './journal.js';
 
 const key = new Uint8Array(32).fill(7);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
@@ -49,12 +50,12 @@ it.each(['accepted', 'unknown', 'refused', 'not-sent'] as const)('aggregates ref
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
-it.each(['stop', 'expiry', 'capacity'] as const)('retains a refused answer behind the %s floor and recovers only when admitted', async floor => {
+it.each(['stop', 'capacity'] as const)('retains a refused answer behind the %s floor and recovers only when admitted', async floor => {
   const root = mkdtempSync(join(tmpdir(), 'delivery-floor-')), path = join(root, 'journal');
   let journal = openPreviewJournal(path, key, { ...genesis, maxReplies: floor === 'capacity' ? 1 : 20 });
   let attempted = false;
   const sent: string[] = [];
-  const ports = { now: () => floor === 'expiry' && attempted ? genesis.expires : 1000,
+  const ports = { now: () => 1000,
     stopped: () => floor === 'stop' && attempted,
     checkOutbound: () => {}, model: async () => 'answer', send: async (input: { expectedText: string }) => {
       attempted = true; sent.push(input.expectedText); return { kind: 'refused' as const, reason: 'known failure' };
@@ -66,7 +67,29 @@ it.each(['stop', 'expiry', 'capacity'] as const)('retains a refused answer behin
     journal.close(); journal = openPreviewJournal(path, key);
     await createJournalWorker(journal, { ...ports, stopped: () => false, groupDisclosure: async () => true,
       send: async input => { sent.push(input.expectedText); return 42; } }).drain();
-    expect(sent).toEqual(floor === 'capacity' || floor === 'expiry' ? ['answer'] : ['answer', notice]);
+    expect(sent).toEqual(floor === 'capacity' ? ['answer'] : ['answer', notice]);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+// activation-stop-1108: the activation end is a reminder, never a stop, so it is no floor for the failure notice.
+it('reports a refused answer at once when the activation end passes, reminds once, and repeats neither after restart', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'delivery-end-')), path = join(root, 'journal');
+  let journal = openPreviewJournal(path, key, genesis), attempted = false;
+  const sent: string[] = [];
+  const ports = { now: () => attempted ? genesis.expires : 1000, stopped: () => false, checkOutbound: () => {},
+    model: async () => 'answer', send: async (input: { expectedText: string }) => {
+      const first = !attempted; attempted = true; sent.push(input.expectedText);
+      return first ? { kind: 'refused' as const, reason: 'known failure' } : sent.length + 40;
+    } };
+  const reminder = closingNoticeText(genesis.expires, 'America/Los_Angeles');
+  try {
+    const worker = createJournalWorker(journal, ports);
+    worker.intake([update(1)]); await worker.drain(); await worker.drain();
+    expect(sent).toEqual(['answer', notice, reminder]);
+    expect(journal.view.stop).toBeNull();
+    journal.close(); journal = openPreviewJournal(path, key);
+    await createJournalWorker(journal, ports).drain();
+    expect(sent).toEqual(['answer', notice, reminder]);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 

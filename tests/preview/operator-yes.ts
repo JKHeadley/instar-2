@@ -39,8 +39,8 @@ export interface ProposalState { limits: CapLimits; used: CapLimits; step: CapLi
   unknownCalls: number; stopped: boolean; grant: string; base: string }
 
 /** How long a request may be answered by default (plan #373): long enough for a phone tap the next morning. Live
- * 2026-10-03: two requests issued with the old one-hour window lapsed unseen overnight. A request never outlives the
- * governing deadline, the trial's current end (the end a renewal extends, the end a raise lives within). */
+ * 2026-10-03: two requests issued with the old one-hour window lapsed unseen overnight. A request keeps its own window
+ * whatever the activation end: that end is a reminder, never a stop (activation-stop-1108, request-lifetimes-unclamped). */
 export const OPERATOR_REQUEST_MS = 18 * 3_600_000;
 /** The longest window a root may configure, and the longest lifetime a recorded request may carry on replay. */
 export const OPERATOR_REQUEST_MAX_MS = 48 * 3_600_000;
@@ -149,14 +149,12 @@ export function wellFormedRequest(request: unknown, carrier: string, grant: stri
 
 const minute = (at: number) => `${new Date(at).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 /** What follows the UTC lapse sentence (plan #373): the same instant in the operator's own time zone where the root
- * knows it, and, where the trial's end cut the window short, that it is that end. Never part of the replayed request
- * text, which stays the UTC sentence alone, so earlier recorded requests replay unchanged. */
-export function operatorLapseDetail(request: OperatorRequest, current: { expires: number }, zone?: string): string {
-  const parts: string[] = [];
-  if (zone !== undefined && zone !== 'UTC') parts.push(`${new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'short', month: 'short',
-    day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' }).format(request.expiresAt)} your time (${zone})`);
-  if (request.expiresAt === current.expires) parts.push('the trial\'s current end, which a request cannot outlast');
-  return parts.length ? ` That is ${parts.join(', and ')}.` : '';
+ * knows it. Never part of the replayed request text, which stays the UTC sentence alone, so earlier recorded requests
+ * replay unchanged. The activation end no longer cuts a request's window, so the text never claims it does. */
+export function operatorLapseDetail(request: OperatorRequest, _current: { expires: number }, zone?: string): string {
+  if (zone === undefined || zone === 'UTC') return '';
+  return ` That is ${new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit',
+    minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' }).format(request.expiresAt)} your time (${zone}).`;
 }
 const requestChange = (request: OperatorRequest, current: { limits: CapLimits; expires: number }) => request.action === 'raise-caps'
   ? KEYS.filter(key => request.limits![key] !== current.limits[key]).map(key =>

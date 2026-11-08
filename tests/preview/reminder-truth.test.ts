@@ -29,13 +29,16 @@ const make = (record: typeof records[number], output = record.outputs.at(-1)!, f
     close() { journal.close(); rmSync(root, { recursive: true, force: true }); } };
 };
 
-it('replays 840342802 with only the host refusal when its deadline is beyond the trial', async () => {
+// activation-stop-1108 (renewal-after-end, side effects): the activation end is a reminder, never a stop, so a reminder
+// whose deadline lies beyond it is scheduled as asked instead of refused by the host.
+it('replays 840342802 and schedules its reminder even when its deadline is beyond the activation end', async () => {
   const record = records.find(row => row.update === 840342802)!, h = make(record, undefined, false, 60_000);
   try {
     h.intake(); await h.worker.drain();
-    expect(h.state.sent[0]).toContain('I did not schedule what you asked for');
-    expect(h.state.sent[0]).not.toContain("I'll swap that out and remind you");
-    expect(openRequests(h.journal.view)).toEqual([]);
+    expect(h.state.sent[0]).not.toContain('I did not schedule what you asked for');
+    expect(h.state.sent[0]).toContain('I will act on this once at 2026-10-14 16:40 (America/Los_Angeles)');
+    expect(openRequests(h.journal.view)).toHaveLength(1);
+    expect(h.journal.view.stop).toBeNull();
   } finally { h.close(); }
 });
 

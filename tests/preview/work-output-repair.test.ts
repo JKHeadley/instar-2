@@ -149,15 +149,20 @@ it('the actual launcher retains all three rejected work outputs for repair, but 
   }
 });
 
-it('keeps a definite format failure when repair preparation fails, and never repairs past expiry', async () => {
+it('keeps a definite format failure when repair preparation fails, and still repairs once past the activation end', async () => {
   const w = await world([fixture.calls[0]!.output], { refuseRepairPreparation: true });
   try { await w.worker.workObligations(); expect(w.calls).toHaveLength(1);
     expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'failed', failureClass: 'malformed' });
   } finally { w.close(); }
-  const expired = await world([fixture.calls[0]!.output], { afterCall: clock => { clock.now = T0 + 10 * DAY; } });
-  try { await expired.worker.workObligations(); expect(expired.calls).toHaveLength(1);
-    expect(expired.journal.view.obligationWork['commitment:0']!.outcome).toBe('failed');
-  } finally { expired.close(); }
+  // activation-stop-1108: the activation end (genesis expires, T0 + 10 days) is a reminder, never a stop, so the one
+  // repair still runs when the end passes during the first call.
+  const ended = await world([fixture.calls[0]!.output, '{"outcome":"continue","note":"Reviewing the plan."}'],
+    { afterCall: clock => { clock.now = T0 + 10 * DAY; } });
+  try { await ended.worker.workObligations(); expect(ended.calls).toHaveLength(2);
+    expect(ended.calls[1]!.id).toMatch(/^work-repair:/u);
+    expect(ended.journal.view.obligationWork['commitment:0']!.outcome).toBe('continue');
+    expect(ended.journal.view.stop).toBeNull();
+  } finally { ended.close(); }
 });
 
 it('a good intermediate result does not reset the lifetime short-retry cap', async () => {
