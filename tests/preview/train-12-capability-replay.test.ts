@@ -10,13 +10,17 @@ import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-
 import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS } from '../../src/assembly/tool-answer-guidance.js';
 import { CLAIM_EVIDENCE_GUIDANCE } from './answer-provenance.js';
 import { readAnswer } from './answer-reading.js';
+// Recorded captures predate helper-limits-1107, which replaced the subagent clause "each up to 4 turns" (the old
+// four-turn helper cap) with this one; the replay translates only that clause and keeps every capture verbatim.
+const HELPER_CLAUSE = "each sharing this turn's tool calls and working until it answers";
+const HISTORICAL_HELPER_CLAUSE = 'each up to 4 turns';
 
 // These captures predate memory-supersession/requested-work guidance and removal of the one-machine send restriction.
 // Reconstruct their historical prompt without changing the captured evidence or current abilities.
 const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
 
 const historicalSendRestriction = 'Irreversible outward sends remain outside the one-machine closed set. ';
-const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '')
+const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(HELPER_CLAUSE, HISTORICAL_HELPER_CLAUSE).replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '')
   .replace('The effect doorway reports', `${historicalSendRestriction}The effect doorway reports`);
 
 const evidence = JSON.parse(readFileSync(new URL('./fixtures/train-12-capability-2026-10-12.json', import.meta.url), 'utf8'));

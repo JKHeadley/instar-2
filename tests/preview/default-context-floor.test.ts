@@ -284,8 +284,9 @@ it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part 
   // registers and grants it (+70); read-first adds 1202, standing-trust guidance adds 21,
   // and the inherited tool-only COMPLETE_REQUESTED_STEPS instruction adds 508.
   // The new shared completion sentence adds 112 bytes to each route, cancelling here. The closed-set sentence (70) went
-  // with the 2026-10-13 single-machine ruling.
-  expect(growth).toBe(3205);
+  // with the 2026-10-13 single-machine ruling. 3251 with helper-limits-1107, whose subagent clause says each helper shares
+  // the turn's tool calls and works until it answers, in place of "each up to 4 turns" (+46).
+  expect(growth).toBe(3251);
   // The packet names what the call really has (review round 1, finding 5): the text-only route keeps the no-tools read and
   // its "attempted nothing" guidance; the tool route says the tools are listed (in the note's tools item) and that only its recorded calls ran.
   expect(plain.packet?.capabilities?.externalTools).toBe('none');

@@ -11,12 +11,16 @@ import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { readAnswer } from './answer-reading.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS } from '../../src/assembly/tool-answer-guidance.js';
+// Recorded captures predate helper-limits-1107, which replaced the subagent clause "each up to 4 turns" (the old
+// four-turn helper cap) with this one; the replay translates only that clause and keeps every capture verbatim.
+const HELPER_CLAUSE = "each sharing this turn's tool calls and working until it answers";
+const HISTORICAL_HELPER_CLAUSE = 'each up to 4 turns';
 
 // These provider captures predate train-41's requested-step verification guidance.
 // Preserve the captures; the dedicated guidance tests cover the added instruction.
 // Recorded captures predate the 2026-10-13 single-machine ruling; the current prompt drops only this sentence.
 const CLOSED_SET_SENTENCE = 'Irreversible outward sends remain outside the one-machine closed set. ';
-const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
+const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(HELPER_CLAUSE, HISTORICAL_HELPER_CLAUSE).replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
 
 // Captured read-only from the failed forum answer copy, update 715675751. The
 // three new outputs are real, bounded model replays of that same recorded packet.

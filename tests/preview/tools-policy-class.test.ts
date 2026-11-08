@@ -92,6 +92,9 @@ it('a policy that removes a checkpoint or raises a cap is outside the class and 
   outside(withArgs(l44, setFlag('--max-budget-usd', '5')), /budget cap/u);
   outside({ ...l44, limits: { ...(l44.limits as object), maxChildren: 3 } }, /maxChildren/u);
   outside({ ...l44, limits: { ...(l44.limits as object), maxToolCalls: 33 } }, /maxToolCalls/u);
+  // A helper's turns may reach the shared allowance and its answer (helper-limits-1107), never past them.
+  outside({ ...l44, limits: { ...(l44.limits as object), childMaxTurns: 34 } }, /childMaxTurns/u);
+  outside({ ...l44, limits: { ...(l44.limits as object), maxToolCalls: 16, childMaxTurns: 33 } }, /shared tool-call allowance/u);
   outside({ ...l44, retries: 1 }, /retries/u);
   outside(withArgs(codexToolsPolicy(MODEL), args => args.filter(arg => arg !== '--ephemeral')), /session outside the journal/u);
   outside({ ...codexToolsPolicy(MODEL), limits: { maxTurns: 20, timeout: 300000, maxWriteBytes: 1048576 } }, /maxTurns/u);

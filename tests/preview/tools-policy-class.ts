@@ -19,8 +19,12 @@ import { CODEX_TOOLS_FRAMING, codexToolHookArgs } from '../../src/assembly/produ
 
 /** The one class a standing full-tools grant may name. A changed meaning is a new class id, never an edit of this one. */
 export const FULL_TOOLS_CLASS = 'full-tools-checkpointed-v1';
-/** The reviewed ceilings of the class: the bounds the full-tools policy carried when 121996 was recorded against it. */
-export const FULL_TOOLS_CEILINGS = Object.freeze({ maxTurns: 8, maxToolCalls: 32, maxChildren: 2, childMaxTurns: 4,
+/** The reviewed ceilings of the class: the bounds the full-tools policy carried when 121996 was recorded against it, except
+ * `childMaxTurns`. That was 4, an implementation number no grant named; 121996 asked for the full ability by default and the
+ * purpose (revision 12) keeps ability where a checkpoint enforces the safeguard. A helper's turns are now bounded by the
+ * turn's shared tool-call allowance plus its answer (`maxToolCalls + 1`), which the call cap still reserves before dispatch,
+ * so the spend checkpoint the class names is unchanged and no new class id is needed. */
+export const FULL_TOOLS_CEILINGS = Object.freeze({ maxTurns: 8, maxToolCalls: 32, maxChildren: 2, childMaxTurns: 33,
   budgetCeilingUsd: 1, timeout: 300000, maxWriteBytes: 1048576 });
 export type ToolsClassVerdict = { kind: 'covered'; policyClass: string; framing: string; digest: string }
   | { kind: 'outside'; reason: string };
@@ -60,6 +64,8 @@ function claudeCheckpoints(policy: Policy, args: readonly string[]): string | nu
   const limits = record(policy.limits);
   for (const name of ['maxTurns', 'maxToolCalls', 'maxChildren', 'childMaxTurns', 'budgetCeilingUsd', 'timeout', 'maxWriteBytes'] as const)
     if (!capped(limits[name], FULL_TOOLS_CEILINGS[name])) return `the ${name} cap is absent or above the class ceiling`;
+  // A helper's turns stay within what the shared allowance can spend, so the per-helper reservation covers them.
+  if ((limits.childMaxTurns as number) > (limits.maxToolCalls as number) + 1) return 'the childMaxTurns cap exceeds the shared tool-call allowance and its answer';
   // The build's own per-turn settings, with and without the shell's network checkpoint.
   for (const egress of [undefined, PROBE_EGRESS]) {
     let settings: string;
@@ -97,7 +103,8 @@ export function claudeSettingsCheckpoints(json: string, egress: Readonly<{ port:
   for (const read of reads) {
     if (typeof read !== 'string' || !read.startsWith('/') || /(?:^|\/)\.\.?(?:\/|$)/u.test(read) || read.includes('*'))
       return 'the shell\'s read exceptions are not plain absolute paths';
-    if (!(within(read, PROBE.scratch) || FULL_TOOLS_RUNTIME_READS.includes(read) || FULL_TOOLS_RUNTIME_READ_LINKS.includes(read)
+    // A read inside a reviewed runtime location reads less than it, never more (links reopen only the link node: exact).
+    if (!(within(read, PROBE.scratch) || FULL_TOOLS_RUNTIME_READS.some(root => within(read, root)) || FULL_TOOLS_RUNTIME_READ_LINKS.includes(read)
       || (egress?.reads ?? []).includes(read)))
       return `the shell reads ${read}, outside its workspace and the reviewed runtime list`;
     if (protectedPaths.some(path => within(path, read))) return `the shell reads ${read}, which holds the login home, admission state or a denied root`;

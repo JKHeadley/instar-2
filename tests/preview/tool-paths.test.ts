@@ -261,3 +261,30 @@ it.runIf(darwin)('runs the shell under the sandbox profile the settings produce:
   expect(run('ls /var/log >/dev/null').status).not.toBe(0);
   expect(run(`cat ${ws}/note.txt`).stdout).toBe('hello\n');
 });
+// helper-limits-1107 (live ROW16, 2026-11-07): both helpers stopped because macOS curl could not open its TLS library's
+// configuration (/private/etc/ssl/openssl.cnf, LibreSSL's OPENSSLDIR) and failed with "Auto configuration failed" before
+// it reached the turn's network checkpoint. The real settings now reopen that directory for reads only: curl starts and
+// gets as far as the network, the configuration and CA bundle read, the host record beside them stays refused, and no
+// write rule reaches the directory (a write there is refused for the same reason every write outside the volume is).
+it.runIf(darwin)('lets curl read its TLS configuration under the real settings, read-only, with the host record still refused', () => {
+  const { root, vol, ws, state } = turn();
+  const settings = JSON.parse(subscriptionToolSettings({ scratch: vol, workspace: ws, stateDirectory: state, deniedRoots: [root],
+    hook: { node: process.execPath, script: HOOK } }, join(root, 'home')));
+  const { allowRead, allowWrite, denyRead } = settings.sandbox.filesystem as { allowRead: string[]; allowWrite: string[]; denyRead: string[] };
+  expect(denyRead).toEqual(['/']);
+  expect(allowRead).toContain('/private/etc/ssl');
+  const under = (path: string, list: string[]) => list.some(entry => path === entry || path.startsWith(`${entry}/`));
+  for (const path of ['/private/etc/ssl', '/private/etc/ssl/openssl.cnf', '/private/etc/ssl/cert.pem']) expect([path, under(path, allowWrite)]).toEqual([path, false]);
+  expect(under('/private/etc/hosts', allowRead)).toBe(false);
+  const profile = ['(version 1)', '(allow default)', '(deny file-read* (subpath "/"))',
+    ...allowRead.map(path => `(allow file-read* (subpath ${JSON.stringify(path)}))`), '(allow file-read* (literal "/"))',
+    '(allow file-read-metadata (vnode-type DIRECTORY))'].join('\n');
+  const run = (command: string) => spawnSync('/usr/bin/sandbox-exec', ['-p', profile, '/bin/sh', '-c', command], { cwd: '/', encoding: 'utf8' });
+  // Port 9 on loopback has no listener: curl reports a refused connect (7), never the configuration failure.
+  const curl = run('/usr/bin/curl -sS --max-time 5 https://127.0.0.1:9/');
+  expect(curl.stderr).not.toMatch(/Auto configuration failed|openssl\.cnf/u);
+  expect(curl.status).toBe(7);
+  expect(run('head -c 1 /private/etc/ssl/openssl.cnf >/dev/null').status).toBe(0);
+  expect(run('head -c 1 /private/etc/ssl/cert.pem >/dev/null').status).toBe(0);
+  expect(run('cat /private/etc/hosts').status).not.toBe(0);
+});
