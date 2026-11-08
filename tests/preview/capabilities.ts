@@ -42,7 +42,7 @@ export interface Acceptance { outcome: OutcomeKind; tier: 'journal-outcome' | 'd
 export interface CapabilityMeta {
   change: 'capability' | 'repair';
   /** What turns it on in a launch. Only a default-on capability protects every launch. */
-  enabledBy: 'default' | 'option:step-check' | 'option:agent-state-dir';
+  enabledBy: 'default' | 'option:step-check' | 'option:agent-state-dir' | 'option:attribution';
   /** The capability's version is the digest of these files. */
   sources: string[];
   evidence: { unit: string[]; integration: string[]; procedure: string | null };
@@ -62,6 +62,10 @@ export const PREVIEW_CAPABILITY_META: Readonly<Record<string, CapabilityMeta>> =
     evidence: { unit: ['tests/preview/reply-check.test.ts', 'tests/preview/reply-review-corpus.test.ts', 'tests/preview/attribution.test.ts'],
       integration: ['tests/preview/review-layers-canary.test.ts', 'tests/preview/reviewer-thinking-bound.test.ts', 'tests/preview/attribution.test.ts'], procedure: 'tests/preview/jev-live-test.md' },
     acceptance: outcome('reviewed-reply') },
+  // Rule 121's write check: dark until its promotion-record conditions are met (Rules 72, 73).
+  'preview.attribution-check': { change: 'capability', enabledBy: 'option:attribution',
+    sources: [...RUNNER, 'tests/preview/attribution.ts', 'tests/preview/tool-admission-hook.mjs', 'tests/preview/admission-gate.mjs'],
+    evidence: { unit: ['tests/preview/attribution.test.ts'], integration: ['tests/preview/attribution.test.ts'], procedure: null } },
   'preview.held-reply-notice': { change: 'repair', enabledBy: 'default', sources: [...RUNNER],
     evidence: { unit: ['tests/preview/held-reply-replay.test.ts', 'tests/preview/journal-long-message.test.ts'],
       integration: ['tests/preview/held-reply-notice.test.ts'], procedure: 'tests/preview/held-reply-notice-live-test.md' },

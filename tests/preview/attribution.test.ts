@@ -3,18 +3,18 @@
  * test tiers all passed with a stub while the real judge missed 51 of 72 known false credits). */
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, type PreviewPorts } from './journal-test-worker.js';
-import { importChannelItems } from './journal.js';
+import { ATTRIBUTION_BUDGET_MS, importChannelItems } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { JEV_MODEL, jevQuestions } from './reply-check.js';
 import { attributionPacket, decideAttribution, markerFacts, normalizeWords, parseAttributionAnswer, parseMarker, worthJudging,
   type AttributionMode, type SourceRecord } from './attribution.js';
 import { LIVE_JUDGMENTS } from './model-call-boundary.js';
 // @ts-expect-error the hook's decision stays plain JavaScript
-import { noteText } from './tool-admission.mjs';
+import { ADMISSION_WAIT_MS, ATTRIBUTION_WAIT_MS, HOOK_PRE_MAX_MS, noteText } from './tool-admission.mjs';
 // @ts-expect-error the recorder stays plain JavaScript
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 // @ts-expect-error the checkpoint stays plain JavaScript
@@ -263,6 +263,23 @@ describe('the real hook asks the real checkpoint (a note is written or refused b
   });
   it('clears a note the check clears', async () => {
     const result = await run(async () => null, 'notes.md', KEPT); expect(result.asked).toEqual([KEPT]); expect(result.denied).toBe(false);
+  });
+  it('a refusal slower than the ordinary checkpoint wait still refuses before the write', async () => {
+    // Round-two review reproduction: a refusal at 16.2 s used to be allowed at the 15 s checkpoint wait.
+    const result = await run(() => new Promise(resolve => setTimeout(() => resolve('Rule 121: refused. say source unknown'), ADMISSION_WAIT_MS + 1200)),
+      'notes.md', FALSE_CREDIT);
+    expect(result.asked).toEqual([FALSE_CREDIT]); expect(result.denied).toBe(true); expect(result.stdout).toContain('Rule 121');
+  }, 40000);
+  it('a clear answer slower than the ordinary checkpoint wait still clears', async () => {
+    const result = await run(() => new Promise(resolve => setTimeout(() => resolve(null), ADMISSION_WAIT_MS + 1200)), 'notes.md', KEPT);
+    expect(result.denied).toBe(false);
+  }, 40000);
+  it('the attribution wait covers the judge bound, and callers that kill the hook wait for both asks', () => {
+    expect(ATTRIBUTION_WAIT_MS).toBeGreaterThan(ATTRIBUTION_BUDGET_MS);
+    expect(ADMISSION_WAIT_MS).toBeLessThan(ATTRIBUTION_WAIT_MS);
+    expect(HOOK_PRE_MAX_MS).toBeGreaterThan(ATTRIBUTION_WAIT_MS + ADMISSION_WAIT_MS);
+    // The native loop's kill bound defaults to that maximum, so a slow answer is never turned into a refusal there.
+    expect(readFileSync(join(__dirname, 'native-loop.mjs'), 'utf8')).toContain('export function runHook(hook, stateDirectory, mode, payload, timeoutMs = HOOK_PRE_MAX_MS)');
   });
   it('a failing check lets the note through', async () => {
     const result = await run(async () => { throw Error('down'); }, 'notes.md', FALSE_CREDIT); expect(result.denied).toBe(false);

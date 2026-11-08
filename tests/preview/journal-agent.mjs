@@ -446,7 +446,8 @@ const runningLaunch = proofs => {
   if (!startup) return null;
   const versions = Object.fromEntries(Object.entries(startup.observed).filter(([name, value]) => name.startsWith(VERSION_PREFIX) && typeof value === 'string')
     .map(([name, value]) => [name.slice(VERSION_PREFIX.length), value]));
-  return { generation: startup.generation, versions, stepCheck: startup.observed.stepCheck === true, agentState: startup.observed.agentState === true };
+  return { generation: startup.generation, versions, stepCheck: startup.observed.stepCheck === true, agentState: startup.observed.agentState === true,
+    attribution: startup.observed.attribution === true };
 };
 /** Posture and step coverage for one reading; every input is a durable record or the replayed journal. With no
  * startup record the versions come from disk and every plan reads unknown: nothing from another launch counts. */
@@ -455,7 +456,8 @@ const proofReport = (view, log, launch, now) => {
   const supervisors = { replyReview: true, summaryReview: true, stepCheck: launch?.stepCheck ?? false };
   const generation = launch?.generation ?? versions['preview.proofs'];
   return { generation, versions, supervisors, proofs: proofPosture(PREVIEW_PROOF_PLANS, log.proofs, generation, { supervisors }, now, log.refused ?? []),
-    enabled: { default: true, 'option:step-check': supervisors.stepCheck, 'option:agent-state-dir': launch?.agentState ?? false },
+    enabled: { default: true, 'option:step-check': supervisors.stepCheck, 'option:agent-state-dir': launch?.agentState ?? false,
+      'option:attribution': launch?.attribution ?? false },
     stepCoverage: stepCoverage(view, supervisors) };
 };
 /** Capability truth over a reading (Rules 34, 39, 62, 72, 73, 76); `status` is what the metrics must reach. */
@@ -742,6 +744,13 @@ const retrospectiveView = (view, now) => { const digest = replyContextDigest(vie
   answerBudgetRoute: view.retroPasses.some(pass => pass.state === 'complete'
     && typeof pass.estimatedAnswerBytes === 'number' && typeof pass.outputTokens === 'number')
     ? 'measured' : 'start' }; };
+/** Rule 121's record-period counts (Rules 39, 72): checks by verdict and unchecked ones by cause, from the journal's
+ * own rows, so the graduation conditions in the promotion record are read from this status, never estimated. */
+const attributionView = rows => {
+  const count = values => Object.fromEntries([...new Set(values)].sort().map(value => [value, values.filter(item => item === value).length]));
+  return { total: rows.length, verdicts: count(rows.map(row => row.verdict)),
+    uncheckedCauses: count(rows.filter(row => row.verdict === 'unchecked').map(row => row.cause ?? 'unknown')) };
+};
 const stepCheckView = view => ({ total: view.stepChecks.size,
   unchecked: [...view.stepChecks.values()].filter(item => !item.reserved).length,
   verdicts: [...view.stepChecks].map(([step, item]) => ({ step,
@@ -1208,6 +1217,7 @@ async function main() {
         intakeToApiAcceptedMs: Math.max(0, lastSent.sentAt - lastSent.at),
         checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
       ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}),
+      ...(view.view.attribution?.length ? { attributionChecks: attributionView(view.view.attribution) } : {}),
       retrospective: retrospectiveView(view.view, wallNow()),
       // Part 18: what each live sentinel last decided, read back from the journal (the families this command names).
       liveSentinels: sentinelReport(view.view, sentinelFamilies),
@@ -2970,6 +2980,7 @@ async function main() {
       } };
     const startup = executeProof(PREVIEW_PROOF_PLANS.find(plan => plan.id === 'startup'),
       { ...proofPorts, botIdentity: () => ({ id: identity.identity.id }), launch: { stepCheck: stepCheckEnabled, agentState: Boolean(options['agent-state-dir']),
+        attribution: options.attribution !== undefined,
         ...Object.fromEntries(Object.entries(launchVersions).map(([id, version]) => [`${VERSION_PREFIX}${id}`, version])) } }, generation, clock.elapsed);
     // Rules 14/95: the proof log is evidence, not a gate on conversation. An unwritable log is reported and retried
     // with backoff; the undurable record never counts as proof, and intake and replies continue.

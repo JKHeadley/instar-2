@@ -14,4 +14,15 @@
 4. **Writes the hook does not see.** Notes written by shell commands, tool turns with no checkpoint, and the rolling summary (residue `attr-write-gaps` of attribution-rule121-1106).
 5. **Live proof.** A real Telegram run with a refusal on the real route, the write check on the real route, a record period and the measured timeout rate (residue `attr-live-proof-owed`); real Slack sending once 2.0 Slack replies go live (residue `attr-slack-send-owed`).
 
+## Graduation (Rules 72 and 73)
+
+The write check ships switched off: it runs only when the runner is launched with `--attribution record` or `--attribution enforce`. Until it graduates it is reported dark, never as a guard. Its graduation commitment uses the preview's existing deadline mechanism: the `preview.attribution-check` declaration in `tests/preview/capabilities.declarations.json` (status `dark`, gate `PREVIEW-ATTRIBUTION-CHECK`) and its entry in `tests/preview/promotion-record.ts`, which must name the same deadline. The register's deadline walker and `capabilityFindings` report it overdue once the deadline passes.
+
+- **Owner:** Echo.
+- **Graduation deadline:** 2026-11-21 00:00 UTC.
+- **Development-agent stage (the real-route proof of part 5):** one real Telegram run under `--attribution enforce` on the live route in which a falsely credited note is refused before the file changes, the agent is told the honest form, and a correctly sourced note in the same run is written. Evidence: the run's journal `attribution-check` rows and the note files.
+- **Record period (part 5):** at least 7 consecutive days under `--attribution record` on the live build, with at least 20 checked note writes; `unchecked` (any cause) at most 10% of them; and zero `refuse` rows, on review of every one, for a note whose source resolves and whose words match. Measured from the status command's `attributionChecks` counts (verdicts and unchecked causes), which read the journal's own rows.
+- **Transition:** meeting both raises the check to the recurring review; nothing switches on by itself. The reviewed outcome is either a code change making `enforce` the default launch (fleet stage, default-on) or a recorded user-preference decision keeping it off, appended to the promotion record.
+- **If the deadline passes unmet:** Echo graduates, retires, or brings the miss to the operator. A further extension is not Echo's alone.
+
 **Close when:** parts 1 to 3 have landed and parts 4 and 5 have their own records or have landed.

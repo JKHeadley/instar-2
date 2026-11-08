@@ -17,7 +17,7 @@ import { lookup } from 'node:dns/promises';
 import { connect, isIP } from 'node:net';
 import { join } from 'node:path';
 import { admitToolCall, noteText, CODEX_NETWORK_READ_TOOLS, DELEGATION_TOOLS, DELEGATION_WAIT_TOOLS, HELD_CHECK_MAX_BYTES, hookOutput, outwardText, OUTWARD_TOOLS,
-  RECORD_EXCERPT_CHARS, SUBAGENT_TOOLS, webReadHost, permissionInputDigest, permissionPromptCandidate } from './tool-admission.mjs';
+  RECORD_EXCERPT_CHARS, SUBAGENT_TOOLS, ADMISSION_WAIT_MS, ATTRIBUTION_WAIT_MS, webReadHost, permissionInputDigest, permissionPromptCandidate } from './tool-admission.mjs';
 
 const NETWORK_TOOLS = Object.freeze(['WebFetch', 'WebSearch', ...CODEX_NETWORK_READ_TOOLS]);
 const [mode, stateDirectory] = process.argv.slice(2);
@@ -51,9 +51,9 @@ if (childRow) {
   process.exit(0);
 }
 /** Asks the host checkpoint; anything but its explicit allow is a refusal. */
-const ask = async body => {
+const ask = async (body, waitMs = ADMISSION_WAIT_MS) => {
   const response = await fetch(`${config.gate}/admit`, { method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+    body: JSON.stringify(body), signal: AbortSignal.timeout(waitMs) });
   const verdict = await response.json();
   // The effect owner's doorway decision rides the admission record, as a local doorway decision does (Rule 41).
   const doorway = verdict?.doorway && typeof verdict.doorway === 'object' && typeof verdict.doorway.effect === 'string' ? { doorway: verdict.doorway } : {};
@@ -176,7 +176,8 @@ if (!permissionMode && decision.decision === 'allow' && typeof config.gate === '
   const note = noteText(call.tool_name, call.tool_input);
   if (note !== null) {
     try {
-      const answer = await ask({ phase: 'pre', kind: 'attribution', tool_name: call.tool_name, tool_use_id: call.tool_use_id, text: note });
+      // The wait covers the runner's whole judge bound, so a slow refusal still lands before the write (Rule 121).
+      const answer = await ask({ phase: 'pre', kind: 'attribution', tool_name: call.tool_name, tool_use_id: call.tool_use_id, text: note }, ATTRIBUTION_WAIT_MS);
       if (answer.decision !== 'allow') decision = { decision: 'deny', reason: answer.reason, kind: 'attribution' };
     } catch { /* the checkpoint's own 'tool' ask below still decides whether this step may run */ }
   }
