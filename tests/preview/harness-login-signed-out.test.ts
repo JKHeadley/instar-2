@@ -58,8 +58,9 @@ it('A signed out: the next turn runs on B, durably, with no restart and no extra
   expect(launches).toEqual(['serving-b']);
   expect(f.pool.state.switches).toEqual([{ from: 'serving-a', to: 'serving-b', reason: 'member-unavailable', at: f.clock.at, sequence: 1 }]);
   // The hold records only a truncated fingerprint; no credential, path or CLI text.
-  expect(f.pool.state.holds[0]).toEqual({ reason: 'signed-out', observedAt: f.clock.at, resetAt: f.clock.at + SIGNED_OUT_HOLD_MAX_MS,
+  expect(f.pool.state.signedOut[0]).toEqual({ observedAt: f.clock.at, resetAt: f.clock.at + SIGNED_OUT_HOLD_MAX_MS,
     credential: f.credentials['serving-a'] });
+  expect(f.pool.state.holds).toEqual({}); // Sign-in evidence never takes the quota/provider hold's place.
   expect(f.pool.notices()).toEqual([]); // At most one plain line: here none, as for any member-unavailable move.
   expect(f.pool.signinRepairs()).toEqual([expect.objectContaining({ account: 'serving-a@example.invalid', profile: 'serving-a' })]);
   expect(f.pool.outage()).toBeNull(); // B has room, so no outage notice is due.
@@ -67,14 +68,14 @@ it('A signed out: the next turn runs on B, durably, with no restart and no extra
   const reopened = createHarnessLoginPool(f.settings);
   expect((await turn(reopened, io)).entry.profile.reference).toBe('serving-b');
   expect(reopened.state.switches).toHaveLength(1);
-  expect(JSON.parse(readFileSync(f.settings.statePath, 'utf8')).holds['0'].reason).toBe('signed-out');
+  expect(JSON.parse(readFileSync(f.settings.statePath, 'utf8')).signedOut['0'].credential).toBe(f.credentials['serving-a']);
 });
 
 it('the hold stays for the same credential and is released by a fresh sign-in or its ceiling', async () => {
   for (const release of ['credential', 'ceiling']) {
     const f = fixture(), launches = [], signedOut = new Set(['serving-a']), io = cli(signedOut, launches);
     await turn(f.pool, io);
-    expect(f.pool.state.holds[0]?.reason).toBe('signed-out');
+    expect(f.pool.state.signedOut[0]).toBeDefined();
     // B later reports signed out too; A is still held for the SAME credential, so nothing is selectable.
     f.clock.at += 60_000; signedOut.add('serving-b');
     expect((await turn(f.pool, io)).entry.profile.reference).toBe('serving-b');
@@ -85,8 +86,8 @@ it('the hold stays for the same credential and is released by a fresh sign-in or
     else f.clock.at += SIGNED_OUT_HOLD_MAX_MS;
     const next = f.pool.select();
     expect(next.profile.reference).toBe('serving-b');
-    expect(f.pool.state.holds[1]).toBeUndefined();
-    if (release === 'credential') expect(f.pool.state.holds[0]?.reason).toBe('signed-out'); // A's own credential is unchanged.
+    expect(f.pool.state.signedOut[1]).toBeUndefined();
+    if (release === 'credential') expect(f.pool.state.signedOut[0]).toBeDefined(); // A's own credential is unchanged.
   }
 });
 
@@ -99,7 +100,7 @@ it('signed in, unparseable or absent status creates no hold, and no pool leaves 
   // A model command's output is never read as a login check.
   const model = { execute: async () => ({ code: 0, limited: false, stdout: JSON.stringify({ loggedIn: false }), stdoutBytes: Buffer.from('') }) };
   await observeHarnessSignIn(f.pool, f.configuration.entries[0], model).execute({ args: ['-p'], stdin: 'prompt' });
-  expect(f.pool.state.holds).toEqual({});
+  expect(f.pool.state.holds).toEqual({}); expect(f.pool.state.signedOut).toBeUndefined();
   expect(f.pool.select().profile.reference).toBe('serving-a');
   const io = cli(new Set(), launches)('serving-a');
   expect(observeHarnessSignIn(null, f.configuration.entries[0], io)).toBe(io);
@@ -130,9 +131,54 @@ it('replays the genuine signed-out captures: a refused handed-over token holds t
   const f = fixture(), a = f.configuration.entries[0];
   await replay(f.pool, a, ['auth', 'status', '--json'], '', status);
   await replay(f.pool, a, ['-p'], 'prompt', limited);
-  expect(f.pool.state.holds[0]).toBeUndefined(); // The limit stays the existing typed observe() path's evidence.
+  expect(f.pool.state.signedOut).toBeUndefined(); // The limit stays the existing typed observe() path's evidence.
   await replay(f.pool, a, ['-p'], 'prompt', refused);
-  expect(f.pool.state.holds[0]).toMatchObject({ reason: 'signed-out', credential: f.credentials['serving-a'] });
+  expect(f.pool.state.signedOut[0]).toMatchObject({ credential: f.credentials['serving-a'] });
   expect(f.pool.select().profile.reference).toBe('serving-b');
   expect(f.pool.state.switches.at(-1).reason).toBe('member-unavailable');
+});
+
+// Unit review M1 (Astra, round 1): sign-in and quota recovery are independent evidence in the same pool record.
+it('a fresh sign-in releases only the sign-in hold: an observed weekly quota hold still binds without telemetry', () => {
+  const f = fixture(), [a, b] = f.configuration.entries;
+  f.pool.observeSignedOut(a);
+  const resetsAt = new Date(f.clock.at + 7 * 86400000).toISOString();
+  f.usage.document = { version: 1, accounts: [{ email: a.profile.expectedAccount, configHome: a.profile.configDirectory,
+    lastQuota: { measuredAt: new Date(f.clock.at).toISOString(), fiveHour: { utilizationPct: 96, resetsAt }, sevenDay: { utilizationPct: 96, resetsAt } } }] };
+  expect(f.pool.select()).toBe(b);
+  expect(f.pool.state.holds[0]).toMatchObject({ reason: 'usage-threshold', resetAt: Date.parse(resetsAt) });
+  f.usage.document = null;
+  f.credentials['serving-a'] = 'f'.repeat(16); // A new credential is not evidence that A's quota reset.
+  f.pool.observeSignedOut(b);
+  expect(() => f.pool.select()).toThrow(/no reviewed login with available capacity/u);
+  expect(f.pool.state.signedOut[0]).toBeUndefined();
+  expect(f.pool.state.holds[0]).toMatchObject({ reason: 'usage-threshold', resetAt: Date.parse(resetsAt) });
+  // The other side: once the weekly reset passes, the freshly signed-in A is selectable again.
+  f.clock.at = Date.parse(resetsAt) + 1; f.pool.observeSignedOut(b); // B's own ceiling passed; it reports signed out again.
+  expect(f.pool.select()).toBe(a);
+});
+
+it('sign-in and provider-limit evidence persist together in either order and the record reopens', () => {
+  for (const order of ['signed-out-first', 'limit-first']) {
+    const f = fixture(), [a, b] = f.configuration.entries;
+    const steps = [() => f.pool.observeSignedOut(a), () => f.pool.observe(a, { failure: { failureClass: 'limit', resetAt: null } })];
+    for (const step of order === 'limit-first' ? steps.reverse() : steps) step();
+    const reopened = createHarnessLoginPool(f.settings);
+    expect(reopened.state.holds[0]).toMatchObject({ reason: 'provider-limit', resetAt: null });
+    expect(reopened.state.signedOut[0]).toMatchObject({ resetAt: f.clock.at + SIGNED_OUT_HOLD_MAX_MS, credential: f.credentials['serving-a'] });
+    expect(reopened.select()).toBe(b);
+    // A fresh sign-in alone leaves the unknown provider reset binding A.
+    f.credentials['serving-a'] = 'e'.repeat(16); f.pool.observeSignedOut(b);
+    expect(() => createHarnessLoginPool(f.settings).select()).toThrow(/no reviewed login with available capacity/u);
+  }
+});
+
+it('refuses a malformed sign-in hold on reopen', () => {
+  const f = fixture();
+  f.pool.observeSignedOut(f.configuration.entries[0]);
+  const state = JSON.parse(readFileSync(f.settings.statePath, 'utf8'));
+  for (const bad of [{ ...state.signedOut[0], resetAt: null }, { ...state.signedOut[0], credential: 'secret-token' }]) {
+    writeFileSync(f.settings.statePath, JSON.stringify({ ...state, signedOut: { 0: bad } }));
+    expect(() => createHarnessLoginPool(f.settings)).toThrow(/sign-in hold is malformed/u);
+  }
 });

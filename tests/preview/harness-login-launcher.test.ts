@@ -190,7 +190,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       if (mode === 'fresh') expect(state.switches[0].reason).toBe('usage-threshold');
       if (signedOut) {
         expect(state.switches[0].reason).toBe('member-unavailable');
-        expect(state.holds['0']).toMatchObject({ reason: 'signed-out', credential: expect.stringMatching(/^[a-f0-9]{16}$/u) });
+        expect(state.signedOut['0']).toMatchObject({ credential: expect.stringMatching(/^[a-f0-9]{16}$/u) });
         expect(JSON.stringify(state)).not.toContain('sk-ant-'); // Only a truncated fingerprint is recorded.
       }
     } else {

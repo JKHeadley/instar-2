@@ -215,10 +215,17 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
   if (state?.version !== 1 || (state.identity !== identity && !adoptLegacy) || !Number.isInteger(state.active)
     || !entries[state.active] || !state.holds || typeof state.holds !== 'object' || Array.isArray(state.holds) || !Array.isArray(state.switches)) fail('state differs; desk migration required');
   for (const [index, hold] of Object.entries(state.holds))
-    if (!/^[0-7]$/u.test(index) || !entries[index] || !['provider-limit', 'usage-threshold', 'signed-out'].includes(hold?.reason)
+    if (!/^[0-7]$/u.test(index) || !entries[index] || !['provider-limit', 'usage-threshold'].includes(hold?.reason)
       || !(hold.resetAt === null || Number.isSafeInteger(hold.resetAt))
-      || (hold.reason === 'signed-out' && (!Number.isSafeInteger(hold.resetAt) || !(hold.credential === null || /^[a-f0-9]{16}$/u.test(hold.credential))))
       || (hold.observedAt !== undefined && !Number.isSafeInteger(hold.observedAt))) fail('hold is malformed');
+  // Sign-in evidence is kept apart from quota/provider holds (1.x QuotaPoller's cliLoginExpiredHolds beside its quota
+  // readings): each has its own recovery evidence, so a fresh sign-in never erases a quota hold and a quota
+  // observation never replaces the sign-in deadline.
+  if (state.signedOut !== undefined && (!state.signedOut || typeof state.signedOut !== 'object' || Array.isArray(state.signedOut)))
+    fail('sign-in hold is malformed');
+  for (const [index, held] of Object.entries(state.signedOut ?? {}))
+    if (!/^[0-7]$/u.test(index) || !entries[index] || !Number.isSafeInteger(held?.resetAt) || !Number.isSafeInteger(held.observedAt)
+      || !(held.credential === null || /^[a-f0-9]{16}$/u.test(held.credential))) fail('sign-in hold is malformed');
   for (const [index, event] of state.switches.entries())
     if (event?.sequence !== index + 1 || !Number.isSafeInteger(event.at)
       || !entries.some(entry => entry.profile.reference === event.from)
@@ -240,9 +247,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     const previous = state.holds[entry.index];
     // A shorter quota window cannot erase a still-active weekly/provider hold.
     if (previous && (previous.resetAt === null || previous.resetAt > now())) evidence = {
-      // A provider or signed-out hold keeps its cause; only a usage-threshold hold takes newer evidence's.
-      reason: previous.reason === 'usage-threshold' ? evidence.reason : previous.reason,
-      ...(previous.reason === 'signed-out' ? { credential: previous.credential } : {}),
+      reason: previous.reason === 'provider-limit' ? previous.reason : evidence.reason,
       observedAt: Math.max(previous.observedAt, evidence.observedAt),
       resetAt: previous.resetAt === null || evidence.resetAt === null ? null : Math.max(previous.resetAt, evidence.resetAt),
     };
@@ -254,15 +259,16 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
   // SAME one it refused. Only a truncated fingerprint is kept, never the credential; an unreadable one reads as null.
   const fingerprint = entry => { try { const value = credential(entry); return typeof value === 'string' && /^[a-f0-9]{16}$/u.test(value) ? value : null; } catch { return null; } };
   const signedOutHeld = (entry, at) => {
-    const held = state.holds[entry.index];
-    return held?.reason === 'signed-out' && held.resetAt > at && fingerprint(entry) === held.credential;
+    const held = state.signedOut?.[entry.index];
+    return held !== undefined && held.resetAt > at && fingerprint(entry) === held.credential;
   };
+  // A fresh sign-in or the ceiling clears only the sign-in evidence; any quota/provider hold stays bound.
   const releaseSignedOut = at => {
-    const released = entries.filter(entry => state.holds[entry.index]?.reason === 'signed-out' && !signedOutHeld(entry, at));
+    const released = entries.filter(entry => state.signedOut?.[entry.index] !== undefined && !signedOutHeld(entry, at));
     if (!released.length) return;
-    const holds = { ...state.holds };
-    for (const entry of released) delete holds[entry.index];
-    persist({ ...state, holds });
+    const signedOut = { ...state.signedOut };
+    for (const entry of released) delete signedOut[entry.index];
+    persist({ ...state, signedOut });
   };
   const admitted = (entry, tools, waitOnUnavailable) => {
     if (!configuration.current()) fail('manifest changed; restart with reviewed configuration');
@@ -295,7 +301,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       }
     }
     const signedOut = new Set(entries.filter(entry => matchingUsageAccount(reading, entry)?.status === 'needs-reauth'
-      || state.holds[entry.index]?.reason === 'signed-out').map(entry => entry.index));
+      || state.signedOut?.[entry.index] !== undefined).map(entry => entry.index));
     const repairs = entries.filter(entry => signedOut.has(entry.index) && !(state.signinRepairs ?? []).some(item => item.index === entry.index));
     if (repairs.length) persist({ ...state, signinRepairs: [...(state.signinRepairs ?? []),
       ...repairs.map(entry => ({ index: entry.index, account: entry.profile.expectedAccount, machine, at }))] });
@@ -309,6 +315,9 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       return admitted(entries[current], tools, requireRoom);
     }
     if (onlyCurrent) return null;
+    // A login that cannot serve at all (excluded or signed out) moves as member-unavailable, whatever quota cause
+    // it also carries: the usage-threshold headroom brake below is for a login that could still serve.
+    const moveReason = unavailable.has(current) || signedOut.has(current) ? 'member-unavailable' : reason;
     // 1.x QuotaAwareScheduler: drain usable headroom before its soonest reset.
     // Fresh, complete windows are mandatory for a proactive destination (QuotaTracker).
     const candidates = entries.filter(entry => entry.index !== current).map(entry => {
@@ -323,14 +332,14 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       if (requireRoom && !capacityWindows(quota)?.every(window => window.utilizationPct <= Math.max(0, threshold - 15))) continue;
       // 1.x SwapAntiThrash target-headroom brake. Durable cutoff/provider holds and
       // the existing five-attempt cap prevent reversals without a new swap ledger.
-      if (reason === 'usage-threshold'
+      if (moveReason === 'usage-threshold'
         && (utilization === null || utilization > Math.max(0, threshold - 15))) continue;
       // 1.x SessionRefresh's five-attempt / ten-minute brake, durable across host restarts.
       if (requireRoom && (state.handoffAttempts ?? []).filter(event => at - event.at < 600_000).length >= 5) break;
       const next = admitted(entries[index], tools, requireRoom);
       if (!next) continue;
       const event = { from: entries[current].profile.reference, to: next.profile.reference,
-        reason: unavailable.has(current) || signedOut.has(current) ? 'member-unavailable' : reason, at, sequence: state.switches.length + 1 };
+        reason: moveReason, at, sequence: state.switches.length + 1 };
       if (requireRoom) persist({ ...state, handoffAttempts: [...(state.handoffAttempts ?? []),
         { ...event, sequence: (state.handoffAttempts?.length ?? 0) + 1, phase: 'prepared' }] });
       else persist({ ...state, active: index, switches: [...state.switches, event] });
@@ -402,7 +411,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       if (entries[entry?.index] !== entry) fail('observation names an unreviewed login');
       const at = now(), credentialNow = fingerprint(entry);
       if (signedOutHeld(entry, at)) return;
-      persist({ ...state, holds: { ...state.holds, [entry.index]: { reason: 'signed-out', observedAt: at,
+      persist({ ...state, signedOut: { ...state.signedOut, [entry.index]: { observedAt: at,
         resetAt: at + SIGNED_OUT_HOLD_MAX_MS, credential: credentialNow } } });
     },
     notices: () => [
@@ -422,12 +431,13 @@ export function harnessLoginPoolStatus(configuration, state, unavailable, usage,
   try { document = usage(); } catch { /* Report unknown freshness on the pull surface. */ }
   const at = now();
   const members = entries.map(entry => {
-    const held = state.holds[entry.index];
+    const held = state.holds[entry.index], signedOut = state.signedOut?.[entry.index];
     const quota = harnessQuotaReading(document, entry.profile, at, entry.usageAccount);
     return `${entry.index + 1}: ${entry.profile.reference}${entry.index === state.active ? ' (active)' : ''}; `
       + (unavailable.has(entry.index) ? `unavailable (${unavailable.get(entry.index)})`
         : held && (held.resetAt === null || held.resetAt > at)
           ? `hold ${held.reason}, reset ${held.resetAt ?? 'unknown'}` : 'no observed hold')
+      + (signedOut && signedOut.resetAt > at ? `; signed out, held until a fresh sign-in or ${signedOut.resetAt}` : '')
       + (quota?.windows.some(Boolean) ? `; fresh usage, switches at ${Math.min(configuration.threshold, 80)}%`
         + `; five-hour ${quota.fiveHourUnreported ? 'unreported' : `${quota.windows[0]?.utilizationPct ?? 'unknown'}%`}, weekly ${quota.windows[1]?.utilizationPct ?? 'unknown'}%, measured at ${quota.at}`
         : '; usage stale or unavailable, switching only after a typed limit reply');
