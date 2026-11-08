@@ -153,17 +153,45 @@ export function checkGraphLoops(graph: RuleGraph, context: RegisterContext) {
 export function modelEntryFresh(verifiedAt: number, freshFor: number, now: number): boolean {
   return freshFor > 0 && verifiedAt <= now && now - verifiedAt <= freshFor;
 }
-export function checkDeadlines(graph: RuleGraph, register: GeneratedRegister, landedParts: readonly number[], now: Clock, context: RegisterContext) {
-  return checked('DeadlineCheck', { graph, register, landedParts, now }, context, () => {
+/** Rule 72's deadline effect: one operator attention item per passed deadline. */
+export type DeadlineAttention = Readonly<{ id: string; rule: number; subject: string; dueBy: number; owner: string; action: string }>;
+// The files a declaration's deadline belongs to: its declaring source and the colocated
+// implementation sharing its stem (X.ts beside X.declarations.json / X.parser.json).
+function declarationFiles(path: string): readonly string[] {
+  const stem = path.replace(/\.(?:declarations|parser)\.json$|\.ts$/, '');
+  return stem === path ? [path] : [path, `${stem}.ts`, `${stem}.declarations.json`, `${stem}.parser.json`];
+}
+/** Rule 72: a passed deadline fails only a build whose change touches what the deadline belongs to.
+ * Any other build passes and raises one attention item per deadline. `changed` is the change's file
+ * list; `null` means it could not be determined, and every passed deadline then fails (Rule 95:
+ * release integrity fails closed). */
+export function checkDeadlines(graph: RuleGraph, register: GeneratedRegister, landedParts: readonly number[], now: Clock, context: RegisterContext,
+  changed: readonly string[] | null = null) {
+  return checked('DeadlineCheck', { graph, register, landedParts, now, changed }, context, () => {
     const clock = take(decodeMeasurement('clock', now, context.types));
     take(checkGraphLoops(graph, context));
+    if (changed !== null) for (const path of changed) text(path, 'changed path');
+    const attention = new Map<string, DeadlineAttention>();
+    const passed = (item: DeadlineAttention, files: readonly string[], refusal: string) => {
+      if (item.dueBy > now.value) return;
+      requireThat(changed !== null && !files.some(f => changed.includes(f)), refusal);
+      if (!attention.has(item.id)) attention.set(item.id, item);
+    };
+    const filesOf = (id: string | null, rule: number) => {
+      const d = register.entries.find(e => id === null
+        ? e.declaration.kind === 'rules' && e.declaration.requiredFacts.number === rule : e.declaration.id === id)?.declaration;
+      return d ? declarationFiles(d.declaredBy.path) : [];
+    };
     for (const loop of graph.loops) {
       requireThat(loop.part === null || (register.shape.parts.includes(loop.part) && !landedParts.includes(loop.part)), `P3-NF-24: deferred part ${loop.part} unknown or landed`);
-      requireThat(loop.dueBy > now.value, `P3-NF-24: deadline passed for ${loop.id}; owner ${loop.owner}; ${loop.overdueAction}`);
+      passed({ id: `deadline:${loop.id}:${loop.dueBy}`, rule: loop.rule, subject: loop.holder ?? `rule ${loop.rule}`, dueBy: loop.dueBy, owner: loop.owner, action: loop.overdueAction },
+        filesOf(loop.holder, loop.rule), `P3-NF-24: deadline passed for ${loop.id}; owner ${loop.owner}; ${loop.overdueAction}`);
     }
     for (const { declaration: d } of register.entries) {
       if (d.kind === 'features' && (d.status === 'dark' || d.status === 'soaking')) {
-        const gate = object(d.requiredFacts.gate!); requireThat(number(gate.deadline, 'deadline') > now.value, `feature ${d.id} graduation overdue`);
+        const gate = object(d.requiredFacts.gate!); const dueBy = number(gate.deadline, 'deadline');
+        passed({ id: `deadline:feature:${d.id}:${dueBy}`, rule: 72, subject: d.id, dueBy, owner: d.id, action: `graduate ${d.id} or set a new deadline` },
+          declarationFiles(d.declaredBy.path), `feature ${d.id} graduation overdue`);
       }
       if (d.kind === 'model doorways') for (const raw of list(d.requiredFacts.models, 'models')) {
         const model = object(raw); const at = number(model.verifiedAt, 'model verifiedAt'); const window = number(model.freshFor, 'model freshness');
@@ -174,6 +202,6 @@ export function checkDeadlines(graph: RuleGraph, register: GeneratedRegister, la
         requireThat(at <= now.value && now.value - at <= number(subsidy.freshFor, 'subsidy.freshFor'), `stale subsidy for ${d.id}; not trusted`);
       }
     }
-    return true;
+    return { attention: [...attention.values()] };
   });
 }

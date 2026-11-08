@@ -148,15 +148,38 @@ export function build(root, commit, options = {}) {
       impossible: ['missing typed declaration argument'], swept: ['resolved static core calls'],
       residual: ['reflection', 'computed ids', 'plugins', 'configuration-loaded routes', ...wiring.residual.map(r => r.reason)] })),
     claims: workflow.claims ?? context.shape.kinds.map(k => ({ kind: k.name, complete: false })),
-    bootstrapRules: converting ? anchor.rules : [] };
+    bootstrapRules: converting ? anchor.rules : [], changed: options.changed ?? null };
   const checked = value(runRegisterChecks(register, checks, context));
   const generation = value(generationOf(register, context));
   const outputs = value(renderRegister(register, generation, checked.terms, checked.graph, context));
   const capabilities = { generation: generation.id, commit: register.commit, ...capabilityBriefing(register, input.inventory, input.show) };
   return { input, register, generation, outputs, completion, conversion, graph: checked.graph, capabilities,
-    authorityPrerequisites: checked.authorityPrerequisites, ownerArtifacts: owner.artifacts, metrics: {
+    authorityPrerequisites: checked.authorityPrerequisites, attention: checked.attention, ownerArtifacts: owner.artifacts, metrics: {
     entries: register.entries.length, rules: checked.graph.rules.length, terms: register.entries.filter(e => e.declaration.kind === 'terms').length,
     warnings: checked.terms.warnings.length, prerequisites: checked.graph.prerequisites.length } };
+}
+// Rule 72: the files the current change touches, so a passed deadline fails only the build that
+// changes what it belongs to. The change's own commits follow check-change-review's changeScope():
+// HEAD's commits not reachable from any remote tip that does not itself contain HEAD (a train or
+// pushed branch containing HEAD is this change, not its base), or not reachable from
+// REGISTER_CHANGE_BASE / CHANGE_REVIEW_BASE when the caller knows the boundary. Their touched paths
+// (deletions included), plus uncommitted and untracked files, are the change. A git failure returns
+// null and every passed deadline then fails, as before (Rule 95: release integrity fails closed).
+export function changedFiles(root) {
+  const git = (args, input) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024,
+    ...(input === undefined ? { stdio: ['ignore', 'pipe', 'ignore'] } : { input, stdio: ['pipe', 'pipe', 'ignore'] }) }).trim();
+  const lines = text => text.split('\n').filter(Boolean);
+  const contains = (tip, head) => { try { git(['merge-base', '--is-ancestor', head, tip]); return true; } catch { return false; } };
+  try {
+    const base = process.env.REGISTER_CHANGE_BASE ?? process.env.CHANGE_REVIEW_BASE;
+    const head = git(['rev-parse', 'HEAD']);
+    const excluded = base !== undefined ? [git(['rev-parse', '--verify', `${base}^{commit}`])]
+      : lines(git(['for-each-ref', '--format=%(objectname)', 'refs/remotes'])).filter(tip => !contains(tip, head));
+    const commits = git(['rev-list', 'HEAD', '--not', ...new Set(excluded)]);
+    const committed = commits ? lines(git(['diff-tree', '--stdin', '--root', '-m', '-r', '--no-commit-id', '--name-only', '--no-renames'], commits + '\n')) : [];
+    return [...new Set([...committed, ...lines(git(['diff', '--name-only', '--no-renames', 'HEAD'])),
+      ...lines(git(['ls-files', '--others', '--exclude-standard']))])].sort();
+  } catch { return null; }
 }
 export async function run(args, root = process.cwd()) {
   const flag = name => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
@@ -173,7 +196,7 @@ export async function run(args, root = process.cwd()) {
   if (selectedModes.length > 1 || selectedModes.length && workflow?.mode && workflow.mode !== selectedModes[0][1]) throw new Error('ambiguous bootstrap/replay/normal workflow');
   const provider = flag('--provider') ? (await import(pathToFileURL(resolve(root, flag('--provider'))))).provider : undefined;
   const mode = selectedModes[0]?.[1] ?? workflow?.mode ?? (!workflow ? recorded.mode : undefined);
-  const result = build(root, commit, { mode, workflow, provider, ...(flag('--now') ? { now: Number(flag('--now')) } : {}) });
+  const result = build(root, commit, { mode, workflow, provider, changed: changedFiles(root), ...(flag('--now') ? { now: Number(flag('--now')) } : {}) });
   const tracked = execFileSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).trim().split('\n');
   const live = tracked.filter(p => Object.hasOwn(result.input.sources, p) || p.startsWith('docs/rules/') && p.endsWith('.md')
     || isDeclarationSource(p) || isActionSource(p) || p.startsWith('register-source/') && p.endsWith('.json')).sort();
@@ -195,7 +218,9 @@ export async function run(args, root = process.cwd()) {
     if (check) { if (!existsSync(path) || readFileSync(path, 'utf8') !== text) throw new Error(`P3-NF-01/P3-NF-09: generated ${name} differs`); }
     else writeFileSync(path, text);
   }
-  console.log(JSON.stringify({ generation: result.generation.id, commit, ...result.metrics, check, authority: 'shape-only', mode }));
+  // Each passed deadline this build did not touch is one operator attention item (Rule 72).
+  console.log(JSON.stringify({ generation: result.generation.id, commit, ...result.metrics, check, authority: 'shape-only', mode,
+    ...(result.attention.length ? { attention: result.attention } : {}) }));
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   run(process.argv.slice(2)).catch(error => { console.error(error.message); process.exitCode = 1; });

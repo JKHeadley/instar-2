@@ -95,10 +95,34 @@ it('P5-NF-54 the renewed dark declaration remains bounded by its exact graduatio
   const generated = value(generateRegister(f.input(declarations), context));
   const graph = value(buildRuleGraph(generated, 'renewal', [],
     { fixtures: [{ id: 'P5-NF-54', stage: 'build' }], probes: [], sentinels: [], semanticReviews: [] }, context));
-  expect(value(checkDeadlines(graph, generated, [], f.f.clock(deadline - 1), context))).toBe(true);
+  expect(value(checkDeadlines(graph, generated, [], f.f.clock(deadline - 1), context))).toEqual({ attention: [] });
   for (const now of [deadline, deadline + 1])
     expect(detail(checkDeadlines(graph, generated, [], f.f.clock(now), context)))
       .toContain('feature rungraph-core graduation overdue');
+});
+it('Rule 72 an overdue rungraph-core deadline fails only a change to that feature and otherwise raises one attention item', () => {
+  const registration = JSON.parse(readFileSync('src/rungraph/rungraph.declarations.json', 'utf8'))[0];
+  const deadline = registration.requiredFacts.gate.deadline;
+  const f = registerFixture();
+  const register = { ...f.context.types.register, entries: [...f.context.register.entries, 'rungraph.bound'] };
+  const context = { ...f.context, register, types: { ...f.context.types, register },
+    references: [...f.context.references!, { provider: 'fixture', id: 'P5-NF-54' }] };
+  const declarations = [registration, { ...f.bound, id: 'rungraph.bound' },
+    ...registration.standards.map((n: number) => f.rule(n, { deadline: deadline + 1000 }))];
+  const generated = value(generateRegister(f.input(declarations), context));
+  const graph = value(buildRuleGraph(generated, 'renewal', [],
+    { fixtures: [{ id: 'P5-NF-54', stage: 'build' }], probes: [], sentinels: [], semanticReviews: [] }, context));
+  const own = generated.entries.find(e => e.declaration.id === 'rungraph-core')!.declaration.declaredBy.path;
+  // (a) overdue plus an unrelated change: passes, exactly one attention item for this deadline.
+  const unrelated = value(checkDeadlines(graph, generated, [], f.f.clock(deadline + 1), context, ['src/unrelated/elsewhere.ts']));
+  expect(unrelated.attention).toEqual([{ id: `deadline:feature:rungraph-core:${deadline}`, rule: 72, subject: 'rungraph-core',
+    dueBy: deadline, owner: 'rungraph-core', action: 'graduate rungraph-core or set a new deadline' }]);
+  // (b) overdue plus a change to the feature's own declaration source: fails.
+  expect(detail(checkDeadlines(graph, generated, [], f.f.clock(deadline), context, ['src/unrelated/elsewhere.ts', own])))
+    .toContain('feature rungraph-core graduation overdue');
+  // (c) not overdue: unchanged for either change.
+  for (const changed of [[own], ['src/unrelated/elsewhere.ts']])
+    expect(value(checkDeadlines(graph, generated, [], f.f.clock(deadline - 1), context, changed))).toEqual({ attention: [] });
 });
 it('P5-NF-55 P5-NF-55-PARTIAL scoped live-core workload measures fold latency, retained facts, pending and conflicts', () => {
   const f = setup(), ready = value(f.graph.open(f.run)), g = value(f.graph.ground(f.id, 'w', 'h', 'start', f.lease));
