@@ -17,6 +17,14 @@
         "path": "tests/conversation/slack-reply-hold.test.ts",
         "hash": "sha256:749dc67c67a1af9c4cf2a27bfa24783ef38146b63bd195a8e733fc10158f1db7"
       }
+    },
+    {
+      "id": "P12-TELEGRAM-UPDATE-ON-CAPTURE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/conversation/telegram-update-capture.test.ts",
+        "hash": "sha256:a268e4a468e681e9c578315aac010bb4f6baf0efb3f643dde8a2216e7e68a583"
+      }
     }
   ],
   "probes": [],
@@ -30,6 +38,15 @@
       "artifact": {
         "path": "tests/conversation/fixtures/telegram/reply.json",
         "hash": "sha256:073c68317e076c099ce4de0570e7af8094cce492fac9473923b1078dba059aac"
+      }
+    },
+    {
+      "id": "P12-TELEGRAM-UPDATE-CAPTURE",
+      "origin": "captured",
+      "source": "Genuine Telegram Bot API update 715672737, one ordinary text message from a person's account, received 2026-10-01T02:09:52Z by proof-room bot 8994258214 and read back from that room's journal (root proofroom-2026-09-30); the person's first and last name (four fields) are replaced by REDACTED and the user and private-chat id by 1000000001; nothing else changed (tests/fixtures/captures/README.md).",
+      "artifact": {
+        "path": "tests/fixtures/captures/telegram-update.json",
+        "hash": "sha256:53380ddb0344d93f12aee0e0a555abd15eb625fb74c1ba3b1381aa57222f2786"
       }
     },
     {

@@ -44,15 +44,17 @@ describe('P3-P5 committed owner reference resolver', () => {
       expect(() => loadOwnerReferences(root, { commit, files: [], sources: { [path]: JSON.stringify(original) } })).toThrow('missing artifact');
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
-  it('resolves only the two paired Part Twelve Slack fixtures at their committed hashes', () => {
+  it('resolves only the paired Part Twelve fixtures and captures at their committed hashes', () => {
     const root = mkdtempSync(join(tmpdir(), 'p3-owner-slack-'));
     try {
       for (const path of ['docs', 'register-source']) cpSync(path, join(root, path), { recursive: true });
       installOwnerFixture(root);
       mkdirSync(join(root, 'tests/conversation'), { recursive: true });
-      for (const file of ['slack-preparation.test.ts', 'slack-reply-hold.test.ts'])
+      for (const file of ['slack-preparation.test.ts', 'slack-reply-hold.test.ts', 'telegram-update-capture.test.ts'])
         cpSync(join('tests/conversation', file), join(root, 'tests/conversation', file));
       cpSync('tests/conversation/fixtures', join(root, 'tests/conversation/fixtures'), { recursive: true });
+      mkdirSync(join(root, 'tests/fixtures/captures'), { recursive: true });
+      cpSync('tests/fixtures/captures/telegram-update.json', join(root, 'tests/fixtures/captures/telegram-update.json'));
       const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
       git('init'); git('add', '.'); git('commit', '-qm', 'owner fixture');
       const commit = git('rev-parse', 'HEAD'); const files = git('ls-tree', '-r', '--name-only', commit).split('\n');
@@ -60,15 +62,20 @@ describe('P3-P5 committed owner reference resolver', () => {
       const original = JSON.parse(readFileSync(join(root, path), 'utf8'));
       const load = (manifest = original) => loadOwnerReferences(root, { commit, files, sources: { [path]: JSON.stringify(manifest) } });
       expect(load().references).toEqual([{ provider: 'fixture', id: 'P12-NF-19' }, { provider: 'fixture', id: 'P12-NF-28' },
-        { provider: 'fixture', id: 'P12-TELEGRAM-REPLY-CAPTURE', kind: 'captured-bytes' }, { provider: 'fixture', id: 'P12-SLACK-ENVELOPE-CAPTURE', kind: 'captured-bytes' }]);
-      // Rule 36: capture rows state their origin; the hand-written adapter fixtures are recorded as synthetic.
-      expect(load().captures.map((c: { id: string; origin: string }) => `${c.id}:${c.origin}`)).toEqual(['P12-TELEGRAM-REPLY-CAPTURE:synthetic', 'P12-SLACK-ENVELOPE-CAPTURE:synthetic']);
+        { provider: 'fixture', id: 'P12-TELEGRAM-UPDATE-ON-CAPTURE' },
+        { provider: 'fixture', id: 'P12-TELEGRAM-REPLY-CAPTURE', kind: 'captured-bytes' }, { provider: 'fixture', id: 'P12-TELEGRAM-UPDATE-CAPTURE', kind: 'captured-bytes' },
+        { provider: 'fixture', id: 'P12-SLACK-ENVELOPE-CAPTURE', kind: 'captured-bytes' }]);
+      // Rule 36: capture rows state their origin; the hand-written adapter fixtures are recorded as synthetic and the
+      // Telegram update reader's genuine, redacted capture as captured.
+      expect(load().captures.map((c: { id: string; origin: string }) => `${c.id}:${c.origin}`)).toEqual(['P12-TELEGRAM-REPLY-CAPTURE:synthetic', 'P12-TELEGRAM-UPDATE-CAPTURE:captured', 'P12-SLACK-ENVELOPE-CAPTURE:synthetic']);
       const mutations = [
         (m: typeof original) => { m.captures[0].origin = 'assumed'; },
         (m: typeof original) => { m.captures[0].source = ''; },
         (m: typeof original) => { m.captures[0].id = 'P12-NF-19'; },
         (m: typeof original) => { m.captures[0].artifact.path = 'tests/conversation/slack-preparation.test.ts'; },
         (m: typeof original) => { m.captures[1].artifact.hash = hash('stale'); },
+        // The genuine Telegram capture id cannot be repointed at the hand-written fixture, even at its true hash.
+        (m: typeof original) => { m.captures[1].artifact = structuredClone(m.captures[0].artifact); },
         (m: typeof original) => { m.fixtures[0].id = 'P12-NF-20'; },
         (m: typeof original) => { m.fixtures[0].artifact.path = 'tests/conversation/slack-reply-hold.test.ts'; },
         (m: typeof original) => { m.fixtures[1].artifact.hash = hash('stale'); },

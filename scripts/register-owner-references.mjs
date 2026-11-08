@@ -90,12 +90,15 @@ const contracts = {
     probe: () => false,
     test: (id, kind, path) => kind === 'fixture' && (partTenFixturePaths[id] ?? []).includes(path) },
   'part-twelve': { decoders: {},
-    capture: (id, path) => ['P12-TELEGRAM-REPLY-CAPTURE', 'P12-SLACK-ENVELOPE-CAPTURE'].includes(id) && path.startsWith('tests/conversation/fixtures/'),
-    fixture: id => id === 'P12-NF-19' || id === 'P12-NF-28',
+    capture: (id, path) => ['P12-TELEGRAM-REPLY-CAPTURE', 'P12-SLACK-ENVELOPE-CAPTURE'].includes(id) && path.startsWith('tests/conversation/fixtures/')
+      // Rule 36: the Telegram update reader's genuine, redacted capture.
+      || id === 'P12-TELEGRAM-UPDATE-CAPTURE' && path === 'tests/fixtures/captures/telegram-update.json',
+    fixture: id => id === 'P12-NF-19' || id === 'P12-NF-28' || id === 'P12-TELEGRAM-UPDATE-ON-CAPTURE',
     probe: () => false,
     test: (id, kind, path) => kind === 'fixture' && (
       id === 'P12-NF-19' && path === 'tests/conversation/slack-preparation.test.ts'
-      || id === 'P12-NF-28' && path === 'tests/conversation/slack-reply-hold.test.ts') },
+      || id === 'P12-NF-28' && path === 'tests/conversation/slack-reply-hold.test.ts'
+      || id === 'P12-TELEGRAM-UPDATE-ON-CAPTURE' && path === 'tests/conversation/telegram-update-capture.test.ts') },
   // The shipped preview runner: its own gate/inspection tests and its reader captures.
   preview: { decoders: {},
     capture: (id, path) => /^PREVIEW-CAPTURE-[A-Z0-9-]+$/.test(id) && /^tests\/(?:preview\/fixtures|fixtures\/provider-failure|fixtures\/captures)\/[^/]+$/.test(path),
