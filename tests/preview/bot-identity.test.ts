@@ -32,7 +32,7 @@ function bridgeGetMe(mode: string, timeoutMs: number, response?: object) {
 
 /** The launch's retry loop over a scripted list of Telegram answers, on a fake monotonic clock. A timed-out try
  * spends its whole timeout; an answered try spends 21 s (the slow answer seen live). */
-async function launch(modes: string[], options: { response?: object; stopAfterPause?: boolean } = {}) {
+async function launch(modes: string[], options: { response?: object; stopAfterPause?: boolean; spill?: number } = {}) {
   let now = 0, stopped = false;
   const asked: number[] = [], paused: number[] = [], retried: string[] = [];
   const result = await verifyBotIdentity({ boundId: binding.id, elapsed: () => now,
@@ -42,7 +42,7 @@ async function launch(modes: string[], options: { response?: object; stopAfterPa
       asked.push(timeoutMs);
       const mode = modes[Math.min(asked.length - 1, modes.length - 1)] ?? 'ordinary';
       const answer = bridgeGetMe(mode, timeoutMs, mode === 'ordinary' ? options.response : undefined);
-      now += mode === 'fetch-timeout' ? timeoutMs : 21000;
+      now += mode === 'fetch-timeout' ? timeoutMs + (options.spill ?? 0) : 21000;
       return answer;
     } });
   return { result, asked, paused, retried, spent: now };
@@ -83,6 +83,16 @@ describe('launch bot identity waits out a slow Telegram, and refuses a wrong one
     expect(result.attempts).toEqual(['fetch-timeout', 'fetch-timeout', 'fetch-timeout']);
     expect(asked).toEqual([30000, 30000, 90000 - 30000 - 2000 - 30000 - 5000]); expect(paused).toEqual([2000, 5000]);
     expect(spent).toBeLessThanOrEqual(BOT_IDENTITY_RETRY.totalMs);
+  });
+
+  test('a fractional clock (performance.now) still asks the third time with a whole-ms timeout', async () => {
+    // Each timed-out try overruns by 0.25 ms, as a real monotonic clock does; the bridge refuses a fractional
+    // timeoutMs before any fetch, so an unfloored third try would never reach a recovered Telegram.
+    const { result, asked } = await launch(['fetch-timeout', 'fetch-timeout', 'ordinary'], { spill: 0.25 });
+    expect(asked).toEqual([30000, 30000, 22999]);
+    expect(asked.every(Number.isInteger)).toBe(true);
+    expect(result.outcome).toBe('verified');
+    expect(result.attempts).toEqual(['fetch-timeout', 'fetch-timeout', 'bot 818181']);
   });
 
   test('an operator stop during the pause ends the check without asking again', async () => {

@@ -26,7 +26,8 @@ export const botIdentityLabel = answer => answer?.kind === 'identity' ? `bot ${a
 
 /** Asks getMe until it is verified or definitely refused, within the policy's tries and total time. `invoke(timeoutMs)`
  * asks once; `elapsed()` is a monotonic clock in ms; `wait(ms)` pauses; `stopped()` is the operator stop or a signal,
- * checked after every pause; `retrying(label, ms)` reports a temporary failure before the pause. */
+ * checked after every pause; `retrying(label, ms)` reports a temporary failure before the pause. The clock may be
+ * fractional (performance.now), so each try's timeout is floored to whole ms: spawnSync and the bridge take integers. */
 export async function verifyBotIdentity({ invoke, boundId, elapsed, wait, stopped, retrying = () => {}, policy = BOT_IDENTITY_RETRY }) {
   const started = elapsed(), attempts = [];
   for (let attempt = 0; attempt < policy.tries; attempt++) {
@@ -37,7 +38,7 @@ export async function verifyBotIdentity({ invoke, boundId, elapsed, wait, stoppe
       await wait(pause);
       if (stopped()) return { outcome: 'stopped', attempts };
     }
-    const answer = invoke(Math.min(policy.tryMs, policy.totalMs - (elapsed() - started)));
+    const answer = invoke(Math.floor(Math.min(policy.tryMs, policy.totalMs - (elapsed() - started))));
     attempts.push(botIdentityLabel(answer));
     const outcome = botIdentityOutcome(answer, boundId);
     if (outcome !== 'temporary') return { outcome, answer, attempts };
