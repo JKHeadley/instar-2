@@ -7,9 +7,9 @@ Outcome: Land the reviewed carryover-03-lost-worker-resume-1108 head 4edc5177749
 Affected rules: 1, 2, 4, 26, 37, 60, 61, 63, 68, 69, 74, 90, 101, 102, 105, 111, 113, 114, 115, 116
 Affected floors: Secrets: no credential path touched. Spend cap: no model call added; reconciliation reads a local record only. Stop: the run entry point checks stop and in-flight before reading anything. No duplicate sends: a recorded operation never re-enters dispatch. Durable intake: no edge or result is cleared during reconciliation; no row kind or field added.
 Operator questions: none
-Suggested tier: significant
+Suggested tier: critical
 Declared tier: critical
-Tier rationale: Carried from the member (critical): it changes when a delegated worker may be dispatched again after host loss. The train itself adds only a fast-forward merge of the exact reviewed head and a mechanical register replay; the desk's exact-head full gate, independent review and live proof still follow this push.
+Tier rationale: Carried from the member (critical), and the checker suggests critical from the paths: it changes when a delegated worker may be dispatched again after host loss. The train itself adds only a fast-forward merge of the exact reviewed head and a mechanical register replay; the desk's exact-head full gate, independent review and live proof still follow this push.
 Side effects: generated/ now names commit 4edc5177749c6f2ea592fe906fe190eb6ab8ab13 (generation sha256:694853bdb8a16ecc9e12a9e0d98ba135d7dd0e97cdf968c38bc41bb5d22440c2, 307 entries, 122 rules); otherwise only what the member's own records declare (src/assembly/production-session-work.ts, tests/assembly/production-session-work.test.ts, src/assembly/harness.declarations.json conformance digest, two review records). Always-sent bytes +0 (PREVIEW_FIXED_PROMPT_BYTES 23_459 unchanged; default-context-floor 6/6).
 Undo and recovery: Reset train-220 to 82a4c739a77d3f52291242c5bb89235ab3c768d4; the member commits, the replay commit and this record sit on top of it, and nothing outside the repository is written.
 Multi-machine posture: Machine-local, deliberately, as the member declares: the reconciliation reads the owning machine's own session-work record; owner, placement and result destination still bind collection, foreign records cannot authorize a worker, and no cross-host authority is added.
