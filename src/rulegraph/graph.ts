@@ -155,12 +155,23 @@ export function modelEntryFresh(verifiedAt: number, freshFor: number, now: numbe
 }
 /** Rule 72's deadline effect: one operator attention item per passed deadline. */
 export type DeadlineAttention = Readonly<{ id: string; rule: number; subject: string; dueBy: number; owner: string; action: string }>;
-// The files a declaration's deadline belongs to: its declaring source and the colocated
-// implementation sharing its stem (X.ts beside X.declarations.json / X.parser.json).
-function declarationFiles(path: string): readonly string[] {
-  const stem = path.replace(/\.(?:declarations|parser)\.json$|\.ts$/, '');
-  return stem === path ? [path] : [path, `${stem}.ts`, `${stem}.declarations.json`, `${stem}.parser.json`];
+/** The desk's existing deadline notice line for one attention item (it reads lines starting
+ * `REGISTER-DEADLINE ` from build-register --check output, passing or refusing, and notices each
+ * distinct line once per day). The text depends only on the deadline, so a repeat is suppressed. */
+export function deadlineNotice(item: DeadlineAttention): string {
+  return `REGISTER-DEADLINE OVERDUE: ${item.id}; rule ${item.rule}; ${item.subject}; owner ${item.owner}; ${item.action}`;
 }
+// What a declaration's deadline belongs to (Rule 72). A code declaration belongs to its declaring
+// module: every file under its source directory (src/rungraph/rungraph.ts owns service.ts, graph.ts,
+// records.ts and the rest of src/rungraph/). A rule or term declared in docs/ belongs to its declaring
+// document only, so one rule's deadline does not claim the whole docs tree. An entry ending in '/' is
+// a directory prefix.
+function declarationFiles(path: string): readonly string[] {
+  const dir = path.slice(0, path.lastIndexOf('/') + 1);
+  return dir === '' || dir.startsWith('docs/') ? [path] : [dir];
+}
+const touches = (changed: readonly string[], owned: readonly string[]) =>
+  changed.some(c => owned.some(o => (o.endsWith('/') ? c.startsWith(o) : c === o)));
 /** Rule 72: a passed deadline fails only a build whose change touches what the deadline belongs to.
  * Any other build passes and raises one attention item per deadline. `changed` is the change's file
  * list; `null` means it could not be determined, and every passed deadline then fails (Rule 95:
@@ -174,7 +185,8 @@ export function checkDeadlines(graph: RuleGraph, register: GeneratedRegister, la
     const attention = new Map<string, DeadlineAttention>();
     const passed = (item: DeadlineAttention, files: readonly string[], refusal: string) => {
       if (item.dueBy > now.value) return;
-      requireThat(changed !== null && !files.some(f => changed.includes(f)), refusal);
+      // A refusal carries the same notice line, so the item reaches the operator when this build fails too.
+      requireThat(changed !== null && !touches(changed, files), `${refusal}; ${deadlineNotice(item)}`);
       if (!attention.has(item.id)) attention.set(item.id, item);
     };
     const filesOf = (id: string | null, rule: number) => {

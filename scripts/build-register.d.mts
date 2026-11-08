@@ -4,7 +4,7 @@ import type { GeneratedRegister, RegisterGeneration, SpineReadPort, ShapeApprova
 export interface BootstrapBinding { readonly anchor: string; readonly commit: string; readonly checkedAt: number }
 export interface BootstrapVerification { readonly phase: 'converted-unanchored' | 'anchored'; readonly binding: BootstrapBinding; readonly fact: FactReference }
 export function build(root: string, commit: string, options: {
-  mode: 'bootstrap' | 'replay' | 'normal' | 'completion'; workflow?: Record<string, unknown>; now?: number;
+  mode: 'bootstrap' | 'replay' | 'normal' | 'completion'; workflow?: Record<string, unknown>; now?: number; changed?: readonly string[] | null;
   provider?: SpineReadPort & ShapeApprovalPort & { types?: DecodeContext; separations?: WorkflowChecks['separations']; landingStanding?: StandingContext;
     verifyBootstrap?: (binding: BootstrapBinding) => Result<BootstrapVerification> };
 }): { register: GeneratedRegister; generation: RegisterGeneration; graph: RuleGraph;

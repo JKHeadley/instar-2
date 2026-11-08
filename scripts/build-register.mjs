@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { decodeMeasurement, canonical, schemas } from '../dist/index.js';
 import { generateRegister, generationOf, renderRegister, invariantCoverage, implementedInvariants, decodeCheckRun,
-  decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion } from '../dist/register/index.js';
+  decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion, deadlineNotice } from '../dist/register/index.js';
 import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, trailingInputs, value, bytes, isDeclarationSource, isActionSource, actionRegistry } from './register-source.mjs';
 import { checkWiring, scanSources } from './check-register-wiring.mjs';
 import { capabilityBriefing, checkShipped } from './register-shipped.mjs';
@@ -218,10 +218,19 @@ export async function run(args, root = process.cwd()) {
     if (check) { if (!existsSync(path) || readFileSync(path, 'utf8') !== text) throw new Error(`P3-NF-01/P3-NF-09: generated ${name} differs`); }
     else writeFileSync(path, text);
   }
-  // Each passed deadline this build did not touch is one operator attention item (Rule 72).
+  // Each passed deadline this build did not touch is one operator attention item (Rule 72). It goes to
+  // the desk's existing deadline notice reader as a REGISTER-DEADLINE line on stderr (stdout stays the
+  // JSON summary); a refusing build's error message carries the same line (see deadlineLines).
+  for (const line of result.attention.map(deadlineNotice)) console.error(line);
   console.log(JSON.stringify({ generation: result.generation.id, commit, ...result.metrics, check, authority: 'shape-only', mode,
     ...(result.attention.length ? { attention: result.attention } : {}) }));
 }
+// A deadline refusal (Rule 72: this build changes the overdue feature) ends with its notice line;
+// print it on a line of its own so the desk's reader, which only reads lines starting with it, sees it.
+export function deadlineLines(message) {
+  const at = String(message).indexOf('REGISTER-DEADLINE ');
+  return at < 0 ? [] : [String(message).slice(at)];
+}
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  run(process.argv.slice(2)).catch(error => { console.error(error.message); process.exitCode = 1; });
+  run(process.argv.slice(2)).catch(error => { console.error(error.message); for (const line of deadlineLines(error.message)) console.error(line); process.exitCode = 1; });
 }
