@@ -1,0 +1,35 @@
+# Change review — train-220 (carryover-03-lost-worker-resume-1108 onto live train-217)
+
+Subject base: 82a4c739a77d3f52291242c5bb89235ab3c768d4
+Review state: open
+Reviewed content: none
+Outcome: Land the reviewed carryover-03-lost-worker-resume-1108 head 4edc5177749c6f2ea592fe906fe190eb6ab8ab13 (origin/fix/carryover-03-lost-worker-resume-1108: the session-work port's run entry point reads the operation's durable record through the existing collect before dispatch, so a proven result returns once without a new worker and uncertain work stays held, plus its native Darwin conformance renewal) on the live build 82a4c739, and replay the register at the train head. 1.x comparison inherited from the member: JKHeadley/instar main 149377310f9b586641a05eddf196df4543dc031a src/monitoring/ResumeQueue.ts reconcileFromReapLog (stable identity never re-enqueued) and src/monitoring/ResumeQueueDrainer.ts validateReality (re-read reality before respawn) are reused as the pre-dispatch collect; 1.x at-least-once replay is deliberately not reused (no duplicate sends floor).
+Affected rules: 1, 2, 4, 26, 37, 60, 61, 63, 68, 69, 74, 90, 101, 102, 105, 111, 113, 114, 115, 116
+Affected floors: Secrets: no credential path touched. Spend cap: no model call added; reconciliation reads a local record only. Stop: the run entry point checks stop and in-flight before reading anything. No duplicate sends: a recorded operation never re-enters dispatch. Durable intake: no edge or result is cleared during reconciliation; no row kind or field added.
+Operator questions: none
+Suggested tier: significant
+Declared tier: critical
+Tier rationale: Carried from the member (critical): it changes when a delegated worker may be dispatched again after host loss. The train itself adds only a fast-forward merge of the exact reviewed head and a mechanical register replay; the desk's exact-head full gate, independent review and live proof still follow this push.
+Side effects: generated/ now names commit 4edc5177749c6f2ea592fe906fe190eb6ab8ab13 (generation sha256:694853bdb8a16ecc9e12a9e0d98ba135d7dd0e97cdf968c38bc41bb5d22440c2, 307 entries, 122 rules); otherwise only what the member's own records declare (src/assembly/production-session-work.ts, tests/assembly/production-session-work.test.ts, src/assembly/harness.declarations.json conformance digest, two review records). Always-sent bytes +0 (PREVIEW_FIXED_PROMPT_BYTES 23_459 unchanged; default-context-floor 6/6).
+Undo and recovery: Reset train-220 to 82a4c739a77d3f52291242c5bb89235ab3c768d4; the member commits, the replay commit and this record sit on top of it, and nothing outside the repository is written.
+Multi-machine posture: Machine-local, deliberately, as the member declares: the reconciliation reads the owning machine's own session-work record; owner, placement and result destination still bind collection, foreign records cannot authorize a worker, and no cross-host authority is added.
+Layer below: Read docs/00-the-purpose.md and docs/01-the-rules.md in full at the base, the member report carryover-03-lost-worker-resume-1108 (including its R105 repair section) and the cint-L37 desk chain in full through the Studio API (sha256 verified), the member's change-review records reviews/carryover-03-lost-worker-resume-1108-change-review.md and reviews/carryover-03-lost-worker-resume-1108-native-renewal-change-review.md, and the member's source diff.
+Bug class: unit
+Bug evidence: reproducer=tests/assembly/production-session-work.test.ts
+Hook bypass: none; git config core.hooksPath is unset (exit 1) and the common hooks directory holds 0 non-sample files, so no hook ran or was bypassed; plain git commit, ordinary merge, no stash.
+Convergence: none
+Prompt review: No model instruction, prompt, parse or accept/refuse rule changes in this train. The member's run-boundary tests replay the recorded work-recovery shapes from tests/preview/fixtures/work-recovery-2026-10-15.json through a reopened port's run on this tree (production-session-work 46/46), so the new path fires on them.
+Decision: train-220-merge | Ordinary merge of reviewed carryover-03-lost-worker-resume-1108 head 4edc5177749c6f2ea592fe906fe190eb6ab8ab13 (origin/fix/carryover-03-lost-worker-resume-1108, built on train-217 82a4c739) onto live 82a4c739; the member was built on this exact base, so git merge fast-forwarded with no conflicts and every member file lands byte-identical to the reviewed head; member report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-lost-worker-resume-1108-PROGRESS.md read in full. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-220-PROGRESS.md
+Decision: train-220-A | Preserve the member's behaviour and tests byte for byte; it is the only member and the base adds nothing on top of the member's own base, so there are no overlapping edits to combine. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-220-PROGRESS.md
+Decision: train-220-B | Branch created directly at the exact live base 82a4c739a77d3f52291242c5bb89235ab3c768d4 (origin/main already contained; the member's recorded base is train-217 = this commit); no main merge, no branch movement. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-220-PROGRESS.md
+Decision: train-220-C | No product conflict and no omitted member; generated/ regenerated by replay, never hand-merged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-220-PROGRESS.md
+Decision: train-220-D | Host-dependent checks in files this train did not change (tests/e2e/register.test.ts timed out on WSL; one 100 ms child-startup race in production-provider-subscription that flips without a code change; tests/e2e/session-work-live and session-work-tmux) are reported exactly and left to the Studio gate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-220-PROGRESS.md
+Decision: train-220-desk | Ran the desk chain (repin 0, tsc 0, rehash 0) and replayed the register at the train head 4edc5177 (commit and generation lines only); build-register --check is true. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-220-PROGRESS.md
+Deferral: generated/register.json:1 | not-a-deferral=generated register output replayed mechanically, not prose authored by this train
+Verification: Member tests, direct importers of the changed session-work source, register, subscription, context-floor and READY-gate pinned tests; architecture, lint, typecheck, register and change-review checks. Exact outcomes, including host-dependent ones, in the desk report.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: one ordinary merge of the exact reviewed head and the existing regeneration tools. No added machinery. Existing authorization, secrets, spend, stop, durable intake and unique dispatch guards remain. No fresh unattended-completion claim.
+80/20: Targeted and explicitly requested checks only; no full suite and no second base worktree.
+VERDICT: author submission for desk gate, not independent convergence or live acceptance
