@@ -13,6 +13,10 @@ import { readAnswer } from './answer-reading.js';
 import { parseReplyReviewVerdict, REPLY_RULES, substantiveReply, guidanceReviewRules, replyReviewQuestion, replyReviewContext } from './reply-check.js';
 // @ts-expect-error Physical tool trace reader stays outside the pure core.
 import { toolTrace } from './tool-admission.mjs';
+// Recorded captures predate helper-limits-1107, which replaced the subagent clause "each up to 4 turns" (the old
+// four-turn helper cap) with this one; the replay translates only that clause and keeps every capture verbatim.
+const HELPER_CLAUSE = "each sharing this turn's tool calls and working until it answers";
+const HISTORICAL_HELPER_CLAUSE = 'each up to 4 turns';
 
 type Capture = { name: string; raw: string; answer: string | null; admission: string; system: string; question: string };
 const fixture = () => JSON.parse(readFileSync(new URL('./fixtures/act-first-2026-10-10.json', import.meta.url), 'utf8')) as {
@@ -21,7 +25,7 @@ const fixture = () => JSON.parse(readFileSync(new URL('./fixtures/act-first-2026
 };
 // Historical captures predate the identity prefix, requested-step guidance and brief rationale.
 // Preserve those bytes; check the added guidance on the current routes below.
-const capturedSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(
+const capturedSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(HELPER_CLAUSE, HISTORICAL_HELPER_CLAUSE).replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(
   "You are an Instar 2.0 agent,", 'You are Instar,').replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
 const decode = (run: Capture) => {
   const reading = readAnswer(JSON.parse(run.raw).result, { wrapped: 'accept' });
@@ -103,7 +107,7 @@ it('replays recorded tool results and final replies under their exact historical
   expect(captured.runs.map(run => run.name)).toEqual(['requested-verification', 'no-verification-needed']);
   for (const run of captured.runs) {
     // The recorded run predates only this full-set clause. Preserve the capture verbatim.
-    expect(run.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(
+    expect(run.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(HELPER_CLAUSE, HISTORICAL_HELPER_CLAUSE).replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(
       COMPLETE_REQUESTED_WORK, ''));
     const answer = decode(run);
     const trace = toolTrace(run.admission.trim().split('\n').filter(Boolean));
