@@ -56,6 +56,7 @@ import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
 import { JEV_MODEL, jevQuestions, publicCredentialRegister, concealSecretMaterial, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { assertLiveJudgment, modelCallRecord, sha256 } from './model-call-boundary.js';
+import { ATTRIBUTION_QUESTION } from './attribution.js';
 import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { readAnswer, taskFields } from './answer-reading.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
@@ -450,7 +451,8 @@ const runningLaunch = proofs => {
   if (!startup) return null;
   const versions = Object.fromEntries(Object.entries(startup.observed).filter(([name, value]) => name.startsWith(VERSION_PREFIX) && typeof value === 'string')
     .map(([name, value]) => [name.slice(VERSION_PREFIX.length), value]));
-  return { generation: startup.generation, versions, stepCheck: startup.observed.stepCheck === true, agentState: startup.observed.agentState === true };
+  return { generation: startup.generation, versions, stepCheck: startup.observed.stepCheck === true, agentState: startup.observed.agentState === true,
+    attribution: startup.observed.attribution === true };
 };
 /** Posture and step coverage for one reading; every input is a durable record or the replayed journal. With no
  * startup record the versions come from disk and every plan reads unknown: nothing from another launch counts. */
@@ -459,7 +461,8 @@ const proofReport = (view, log, launch, now) => {
   const supervisors = { replyReview: true, summaryReview: true, stepCheck: launch?.stepCheck ?? false };
   const generation = launch?.generation ?? versions['preview.proofs'];
   return { generation, versions, supervisors, proofs: proofPosture(PREVIEW_PROOF_PLANS, log.proofs, generation, { supervisors }, now, log.refused ?? []),
-    enabled: { default: true, 'option:step-check': supervisors.stepCheck, 'option:agent-state-dir': launch?.agentState ?? false },
+    enabled: { default: true, 'option:step-check': supervisors.stepCheck, 'option:agent-state-dir': launch?.agentState ?? false,
+      'option:attribution': launch?.attribution ?? false },
     stepCoverage: stepCoverage(view, supervisors) };
 };
 /** Capability truth over a reading (Rules 34, 39, 62, 72, 73, 76); `status` is what the metrics must reach. */
@@ -627,7 +630,7 @@ const recordShape = (path, role, layer, outcome, shape) => {
     durablePreviewWrite(path, saved);
   } catch { /* a diagnostics write never changes a model outcome */ }
 };
-const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
+const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') || id.endsWith(':attribution-check') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
   : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
 /** Rule 95, the fail direction of this consumer: may text around one complete Decision object be
  * discarded? The answer side says yes — the answer, a reply revision and the summary writer, which
@@ -643,16 +646,17 @@ const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';
 /** Plan #507, the same declaration one layer deeper: is this task's ANSWER itself a JSON object? The three summary-side
  * calls are -- the rolling summary (`summary:<through>`, whose object carries the memory decision and the reminder
  * withdrawal), its review (`summary:<through>:review`, {verdict, reason}) and the meaning index
- * (`summary:index:<n>`, {concepts}) -- and each of their consumers parses the answer as JSON. For them the runner
+ * (`summary:index:<n>`, {concepts}) -- and each of their consumers parses the answer as JSON. So is Rule 121's
+ * attribution check (`<id>:attribution-check`, {claims}; attribution.ts). For them the runner
  * serializes the object, never the model (answer-reading.ts). Every other call's answer is prose or the conversation
  * protocol's own flat fields. Nothing branches on what the text means, only on which consumer asked. */
-const objectAnswerOf = id => /^summary:/u.test(id);
+const objectAnswerOf = id => /^summary:/u.test(id) || id.endsWith(':attribution-check');
 /** The registered live judgment a subscription call serves (model-call-boundary.ts). A revised
  * reply's held-class review is a reply review; the revision is the agent's own response to the
  * objections, with its own floor. A retrospective pass is its own judgment, and so is its duty follow-up
  * (`retrospective:N:duties`); its benchmark reruns (`retrospective:N:rerun:I`) replay an answer. */
 const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review'
-  : id.endsWith(':reply-revision') ? 'reply-revision' : /^summary:.*:review$/u.test(id) ? 'summary-review'
+  : id.endsWith(':attribution-check') ? 'attribution-check' : id.endsWith(':reply-revision') ? 'reply-revision' : /^summary:.*:review$/u.test(id) ? 'summary-review'
   : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
@@ -746,6 +750,13 @@ const retrospectiveView = (view, now) => { const digest = replyContextDigest(vie
   answerBudgetRoute: view.retroPasses.some(pass => pass.state === 'complete'
     && typeof pass.estimatedAnswerBytes === 'number' && typeof pass.outputTokens === 'number')
     ? 'measured' : 'start' }; };
+/** Rule 121's record-period counts (Rules 39, 72): checks by verdict and unchecked ones by cause, from the journal's
+ * own rows, so the graduation conditions in the promotion record are read from this status, never estimated. */
+const attributionView = rows => {
+  const count = values => Object.fromEntries([...new Set(values)].sort().map(value => [value, values.filter(item => item === value).length]));
+  return { total: rows.length, verdicts: count(rows.map(row => row.verdict)),
+    uncheckedCauses: count(rows.filter(row => row.verdict === 'unchecked').map(row => row.cause ?? 'unknown')) };
+};
 const stepCheckView = view => ({ total: view.stepChecks.size,
   unchecked: [...view.stepChecks.values()].filter(item => !item.reserved).length,
   verdicts: [...view.stepChecks].map(([step, item]) => ({ step,
@@ -755,6 +766,7 @@ const stepCheckView = view => ({ total: view.stepChecks.size,
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
+  if (options.attribution !== undefined && !['record', 'enforce'].includes(options.attribution)) throw Error('preview: --attribution must be record or enforce');
   // Retired 2026-10-20 by the operator's review (promotion record): no live evidence, so it can no longer be turned on.
   if (options['step-check'] === 'true') throw new PlainRefusal('preview: the step check is retired (2026-10-20, no live evidence); launch without --step-check true');
   const stepCheckEnabled = false;
@@ -1211,6 +1223,7 @@ async function main() {
         intakeToApiAcceptedMs: Math.max(0, lastSent.sentAt - lastSent.at),
         checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
       ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}),
+      ...(view.view.attribution?.length ? { attributionChecks: attributionView(view.view.attribution) } : {}),
       retrospective: retrospectiveView(view.view, wallNow()),
       // Part 18: what each live sentinel last decided, read back from the journal (the families this command names).
       liveSentinels: sentinelReport(view.view, sentinelFamilies),
@@ -2305,6 +2318,15 @@ async function main() {
           usage: recordedUsage(result.usage) };
       },
       summaryCheck: async evidence => (await callJev('jev-summary-faithfulness', evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
+      // Rule 121, off unless launched with it. A summary-style object answer: the runner serializes it, the model never does.
+      ...(options.attribution === undefined ? {} : { attribution: { mode: options.attribution,
+        judge: async ({ id, packet, deadlineAt }) => {
+          const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}\n${packet}`, wallNow()));
+          const prepared = modelEnvelope({ question: ATTRIBUTION_QUESTION, context: packet, id, ...(writer ? { writer } : {}) });
+          const result = await invokeSubscription(prepared, id, undefined, deadlineAt);
+          return { value: result.state === 'complete' && !result.failureClass ? result.value : null,
+            ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
+        } } }),
       replyCheck: {
         elapsedMs: () => performance.now(),
         jev: (text, questions = jevQuestions, timeoutMs, occurrence, admission) => callJev(questions === SUMMARY_QUESTION ? 'jev-summary-integrity' : 'jev-reply-check',
@@ -2668,6 +2690,7 @@ async function main() {
           hold: bounds => hostResources.hold('maintenance', bounds), scrub: text => redact(text).text,
           held: heldVerdict(heldSecrets), now: wallNow }) : null,
         append: appendWork, stopped: gateStopped, now: wallNow, held: heldVerdict(heldSecrets),
+        note: (call, text) => worker.attributionOfNote(call, text),
         effects: createToolEffectOwner({ decide: (tool, input, parent) => conversationSession && sessionConnectors.has(parent.child)
           ? admitSessionConnector({ tool, input, config: admissionConfig(), mcp: readRootMcp(root), enabled: accountActions,
             now: wallNow(), decide: admitToolCallEffect })
@@ -2986,6 +3009,7 @@ async function main() {
       } };
     const startup = executeProof(PREVIEW_PROOF_PLANS.find(plan => plan.id === 'startup'),
       { ...proofPorts, botIdentity: () => ({ id: identity.identity.id }), launch: { stepCheck: stepCheckEnabled, agentState: Boolean(options['agent-state-dir']),
+        attribution: options.attribution !== undefined,
         ...Object.fromEntries(Object.entries(launchVersions).map(([id, version]) => [`${VERSION_PREFIX}${id}`, version])) } }, generation, clock.elapsed);
     // Rules 14/95: the proof log is evidence, not a gate on conversation. An unwritable log is reported and retried
     // with backoff; the undurable record never counts as proof, and intake and replies continue.
