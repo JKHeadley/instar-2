@@ -159,7 +159,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/proofs.test.ts",
-        "hash": "sha256:205bde11dc57c91dbf5d9c7b13e12d93f70f149ea2f6c10c0842016c44eab120"
+        "hash": "sha256:008dc7b03b1411c9fb2f9ea402a0ff1c008b29298e3c88803993f33a214db0b7"
       }
     },
     {
