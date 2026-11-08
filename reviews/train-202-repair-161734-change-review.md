@@ -1,0 +1,38 @@
+# Change review — train-202 repair: pin the launcher's Rule 121 object-answer declaration
+
+Subject base: 9eb642134cc4182f4879bcdc8e6b3a298b22c676
+Review state: open
+Reviewed content: none
+Outcome: The m5pro half of the train-202 gate failed one wiring pin, tests/preview/model-json.test.ts "the shipped launcher parses with a per-consumer policy". Rule 121 (c9a0d2f18) deliberately widened the launcher's `objectAnswerOf` to also cover `<id>:attribution-check`, whose consumer parses its answer as JSON, and the pin still held the pre-121 text. The pin now holds the shipped declaration; the launcher is unchanged. The owner-reference pin for the test and the generated register are refreshed mechanically.
+Affected rules: 37 the failure is fixed at its source (a stale pin), no quarantine; 101 no hook bypass; 102 decisions recorded below; 116 simplest robust route (one pin line, no launcher change); 121 the attribution-check answer stays an object answer exactly as shipped.
+Affected floors: secrets — no credential or secret handling touched; spend cap — no model call added; stop — unchanged; no duplicate sends — no send path touched; durable intake — unchanged
+Operator questions: none
+Suggested tier: critical
+Declared tier: ordinary
+Tier rationale: Test-pin text plus mechanical regenerated register and owner-reference hash; no shipped source behavior changes. The critical suggestion comes from generated/ paths that were regenerated, not hand-edited.
+Side effects: none beyond the pin text; generated/ files change only their source commit and generation hash.
+Undo and recovery: Revert the three commits; the launcher pin would then fail again on the m5pro half.
+Multi-machine posture: Test and generated register only; travels with the repository, nothing machine-local.
+Layer below: Read tests/preview/journal-agent.mjs objectAnswerOf (line 645) and its introducing commit c9a0d2f18 (Rule 121: check attributed statements at send and at note write), and readAnswer's single parse site (line 2052), which the pin's other assertions still hold. 1.x comparison: JKHeadley/instar main has no counterpart for this launcher wiring pin (the 2.0 preview launcher's per-consumer answer policy has no 1.x equivalent; this repair reuses no 1.x code), so the comparison is fit-none for a test-pin repair.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/model-json.test.ts; detail=m5pro gate log for head 9eb64213 shows "expected launcher to contain 'const objectAnswerOf = id => /^summary:/u.test(id);'" at model-json.test.ts:110; after the pin update the file passes 51/51 on this tree.
+Hook bypass: none
+Convergence: none
+<!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
+Deferral: generated/register.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
+
+Decision: t202r-pin-follows-launcher | Update the test pin to the shipped Rule 121 declaration instead of narrowing the launcher, because the widening was the deliberate Rule 121 behavior and the pin simply trailed it. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-202-repair-161734-PROGRESS.md
+
+Decision: t202r-backdated-replay | Regenerate the register with --replay --now 1794009600000 (2026-11-07 00:00 UTC), the recorded practice when the real clock refuses every replay on overdue holds; the clock is not embedded in outputs, and `build-register.mjs --check --now 1794009600000` passes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-202-repair-161734-PROGRESS.md
+
+Decision: t202r-no-ceiling-roll | Leave the overdue Rule 36 holds (deferred:slack-intake-v1:36, deferred:telegram-intake-v1:36, ceiling 2026-11-08 00:00 UTC) untouched: the 2026-11-01 disposition commits Echo to escalate instead of rolling the date again, and closure needs genuine redacted captures from the live trial, which this machine cannot reach. The real-clock register:check stays red and is reported as the blocker. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-202-repair-161734-PROGRESS.md
+
+Known red, outside this change: on the real clock `npm run register:check` stops at "P3-NF-24: deadline passed for deferred:slack-intake-v1:36"; the Slack and Telegram parser declarations are unchanged here. The owned work is in docs/defects/rule-36-genuine-parser-captures.md.
+
+Subject (10 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/owner-references/preview.json, reviews/train-202-repair-161734-change-review.md, tests/preview/model-json.test.ts
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: one pin line follows the shipped declaration; the owner hash and register are regenerated by the desk tools, never hand-edited. No mechanism is added.
+80/20: Author submission. Targeted test file passes 51/51, typecheck and lint pass, the backdated register check passes; the real-clock register check is the named open blocker.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
