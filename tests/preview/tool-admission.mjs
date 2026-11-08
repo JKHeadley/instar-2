@@ -181,6 +181,15 @@ const FORKING_SKILLS = Object.freeze(['code-review']);
 const WORKTREE_TOOLS = Object.freeze(['EnterWorktree', 'ExitWorktree']);
 /** Bounded excerpt of a tool input or result kept in the admission record. */
 export const RECORD_EXCERPT_CHARS = 4096;
+/** How long the hook waits for one checkpoint answer. */
+export const ADMISSION_WAIT_MS = 15000;
+/** How long the hook waits for Rule 121's answer on a note: the runner's judge bound (ATTRIBUTION_BUDGET_MS, 45 s in
+ * journal.ts) plus 5 s for its reservation, record and reply, so a refusal arrives before the note is written. Only a wait
+ * past this, or an unreachable checkpoint, lets the note through unchecked (the check fails open, Rule 95). */
+export const ATTRIBUTION_WAIT_MS = 50000;
+/** The longest one `pre` hook can legitimately take on a note: its attribution wait, then its ordinary checkpoint ask,
+ * with 10 s for process start and the record. A caller that kills a slower hook (native-loop.mjs) waits at least this. */
+export const HOOK_PRE_MAX_MS = ATTRIBUTION_WAIT_MS + ADMISSION_WAIT_MS + 10000;
 
 /** The effect doorway's admission for a tool call's proposal, under the turn's config: its effect policy (absent:
  * nothing outward by default), the register's irreversible term and the installation's accepted closed operation set. */
@@ -465,6 +474,26 @@ export const HELD_CHECK_MAX_BYTES = 1024 * 1024;
  * whose input does not leave it (a file tool, a search, a sandboxed shell command, whose network goes through the shell's
  * checkpoint, a subagent). Outward: WebFetch, WebSearch, a Codex network read, a named outward tool, an MCP tool, and a
  * shell command run outside the sandbox. */
+/** Rule 121: the words a file tool would put in a note. Notes are prose files; code is out of scope. Null when this is not one. */
+export function noteText(tool, input) {
+  const name = String(tool ?? ''), prose = path => typeof path === 'string' && /\.(?:md|markdown|txt)$/iu.test(path);
+  if ((name === 'Write' || name === 'Edit' || name === 'NotebookEdit') && prose(input?.file_path ?? input?.notebook_path)) {
+    const text = input?.content ?? input?.new_string ?? input?.new_source;
+    return typeof text === 'string' && text.trim() ? text : null;
+  }
+  const patch = name === 'apply_patch' ? input?.input ?? input?.command ?? input?.patch : undefined;
+  if (typeof patch !== 'string' || !patchPaths(patch)?.some(prose)) return null;
+  // Only the added lines of the prose targets: a code file in the same patch stays out of scope.
+  let target = null;
+  const added = [];
+  for (const line of patch.split('\n')) {
+    const section = /^\*\*\* (Add File|Update File|Delete File|Move to): (.+)$/u.exec(line);
+    if (section) target = section[1] === 'Delete File' ? null : section[2].trim();
+    else if (line.startsWith('*** End Patch')) target = null;
+    else if (prose(target) && line.startsWith('+') && !line.startsWith('+++')) added.push(line.slice(1));
+  }
+  return added.join('\n').trim() ? added.join('\n') : null;
+}
 export function outwardText(tool, input) {
   const name = String(tool ?? '');
   const outward = name === 'WebFetch' || name === 'WebSearch' || CODEX_NETWORK_READ_TOOLS.includes(name) || Object.hasOwn(OUTWARD_TOOLS, name)
