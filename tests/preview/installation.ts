@@ -43,7 +43,13 @@ export const RUNNER_EXECUTED_ENTRIES = Object.freeze(['tests/preview/journal-age
 export function installedCodeOf(read: (path: string) => Uint8Array | string | null, exists: (path: string) => boolean,
   revision: string | null): InstalledCode {
   const text = (path: string) => { const bytes = read(path); return bytes === null ? null : typeof bytes === 'string' ? bytes : Buffer.from(bytes).toString('utf8'); };
-  const closure = importClosure([...RUNNER_EXECUTED_ENTRIES], text, exists);
+  // The installer loads a selected release's migration manifest, not this runner's
+  // code. Its transaction records the release and validates identity/schema before
+  // executing it. Inventory the loader and shipped manifest here; never claim the
+  // future candidate's bytes are part of this running process's installation digest.
+  const closure = importClosure([...RUNNER_EXECUTED_ENTRIES], text, exists, undefined,
+    (from: string, expression: string) => from === 'scripts/update.mjs'
+      && expression === "import(pathToFileURL(join(installed, 'scripts/update-release.mjs')).href)");
   if (closure.unresolved.length || closure.computed.length) throw Error('preview: installed runner closure unresolved');
   return { revision, files: closure.files.length,
     codeDigest: codeDigestOf(closure.files.map(path => ({ path, bytes: read(path) ?? '' }))) };

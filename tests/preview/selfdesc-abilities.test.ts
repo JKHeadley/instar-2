@@ -38,7 +38,16 @@ const currentChannelNote = (text: string) => compactRecordedNote(text.replace(re
   .replace('keeps standing instructions and works the promises its replies leave open, holding results for the next message.',
     'keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.')
   .replace('In the code but switched off here, so not available:', 'Code switched off here:')
-  .replace('telegram-conversation-adapter.', 'telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).');
+  .replace('telegram-conversation-adapter.', 'telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).')
+  // Declared by train-208: the installed updater joins the internal list, and five internal lines shorten to keep the unchanged floor.
+  .replace('- captures and receipts or holds every inbound message before any work; an uncertain arrival is kept.',
+    '- updates itself; a failure keeps the current release.\n- captures every inbound message before work; an uncertain arrival is kept.')
+  .replace('binds each supported harness and model doorway to certified code; the rest are marked unproven.',
+    'binds supported harnesses and doorways to certified code; others are marked unproven.')
+  .replace('generates the register, rule book, glossary and this briefing from the declarations in code.',
+    'generates the register, rule book, glossary and this briefing from declarations.')
+  .replace('checks each reply against remembered earlier turns without a model call.',
+    'checks replies against remembered turns without a model call.');
 const renderedNote = (text: string) => currentChannelNote(text).replace(`- ${toolsBriefing(0)}`, CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
   .replace(` ${SIGN_OFF}`, '');
 const currentNote = (text: string) => renderedNote(text

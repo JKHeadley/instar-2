@@ -740,10 +740,12 @@ export function toolTrace(lines) {
       if (row.decision === 'allow' && row.kind === 'subagent' && typeof row.id === 'string')
         children.push({ toolUse: row.id, slot: row.child ?? null, agent: null, parentAgent: typeof row.agent === 'string' ? row.agent : null,
           started: false, stopped: false, state: 'open', result: null });
-    } else if (row?.phase === 'post') {
+    } else if (row?.phase === 'post' || row?.phase === 'post-failure') {
       const entry = typeof row.id === 'string' ? admitted.get(row.id) : undefined;
       if (!entry || entry.tool !== row.tool || entry.result !== null) { consistent = false; continue; }
       entry.result = excerpt(row.result);
+      // A failed call's result is the harness's error text. A failed helper returned nothing, so its edge stays open.
+      if (row.phase === 'post-failure') continue;
       const edge = children.find(item => item.toolUse === row.id);
       if (edge) { edge.state = 'returned'; edge.result = entry.result; if (typeof row.agent === 'string') edge.agent = row.agent; }
     } else if (row?.phase === 'child-start' && typeof row.agent === 'string') started.push(row.agent);

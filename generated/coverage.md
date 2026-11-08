@@ -1,7 +1,7 @@
 # Rule coverage
 
-Register generation: sha256:eef71313515ed862f438348604c693eebc74d68fb54c352c03a24da064658c01
-Source commit: 5361ef483399705936632e111118c4d4bf7d0767
+Register generation: sha256:5919b95c71c8bc4e4fba42ec126665cbf983da374cc3fd40afa1fe753f4bd4e2
+Source commit: 1f1c5b21fefaea3c5dc8e8b313643e5d58f5ee76
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -9,9 +9,9 @@ Authority: shape-only; entering-force verification required at consumption.
 |---|---:|
 | held-reviewed | 0 |
 | held-unreviewed | 0 |
-| declared | 3 |
-| partial | 27 |
-| deferred | 0 |
+| declared | 2 |
+| partial | 28 |
+| deferred | 1 |
 | gap | 114 |
 
 {
@@ -7963,6 +7963,7 @@ Authority: shape-only; entering-force verification required at consumption.
         "preview.durable-intake.startup",
         "preview.durable-intake.store-agreements",
         "preview.held-reply-notice.delivered",
+        "preview.proofs.update-bound",
         "preview.reminders.delivered",
         "preview.reply-review.reached",
         "preview.reply.bot-identity",
@@ -15915,7 +15916,26 @@ Authority: shape-only; entering-force verification required at consumption.
       "enforcedBy": []
     }
   ],
-  "loops": [],
+  "loops": [
+    {
+      "id": "deferred:slack-intake-v1:36",
+      "rule": 36,
+      "holder": "slack-intake-v1",
+      "dueBy": 1794096000000,
+      "part": 4,
+      "owner": "echo (agent)",
+      "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
+    },
+    {
+      "id": "deferred:telegram-intake-v1:36",
+      "rule": 36,
+      "holder": "telegram-intake-v1",
+      "dueBy": 1794096000000,
+      "part": 4,
+      "owner": "echo (agent)",
+      "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
+    }
+  ],
   "prerequisites": [
     {
       "rule": 1,

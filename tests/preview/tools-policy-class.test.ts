@@ -131,6 +131,10 @@ it('the class reads the effective checkpoints, not labels: a reopened read or a 
   for (const e of [undefined, egress]) {
     const settings = JSON.parse(subscriptionToolSettings({ ...turn, ...(e ? { egress: e } : {}) }, '/Users/p/home'));
     expect(claudeSettingsCheckpoints(JSON.stringify(settings), e)).toBeNull();
+    // A failed call ends in PostToolUseFailure alone: without this hook a sandbox refusal leaves no result (T2c).
+    expect(settings.hooks.PostToolUseFailure).toEqual(settings.hooks.PostToolUse);
+    const { PostToolUseFailure: _failure, ...withoutFailure } = settings.hooks;
+    expect(claudeSettingsCheckpoints(JSON.stringify({ ...settings, hooks: withoutFailure }), e)).toBe('the admission hook does not run on every PostToolUseFailure');
     const reopen = (allowRead: unknown) => JSON.stringify({ ...settings, sandbox: { ...settings.sandbox,
       filesystem: { ...settings.sandbox.filesystem, allowRead } } });
     // Astra's probe: the root denial stays, but its exception reopens everything (or the login home, the state, a denied root).

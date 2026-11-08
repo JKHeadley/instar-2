@@ -33,7 +33,7 @@ The journal runner's capability briefing is generated from these lines and the f
   Details: keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open. Scheduled work prepares the actual answer even when the earlier loop classification waits on the operator; delivery remains a separate, grant-checked step. An exact operator request to deliver the finished result authorizes a follow-up in its original chat and topic through the existing requested-action reply path. A promise or remembered date alone authorizes no initiated send. Completed reports retain their obligation and work-slot identity, bind once to a durable reply intent, and close only after every transport part has a receipt. Stops, caps, withdrawn requests and unadmitted audiences retain the result; unknown sends are never repeated. Cancellation uses the existing source-backed commitment closure. No new outbox or sender is introduced.
 - `preview.rolling-summary`: keeps a faithfulness-checked rolling summary of earlier turns.
   Details: a completed, reviewed prefix can commit during a later reply if its memory basis is unchanged. Exact facts beyond the 20-item structured list stay in the reviewed prose under the existing byte ceiling; pending dated decisions do not gate summary progress. Regression coverage: `proactive-compaction.test.ts` and `summary-item-overflow.test.ts`.
-- `preview.coherence-check`: checks each reply against remembered earlier turns without a model call.
+- `preview.coherence-check`: checks replies against remembered turns without a model call.
   Details: checks each reply against remembered earlier turns, without a model call, and records the findings.
 
 ## Prerequisites and exact invocation

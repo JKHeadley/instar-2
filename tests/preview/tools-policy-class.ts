@@ -102,7 +102,7 @@ export function claudeSettingsCheckpoints(json: string, egress: Readonly<{ port:
       return `the shell reads ${read}, outside its workspace and the reviewed runtime list`;
     if (protectedPaths.some(path => within(path, read))) return `the shell reads ${read}, which holds the login home, admission state or a denied root`;
   }
-  for (const [event, mode] of [['PreToolUse', 'pre'], ['PostToolUse', 'post'], ['SubagentStart', 'child-start'], ['SubagentStop', 'child-stop']]) {
+  for (const [event, mode] of [['PreToolUse', 'pre'], ['PostToolUse', 'post'], ['PostToolUseFailure', 'post'], ['SubagentStart', 'child-start'], ['SubagentStop', 'child-stop']]) {
     const entries = hooks[event as string];
     const command = `${PROBE.hook.node} ${PROBE.hook.script} ${mode} ${PROBE.stateDirectory}`;
     if (!Array.isArray(entries) || !entries.some(entry => record(entry).matcher === '*'

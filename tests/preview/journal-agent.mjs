@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import { createProductUpdater } from '../../scripts/update-product.mjs';
+import { observeUpdateBound } from '../../scripts/update-runner.mjs';
+import { initializeUpdateRuntime } from '../../scripts/update.mjs';
+import { observeUpdateBoot, drainUpdateRestart } from '../../scripts/update-runner.mjs';
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
 import { nextObligationAt } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
@@ -7,7 +11,7 @@ import { createWorkingActivities, readWorkingAdmission } from './working-activit
 import { AgentPathRefused, assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
 import { createAudienceTimingObserver, recordPhaseTiming } from './phase-timing.js';
-import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice } from './reply-check.js';
+import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice, reviewResultFailure } from './reply-check.js';
 import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin, observeInstalledSessionLogin } from './installed-harness-logins.mjs';
 import { loadHarnessLogins, harnessLoginPoolStatus, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
@@ -44,7 +48,7 @@ import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COV
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom,
   staleAgainst, updateDelivery, updatePacketItem } from './installation.js';
 import { currentActionFacts, bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, ModelNotStarted, createModelLaunchBoundary, capacityAlerts } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, replyCheckCauses, unavailableChecks, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, readSelfAccess, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
@@ -1190,7 +1194,7 @@ async function main() {
         failed: view.view.order.filter(t => t.checkFailed).length,
         pendingCorrections: view.view.corrections.length,
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
-      jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view), claimScopedWithholds: claimScopedWithholds(view.view), guidance: guidanceReport(view.view),
+      jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, replyCheckCauses: replyCheckCauses(view.view), operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view), claimScopedWithholds: claimScopedWithholds(view.view), guidance: guidanceReport(view.view),
         memoryLearning: memoryLearningReport(view.view, turn => operatorWriter(view.view, turn, true)),
       // Absolute times only: the ages are derivable and would make two reads of one journal differ.
       obligations: (({ oldestUnfinishedAgeMs: _age, progressAgeMs: _progress, ...health }) => health)(loopHealth(view.view, wallNow())),
@@ -1287,7 +1291,7 @@ async function main() {
             return { outcome: settled.kind === 'accepted' ? 'api-accepted' : !whole.started ? 'sending' : settled.kind === 'refused' ? 'send-refused' : 'send-unknown',
               ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}),
               ...(whole.of > 1 ? { parts: { of: whole.of, ...(settled.kind === 'accepted' ? {} : { stoppedAt: whole.part }) } } : {}) }; })(),
-          grounding: reply.grounding ?? null,
+          grounding: reply.grounding ?? null, unavailableChecks: unavailableChecks(reply),
           answerReason: reply.answerReason ?? null,
           retrospectiveGrade: (() => { const row = latestGrades(view.view).get(`answer:${reply.id}`);
             return row ? { pass: row.pass, conclusion: row.grade.conclusion, reason: row.grade.reason, outcome: row.grade.outcome,
@@ -1315,7 +1319,7 @@ async function main() {
         ...(next ? { next } : {}), withheld: withheldView(view.view),
         undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
           change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
-        jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view), claimScopedWithholds: claimScopedWithholds(view.view), guidance: guidanceReport(view.view),
+        jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, replyCheckCauses: replyCheckCauses(view.view), operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view), claimScopedWithholds: claimScopedWithholds(view.view), guidance: guidanceReport(view.view),
         memoryLearning: memoryLearningReport(view.view, turn => operatorWriter(view.view, turn, true)),
         lastReplyCheck: view.view.lastReplyCheck, lastReplyReview: lastReplyReview(view.view),
         ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}) })).text}\n`);
@@ -1519,11 +1523,15 @@ async function main() {
   // Service observation (design 18): whether this owner can serve right now, with the typed reason when not.
   // Rule 15 gap (a): the host supervisor's progress beat. Written each loop cycle (with the service beat) so a
   // runner that is alive but not progressing (stopped, wedged) is seen and relaunched. Liveness evidence only.
+  let updateEnabled = false, updateController = null;
+  try { await initializeUpdateRuntime(); updateEnabled = true; } catch { /* Update refusal cannot deny existing custody. */ }
+  const updateVersion = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
+  let updateIdle = () => false, updateVerifying = () => false, updateHealthy = false;
   let hostBeatSeq = 0;
   const hostBeat = () => {
     try {
       const temporary = join(root, `.runner-beat-${process.pid}.pending`);
-      writeFileSync(temporary, JSON.stringify({ v: 1, pid: process.pid, seq: ++hostBeatSeq }), { mode: 0o600 });
+      writeFileSync(temporary, JSON.stringify({ v: 1, pid: process.pid, seq: ++hostBeatSeq, update: { version: updateVersion, launch: String(launchedAt), idle: updateIdle(), verifying: updateVerifying(), healthy: updateHealthy } }), { mode: 0o600 });
       renameSync(temporary, join(root, 'runner-beat.json'));
     } catch { /* a lost beat only makes the supervisor's judgement more conservative */ }
   };
@@ -1948,9 +1956,11 @@ async function main() {
     };
     const callJev = async (judgment, state, questions, timeoutMs = 2000, occurrence, admission) => {
       const admit = async () => {
-        await requireGroupDisclosure(journal.view);
-        assertLiveJudgment(judgment, 'typesafe-jev');
-        if (shared !== null && !await peerHolds()) throw Error('preview: Jev unavailable');
+        try {
+          await requireGroupDisclosure(journal.view);
+          assertLiveJudgment(judgment, 'typesafe-jev');
+          if (shared !== null && !await peerHolds()) throw Error('preview: Jev unavailable');
+        } catch (error) { throw Object.assign(error, { causeDetail: 'admission' }); }
       };
       const replyCheck = judgment === 'jev-reply-check';
       // Admission is separately bounded across the worker and host checkpoints.
@@ -2020,7 +2030,7 @@ async function main() {
       const policy = doorway.policyFor(required(options, 'model'),
         toolTurn ? doorway.toolsFraming ?? doorway.conversationFraming : doorway.conversationFraming);
       const deadline = Math.min(journal.view.expires, deadlineAt ?? wallNow() + policy.timeout + 60000);
-      if (deadline - wallNow() <= 100) throw Error('preview: reply check budget exceeded');
+      if (deadline - wallNow() <= 100) throw Object.assign(Error('preview: reply check budget exceeded'), { reviewCause: 'timeout', causeDetail: 'budget' });
       const result = await callSubscription(judgmentOf(id), prepared, id, { operation: id, deadline,
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
         maxCharge: 0, automaticRetries: 0 }, toolTurn, selectedLogin);
@@ -2028,8 +2038,9 @@ async function main() {
         diagnostics: replyReviewDiagnostics(result.usage),
         ...(result.usage ? { usage: recordedUsage(result.usage) } : {}), at: wallNow() });
 
-      if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage };
-      if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage,
+      const providerFailure = result.failure ? { providerFailure: result.failure.failureClass } : {};
+      if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage, ...providerFailure };
+      if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage, ...providerFailure,
         ...(result.failure?.failureClass === 'limit' && result.usage?.inputTokens === 0 && result.usage.inputComplete === true
           && result.usage.outputTokens === 0 && result.usage.charge === null
           ? { capacity: { resetHint: result.failure.resetHint, resetAt: result.failure.resetAt } } : {}) };
@@ -2323,7 +2334,7 @@ async function main() {
             if (result.defect) reviewDefects.set(operationId, result.defect);
             throw Error(REVIEW_MALFORMED);
           }
-          if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
+          if (result.state !== 'complete' || result.failureClass) throw reviewResultFailure(result);
           // The reply verdict is one exact line per selected rule (rule_id: PASS | reason); the whole-line
           // pattern admits no surrounding text, so a written rejection can never be discarded around it.
           let parsed;
@@ -2948,6 +2959,7 @@ async function main() {
     proofRecords = readProofs(proofsPath).proofs;
     const supervisors = { replyReview: true, summaryReview: true, stepCheck: stepCheckEnabled };
     proofPorts = { now: wallNow, liveView: () => journal.view, boundBot: Number(g.bot), supervisors, storeAgreements,
+      updateBound: () => observeUpdateBound(root, updateController, hostResources.snapshot()),
       durableView: () => { const copy = openJournal(journalPath, key(), undefined, undefined, true); try { return copy.view; } finally { copy.close(); } },
       botIdentity: () => {
         try {
@@ -3006,7 +3018,7 @@ async function main() {
     // result. A sustained conflict or refusal ends the run; a sustained outage keeps the poll breaker open at the capped
     // trial cadence while due work goes on (waitWorking).
     const pollFailure = async (conflict, unreachable = false) => {
-      failedPolls++; routeHealthy = false;
+      failedPolls++; routeHealthy = false; updateHealthy = false;
       conflictedPolls = conflict ? conflictedPolls + 1 : 0;
       try { appendRun(runsPath, { v: 1, launch: launchedAt, poll: conflict ? 'conflicted' : 'failed', at: wallNow() }); }
       catch { endReason = 'run log unavailable'; process.exitCode = 1; return false; }
@@ -3129,6 +3141,17 @@ async function main() {
         || !ownerHeld() || !activationMatchesJournal(journal.view, activation) ? null : nextObligationAt(journal.view),
       after: (ms, fire) => { const timer = setTimeout(fire, ms); timer.unref(); return () => clearTimeout(timer); },
       wake: () => workCycle(false, true) });
+    updateVerifying = () => Boolean(stepJob || replyReviewJob || retroJob || summaryJob);
+    updateIdle = () => lane.admissible() && !summaryJob && !stepJob && !retroJob && !replyReviewJob
+      && Object.keys(journal.view.activeSessionWork ?? {}).length === 0;
+    if (updateEnabled) {
+      try {
+        updateController = createProductUpdater(root, { runningVersion: () => updateVersion,
+          stopped: () => signalled || workerStop.value || existsSync(stopPath) || Boolean(journal.view.stop)
+            || wallNow() >= journal.view.expires || !ownerHeld(),
+          readiness: () => ({ idle: updateHealthy && updateIdle(), verifying: updateVerifying() }) });
+      } catch { /* Preserve corrupt optional update state; serving remains available. */ }
+    }
     dueWake.refresh();
     // Plan #548, the desk's live check only: with --telegram-cut-file, while that file holds a future epoch-ms every
     // poll fails as an unreachable connection without a network call. Never passed to the operator's runner.
@@ -3140,6 +3163,14 @@ async function main() {
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
+      // Recheck inside the runner, not from a stale supervisor beat. No await between
+      // observing idle and leaving the poll loop; its ordinary shutdown drains remaining work.
+      try {
+        if (drainUpdateRestart(root, { version: updateVersion, launch: String(launchedAt), idle: updateIdle(),
+          stopped: signalled || workerStop.value || existsSync(stopPath) || Boolean(journal.view.stop) })) {
+          endReason = 'installed update restart drained'; break;
+        }
+      } catch { /* Preserve malformed/busy update state; continue serving. */ }
       // Attempting another poll is not restoration: while a poll-failure episode is open the owner stays
       // non-servable with its typed reason; only a successful poll (below) restores service.
       const unrestored = failedPolls > 0 || conflictedPolls > 0;
@@ -3206,7 +3237,9 @@ async function main() {
       // A successful poll is the restoration evidence that closes the episode, recorded before it is relied on.
       if (failedPolls || conflictedPolls) appendRun(runsPath, { v: 1, launch: launchedAt, poll: 'restored', at: wallNow() });
       if (failedPolls || conflictedPolls) serviceBeat(!journal.view.stop && wallNow() < journal.view.expires, 'poll restored');
-      failedPolls = 0; conflictedPolls = 0; routeHealthy = true;
+      failedPolls = 0; conflictedPolls = 0; routeHealthy = true; updateHealthy = !ended();
+      try { updateController?.start(); updateController?.updater.recheckRestartHolds(); observeUpdateBoot(root, { version: updateVersion, launch: String(launchedAt), healthy: !ended() }); }
+      catch { /* The pending handshake remains unverified; a later poll can retry. */ }
       // Updates this journal already recorded come back until the shared cursor passes them; only the new ones are taken.
       const batch = shared ? updates.result.filter(update => !(update?.update_id < journal.view.cursor)) : updates.result;
       if (!await untilStopped(() => worker.intake(batch), ended)) break;
@@ -3313,6 +3346,7 @@ async function main() {
     reportExit(`paused by signal ${signalName}`);
   }
   finally {
+    updateController?.stop();
     dueWake?.close();
     try {
       // Rules 2, 42: a launch refused before it launched is still a launch with a recorded end. The
@@ -3342,7 +3376,7 @@ async function main() {
           // operator need a live runner as much as due or scheduled work does.
           const remaining = health ? health.ownedWork : 0;
           // Two machines: an owner that ends (its cycle limit, a lost lease) is wanted back as the standby and the peer copy.
-          if (health) end = { unfinished: health.unfinished, revival: remaining === 0 && !multi ? 'none' : inhibited ? 'inhibited' : 'queued',
+          if (health) end = { unfinished: health.unfinished, revival: endReason === 'installed update restart drained' && !inhibited ? 'queued' : remaining === 0 && !multi ? 'none' : inhibited ? 'inhibited' : 'queued',
             ...(health.nextWorkAt === null ? {} : { nextWorkAt: health.nextWorkAt }),
             // Rule 33: the exact journal frontier this claim describes.
             frontier: projectionDigest(journal.view) };

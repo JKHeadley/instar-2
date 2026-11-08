@@ -57,7 +57,7 @@
 //
 // Waste and repair facts for each launch travel with its result (`resources`), and
 // the journal's call-outcome row keeps them durably; `outcomes` here is a bounded view.
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { arch, cpus, hostname, platform } from 'node:os';
@@ -112,6 +112,19 @@ const LIMIT_SCRIPT = [
   'if [ -n "$1" ]; then lim -n "$1"; fi; if [ -n "$2" ]; then lim -t "$2"; fi; if [ -n "$3" ]; then lim -u "$3"; fi',
   'u=; for v in $4; do u="$u -u $v"; done; shift 5',
   'exec /usr/bin/env $u "$@"'].join('\n');
+
+// POSIX does not require `ulimit -u` and dash refuses it, so on a Debian-family host /bin/sh cannot hold
+// the process limit. The shim runs under the first shell here that can; with none, /bin/sh refuses the
+// launch (exit 125) rather than run it without its limit.
+const LIMIT_SHELLS = Object.freeze(['/bin/sh', '/bin/bash']);
+export const selectLimitShell = (candidates = LIMIT_SHELLS) => candidates.find(shell =>
+  spawnSync(shell, ['-c', 'ulimit -S -u; ulimit -H -u'], { stdio: 'ignore', timeout: 5000, env: { PATH: '/usr/bin:/bin' } }).status === 0);
+let limitShellChoice;
+/** A failed probe is not remembered: a host under load may answer the next launch. */
+export const limitShell = () => (limitShellChoice ??= selectLimitShell()) ?? LIMIT_SHELLS[0];
+/** The kernel counts threads against this limit on Linux and processes on macOS, where `ps -L` means something else. */
+export const userTaskQuery = (uid, platform = process.platform) => platform === 'linux'
+  ? ['-U', String(uid), '-L', '-o', 'lwp='] : ['-U', String(uid), '-o', 'pid='];
 
 /** The same shim as a file, for a caller whose first argument is a fixed label (the Telegram bridge keeps
  * its request at argv[1]): the file drops the label, then runs LIMIT_SCRIPT unchanged. */
@@ -628,12 +641,12 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     const text = await query('/bin/ps', ['-o', 'lstart=', '-p', String(pid)]);
     return text === null ? UNKNOWN : startIdentity(text) || null;
   }
-  /** The kernel process limit of the user ID: its current process count plus the launch ceiling.
+  /** The kernel process limit of the user ID: its current count of what the kernel counts, plus the launch ceiling.
    * Its subject is the user ID (every process of that user counts), never the launched tree. */
   async function processLimit() {
     const uid = typeof process.getuid === 'function' ? process.getuid() : null;
     if (uid === null || uid === 0) return { state: 'unavailable', subject: null, limit: null };
-    const listed = pids(await query('/bin/ps', ['-U', String(uid), '-o', 'pid=']));
+    const listed = pids(await query('/bin/ps', userTaskQuery(uid)));
     return listed === null || listed.length === 0 ? { state: 'unavailable', subject: null, limit: null }
       : { state: 'hard', subject: `uid:${uid}`, limit: listed.length + ceilings.launch.processCount };
   }
@@ -720,7 +733,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     return new Promise(resolve => {
       let child;
       try {
-        child = spawn('/bin/sh', limitedArgv({ executable: input.executable, args: input.args, handles, cpuSeconds,
+        child = spawn(ports.shell ?? limitShell(), limitedArgv({ executable: input.executable, args: input.args, handles, cpuSeconds,
           processLimit: limitValue, env: input.env, gated: true }), {
           cwd: input.cwd, env: { ...input.env, __CF_USER_TEXT_ENCODING: undefined, NODE_V8_COVERAGE: undefined },
           shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });
@@ -917,7 +930,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     }
   }
   async function observeInherited() {
-    const text = await query('/bin/sh', ['-c', 'ulimit -S -n; ulimit -H -n; ulimit -S -t; ulimit -H -t; ulimit -S -u; ulimit -H -u']);
+    const text = await query(ports.shell ?? limitShell(), ['-c', 'ulimit -S -n; ulimit -H -n; ulimit -S -t; ulimit -H -t; ulimit -S -u; ulimit -H -u']);
     const values = text?.trim().split('\n').map(v => v.trim() === 'unlimited' ? 'unlimited' : Number(v));
     if (!values || values.length !== 6 || values.some(v => v !== 'unlimited' && !Number.isSafeInteger(v))) {
       inherited = { state: 'unknown' }; return inherited;
@@ -946,7 +959,8 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       ports = { compare: options.compare ?? plainCompare, priorityGate: options.priorityGate ?? null,
         reconcile: options.reconcile ?? null, now: options.now ?? (() => Date.now()), query: options.query ?? hostQuery,
         monotonic: options.monotonic ?? (() => performance.now()),
-        signal: options.signal ?? ((target, name) => process.kill(target, name)), allocation: options.allocation ?? null };
+        signal: options.signal ?? ((target, name) => process.kill(target, name)), allocation: options.allocation ?? null,
+        shell: options.shell ?? null };
       // A durable owner launches only through its Six allocation (SEAM-LEDGER row 36).
       if (options.ledgerPath && !options.allocation) throw Error('resource owner: a durable owner needs its Six resource allocation');
       // A desk-controlled low-ceiling case: the aggregate memory ceiling may be lowered, never raised.

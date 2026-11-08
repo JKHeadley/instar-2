@@ -318,7 +318,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     // holds still bind, and ordinary authority/stop admission is always rechecked.
     if (usable) return admitted(entries[current], tools, requireRoom);
     if (requireRoom) return null;
-    fail('has no reviewed login with available capacity');
+    throw Object.assign(Error('preview: harness login pool has no reviewed login with available capacity'), { reviewCause: 'no-account' });
   };
   return Object.freeze({
     select,
@@ -372,9 +372,9 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       const reset = result.failure.resetAt;
       hold(entry, { reason: 'provider-limit', observedAt: now(), resetAt: Number.isSafeInteger(reset) && reset > now() ? reset : null });
     },
+    // stale-login-line-1107: a successful switch adds no line to a reply (Rules 87/88): it needs no operator action
+    // and is not the task's result. The switch stays in durable history and on the status pull surface.
     notices: () => [
-      ...state.switches.filter(event => event.reason !== 'member-unavailable').map(event => ({ key: `doorway:harness-login:${state.noticeIdentity ?? identity}:${event.sequence}`,
-        line: `The model login reached its ${event.reason === 'usage-threshold' ? 'configured usage threshold' : 'usage limit'}. I switched to the next approved login for this runner.` })),
       ...(state.exclusions ?? []).map(({ index }) => ({ key: `doorway:harness-login:${identity}:unavailable:${index}`,
         line: `Approved model login ${index + 1} was unavailable and was removed from selection. See status for current login availability.` })),
     ],

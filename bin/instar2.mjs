@@ -3,6 +3,7 @@ import { register } from 'node:module';
 import { createInterface } from 'node:readline';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { updateRoot } from '../scripts/update.mjs';
 const [command, root = join(homedir(), '.instar2'), ...extra] = process.argv.slice(2);
 if (command === 'prepare-login') {
   const { prepareLogin, LoginPreparationRefused } = await import('../scripts/login-preparation.mjs');
@@ -38,7 +39,6 @@ if (command === 'prepare-login') {
   } catch { process.stderr.write('MCP setup refused; existing configuration retained. Details suppressed.\n'); process.exitCode = 1; }
 } else if (command === 'update') {
   try {
-    const { updateRoot } = await import('../scripts/update.mjs');
     let directory = root, release;
     if (root === '--release' && extra.length === 1) { directory = join(homedir(), '.instar2'); release = extra[0]; }
     else if (extra.length === 2 && extra[0] === '--release') release = extra[1];
