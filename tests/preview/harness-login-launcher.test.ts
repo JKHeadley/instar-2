@@ -6,14 +6,15 @@ import { runChild } from '../e2e/async-child.js';
 import { cpSync, existsSync, readFileSync, renameSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { successiveWorld, offlineProfile, offlineActivationAuthority, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
+import { successiveWorld, offlineProfile, offlineActivationAuthority, offlineOperatorMessage, writeOperatorRecords, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
+import { authoritySealKey, sealAuthorityRecord, singleMachineProfileDigest, SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { encoded } from './stage2-provider.js';
 import { CREDENTIAL_SHAPE_NOTICE, MODEL_FAILURE_REPLY, MODEL_NOT_STARTED_REPLY, openPreviewJournal } from './journal.js';
 import { harnessLoginPath, storeHarnessLogin } from './harness-user.mjs';
 
 // Two installations, run, status and withdrawal each retain their 30s child ceiling.
 // Leave room for all five and cleanup; awaited children keep worker IPC responsive.
-it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', 'imported', 'missing-custody', 'missing-custody-secret', 'intact-custody-secret', 'renamed', 'copied', 'lost-build', 'signed-out', 'refused-token'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
+it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', 'imported', 'missing-custody', 'missing-custody-secret', 'intact-custody-secret', 'renamed', 'copied', 'lost-build', 'signed-out', 'signed-out-unaccepted', 'refused-token'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
   const world = successiveWorld(), directory = world.directory;
   let root = join(directory, 'pool-runner');
   const absolute = relative => pathToFileURL(join(process.cwd(), relative)).href;
@@ -24,7 +25,11 @@ it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', '
   const encodedPrimary = Buffer.from('sk-ant-oat01-synthetic-serving-a-only').toString('base64');
   const missing = mode === 'missing-profile' || custodyCase;
   // The first login's own CLI login check reports it signed out (1.x QuotaPoller needs-reauth evidence).
-  const signedOut = mode === 'signed-out' || mode === 'refused-token';
+  const signedOut = mode.startsWith('signed-out') || mode === 'refused-token';
+  // The plain not-started line is a reserve (limited) answer: on one machine it speaks only under the operator's
+  // accepted P-08 single-machine policy, as every live proof room records. Without it the turn is kept and the
+  // outage is owned on the status surface (minimal-path-live.test.ts); this variant proves that side here.
+  const unaccepted = mode === 'signed-out-unaccepted';
   // A handed-over token the provider refuses: status still says signed in; the model frame is the genuine 401.
   const refusedToken = mode === 'refused-token';
   const pooled = mode !== 'legacy', automatic = custodyCase || ['installed', 'fresh', 'missing', 'missing-profile', 'imported', 'renamed', 'copied', 'lost-build'].includes(mode);
@@ -45,6 +50,18 @@ it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', '
     }
     return row;
   });
+  if (signedOut && !unaccepted) {
+    // The desk's recorded step, as in minimal-path-live.test.ts: the acceptance message and the sealed policy.
+    const words = 'I accept the single-machine profile and its loss model for this preview.', activation = JSON.parse(readFileSync(logins[0].activation, 'utf8'));
+    const accepted = offlineOperatorMessage(1, 3, words);
+    writeOperatorRecords(join(directory, 'operator-records'), [offlineOperatorMessage(1, 1, 'offline approval stand-in'),
+      offlineOperatorMessage(1, 2, 'offline waiver stand-in'), accepted]);
+    const { seal: _seal, ...body } = JSON.parse(readFileSync(logins[0].authority, 'utf8'));
+    writeFileSync(logins[0].authority, JSON.stringify(sealAuthorityRecord({ ...body, installationPolicies: [{ id: 'p08-single-machine', policy: 'P-08',
+      shape: 'single-machine', grantor: String(world.configuration.operatorSenderId), words, source: { kind: 'telegram-message', topicId: 1, messageId: 3 },
+      acceptedAt: Date.parse(accepted.message.timestamp), subject: { trial: activation.trial, profile: SINGLE_MACHINE_PROFILE.id, profileDigest: singleMachineProfileDigest() } }] },
+    authoritySealKey(OFFLINE_STORAGE_KEY))));
+  }
   const manifest = join(directory, 'pool.json'); writeFileSync(manifest, JSON.stringify({ version: 1, logins }));
   const quota = join(directory, 'quota.mjs');
   writeFileSync(quota, `export const createClaudePoolQuota = () => ({ refresh: async () => {}, read: () => ({version:1, accounts:[]}) });`);
@@ -222,7 +239,16 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       // and every later turn is answered on the second approved login without a restart.
       expect(failed).toHaveLength(1); expect(failed[0].update).toBe(1); expect(failed[0].modelState).toBeUndefined();
       expect(failed[0].answer).toBeUndefined();
-      expect(sends.filter(row => row.text.includes(MODEL_NOT_STARTED_REPLY))).toHaveLength(1);
+      if (unaccepted) {
+        // No accepted policy: nothing is sent for it, the message is kept, and the missing policy is owned and visible.
+        expect(sends.filter(row => row.text.includes(MODEL_NOT_STARTED_REPLY))).toHaveLength(0);
+        expect(failed[0].minimalOutage?.missing).toEqual(['installation-policy']);
+        expect(first.stderr).toContain('limited answers past a cap are inhibited');
+      } else {
+        expect(first.stderr).not.toContain('inhibited');
+        expect(sends.filter(row => row.text.includes(MODEL_NOT_STARTED_REPLY))).toHaveLength(1);
+        expect(failed[0].limited).toBeDefined(); expect(failed[0].minimalOutage).toBeUndefined();
+      }
       expect(completed.map(turn => turn.update)).toEqual([2, 3]);
     } else { expect(failed).toHaveLength(0); expect(completed).toHaveLength(3); }
     journal.close();
