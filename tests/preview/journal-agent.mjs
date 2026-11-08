@@ -645,7 +645,8 @@ const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';
 /** Plan #507, the same declaration one layer deeper: is this task's ANSWER itself a JSON object? The three summary-side
  * calls are -- the rolling summary (`summary:<through>`, whose object carries the memory decision and the reminder
  * withdrawal), its review (`summary:<through>:review`, {verdict, reason}) and the meaning index
- * (`summary:index:<n>`, {concepts}) -- and each of their consumers parses the answer as JSON. For them the runner
+ * (`summary:index:<n>`, {concepts}) -- and each of their consumers parses the answer as JSON. So is Rule 121's
+ * attribution check (`<id>:attribution-check`, {claims}; attribution.ts). For them the runner
  * serializes the object, never the model (answer-reading.ts). Every other call's answer is prose or the conversation
  * protocol's own flat fields. Nothing branches on what the text means, only on which consumer asked. */
 const objectAnswerOf = id => /^summary:/u.test(id) || id.endsWith(':attribution-check');
