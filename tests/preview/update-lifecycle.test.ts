@@ -39,9 +39,13 @@ it.skipIf(!processLimitAvailable)('real installer, idle drain, watchdog recreati
   writeFileSync(join(commands, 'git'), `#!/bin/sh\nif [ "$1" = ls-remote ]; then printf 'fixture\\trefs/tags/v'; cat ${quote(selected)}; printf '\\n'; else exec ${quote(git)} "$@"; fi\n`);
   // The shipped installer has a fixed argument vector; refuse drift in this fixture
   // instead of accidentally running its GitHub source over the network.
-  writeFileSync(join(commands, 'npm'), `#!/bin/sh\n[ "$1" = install ] && [ "$2" = --prefix ] && [ "$8" = -- ] || exit 90\nexec ${quote(npm)} install --prefix "$3" --ignore-scripts --no-audit --no-fund --install-links -- ${quote('file:' + source)}\n`);
+  // While the real install runs, the endpoint holds each empty poll its full 5 s instead of 1 s, so the
+  // agent's fixed cycle count outlasts an install slowed by a loaded host (m5pro 2026-11-08: the cycles ran
+  // out first and no update was ever requested) without lengthening the rest of the run.
+  const installing = join(world.directory, 'installing');
+  writeFileSync(join(commands, 'npm'), `#!/bin/sh\n[ "$1" = install ] && [ "$2" = --prefix ] && [ "$8" = -- ] || exit 90\n: > ${quote(installing)}\n${quote(npm)} install --prefix "$3" --ignore-scripts --no-audit --no-fund --install-links -- ${quote('file:' + source)}\nstatus=$?\n/bin/rm -f ${quote(installing)}\nexit $status\n`);
   chmodSync(join(commands, 'git'), 0o700); chmodSync(join(commands, 'npm'), 0o700);
-  const endpoint = spawn(process.execPath, [resolve('tests/preview/journal-poll-endpoint.mjs'), log, updates, '-', 'long-poll'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const endpoint = spawn(process.execPath, [resolve('tests/preview/journal-poll-endpoint.mjs'), log, updates, '-', 'long-poll', '', '0', installing], { stdio: ['ignore', 'pipe', 'pipe'] });
   try {
     const port = await new Promise((resolvePort, reject) => {
       endpoint.stdout.once('data', data => resolvePort(Number(String(data).trim()))); endpoint.once('error', reject);
@@ -58,11 +62,11 @@ it.skipIf(!processLimitAvailable)('real installer, idle drain, watchdog recreati
         '--grant-reference', trial.id, '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
         '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),
         '--login-profile', profile, '--model', world.model, '--bot-username', world.configuration.botUsername,
-        '--max-cycles', '35', '--max-poll-seconds', '1'] };
+        '--max-cycles', '35', '--max-poll-seconds', '5'] };
     const configPath = join(world.directory, 'watch.json'); writeFileSync(configPath, JSON.stringify(config));
     const authorityBefore = readFileSync(activation, 'utf8');
     const run = () => spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'scripts/host-watch.mjs', configPath],
-      { cwd: process.cwd(), encoding: 'utf8', timeout: 100000, maxBuffer: 1024 * 1024, env });
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 200000, maxBuffer: 1024 * 1024, env });
     const first = run();
     expect(first.status, first.stderr + first.stdout).toBe(0);
     const state = () => JSON.parse(readFileSync(join(root, 'update-state.json'), 'utf8'));
@@ -87,4 +91,4 @@ it.skipIf(!processLimitAvailable)('real installer, idle drain, watchdog recreati
     const after = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
     try { expect(after.view.calls).toBe(0); expect(after.view.replies).toBe(0); } finally { after.close(); }
   } finally { endpoint.kill('SIGTERM'); }
-}, 220000);
+}, 450000);
