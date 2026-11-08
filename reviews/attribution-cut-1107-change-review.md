@@ -1,0 +1,47 @@
+# Change review — Rule 121 first part: the note-write attribution check
+
+Subject base: 3ad4ec04e38b820c2e715c02fe73df9c1028abf3
+Review state: open
+Reviewed content: none
+Outcome: A statement credited to a person is checked before a note file changes. Code proves the marker, the logged record, its date and the quoted words; one recorded model judgment decides whether the text is a credit and whether the line claims more than the words. Under --attribution enforce a refused note is not written and the agent is told the honest way to write it; under record the verdict is only recorded. Off unless launched with the option. This is the write half of attribution-rule121-1106 (origin/train-202 979a1282), cut to 330 product lines from 640; the send check, long-note chunking and the trail reads are owed in docs/defects/attribution-rule121-owed-parts.md.
+Affected rules: Rule 121 (the subject: a credit in a note carries a pointer to a logged message and the person's words, checked when written; without one the agent is told to say "source unknown" or own it; the send-time half is owed and named); 4 and 86 (exact facts are code, the reading is a model judgment, never a script); 41, 58 and 95 (the judgment is a registered live judgment recorded as a review call; no answer, an unreadable or partial answer, the call cap or a long note are recorded unchecked, never a pass, and the note is written: fail-open on reachability, as the reply review); 39 and 60 (sources are looked up only inside one check's bound, and one note costs at most one call); 116 (the reviewed 1.x-derived code is carried, not rebuilt; the cut removes machinery, it adds none); 118 and 122 (one subscription call, no other service); 71 (the owed parts are an OPEN tracked record); 74 (this record); 101 (plain git commit, no bypass flag, no stash).
+Affected floors: secrets — unchanged, the judge call goes through the same model envelope and doorway as a reply review; spend cap — each judge call is reserved against maxCalls before dispatch, the same note text is never judged twice, and past the cap the note is recorded unchecked with no call; stop — halted() and gate() are checked before the reservation; no duplicate sends — the send path is untouched, and a crash after the reservation leaves the row unchecked so the paid call is never replayed; durable intake — unchanged
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Takes the suggested tier; it adds a wait on the note-writing tool hook, though only when launched with the option.
+Side effects: With the option on, a note write the prefilter flags waits for one model call, bounded at 45 s (measured median about 3 s on Claude and 7 s on Codex in the source unit). Two new journal row kinds, attribution-reserve and attribution-check, and one new registered live judgment, attribution-check. With the option off, no behaviour changes.
+Undo and recovery: Launch without --attribution. Reverting leaves attribution rows a previous build does not know, so revert only a journal that never ran with the option; otherwise relaunch without it.
+Multi-machine posture: Machine-local to the journal-owning host. Rows are journal rows and replicate as every row does; the journal is the log, so no peer lookup is needed.
+Layer below: 1.x first: JKHeadley/instar docs/specs/attribution-paper-trail.md and src/core/attribution/AttributionJudge.ts (read by the source unit at c3529b2f7b49 and main 5118466c2: extract, support, chunkForJudge); the 2.0 port is attribution-rule121-1106 at 979a12822 and its three records (change-review, review-repair, round2-repair). Reused unchanged from it: parseMarker, normalizeWords, markerFacts' exact refusals, worthJudging, ATTRIBUTION_QUESTION (byte-identical, attribution-judge-2.0-v2), parseAttributionAnswer with the 1.x support validation, decideAttribution, attributionReason, attributionSource, the reserve/check journal rows and their call-outcome binding, the admission gate's attribution ask and the hook's noteText with prose-only patch targets. Mismatch, not taken: chunking and the send path (owed, named below).
+Bug class: integration
+Bug evidence: reproducer=tests/preview/attribution.test.ts
+Hook bypass: none
+Convergence: none
+<!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
+Decision: cut-write-first | Keep the note-write check and defer the send check: the 1.x incident was a note, the write check stands alone at the hook, and the send path needs the pre-send review order unit (df616f840) that live train-209 does not hold. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/attribution-cut-1107-PROGRESS.md
+Decision: cut-long-unchecked | A note over one check's bound is recorded unchecked with no call instead of chunked, keeping its exact refusals inside the bound; never judged on a part, never silently dropped. Chunking is owed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/attribution-cut-1107-PROGRESS.md
+Decision: cut-r105-desk | The native macOS self-host conformance certificate no longer matches the composition (tool-admission-hook.mjs changed); left for the desk's contract run as the charter's second exception says, no declaration changed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/attribution-cut-1107-PROGRESS.md
+Prompt review: One new question carried byte-identical from the source unit, ATTRIBUTION_QUESTION (attribution-judge-2.0-v2). The packet drops the send-only conversation field; on the write surface the source unit never sent it. Replayed read-only: all 534 recorded r3 real-model rows (r3-claude.jsonl and r3-codex.jsonl in lanes/attribution-2-0-replay, 218 model answers each, 237 write and 30 send rows each) give the same verdict and reasons through this tree's parser and decision as recorded, and none becomes unchecked. No existing prompt, parser or question changed.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing fixed wording in journal.ts, unchanged by this change; the file is in the subject only for the attribution wiring.
+Prompt finding: 849db3a6296a | protocol-literal | Existing fixed wording in journal.ts, unchanged by this change; the file is in the subject only for the attribution wiring.
+Prompt finding: 85544c20941f | protocol-literal | Existing fixed wording in journal.ts, unchanged by this change; the file is in the subject only for the attribution wiring.
+Prompt finding: 9f0106c66027 | protocol-literal | Existing fixed wording in journal.ts, unchanged by this change; the file is in the subject only for the attribution wiring.
+Prompt finding: bac6ce7485d9 | protocol-literal | Existing fixed wording in journal.ts, unchanged by this change; the file is in the subject only for the attribution wiring.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing fixed wording in journal.ts, unchanged by this change; the file is in the subject only for the attribution wiring.
+Deferral: tests/preview/attribution.ts:7 | commitment=docs/defects/attribution-rule121-owed-parts.md
+Residue: attr-send-owed | high | the send-time check (Rule 121's "again when it is cited or enforced") is not built here; owed part 1 of docs/defects/attribution-rule121-owed-parts.md.
+Residue: attr-long-note-owed | medium | a note over 16,384 characters is recorded unchecked unless an exact fact inside the bound refuses it; owed part 2.
+Residue: attr-trail-owed | low | the trace and record-period reads are not built; the rows they need are recorded; owed part 3.
+Residue: attr-write-gaps | medium | shell-written notes, tool turns with no checkpoint and the rolling summary are not checked; owed part 4.
+Residue: attr-live-proof-owed | high | no real-route Telegram proof, refusal, record period or timeout rate yet; owed part 5.
+
+Subject (13 paths): docs/defects/attribution-rule121-owed-parts.md, reviews/attribution-cut-1107-change-review.md, tests/preview/admission-gate.mjs, tests/preview/attribution.test.ts, tests/preview/attribution.ts, tests/preview/call-diagnostics.mjs, tests/preview/capabilities.ts, tests/preview/journal-agent.mjs, tests/preview/journal.ts, tests/preview/model-call-boundary.test.ts, tests/preview/model-call-boundary.ts, tests/preview/tool-admission-hook.mjs, tests/preview/tool-admission.mjs
+
+Verification: Focused suites pass on this tree: attribution (42), admission-gate, call-diagnostics, capabilities, model-call-boundary, tool-admission, fail-direction-agreement, permission-prompt, held-egress, session-admission, tool-paths, tool-persist, journal, journal-agent, owner-browser-gate, mcp-passthrough (331 tests). The full suite was not run here.
+
+## Closing block
+
+simplestRobustRoute: The write half of the reviewed unit, unchanged in logic: exact facts by code, one recorded judgment, at the existing admission hook, with the existing journal reservation; no new service, gate or classifier. Smaller than that would be exact facts without the judgment, which cannot catch the 1.x incident: a credit with no marker at all.
+80/20: The note-write check is built and replayed on the recorded real answers; the send check, chunking, trail reads, other write routes and live proof are named and owned, not built.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

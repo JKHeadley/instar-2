@@ -51,7 +51,20 @@ const currentChannelNote = (text: string) => compactRecordedNote(text.replace(re
   .replace('generates the register, rule book, glossary and this briefing from the declarations in code.',
     'generates the register, rule book, glossary and this briefing from declarations.')
   .replace('checks each reply against remembered earlier turns without a model call.',
-    'checks replies against remembered turns without a model call.');
+    'checks replies against remembered turns without a model call.')
+  // Declared by train-213: the attribution check joins the internal list, and six internal lines shorten to keep the unchanged floor.
+  .replace('saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.',
+    'saves inbound Telegram files under bounded admission; refusals keep their message.')
+  .replace('binds supported harnesses and doorways to certified code; others are marked unproven.',
+    'binds each harness and model doorway to certified code; the rest are unproven.')
+  .replace('captures every inbound message before work; an uncertain arrival is kept.',
+    'captures every inbound message before work; uncertain ones are kept.')
+  .replace('- checks replies against remembered turns without a model call.',
+    '- with --attribution, checks quotes credited in notes.\n- checks replies against remembered turns; no model call.')
+  .replace('keeps a faithfulness-checked rolling summary of earlier turns.',
+    'keeps a faithfulness-checked summary of earlier turns.')
+  .replace('generates the register, rule book, glossary and this briefing from declarations.',
+    'generates the register, rules, glossary and this briefing from declarations.');
 const renderedNote = (text: string) => currentChannelNote(text).replace(`- ${toolsBriefing(0)}`, CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
   .replace(` ${SIGN_OFF}`, '');
 const currentNote = (text: string) => renderedNote(text

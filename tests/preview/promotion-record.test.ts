@@ -11,30 +11,40 @@ const deadline = (fields: Partial<Extract<PromotionEntry, { decision: 'new-deadl
   ({ capability: 'preview.x', decision: 'new-deadline', deadline: AT + 1, reason: 'r', owner: 'o', rollback: 'b', recordedAt: AT, by: 'desk', ...fields });
 
 describe('the promotion record', () => {
+  it('dates the attribution check\'s graduation with its owner, measurable conditions and transition (Rules 72, 73)', () => {
+    const attribution = promotionOf(PROMOTION_RECORD, 'preview.attribution-check');
+    expect(attribution.deadline).toMatchObject({ deadline: Date.UTC(2026, 10, 21) });
+    expect(attribution.deadline!.owner).toMatch(/^Echo: /u);
+    expect(attribution.deadline!.reason).toMatch(/at least 7 consecutive days.*at least 20 checked note writes.*at most 10%.*zero refusals/su);
+    expect(attribution.deadline!.owner).toMatch(/default.*user-preference decision/su);
+    expect(attribution.retired).toBeNull();
+    expect(attribution.stages).toEqual({ 'test-agent': null, 'development-agent': null, fleet: null });
+  });
   it('the committed record is well formed and ends step-check with its retirement, keeping every earlier deadline', () => {
     expect(promotionRecordFindings(PROMOTION_RECORD)).toEqual([]);
     const retired = promotionOf(PROMOTION_RECORD, 'preview.step-check');
-    expect(PROMOTION_RECORD.at(-1)).toMatchObject({ capability: 'preview.step-check', decision: 'retired', recordedAt: Date.UTC(2026, 9, 21, 5) });
+    const STEP = PROMOTION_RECORD.filter(entry => entry.capability === 'preview.step-check');
+    expect(STEP.at(-1)).toMatchObject({ capability: 'preview.step-check', decision: 'retired', recordedAt: Date.UTC(2026, 9, 21, 5) });
     expect(retired.retired!.reason).toContain('retired 2026-10-20 by the operator\'s review');
     expect(retired.retired!.reason).toContain('no live evidence');
     // The missing stages stay missing: retirement claims no graduation.
     expect(retired.stages).toEqual({ 'test-agent': null, 'development-agent': null, fleet: null });
-    const step = promotionOf(PROMOTION_RECORD.slice(0, -1), 'preview.step-check');
+    const step = promotionOf(STEP.slice(0, -1), 'preview.step-check');
     expect(step.retired).toBeNull();
     expect(step.deadline).toMatchObject({ deadline: Date.UTC(2026, 9, 21), recordedAt: 1792312984000 });
     expect(step.deadline!.deadline).toBe(Date.UTC(2026, 9, 18) + 72 * 60 * 60 * 1000);
     expect(utcDay(step.deadline!.recordedAt)).toBe('2026-10-18');
     // Both branch decisions survive, ordered by their actual recording time.
-    expect(PROMOTION_RECORD.slice(-4, -2)).toMatchObject([
+    expect(STEP.slice(-4, -2)).toMatchObject([
       { recordedAt: 1792023460035, deadline: Date.UTC(2026, 9, 16), by: 'agent (train-35 integration)' },
       { recordedAt: 1792024088000, deadline: Date.UTC(2026, 9, 18), by: 'agent (register-stepcheck-deadline-1014)' },
     ]);
-    expect(promotionOf(PROMOTION_RECORD.slice(0, -3), 'preview.step-check').deadline?.deadline)
+    expect(promotionOf(STEP.slice(0, -3), 'preview.step-check').deadline?.deadline)
       .toBe(Date.UTC(2026, 9, 16));
-    expect(PROMOTION_RECORD[0]).toMatchObject({ deadline: Date.UTC(2026, 9, 15), recordedAt: Date.UTC(2026, 8, 28) });
+    expect(STEP[0]).toMatchObject({ deadline: Date.UTC(2026, 9, 15), recordedAt: Date.UTC(2026, 8, 28) });
     expect(step.deadline!.reason).toContain('SECOND 72-hour extension');
     expect(step.deadline!.owner).toContain('the desk: open a graduation item');
-    expect(promotionOf(PROMOTION_RECORD.slice(0, -2), 'preview.step-check').deadline?.deadline).toBe(Date.UTC(2026, 9, 18));
+    expect(promotionOf(STEP.slice(0, -2), 'preview.step-check').deadline?.deadline).toBe(Date.UTC(2026, 9, 18));
     // No stage is claimed without evidence: the live trace has not been recorded.
     expect(step.stages).toEqual({ 'test-agent': null, 'development-agent': null, fleet: null });
     expect(existsSync('tests/preview/jev-step-supervisor-live-test.md')).toBe(true);

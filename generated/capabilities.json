@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:42fe50b65ebb7e07c698ed67f10d7b0f0b05475ac5631a1b1b871d7f74b797d1",
-  "commit": "06e0709aa267046dd6cfc8a52dcd0cdcc591e064",
+  "generation": "sha256:a86b1191f502382d793b1c435814ef9f152de190db930c3f6046f1cb166503ad",
+  "commit": "89bcaf985820f9928f0fe6e565edbd635436a95f",
   "launchers": {
     "bin/instar2.mjs": [
       {
@@ -9,7 +9,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files under bounded admission; refusals keep their message."
       },
       {
         "id": "harness-doorway-parity",
@@ -17,7 +17,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds supported harnesses and doorways to certified code; others are marked unproven."
+        "text": "binds each harness and model doorway to certified code; the rest are unproven."
       },
       {
         "id": "installed-update-verification",
@@ -33,7 +33,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures every inbound message before work; an uncertain arrival is kept."
+        "text": "captures every inbound message before work; uncertain ones are kept."
       },
       {
         "id": "preview-conversation",
@@ -84,12 +84,20 @@
         "text": "a saved date within 48 hours can get one short mention in the next reply."
       },
       {
+        "id": "preview.attribution-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "switched-off",
+        "userFacing": false,
+        "text": "with --attribution, checks quotes credited in notes."
+      },
+      {
         "id": "preview.coherence-check",
         "status": "live",
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "checks replies against remembered turns without a model call."
+        "text": "checks replies against remembered turns; no model call."
       },
       {
         "id": "preview.rolling-summary",
@@ -97,7 +105,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+        "text": "keeps a faithfulness-checked summary of earlier turns."
       },
       {
         "id": "register-tooling",
@@ -105,7 +113,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from declarations."
+        "text": "generates the register, rules, glossary and this briefing from declarations."
       },
       {
         "id": "rungraph-core",
@@ -147,7 +155,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files under bounded admission; refusals keep their message."
       },
       {
         "id": "harness-doorway-parity",
@@ -155,7 +163,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds supported harnesses and doorways to certified code; others are marked unproven."
+        "text": "binds each harness and model doorway to certified code; the rest are unproven."
       },
       {
         "id": "installed-update-verification",
@@ -171,7 +179,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures every inbound message before work; an uncertain arrival is kept."
+        "text": "captures every inbound message before work; uncertain ones are kept."
       },
       {
         "id": "preview-conversation",
@@ -222,12 +230,20 @@
         "text": "a saved date within 48 hours can get one short mention in the next reply."
       },
       {
+        "id": "preview.attribution-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "with --attribution, checks quotes credited in notes."
+      },
+      {
         "id": "preview.coherence-check",
         "status": "live",
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks replies against remembered turns without a model call."
+        "text": "checks replies against remembered turns; no model call."
       },
       {
         "id": "preview.rolling-summary",
@@ -235,7 +251,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+        "text": "keeps a faithfulness-checked summary of earlier turns."
       },
       {
         "id": "register-tooling",
@@ -243,7 +259,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from declarations."
+        "text": "generates the register, rules, glossary and this briefing from declarations."
       },
       {
         "id": "rungraph-core",
@@ -285,7 +301,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files under bounded admission; refusals keep their message."
       },
       {
         "id": "harness-doorway-parity",
@@ -293,7 +309,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds supported harnesses and doorways to certified code; others are marked unproven."
+        "text": "binds each harness and model doorway to certified code; the rest are unproven."
       },
       {
         "id": "installed-update-verification",
@@ -309,7 +325,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures every inbound message before work; an uncertain arrival is kept."
+        "text": "captures every inbound message before work; uncertain ones are kept."
       },
       {
         "id": "preview-conversation",
@@ -360,12 +376,20 @@
         "text": "a saved date within 48 hours can get one short mention in the next reply."
       },
       {
+        "id": "preview.attribution-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "with --attribution, checks quotes credited in notes."
+      },
+      {
         "id": "preview.coherence-check",
         "status": "live",
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks replies against remembered turns without a model call."
+        "text": "checks replies against remembered turns; no model call."
       },
       {
         "id": "preview.rolling-summary",
@@ -373,7 +397,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+        "text": "keeps a faithfulness-checked summary of earlier turns."
       },
       {
         "id": "register-tooling",
@@ -381,7 +405,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from declarations."
+        "text": "generates the register, rules, glossary and this briefing from declarations."
       },
       {
         "id": "rungraph-core",
@@ -423,7 +447,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files under bounded admission; refusals keep their message."
       },
       {
         "id": "harness-doorway-parity",
@@ -431,7 +455,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds supported harnesses and doorways to certified code; others are marked unproven."
+        "text": "binds each harness and model doorway to certified code; the rest are unproven."
       },
       {
         "id": "installed-update-verification",
@@ -447,7 +471,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures every inbound message before work; an uncertain arrival is kept."
+        "text": "captures every inbound message before work; uncertain ones are kept."
       },
       {
         "id": "preview-conversation",
@@ -498,12 +522,20 @@
         "text": "a saved date within 48 hours can get one short mention in the next reply."
       },
       {
+        "id": "preview.attribution-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "with --attribution, checks quotes credited in notes."
+      },
+      {
         "id": "preview.coherence-check",
         "status": "live",
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks replies against remembered turns without a model call."
+        "text": "checks replies against remembered turns; no model call."
       },
       {
         "id": "preview.rolling-summary",
@@ -511,7 +543,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+        "text": "keeps a faithfulness-checked summary of earlier turns."
       },
       {
         "id": "register-tooling",
@@ -519,7 +551,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from declarations."
+        "text": "generates the register, rules, glossary and this briefing from declarations."
       },
       {
         "id": "rungraph-core",
@@ -561,7 +593,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files under bounded admission; refusals keep their message."
       },
       {
         "id": "harness-doorway-parity",
@@ -569,7 +601,7 @@
         "module": "src/assembly",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "binds supported harnesses and doorways to certified code; others are marked unproven."
+        "text": "binds each harness and model doorway to certified code; the rest are unproven."
       },
       {
         "id": "installed-update-verification",
@@ -585,7 +617,7 @@
         "module": "src/intake",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "captures every inbound message before work; an uncertain arrival is kept."
+        "text": "captures every inbound message before work; uncertain ones are kept."
       },
       {
         "id": "preview-conversation",
@@ -636,12 +668,20 @@
         "text": "a saved date within 48 hours can get one short mention in the next reply."
       },
       {
+        "id": "preview.attribution-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "with --attribution, checks quotes credited in notes."
+      },
+      {
         "id": "preview.coherence-check",
         "status": "live",
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks replies against remembered turns without a model call."
+        "text": "checks replies against remembered turns; no model call."
       },
       {
         "id": "preview.rolling-summary",
@@ -649,7 +689,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+        "text": "keeps a faithfulness-checked summary of earlier turns."
       },
       {
         "id": "register-tooling",
@@ -657,7 +697,7 @@
         "module": "src/register",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from declarations."
+        "text": "generates the register, rules, glossary and this briefing from declarations."
       },
       {
         "id": "rungraph-core",
@@ -699,7 +739,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+        "text": "saves inbound Telegram files under bounded admission; refusals keep their message."
       },
       {
         "id": "harness-doorway-parity",
@@ -707,7 +747,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds supported harnesses and doorways to certified code; others are marked unproven."
+        "text": "binds each harness and model doorway to certified code; the rest are unproven."
       },
       {
         "id": "installed-update-verification",
@@ -723,7 +763,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures every inbound message before work; an uncertain arrival is kept."
+        "text": "captures every inbound message before work; uncertain ones are kept."
       },
       {
         "id": "preview-conversation",
@@ -774,12 +814,20 @@
         "text": "a saved date within 48 hours can get one short mention in the next reply."
       },
       {
+        "id": "preview.attribution-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": false,
+        "text": "with --attribution, checks quotes credited in notes."
+      },
+      {
         "id": "preview.coherence-check",
         "status": "live",
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "checks replies against remembered turns without a model call."
+        "text": "checks replies against remembered turns; no model call."
       },
       {
         "id": "preview.rolling-summary",
@@ -787,7 +835,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+        "text": "keeps a faithfulness-checked summary of earlier turns."
       },
       {
         "id": "register-tooling",
@@ -795,7 +843,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from declarations."
+        "text": "generates the register, rules, glossary and this briefing from declarations."
       },
       {
         "id": "rungraph-core",
