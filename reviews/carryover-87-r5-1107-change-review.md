@@ -34,6 +34,18 @@ Deferral: docs/evidence/train-192-notice-owner/constitution-person-decides-chang
 Prompt finding: 0725f0150c56 | protocol-literal | carried unchanged from the merged inputs; as dispositioned in reviews/2176b4cf-merge-live-d121315e-change-review.md at c69f89ec3456: carried unchanged from the merged inputs; as dispositioned in reviews/7a7af8da-merge-live-7ad55e86-change-review.md at 2176b4cf2524: carried unchanged from the merged inputs; as dispositioned in reviews/gap-email-1018s-change-review.md at 7ad55e86ef86: The regression normalizes the existing role/refusal prologue for historical packet and digest comparison; no semantic gate keys on this phrase.
 Prompt finding: 27d7720e7977 | protocol-literal | carried unchanged from the merged inputs; as dispositioned in reviews/2176b4cf-merge-live-d121315e-change-review.md at c69f89ec3456: carried unchanged from the merged inputs; as dispositioned in reviews/7a7af8da-merge-live-7ad55e86-change-review.md at 2176b4cf2524: carried unchanged from the merged inputs; as dispositioned in reviews/gap-email-1018s-change-review.md at 7ad55e86ef86: The existing memory-record boundary delimits the intentionally changed prologue in historical byte comparison; it is not a model decision trigger.
 
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:3 | commitment=docs/defects/rule-36-genuine-parser-captures.md
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:14 | not-a-deferral=Closure record of the Telegram capture brought in by the train-211 merge; it records completed work.
+Deferral: docs/defects/rule-36-genuine-parser-captures.md:16 | not-a-deferral=Closure record of the Slack capture brought in by the train-211 merge; it records completed work.
+Deferral: tests/preview/d1c-result-line-withhold.test.ts:108 | not-a-deferral=Test assertion on the literal 'Follow-up on' result line, brought in by the train-211 merge.
+Deferral: tests/preview/held-result-delivery.test.ts:86 | not-a-deferral=Test helper counting the literal 'Follow-up on' result line, brought in by the train-211 merge.
+Deferral: tests/preview/held-result-delivery.test.ts:101 | not-a-deferral=Test assertion on the literal 'Follow-up on' result line, brought in by the train-211 merge.
+Deferral: tests/preview/journal.ts:2761 | not-a-deferral=Prompt text naming earlier follow-ups as evidence, brought in by the train-211 merge; no commitment.
+Deferral: tests/preview/journal.ts:2772 | not-a-deferral=Parser for the literal 'Follow-up on' result line, brought in by the train-211 merge.
+Deferral: tests/preview/plain-task-stop.test.ts:29 | not-a-deferral=Negative test assertion that a reply does NOT promise to follow up, brought in by the train-211 merge.
+Skip: tests/preview/update-standalone.test.ts:186 | scope=Platform-conditional: runs only where /bin/sh is dash; existing test brought in by the train-211 merge.
+Skip: tests/preview/update-standalone.test.ts:203 | scope=Platform-conditional: runs only where /bin/sh is dash; existing test brought in by the train-211 merge.
+
 ## Closing block
 
 simplestRobustRoute: Reuse the owner composition setup already ships, deleting the spawnSync path. The alternatives were a production Six allocation for one finite command, which needs signing authority the command has no claim to, or a request to the running agent, which fails when no agent runs and updating is how a broken agent is repaired. This is the simplest robust route; the only added code is the stop passthrough, which prevents a stop leaving npm running in its detached group.
