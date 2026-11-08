@@ -98,6 +98,7 @@ globalThis.fetch = async (url, init) => {
   if (process.env.INSTAR_ROUND6_RESPONSE_BASE64)
     bytes = Buffer.from(process.env.INSTAR_ROUND6_RESPONSE_BASE64 ?? 'e30=', 'base64').toString('utf8');
   if (mode === 'invalid-response') status = 500;
+  if (/^status-[0-9]{3}$/.test(mode ?? '')) status = Number(mode.slice('status-'.length));
   if (mode === 'redirect-response') status = 307;
   if (mode === 'scan-policy') bytes = JSON.stringify({ ok: true, result: { text: token } });
   if (mode === 'scan-budget') bytes = 'x'.repeat(2 * 1024 * 1024 + 1);

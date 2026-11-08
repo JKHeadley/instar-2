@@ -65,6 +65,7 @@ import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason, pollBackoffMs, pollEndsRun, temporaryPollStatus } from './poll-failure-reason.mjs';
+import { verifyBotIdentity } from './bot-identity.mjs';
 import { loopHealth } from './obligations.js';
 import { createReplyTyping, reactionAcknowledgement } from './telegram-acknowledgement.mjs';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
@@ -2953,9 +2954,19 @@ async function main() {
       reportExit(signalName ? `paused by signal ${signalName}` : 'operator stop latched');
       return;
     }
-    const identity = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs: 30000,
-      identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
-    if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
+    // getme-restart-1108: a slow or briefly failing getMe delays the start (three tries within 90 s) instead of
+    // refusing it; another bot, a malformed answer or a token refusal (401/404) still refuses at once.
+    const identityBinding = { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') };
+    const identityCheck = await verifyBotIdentity({ boundId: identityBinding.id, elapsed: clock.elapsed, wait: delay,
+      stopped: () => signalled || existsSync(stopPath),
+      retrying: (label, ms) => process.stderr.write(`preview: bot identity check got no usable answer (${label}); asking again in ${ms / 1000} s\n`),
+      invoke: timeoutMs => physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs, identityBinding }, token()) });
+    if (identityCheck.outcome === 'stopped') {
+      reportExit(signalName ? `paused by signal ${signalName}` : 'operator stop latched');
+      return;
+    }
+    if (identityCheck.outcome !== 'verified') throw Error(`preview: bot identity refused (${identityCheck.attempts.join(', ')})`);
+    const identity = identityCheck.answer;
     identityVerified = true;
     worker.startStepChecks();
     // Rules 9/26/43: the startup proof records what this launch actually observed — the authenticated bot
