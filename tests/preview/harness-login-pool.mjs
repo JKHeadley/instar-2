@@ -179,9 +179,13 @@ function matchingUsageAccount(document, entry) {
  * A missing initial record is installed durably before use; corrupt/mismatched state holds admission.
  * No timer retries: an exhausted profile becomes eligible after a provider/reading reset time.
  * Unknown resets recover from newer matched readings with capacity in both quota windows. */
+/** 1.x QuotaPoller CLI_LOGIN_EXPIRED_HOLD_MAX_MS: a signed-out hold is released by a changed stored
+ * credential (a fresh sign-in) or, at the latest, after this ceiling; a still-broken login is observed again. */
+export const SIGNED_OUT_HOLD_MAX_MS = 12 * 60 * 60_000;
+
 export function createHarnessLoginPool({ configuration, statePath, now, validate,
   machine = 'local', unavailable = new Map(), readText = read, write = durablePreviewWrite, previouslyLaunched = () => false, quotaReader = null, usage = () => configuration.usageFile
-    ? JSON.parse(readText(configuration.usageFile)) : null }) {
+    ? JSON.parse(readText(configuration.usageFile)) : null, credential = () => null }) {
   const { entries, identity } = configuration;
   // 1.x ProactiveSwapMonitor's lag-aware ceiling reserves 20 percentage points
   // for delayed provider reporting and a turn finishing before its safe boundary.
@@ -211,8 +215,9 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
   if (state?.version !== 1 || (state.identity !== identity && !adoptLegacy) || !Number.isInteger(state.active)
     || !entries[state.active] || !state.holds || typeof state.holds !== 'object' || Array.isArray(state.holds) || !Array.isArray(state.switches)) fail('state differs; desk migration required');
   for (const [index, hold] of Object.entries(state.holds))
-    if (!/^[0-7]$/u.test(index) || !entries[index] || !['provider-limit', 'usage-threshold'].includes(hold?.reason)
+    if (!/^[0-7]$/u.test(index) || !entries[index] || !['provider-limit', 'usage-threshold', 'signed-out'].includes(hold?.reason)
       || !(hold.resetAt === null || Number.isSafeInteger(hold.resetAt))
+      || (hold.reason === 'signed-out' && (!Number.isSafeInteger(hold.resetAt) || !(hold.credential === null || /^[a-f0-9]{16}$/u.test(hold.credential))))
       || (hold.observedAt !== undefined && !Number.isSafeInteger(hold.observedAt))) fail('hold is malformed');
   for (const [index, event] of state.switches.entries())
     if (event?.sequence !== index + 1 || !Number.isSafeInteger(event.at)
@@ -235,13 +240,29 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     const previous = state.holds[entry.index];
     // A shorter quota window cannot erase a still-active weekly/provider hold.
     if (previous && (previous.resetAt === null || previous.resetAt > now())) evidence = {
-      reason: previous.reason === 'provider-limit' ? previous.reason : evidence.reason,
+      // A provider or signed-out hold keeps its cause; only a usage-threshold hold takes newer evidence's.
+      reason: previous.reason === 'usage-threshold' ? evidence.reason : previous.reason,
+      ...(previous.reason === 'signed-out' ? { credential: previous.credential } : {}),
       observedAt: Math.max(previous.observedAt, evidence.observedAt),
       resetAt: previous.resetAt === null || evidence.resetAt === null ? null : Math.max(previous.resetAt, evidence.resetAt),
     };
     if (previous?.reason === evidence.reason && previous.resetAt === evidence.resetAt
       && previous.observedAt === evidence.observedAt) return;
     persist({ ...state, holds: { ...state.holds, [entry.index]: evidence } });
+  };
+  // 1.x QuotaPoller (CMT-1008): the CLI's own signed-out report holds a login while the stored credential is the
+  // SAME one it refused. Only a truncated fingerprint is kept, never the credential; an unreadable one reads as null.
+  const fingerprint = entry => { try { const value = credential(entry); return typeof value === 'string' && /^[a-f0-9]{16}$/u.test(value) ? value : null; } catch { return null; } };
+  const signedOutHeld = (entry, at) => {
+    const held = state.holds[entry.index];
+    return held?.reason === 'signed-out' && held.resetAt > at && fingerprint(entry) === held.credential;
+  };
+  const releaseSignedOut = at => {
+    const released = entries.filter(entry => state.holds[entry.index]?.reason === 'signed-out' && !signedOutHeld(entry, at));
+    if (!released.length) return;
+    const holds = { ...state.holds };
+    for (const entry of released) delete holds[entry.index];
+    persist({ ...state, holds });
   };
   const admitted = (entry, tools, waitOnUnavailable) => {
     if (!configuration.current()) fail('manifest changed; restart with reviewed configuration');
@@ -255,6 +276,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
   };
   const select = (tools = false, current = state.active, requireRoom = false, onlyCurrent = false) => {
     const at = now();
+    releaseSignedOut(at);
     let reading = null;
     try { reading = observedUsage(); } catch { /* A failed quota observation cannot create a limit. */ }
     for (const entry of entries) {
@@ -272,7 +294,8 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
         persist({ ...state, holds });
       }
     }
-    const signedOut = new Set(entries.filter(entry => matchingUsageAccount(reading, entry)?.status === 'needs-reauth').map(entry => entry.index));
+    const signedOut = new Set(entries.filter(entry => matchingUsageAccount(reading, entry)?.status === 'needs-reauth'
+      || state.holds[entry.index]?.reason === 'signed-out').map(entry => entry.index));
     const repairs = entries.filter(entry => signedOut.has(entry.index) && !(state.signinRepairs ?? []).some(item => item.index === entry.index));
     if (repairs.length) persist({ ...state, signinRepairs: [...(state.signinRepairs ?? []),
       ...repairs.map(entry => ({ index: entry.index, account: entry.profile.expectedAccount, machine, at }))] });
@@ -347,7 +370,8 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       try { reading = observedUsage(); } catch { /* A failed quota observation cannot create a limit. */ }
       const resets = [];
       for (const entry of entries) {
-        if (unavailable.has(entry.index) || matchingUsageAccount(reading, entry)?.status === 'needs-reauth') continue;
+        if (unavailable.has(entry.index) || matchingUsageAccount(reading, entry)?.status === 'needs-reauth'
+          || signedOutHeld(entry, at)) continue;
         const quota = harnessQuotaReading(reading, entry.profile, at, entry.usageAccount);
         const limit = quotaLimit(quota, configuration.threshold), held = state.holds[entry.index];
         const recovered = held?.resetAt === null && quota && quota.at > held.observedAt
@@ -371,6 +395,15 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       if (result?.failure?.failureClass !== 'limit') return;
       const reset = result.failure.resetAt;
       hold(entry, { reason: 'provider-limit', observedAt: now(), resetAt: Number.isSafeInteger(reset) && reset > now() ? reset : null });
+    },
+    /** The harness CLI's own login check reported this login signed out. The next selection moves to another
+     * approved login with room; the desk sign-in repair item is recorded by select() as for needs-reauth. */
+    observeSignedOut(entry) {
+      if (entries[entry?.index] !== entry) fail('observation names an unreviewed login');
+      const at = now(), credentialNow = fingerprint(entry);
+      if (signedOutHeld(entry, at)) return;
+      persist({ ...state, holds: { ...state.holds, [entry.index]: { reason: 'signed-out', observedAt: at,
+        resetAt: at + SIGNED_OUT_HOLD_MAX_MS, credential: credentialNow } } });
     },
     notices: () => [
       ...state.switches.filter(event => event.reason !== 'member-unavailable').map(event => ({ key: `doorway:harness-login:${state.noticeIdentity ?? identity}:${event.sequence}`,
@@ -412,6 +445,22 @@ export function observeHarnessSessionLimit(pool, entry, observation) {
   if (observation.kind === 'Success' && observation.value.phase === 'pause-observed' && observation.value.detail === 'rate-limited')
     pool?.observe(entry, { failure: { failureClass: 'limit', resetAt: null } });
   return observation;
+}
+
+/** The harness CLI's own login check (`auth status --json`) is the exact signed-out signal, as 1.x QuotaPoller
+ * treats the CLI's signed-out report: `loggedIn: false` holds that login so the next selection takes another
+ * approved login with room. The preflight carries no prompt, so nothing reached the model; no other output is read. */
+export function observeHarnessSignIn(pool, entry, io) {
+  if (!pool) return io;
+  return { ...io, execute: async input => {
+    const result = await io.execute(input);
+    if (input.args?.[0] === 'auth' && input.args[1] === 'status') {
+      let status = null;
+      try { status = JSON.parse(result.stdout); } catch { /* not a status report: no signal */ }
+      if (status && typeof status === 'object' && status.loggedIn === false) pool.observeSignedOut(entry);
+    }
+    return result;
+  } };
 }
 
 /** The existing durable run log is the loss detector for the selection sidecar. A run cannot

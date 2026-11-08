@@ -9,7 +9,7 @@ import { prepareSessionConnectors, conversationAccountActions, admitSessionConne
 import { createAudienceTimingObserver, recordPhaseTiming } from './phase-timing.js';
 import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice } from './reply-check.js';
 import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin, observeInstalledSessionLogin } from './installed-harness-logins.mjs';
-import { loadHarnessLogins, harnessLoginPoolStatus, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
+import { loadHarnessLogins, harnessLoginPoolStatus, createHarnessLoginPool, observeHarnessSessionLimit, observeHarnessSignIn, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
 import { appendGroupCarry } from './group-carry.js';
 import { resolveGroupDisclosure, verifyGroupAudience, createGroupAudienceCache } from './group-disclosure.js';
@@ -1765,6 +1765,8 @@ async function main() {
     const sessionLoginObservations = new Map();
     let loginPool = null;
     const selectLogin = tools => loginPool ? loginPool.select(tools) : loginConfiguration.entries[0];
+    // The CLI's own signed-out report holds that login for the next selection (harness-login-pool.mjs).
+    const observeSignIn = (entry, io) => observeHarnessSignIn(loginPool, entry, io);
     // Plan #473: why a Claude Code tool turn is refused for its identity (null: a harness user is configured, or the
     // doorway's checkpointed harness is not gated by it). The packet then names no tools, and runToolTurn refuses the turn.
     const identityRefusal = identityRefusalOf(options, doorway);
@@ -2617,6 +2619,9 @@ async function main() {
         validate: entry => { const runtime = loginRuntimes.get(entry.index); runtime.check(false); runtime.harness.current(); } });
       loginPool = createHarnessLoginPool({ configuration: loginConfiguration, unavailable, quotaReader,
         statePath: join(root, 'harness-login-pool.json'), now: wallNow,
+        // A truncated fingerprint of the custody login (1.x QuotaPoller): a fresh sign-in changes it and releases
+        // a signed-out hold. The credential itself never leaves this process or enters the pool record (Rule 100).
+        credential: entry => createHash('sha256').update(readHarnessLogin(entry.profile), 'utf8').digest('hex').slice(0, 16),
         previouslyLaunched: () => harnessPoolPreviouslyLaunched(runsPath, [loginConfiguration.identity, ...loginConfiguration.legacyIdentities]),
         validate: (entry, tools) => { const runtime = loginRuntimes.get(entry.index); runtime.check(tools); runtime.harness.current(); } });
     }
@@ -2688,8 +2693,8 @@ async function main() {
         || wallNow() >= journal.view.expires || !active();
       const stoppedNow = () => hostStopped() || !sessionActive() || sessionAccountsChanged();
       // The step's preflights run as the identity its session will (harness-user: held, never the runner's, while unready).
-      const admissionIO = () => createSubscriptionProviderIO({ repository: process.cwd(), stopped: stoppedNow, work: 'maintenance',
-        runAs: runAsOf(sessionHarness) });
+      const admissionIO = () => observeSignIn(selectedSession, createSubscriptionProviderIO({ repository: process.cwd(), stopped: stoppedNow, work: 'maintenance',
+        runAs: runAsOf(sessionHarness) }));
       // Every tool call of the child (its subagents' too) passes the admission hook before dispatch: its slots are
       // the step's reserved call liability, MCP and other consequential tools go to the effect doorway, and every
       // shell command runs confined. The state lives beside the working scope, never inside it.
@@ -2853,15 +2858,15 @@ async function main() {
           authorized: () => sessionActive() && (!loginPool || runtime().live('session')),
           authority: () => `${sessionWork.authority}; topic ${topic} account grant ${(runtime()?.sessionRecord ?? sessionActivation).reference}`,
           stopped: stoppedNow,
-          admissionIO: () => createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => binding.stopped(),
-            work: 'maintenance', runAs: runAsOf(binding.harness()) }) };
+          admissionIO: () => observeSignIn(entry(), createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => binding.stopped(),
+            work: 'maintenance', runAs: runAsOf(binding.harness()) })) };
         if (loginPool) handoff = createTopicLoginHandoff({ topic, pool: loginPool, entries: loginConfiguration.entries,
           store: createConversationHostStore(join(root, 'session-work-state', `topic-login-${topic}.json`), key()),
           physical: physicalEntry, project, framework,
           admit: async next => {
             const runtime = loginRuntimes.get(next.index); runtime.check('session');
             await doorway.session.admit({ profile: next.profile,
-              io: createSubscriptionProviderIO({ repository: process.cwd(), stopped: hostStopped, work: 'maintenance', runAs: runAsOf(runtime.harness) }),
+              io: observeSignIn(next, createSubscriptionProviderIO({ repository: process.cwd(), stopped: hostStopped, work: 'maintenance', runAs: runAsOf(runtime.harness) })),
               deadline: wallNow() + 15000, now: wallNow });
           } });
         const config = configurationFor(topic, binding, handoff);
@@ -3286,9 +3291,10 @@ async function main() {
       const launchIO = createSubscriptionProviderIO({ repository: process.cwd(), runAs: runAsOf(selectedHarness),
         stopped: () => workerStop.value || existsSync(stopPath) || !selectedActive()
           || (toolTurn !== undefined && (journal.view.stop !== null || !toolsActive())), work });
+      const signInIO = observeSignIn(selected, launchIO);
       const physicalIO = { ...launchIO, execute: async input => {
         if (typeof input.stdin === 'string' && input.stdin.length > 0) modelLaunch.started();
-        const result = await launchIO.execute(input);
+        const result = await signInIO.execute(input);
         // Only the model command is the exchange: it alone carries the prepared prompt on stdin; the
         // version and auth preflights send none and print no result frame.
         if (typeof input.stdin === 'string' && input.stdin.length > 0)
