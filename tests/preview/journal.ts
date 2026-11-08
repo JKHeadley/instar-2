@@ -55,6 +55,8 @@ import { evaluateMinimalPath, minimalResponse } from '../../src/operator/live.js
 import type { IndependentSurfaceVerifierPort, InstalledShape, MinimalDependency, SurfaceChallenge, VerifiedSurfaceProof } from '../../src/operator/contracts.js';
 import { authenticateTelegramSender, principalBoundToUpdate, systemWriters, verifiedAtIntake, TELEGRAM_ADAPTER, testOriginWriter, writerBoundToRaw, writerRecord, type SystemMethod, type WriteOrigin, type WriterRecord } from './intake-principal.js';
 import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
+import { ATTRIBUTION_TEXT_MAX, attributionDigest, attributionPacket, attributionReason, decideAttribution, markerFacts, parseAttributionAnswer, worthJudging,
+  type AttributionFinding, type AttributionMode, type AttributionResult, type AttributionSurface, type AttributionVerdict, type CreditedSpan, type SourceRecord } from './attribution.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type SettledSendOutcome, type Speaker } from './outbound-provenance.js';
 import { acceptedMemoryFailure, memoryFailureOffer, memoryFailures, memoryLearningLine, memoryLessons, validStoredMemoryFailure, withLearnedCues,
   MEMORY_FAILURE_DECISION, type MemoryFailureProposal } from './memory-learning.js';
@@ -210,6 +212,8 @@ export const REPLY_REVIEW_FIXED_BYTES = 2040;
  * SETTLED_REVIEW_BYTES, so a turn whose reply restates several earlier settled blockers can still build a
  * review prompt past this reserve. The flat 8192 did not bound that case either; a review that will not fit
  * is recorded `unavailable` and the reply is still released (Rules 86, 95), never held. */
+/** Rule 121's judge gets its own bound; a call past it clears the note as `unchecked` and is counted. */
+export const ATTRIBUTION_BUDGET_MS = 45_000;
 export const replyReviewReserveFor = (maxBytes: number) =>
   Math.min(PREVIEW_REPLY_BOUND_BYTES + REPLY_REVIEW_FIXED_BYTES, Math.floor(maxBytes / 4));
 /** The prompt parts every ordinary answer turn carries, whatever the conversation holds: the subscription
@@ -1000,6 +1004,7 @@ export interface RejectedObligations { loops?: number; blocker?: true; blockerRe
   /** Fulfillment claims the one support rule refused, kept visible instead of dropped (Rules 2, 10). */
   fulfills?: number }
 interface CommitmentSource { id: number; source: string; quote: string }
+export type AttributionRow = Omit<Extract<JournalRecord, { kind: 'attribution-check' }>, 'kind' | 'usage'>;
 /** A message from the agent's own stored conversation log. Body text never supplies identity.
  * `source` stays a field so journals keep their channel keys; older journals may hold inert `email`
  * items from a removed import route, which replay skips (never recalled or acted on). */
@@ -1125,7 +1130,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
 export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
-  'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
+  'attribution-check', 'attribution-reserve', 'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
   'legacy-call', 'legacy-reply', 'limited-intent', 'limited-sent', 'lookup', 'meaning-index', 'media-claim', 'media-custody',
   'memory-undecided', 'minimal-outage', 'model-call', 'model-uncertain', 'notice', 'obligation-result',
@@ -1259,6 +1264,11 @@ export type JournalRecord =
 
   // Non-additive: reservations/checks below may follow a sent reply; an older writer must refuse.
   | { kind: 'reply-review-after-send'; id: string; at: number }
+  /** Rule 121: a judge call is reserved before it runs, so a crash leaves an UNKNOWN call and never a replay. */
+  | { kind: 'attribution-reserve'; id: string; digest: string; surface: AttributionSurface; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  /** Rule 121's record: the text's digest, the verdict and each finding. `id` is the write it belongs to. */
+  | { kind: 'attribution-check'; id: string; digest: string; surface: AttributionSurface; mode: AttributionMode; verdict: AttributionVerdict;
+    findings: AttributionFinding[]; claims: number; spans?: CreditedSpan[]; cause?: string; latencyMs: number; usage?: ModelUsage; at: number }
   | { kind: 'reply-jev-reserve'; id: string; retry?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; promptSha256?: string; mentionedDates?: string[]; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; diagnostics?: ReplyReviewDiagnostics; usage?: ModelUsage; at: number }
@@ -1604,6 +1614,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   channelItems: Map<string, ChannelItem>;
   channelSources: Map<'telegram' | 'slack', ChannelSourceCursor>;
   channelSourceErrors: Map<'telegram' | 'slack', string>;
+  /** Rule 121's record, oldest first. Absent until the first check; a journal without it reads as none. */
+  attribution?: AttributionRow[];
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
   /** Effective trial end: genesis.expires until an `expiry` renewal frame extends it. */
   expires: number; expiryAuthority: string | null;
@@ -3157,8 +3169,8 @@ export function capacityRefused(view: JournalView, row: JournalRecord): boolean 
     || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
     || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'index-reserve' || row.kind === 'reply-review-reserve'
       || row.kind === 'held-notice-review-reserve' || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry' || row.kind === 'lookup'
-      || row.kind === 'answer-replace' || row.kind === 'obligation-start' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve' || row.kind === 'retro-duty-reserve')
-      && view.calls >= view.limits.maxCalls)
+      || row.kind === 'answer-replace' || row.kind === 'obligation-start' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve' || row.kind === 'retro-duty-reserve'
+      || row.kind === 'attribution-reserve') && view.calls >= view.limits.maxCalls)
     || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
     || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies);
 }
@@ -3316,6 +3328,7 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
       || row.id.endsWith(':reply-review') && !!view.turns.get(row.id.slice(0, -13))?.reviewReserved
       || row.id.endsWith(':reply-revision') && !!view.turns.get(row.id.slice(0, -15))?.revisionReserved
       || row.id.endsWith(':revision-review') && !!view.turns.get(row.id.slice(0, -16))?.revisionReviewReserved
+      || row.id.endsWith(':attribution-check') && !!view.attribution?.some(item => item.id === row.id.slice(0, -18) && item.cause === 'interrupted')
     : /^retrospective:\d+(?::rerun:\d+|:duties)?$/u.test(row.id) ? view.retroPasses.some(pass => pass.state === undefined
       && (`retrospective:${String(pass.pass)}` === row.id || (pass.reruns ?? []).some(run => run.state === undefined
         && `retrospective:${String(pass.pass)}:rerun:${String(run.index)}` === row.id)
@@ -4032,6 +4045,24 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   if ('failureClass' in row && row.failureClass && !(row.kind === 'format-retry' && row.role === 'reply-review'))
     view.failureClasses.set(row.failureClass, (view.failureClasses.get(row.failureClass) ?? 0) + 1);
   if (row.kind === 'genesis') throw Error('preview journal: duplicate genesis');
+  if (row.kind === 'attribution-reserve') {
+    if (view.calls >= view.limits.maxCalls) throw Error('preview journal: attribution reservation over cap');
+    reserveTokens(view, `attribution:${row.id}:${row.digest}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes, row.maxOutputTokens ?? subscriptionOutputMaximum);
+    view.calls++;
+    // Stands until its result replaces it: a crash here leaves `unchecked`, so the paid call is never replayed.
+    (view.attribution ??= []).push({ id: row.id, digest: row.digest, surface: row.surface, mode: 'record', verdict: 'unchecked', findings: [], claims: 0,
+      cause: 'interrupted', latencyMs: 0, at: row.at });
+    return;
+  }
+  if (row.kind === 'attribution-check') {
+    settleTokens(view, `attribution:${row.id}:${row.digest}`, row.usage);
+    const rows = view.attribution ??= [];
+    const pending = rows.findIndex(item => item.id === row.id && item.digest === row.digest);
+    const settled = { id: row.id, digest: row.digest, surface: row.surface, mode: row.mode, verdict: row.verdict,
+      findings: row.findings, claims: row.claims, ...(row.spans ? { spans: row.spans } : {}), ...(row.cause === undefined ? {} : { cause: row.cause }), latencyMs: row.latencyMs, at: row.at };
+    if (pending < 0) rows.push(settled); else rows[pending] = settled;
+    return;
+  }
   if (row.kind === 'cap-report') {
     if (!capReportAllowed(view, row)) throw Error('preview journal: cap report without cap');
     if (view.capReports.has(capKey(row.reason, row.limit, row.level))) throw Error('preview journal: repeated cap report');
@@ -6191,6 +6222,8 @@ export interface PreviewPorts {
     requestWindowMs?: number;
     /** Plan #389: the desk's current retraction proposal, read from the root by the host (propose-retract), or none. */
     retractProposal?(): RetractProposal | undefined };
+  /** Rule 121. Absent: no attribution check runs and nothing changes. `judge` is the one recorded model call. */
+  attribution?: { mode: AttributionMode; judge(prepared: { id: string; packet: string; deadlineAt: number }): Promise<{ value: string | null; usage?: ModelUsage }> };
   /** Continuing conversations send first; model review is a durable signal for the next turn. */
   replyReviewTiming?: 'before-send' | 'after-send';
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
@@ -6990,6 +7023,61 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** An accepted turn that may be read back as memory; a desk probe is only audit evidence. */
   const remembered = (turn: Turn) => turn.accepted && !probeTurn(journal.view, turn);
+  /** Rule 121's source of truth is this journal. A turn's sender was authenticated when it arrived; an imported log row
+   * only names one. A marker carries either an id the agent saw in its packet or the 1.x `<channel> <conversation>/<message>`. */
+  const attributionSource = (ref: string): SourceRecord | null => {
+    const turnRef = (turn: Turn) => {
+      try { const raw = JSON.parse(turn.raw) as TelegramUpdate, message = raw.edited_message ?? raw.message;
+        return message?.message_id === undefined ? null : `telegram ${String(turn.thread ?? message.chat?.id)}/${String(message.message_id)}`; }
+      catch { return null; }
+    };
+    const turn = journal.view.turns.get(ref) ?? journal.view.order.find(item => turnRef(item) === ref);
+    if (turn && remembered(turn) && !turn.requestedAction) return { by: fromOperator(turn) ? operatorName(journal.view) ?? 'the operator' : 'another Telegram user',
+      strength: 'verified', at: turn.at, text: turn.text };
+    for (const item of journal.view.channelItems.values()) {
+      // An import keys a row `<channel>:<conversation>:<message>`, which is the 1.x marker's three parts.
+      if (publicMemoryId(channelMemoryId(item)) === ref || item.id === ref.replace(' ', ':').replace('/', ':'))
+        return { by: item.from === `telegram:${journal.view.genesis.operator}` ? operatorName(journal.view) ?? 'the operator' : item.from,
+          strength: 'identity-only', at: item.at, text: item.text };
+    }
+    return null;
+  };
+  /** Rule 121 at write time: the agent's own note, checked once per exact text before the file changes. Null clears it; a
+   * string refuses with the way through. Record mode never refuses. Anything but a refusal clears: a note the judge could
+   * not read is counted, not lost, and a crash after the reservation leaves it unchecked, never a replayed call. */
+  const attributionOfNote = async (call: string, text: string): Promise<string | null> => {
+    const port = ports.attribution, id = `note:${call}`, digest = attributionDigest(text);
+    if (!port) return null;
+    const refused = (result: AttributionResult) => port.mode === 'enforce' && result.verdict === 'refuse' ? attributionReason(result) : null;
+    const prior = journal.view.attribution?.find(row => row.id === id && row.digest === digest);
+    if (prior) return refused(prior);
+    // Sources are looked up only inside the bound one call reads, so a long note never scans the journal per marker.
+    const facts = markerFacts(text, attributionSource, ATTRIBUTION_TEXT_MAX);
+    const names = [operatorName(journal.view), ...journal.view.people.map(person => person.name)].filter((name): name is string => Boolean(name));
+    if (!facts.length && !worthJudging(text, names)) return null;
+    const started = ports.now();
+    const record = (result: AttributionResult, usage?: ModelUsage) => {
+      journal.append({ kind: 'attribution-check', id, digest, surface: 'write', mode: port.mode, verdict: result.verdict, findings: result.findings,
+        claims: result.claims, ...(result.spans?.length ? { spans: result.spans } : {}), ...(result.cause === undefined ? {} : { cause: result.cause }), latencyMs: Math.max(0, ports.now() - started),
+        ...(usage ? { usage } : {}), at: ports.now() });
+      return refused(result);
+    };
+    // A failed exact fact needs no reading: nothing a model says can put the words in the record.
+    if (facts.some(fact => fact.refusal)) return record(decideAttribution(text, 'write', facts, []));
+    // Owed: 1.x chunking. Until then a note longer than one check is recorded unchecked, never judged on a part.
+    if (text.length > ATTRIBUTION_TEXT_MAX) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'text longer than one check' });
+    if (halted() || journal.view.calls >= journal.view.limits.maxCalls) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'call cap' });
+    gate();
+    journal.append({ kind: 'attribution-reserve', id, digest, surface: 'write', maxInputTokens: journal.view.limits.maxBytes,
+      maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
+    try {
+      const answer = await port.judge({ id: `${id}:attribution-check`, deadlineAt: ports.now() + ATTRIBUTION_BUDGET_MS, packet: attributionPacket({ text, surface: 'write', facts }) });
+      if (answer.value === null) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'no answer' }, answer.usage);
+      return record(decideAttribution(text, 'write', facts, parseAttributionAnswer(answer.value)), answer.usage);
+    } catch (error) {
+      return record({ verdict: 'unchecked', findings: [], claims: 0, cause: error instanceof SyntaxError ? 'unreadable answer' : 'judge failed' });
+    }
+  };
   // Conservative identity for an exact restatement. A different value keeps a
   // different key; semantic near-matches remain separate for the model to judge.
   const commitmentKey = (note: Pick<CommitmentNote, 'in' | 'quote'>) => JSON.stringify([note.in,
@@ -12437,7 +12525,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     await answerLimited();
     await noticeClosing();
     await pollReviewRequests(); await issueRetractRequest(); };
-  return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
+  return { attributionOfNote, intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };

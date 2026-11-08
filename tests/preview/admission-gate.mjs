@@ -100,7 +100,7 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
  * can stand in for the provider; production uses the fixed upstreams over TLS. `held` is the runner's held-secret check
  * (tool-turn.mjs heldVerdict) for `kind: 'held'`; absent, every such check refuses.
  */
-export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', ownerBrowser = null, upstreams = MODEL_UPSTREAMS, request = null }) {
+export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', note = async () => null, ownerBrowser = null, upstreams = MODEL_UPSTREAMS, request = null }) {
   const secret = randomBytes(16).toString('hex');
   const claims = new Map();
   const reply = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -215,13 +215,20 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       let body = '';
       req.setEncoding('utf8');
       req.on('data', chunk => { body += chunk; if (body.length > MAX_ADMIT_BYTES) req.destroy(); });
-      req.on('end', () => {
+      req.on('end', async () => {
         // Authority is read again now the whole request is here: a claim closed or a stop raised while the body was
         // arriving refuses, so nothing is admitted on a reading taken before the withdrawal.
         if (state.closed || claims.get(match[2]) !== state || stopped())
           return reply(res, 200, { decision: 'deny', reason: 'admission: this step is closed or a stop is held; nothing runs' });
         let verdict;
-        try { verdict = admit(state, JSON.parse(body)); } catch { verdict = { decision: 'deny', reason: 'admission: request unreadable or unrecordable' }; }
+        try {
+          const call = JSON.parse(body);
+          // Rule 121: the one admission that waits on a model. A refusal carries its way through; a failed check clears.
+          if (call.kind === 'attribution') {
+            const refused = await note(String(call.tool_use_id ?? ''), typeof call.text === 'string' ? call.text : '').catch(() => null);
+            verdict = refused === null ? { decision: 'allow', reason: 'attribution check: clear' } : { decision: 'deny', reason: refused };
+          } else verdict = admit(state, call);
+        } catch { verdict = { decision: 'deny', reason: 'admission: request unreadable or unrecordable' }; }
         reply(res, 200, verdict);
       });
       return undefined;
