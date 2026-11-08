@@ -382,9 +382,15 @@ if (request.method === 'getMe') {
   let capture;
   try { capture = sealIdentity(bytes, request.captureDirectory); }
   catch { uncertain('sealed-capture'); process.exit(0); }
+  // A non-200 answer carries its HTTP status (an integer, never the body), so a caller can tell a temporary
+  // Telegram failure (5xx, 429) from a definite token refusal (401, 404). The stage stays the fixed enum.
+  if (provider.status !== 200) {
+    uncertain('invalid-response', 'transport', Number.isSafeInteger(provider.status) ? { status: provider.status } : {});
+    process.exit(0);
+  }
   try {
     const parsed = JSON.parse(bytes);
-    if (!countJsonValues(parsed) || !record(parsed) || parsed.ok !== true || provider.status !== 200
+    if (!countJsonValues(parsed) || !record(parsed) || parsed.ok !== true
       || !record(parsed.result)) throw new Error('invalid');
     const bot = parsed.result;
     if (!Number.isSafeInteger(bot.id) || bot.id <= 0 || bot.is_bot !== true || !usernameIsValid(bot.username)
