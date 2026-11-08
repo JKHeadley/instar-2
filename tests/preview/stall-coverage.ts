@@ -55,10 +55,10 @@ export const PREVIEW_JOURNAL_STALL_COVERAGE: HarnessStallCoverage = Object.freez
       positive: { file: 'tests/preview/journal-dated-memory.test.ts', title: 'replies truthfully once to a malformed dated proposal across restart, retaining unresolved intake' },
       failing: { file: 'tests/preview/offline-canary.test.ts', title: 'accepts one whole Decision JSON object or fence and refuses conflicting wrappers' } },
     { stall: 'stop-fence-or-resource-loss',
-      detection: 'the durable stop latch, expiry and cap state read at every gate, not a local active label',
+      detection: 'the durable stop latch and cap state read at every gate, not a local active label (the activation end is a reminder, never a stop)',
       recovery: 'inhibit new action and keep the observed state; resume only when the stop is lifted, sending held work once',
       positive: { file: 'tests/preview/journal-long-message.test.ts', title: 'does not prepare a too-long notice after stop, then sends it once when resumed' },
-      failing: { file: 'tests/preview/journal-requested-action.test.ts', title: 'sends nothing while stopped, after an operator stop, after expiry, or at the reply or call cap' } },
+      failing: { file: 'tests/preview/journal-requested-action.test.ts', title: 'sends nothing while stopped, after an operator stop, or at the reply or call cap' } },
   ]),
 }) as HarnessStallCoverage;
 

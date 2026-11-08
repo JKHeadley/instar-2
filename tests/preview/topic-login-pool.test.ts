@@ -249,6 +249,7 @@ it('the shipped configuration captures each topic account for launch, observatio
     doorway: { id: 'doorway', session: { admit: async input => { admitted.push(input.profile.reference); } } },
     hostResources: { hold: async () => ({ attach: async () => {}, release: async () => ({ verified: true }) }) },
     hostStopped: () => false, ownerMachine: 'local', launchedAt: 1000, delay: tick,
+    sessionWorkLifetime: (view, now) => Math.max(view.expires, now + 365 * 24 * 3600 * 1000),
   };
   const make = Function(...Object.keys(env), `return ${factory}`)(...Object.values(env));
   const entry = index => ({ index, profile: { reference: `login-${index}`, executable: '/cli', home: `/home-${index}`, configDirectory: `/config-${index}` } });

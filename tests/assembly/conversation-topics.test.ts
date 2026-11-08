@@ -251,7 +251,8 @@ it('reclaims an idle topic when the installation resource ceiling is tighter tha
   await f.port.close();
 });
 
-it.each([200000, 50000])('reopened and new topics keep the earlier installation deadline (%s)', async allowanceDeadline => {
+// A later launch lifetime (200000) is covered by the activation-stop-1108 renewal test below: the recorded one renews once it passes.
+it.each([50000])('reopened and new topics keep the earlier installation deadline (%s)', async allowanceDeadline => {
   const f = fixture(); await f.port.run(f.request('7:a')); await f.port.close();
   f.restart(allowanceDeadline);
   const deadline = Math.min(100000, allowanceDeadline);
@@ -862,7 +863,42 @@ it('renewal preserves the original parent deadline even when restarted with a la
   await f.port.run(f.request('main:new'));
   expect(f.state().edge!.budget.deadline).toBe(100000);
   expect(f.state().allowanceDeadline).toBe(100000);
+  // activation-stop-1108: once the recorded lifetime has passed, a later launch lifetime renews it; past that, nothing does.
   await f.port.close(); f.restart(300000); f.advance(100000);
+  expect(f.port.available()).toBe(true);
+  f.advance(300000); expect(f.port.available()).toBe(false);
+  await f.port.close();
+});
+
+// activation-stop-1108: a recorded lifetime that has passed renews when the current launch names a later one; it is never
+// extended in place before it passes, never renewed past the launch's own lifetime, and a stop or revoked grant still holds.
+it('renews an elapsed recorded lifetime under a later launch lifetime, and only then', async () => {
+  const f = fixture();
+  expect(await f.port.run(f.request('main:a'))).toMatchObject({ state: 'complete' });
+  expect(f.state().edge!.budget.deadline).toBe(100000);
+  await f.port.close(); f.restart(400000);
+  f.advance(50000);
+  expect(await f.port.run(f.request('main:b'))).toMatchObject({ state: 'complete' });
+  expect(f.state().edge!.budget.deadline).toBe(100000);                 // not extended in place before it passes
+  expect(f.state().allowanceEpoch).toBeUndefined();
+  f.advance(60000);                                                      // past the recorded lifetime, inside the launch's
+  expect(f.port.available()).toBe(true);
+  expect(await f.port.run(f.request('main:c'))).toMatchObject({ state: 'complete' });
+  expect(f.state().allowanceEpoch).toBe(1);
+  expect(f.state().allowanceDeadline).toBe(400000);
+  expect(f.state().edge!.budget.deadline).toBe(400000);
+  expect(f.edges.filter(row => row.id === 'operator:allowance:renew')).toHaveLength(1);
+  expect(f.delivered.map(row => row.input.operation)).toEqual(['main:a', 'main:b', 'main:c']);
+  f.advance(300000);                                                     // past the launch's own lifetime: no renewal
   expect(f.port.available()).toBe(false);
   await f.port.close();
+});
+it.each(['stop', 'grant'] as const)('never renews an elapsed lifetime across the %s floor', async floor => {
+  const f = fixture();
+  expect(await f.port.run(f.request('main:a'))).toMatchObject({ state: 'complete' });
+  await f.port.close(); f.restart(400000); f.advance(110000);
+  if (floor === 'stop') f.stop(); else f.revoke();
+  await f.port.run(f.request('main:b')).catch(() => {});
+  expect(f.state().allowanceEpoch).toBeUndefined();
+  expect(f.delivered).toHaveLength(1);
 });

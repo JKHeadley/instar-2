@@ -372,8 +372,11 @@ it('admits an activation only for this doorway: its CLI version, its model shape
     CODEX_CONVERSATION_FRAMING)).toThrow(/exact model absent/u);
   expect(() => validateCodexActivation({ ...f.activation(), version: '0.0.0' }, f.profile, f.model, 1000,
     CODEX_CONVERSATION_FRAMING)).toThrow(/artifact or policy differs/u);
+  // activation-stop-1108: the end date is a reminder, never a stop: past it the activation still validates.
   expect(() => validateCodexActivation(f.activation(), f.profile, f.model, SUBSCRIPTION_PREVIEW_EXPIRY + 1,
-    CODEX_CONVERSATION_FRAMING)).toThrow(/expired or clock differs/u);
+    CODEX_CONVERSATION_FRAMING)).not.toThrow();
+  expect(() => validateCodexActivation(f.activation(), f.profile, f.model, 1,
+    CODEX_CONVERSATION_FRAMING)).toThrow(/clock differs/u);
   expect(() => validateCodexActivation({ ...f.activation(), acceptedResiduals: [] }, f.profile, f.model, 1000,
     CODEX_CONVERSATION_FRAMING)).toThrow(/residuals absent/u);
   // The doorway's own validator is the one the registry hands out.

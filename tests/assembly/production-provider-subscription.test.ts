@@ -172,12 +172,13 @@ for (const terminal of ['{}', '{}\n{}', '{', JSON.stringify({ type: 'result', su
     expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('uncertain');
     expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
   });
-it('refuses contradicted/expired activation, changed artifact, wrong account, string custody and substituted descriptor', () => {
+it('refuses contradicted activation, changed artifact, wrong account, string custody and substituted descriptor', () => {
   const f = fixture();
+  // activation-stop-1108: the activation end date is a reminder, never a stop; a route past it is still admitted.
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input, now: () => SUBSCRIPTION_PREVIEW_EXPIRY }).kind).toBe('Success');
   for (const input of [
     { ...f.input, activation: { ...f.input.activation, extraUsage: 'contradicted' as const } },
     { ...f.input, activation: { ...f.input.activation, subscriptionLimit: 'exhausted' as const } },
-    { ...f.input, now: () => SUBSCRIPTION_PREVIEW_EXPIRY },
     { ...f.input, activation: { ...f.input.activation, observedAccount: 'other' } },
     { ...f.input, resolveProfile: () => 'API_KEY' as unknown as ProviderSubscriptionProfile },
     { ...f.input, resolveProfile: () => Object.freeze({ ...f.input.profile }) },
@@ -586,11 +587,16 @@ it('accepts the predecessor end only while the journal is still at it, and the g
   const f = fixture(), { profile, model } = f.input, v5 = { ...f.input.activation, expiresAt: P };
   expect(() => validateSubscriptionActivation(v5, profile, model, 1000, undefined, P)).not.toThrow();
   for (const journal of [G, undefined]) expect(() => validateSubscriptionActivation(v5, profile, model, 1000, undefined, journal))
-    .toThrow('subscription activation expired or clock differs');
-  // The predecessor end still expires at itself: the journal's end never extends a record past its own end.
-  expect(() => validateSubscriptionActivation(v5, profile, model, P, undefined, P)).toThrow('expired or clock differs');
+    .toThrow('subscription activation clock differs or its end is not reviewed');
+  // activation-stop-1108: the end date is a reminder, never a stop: past its own end the record still validates.
+  expect(() => validateSubscriptionActivation(v5, profile, model, P, undefined, P)).not.toThrow();
+  expect(() => validateSubscriptionActivation(v5, profile, model, P + 86_400_000, undefined, P)).not.toThrow();
+  // A record that is invalid otherwise still refuses past the end: an unreviewed end, another account, a clock before it was observed.
   expect(() => validateSubscriptionActivation({ ...v5, expiresAt: P + 1 }, profile, model, 1000, undefined, P + 1))
-    .toThrow('expired or clock differs');
+    .toThrow('its end is not reviewed');
+  expect(() => validateSubscriptionActivation({ ...v5, observedAccount: 'other@example.invalid' }, profile, model, P + 86_400_000, undefined, P))
+    .toThrow('subscription activation account differs');
+  expect(() => validateSubscriptionActivation(v5, profile, model, v5.observedAt - 1, undefined, P)).toThrow('clock differs');
 });
 
 it('re-reads the journal end at every call: a predecessor-end route stops dispatching once the renewal lands', async () => {

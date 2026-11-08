@@ -130,7 +130,7 @@ it('before the renewal only the predecessor-end record starts; after it only the
     journal.close();
 
     // After the renewal the same v5 (and any other end) is refused before launch; v6 runs.
-    // (Recorded reason for both: "subscription activation expired or clock differs".)
+    // (Recorded reason for both: "subscription activation clock differs or its end is not reviewed".)
     for (const refused of [paths.v5, paths.other]) expect(w.run(refused).status).toBe(1);
     const renewed = w.run(paths.v6);
     expect(renewed.status, renewed.stderr).toBe(0);

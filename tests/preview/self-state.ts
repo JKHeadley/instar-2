@@ -257,7 +257,7 @@ function stateFacts(view: JournalView, now: number, timeZone: string, stopped: b
     ...[...view.reminders.values()].filter(item => item.requested && item.sent !== undefined).map(item => item.sentAt)];
   const requestsToday = requestSends.filter(isToday).length;
   const holds = new Map<string, number>();
-  for (const { notice } of heldNotices(view, stopped || view.stop !== null || now >= view.expires))
+  for (const { notice } of heldNotices(view, stopped || view.stop !== null))
     holds.set(notice, (holds.get(notice) ?? 0) + 1);
   const heldToday = heldRepliesToday(view, now, timeZone);
   const unknownCalls = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined)).length;

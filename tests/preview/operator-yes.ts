@@ -89,12 +89,11 @@ export const validRetractUpdates = (updates: unknown): updates is number[] => Ar
 export function proposeRetractRequest(state: Pick<ProposalState, 'expires' | 'stopped' | 'grant' | 'base'>, updates: readonly number[],
   reason: string, carrier: string, now: number): { kind: 'request'; request: OperatorRequest } | { kind: 'refused'; reason: string } {
   if (state.stopped) return { kind: 'refused', reason: 'this installation is stopped' };
-  if (now >= state.expires) return { kind: 'refused', reason: 'this installation has ended' };
   if (!validRetractUpdates(updates)) return { kind: 'refused', reason: `the list must hold 1 to ${RETRACT_UPDATES_LIMIT} distinct update ids in ascending order` };
   if (!validReason(reason)) return { kind: 'refused', reason: 'the reason must be one line of 8 to 300 bytes' };
   const id = operatorRequestId(carrier, 'retract-turns', state.base);
   const request = { id, action: 'retract-turns' as const, base: state.base, updates: [...updates], reason,
-    issuedAt: now, expiresAt: Math.min(state.expires, now + OPERATOR_REQUEST_MS) };
+    issuedAt: now, expiresAt: now + OPERATOR_REQUEST_MS };
   return { kind: 'request', request: { ...request, digest: operatorRequestDigest(request, state.grant) } };
 }
 
@@ -108,9 +107,8 @@ export function proposeOperatorRequest(state: ProposalState, proposal: OperatorA
   { kind: 'request'; request: OperatorRequest } | { kind: 'refused'; reason: string } {
   const refused = (reason: string) => ({ kind: 'refused' as const, reason });
   if (state.stopped) return refused('this installation is stopped');
-  if (now >= state.expires) return refused('this installation has ended');
   if (!Number.isSafeInteger(windowMs) || windowMs <= 0 || windowMs > OPERATOR_REQUEST_MAX_MS) throw Error('preview: operator request window out of bounds');
-  const lifetime = { issuedAt: now, expiresAt: Math.min(state.expires, now + windowMs) };
+  const lifetime = { issuedAt: now, expiresAt: now + windowMs };
   if (proposal.action === 'raise-caps') {
     if (state.unknownCalls > 0) return refused('a model call\'s outcome is still unknown, so no raise can be recorded until it is settled');
     const asked = proposal.limits ?? { [nearest(state)]: 'step' as const };
