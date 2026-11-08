@@ -173,7 +173,7 @@ describe('the loop', () => {
     const run = await nativeTurn([
       ask(['Write', { file_path: 'note.txt', content: 'hello tools' }]),
       ask(['Bash', { command: 'wc -c note.txt' }], ['Read', { file_path: 'note.txt' }]),
-      answer('note.txt holds 11 bytes (step 2, call 1: wc -c).')]);
+      answer('note.txt holds 11 bytes (step 2, call 1: wc -c).')], { maxCalls: 100 });
     const result = run.outcome.result;
     expect(result).toMatchObject({ state: 'complete', value: 'note.txt holds 11 bytes (step 2, call 1: wc -c).',
       native: { models: 3, steps: 2, calls: 3, ended: 'answered' } });
@@ -191,7 +191,7 @@ describe('the loop', () => {
     // runToolTurn's own accounting: one reserved turn, the trace journaled, consistent.
     expect(run.journal.view.toolTurns).toMatchObject({ invocations: 1, toolCalls: 3, toolRefusals: 0, inconsistent: 0, open: [] });
     // The tool turn's whole liability (cint-L44: w4-toolsfull reserves its subagent budget for every tool turn; the native loop
-    // starts no subagent, so the reservation is conservative, never short).
+    // starts no subagent, so the reservation is conservative, never short). A 100-call allowance holds both helpers' budgets.
     expect(run.journal.view.calls).toBe(SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1 + SUBSCRIPTION_TOOL_LIMITS.maxChildren * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns);
     expect(readToolTrace(run.stateDirectory)).toMatchObject({ consistent: true, admitted: 3, refused: 0 });
   });

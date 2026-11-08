@@ -257,9 +257,15 @@ export const SUBSCRIPTION_TOOL_NAMES = Object.freeze(['Agent', 'Bash', 'CronCrea
  * call cap reserves before dispatch; `maxToolCalls` is the hook's per-step count, shared with the turn's subagents;
  * `maxChildren` subagents at most in the whole turn, at any depth. `--max-budget-usd` is checked only after a turn and
  * overshoots by up to one turn (spike d3), so the flag sits one turn's margin below the ceiling and is a backstop only: the
- * binding spend floor is the upstream call reservation. */
-export const SUBSCRIPTION_TOOL_LIMITS = Object.freeze({ maxTurns: 8, maxToolCalls: 32, timeout: 300000,
-  budgetCeilingUsd: 1, oneTurnMarginUsd: 0.25, maxWriteBytes: 1048576, maxChildren: 2, childMaxTurns: 4 });
+ * binding spend floor is the upstream call reservation.
+ * A subagent has no turn cap of its own (helper-limits-1107; 1.x helpers had none): `childMaxTurns` is the turn's whole
+ * shared tool-call allowance plus the helper's answer turn, so a helper may take every call the turn has left and still
+ * answer. It never binds before the shared allowance is spent (each non-final helper turn makes a call the hook counts,
+ * and every call past the allowance is refused there); it is the finite number the call cap reserves per subagent, so a
+ * helper looping on refused calls still stops there. The turn's timeout, budget backstop and the operator's stop still end it. */
+const TOOL_CALLS_PER_TURN = 32;
+export const SUBSCRIPTION_TOOL_LIMITS = Object.freeze({ maxTurns: 8, maxToolCalls: TOOL_CALLS_PER_TURN, timeout: 300000,
+  budgetCeilingUsd: 1, oneTurnMarginUsd: 0.25, maxWriteBytes: 1048576, maxChildren: 2, childMaxTurns: TOOL_CALLS_PER_TURN + 1 });
 /** The subagent type a tool turn starts: foreground, bounded turns, and (no `tools` field) the turn's whole tool set,
  * Agent included, so a subagent may delegate in turn within the turn's shared subagent budget. */
 export const SUBSCRIPTION_SUBAGENT_TYPE = 'worker';
@@ -283,7 +289,7 @@ const TOOLS_SENTENCE = READ_BEFORE_ANSWER + 'In this turn you have the harness\'
   + 'repositories under $TMPDIR. '
   + 'WebFetch and WebSearch read the public web (GET only). '
   + `Agent starts "${SUBSCRIPTION_SUBAGENT_TYPE}" subagents, which may start their own: at most ${SUBSCRIPTION_TOOL_LIMITS.maxChildren} in this `
-  + `whole turn, each up to ${SUBSCRIPTION_TOOL_LIMITS.childMaxTurns} turns, each result returning to whoever started it. Each call is `
+  + 'whole turn, each sharing this turn\'s tool calls and working until it answers, each result returning to whoever started it. Each call is '
   + 'checked when made. Workspace work and public reads are already allowed. Registered effects covered by standing grants '
   + 'run without another yes. The operator can tighten or revoke trust through setup-standing-trust. '
   + 'The effect doorway reports any refusal and its reason; say so plainly. '

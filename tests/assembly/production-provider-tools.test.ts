@@ -18,7 +18,7 @@ import type { SubscriptionActivationRecord, SubscriptionToolTurn } from '../../s
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { COMPLETE_REQUESTED_WORK } from '../../src/assembly/tool-answer-guidance.js';
 import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
-import { guidanceOnlyPolicyPins } from '../preview/tools-policy-class.js';
+import { FULL_TOOLS_CLASS, guidanceOnlyPolicyPins, toolsPolicyClassVerdict } from '../preview/tools-policy-class.js';
 import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
 import { factsFixture, value } from '../facts/fixtures.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
@@ -103,7 +103,8 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
   // went with the 2026-10-13 single-machine ruling (purpose changelog): one machine has no closed operation set.
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('is the subscription login running you, never the operator');
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toContain('closed set');
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBe(2697 + 508);
+  // helper-limits-1107: the subagent sentence names the shared allowance instead of a per-helper turn count (+46 characters).
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBe(2697 + 508 + 46);
   const captures = JSON.parse(readFileSync(new URL('../preview/fixtures/tools-guidance-only-2026-10-15.json', import.meta.url), 'utf8'));
   const [previous, completion] = captures.builds;
   expect(previous.digest).toBe('sha256:5fed4bcfd823d950c1444a008a9c11d40824671dd8e68aa2f5908ed8534a2926');
@@ -111,7 +112,21 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
   // The removed closed-set sentence and shared supersession guidance are prompt-only changes:
   // the sealed guidance-only class still binds all launch, authority and resource fields.
   const closedSet = 'Irreversible outward sends remain outside the one-machine closed set. ';
-  const current = subscriptionToolsPolicy('claude-sonnet-5'), prompt = current.args.indexOf('--system-prompt') + 1;
+  const built = subscriptionToolsPolicy('claude-sonnet-5'), prompt = built.args.indexOf('--system-prompt') + 1;
+  // helper-limits-1107 changes exactly the helper's turn bound (4 → the shared allowance and its answer) and the sentence
+  // that names it. That leaves the sealed guidance-only pins (a pinned cap changed) and stays inside the broader
+  // full-tools-checkpointed-v1 class of standing grant 121996; with the old bound and sentence restored, the policy is the
+  // guidance-only build exactly, so nothing else moved.
+  const agentsAt = built.args.indexOf('--agents') + 1;
+  const helperSentence = (turns: string) => `whole turn, ${turns}, each result returning to whoever started it.`;
+  const current = { ...built, limits: { ...built.limits, childMaxTurns: 4 }, args: built.args.map((arg, index) => index === prompt
+    ? arg.replace(helperSentence('each sharing this turn\'s tool calls and working until it answers'), helperSentence('each up to 4 turns'))
+    : index === agentsAt ? JSON.stringify(Object.fromEntries(Object.entries(JSON.parse(arg) as Record<string, object>)
+      .map(([name, agent]) => [name, { ...agent, maxTurns: 4 }]))) : arg) };
+  expect(current).not.toEqual(built);
+  expect(JSON.parse(built.args[agentsAt]!)[SUBSCRIPTION_SUBAGENT_TYPE].maxTurns).toBe(SUBSCRIPTION_TOOL_LIMITS.maxToolCalls + 1);
+  expect(guidanceOnlyPolicyPins(built)).not.toBe(guidanceOnlyPolicyPins(current));
+  expect(toolsPolicyClassVerdict(FULL_TOOLS_CLASS, built, hash(built))).toMatchObject({ kind: 'covered' });
   expect(completion.policy.args[prompt].split(closedSet)).toHaveLength(2);
   const oldMemory = 'If two active memory items match the question but disagree, or refer to different people or things, '
     + 'ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';

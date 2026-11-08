@@ -14,6 +14,8 @@ import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { nestedSessionWorkEdge, type SessionWorkEdge } from '../../src/assembly/production-session-work.js';
 import { capabilityBriefing, capabilitySentence, CAPABILITY_SENTENCE_LABEL, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+// @ts-expect-error The hook stays plain JavaScript.
+import { admitToolCall } from './tool-admission.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { TOOL_HOOK_SCRIPT, TOOL_MCP_LAUNCHER, TOOL_NOTICE_MAX_BYTES, attachEgress, attachScratch, detachScratch, networkToolReads, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, unmountWithin, workspaceBytes } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
@@ -340,10 +342,10 @@ it('runs one tool turn: refuses to the text-only answer on a short allowance or 
   }))).rejects.toThrow(/without its admission record/u);
   expect(journal.view.toolTurns).toMatchObject({ inconsistent: 1, open: [] });
   // A failed launch: the trace still closes the reservation, and the failure surfaces unchanged.
-  root = dir(); journal = journalAt(root, 50);
+  root = dir(); journal = journalAt(root, 100);
   await expect(runToolTurn(base(journal, root, async () => { throw Error('launch failed'); }))).rejects.toThrow('launch failed');
   expect(journal.view.toolTurns).toMatchObject({ invocations: 1, open: [] });
-  // A 50-call allowance holds the turn and both subagents' whole budgets, so all of it is reserved.
+  // A 100-call allowance holds the turn and both subagents' whole budgets, so all of it is reserved.
   expect(journal.view.calls).toBe(extra + SUBSCRIPTION_TOOL_LIMITS.maxChildren * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns);
 });
 
@@ -404,12 +406,52 @@ it('reserves each subagent\'s whole budget with the turn, as far as the allowanc
   expect(j.view.toolTurns?.children).toEqual({ started: 1, returned: 1, cancelled: 0, unknown: 0 });
 });
 
+it('a helper has no turn cap of its own: it works past four turns on the shared allowance, reserved before dispatch, and exhaustion still refuses (helper-limits-1107)', async () => {
+  const L = SUBSCRIPTION_TOOL_LIMITS, extra = L.maxTurns - 1;
+  // ROW16 (update 367055600): both helpers stopped at the old cap of 4 turns without answering. A helper's turns are now the
+  // turn's whole shared tool-call allowance plus its answer turn, never a smaller number of their own.
+  expect(L.childMaxTurns).toBeGreaterThan(4);
+  expect(L.childMaxTurns).toBe(L.maxToolCalls + 1);
+  // The spend floor: each reserved helper's whole budget is reserved before dispatch, and only as far as the allowance holds it.
+  const each = L.childMaxTurns, kept = 2 * extra + 1;
+  expect([toolChildrenFit(journalAt(dir(), kept + each - 1).view), toolChildrenFit(journalAt(dir(), kept + each).view)]).toEqual([0, 1]);
+  // A helper's fifth and later calls (one per model turn) are admitted at the hook while the shared allowance lasts; the call
+  // past it is refused there, so a helper reaches its reservation only by spending the allowance.
+  const root = dir(), config = { workspace: root, tmp: root, reads: [], maxCalls: L.maxToolCalls, maxWriteBytes: L.maxWriteBytes, operations: [],
+    children: { max: 2, type: SUBSCRIPTION_SUBAGENT_TYPE } };
+  const read = { tool_name: 'Read', tool_input: { file_path: join(root, 'note.txt') }, agent_id: 'a1' };
+  writeFileSync(join(root, 'note.txt'), 'x');
+  const fs = { exists: existsSync, realpath: realpathSync };
+  for (const n of [5, 6, L.maxToolCalls]) expect(admitToolCall(read, config, n, fs)).toMatchObject({ decision: 'allow' });
+  expect(admitToolCall(read, config, L.maxToolCalls + 1, fs)).toMatchObject({ decision: 'deny', reason: expect.stringContaining('call cap') });
+  // The whole turn: a helper whose record shows six admitted calls (past the old four) returns, and the reservation covered it.
+  const helperTurn = async (update: number, returned: boolean, stopped: boolean) => {
+    const turnRoot = dir(), journal = journalAt(turnRoot, 1000), appended: Record<string, unknown>[] = [];
+    const spied = { get view() { return journal.view; }, append: (row: never) => { appended.push(row); return journal.append(row); } } as unknown as typeof journal;
+    const rows = [JSON.stringify({ phase: 'pre', id: 't0', n: 1, tool: 'Agent', input: '{}', decision: 'allow', reason: 'r', kind: 'subagent', child: 1 }),
+      JSON.stringify({ phase: 'child-start', agent: 'a1', type: SUBSCRIPTION_SUBAGENT_TYPE }),
+      ...[2, 3, 4, 5, 6, 7].flatMap(n => [JSON.stringify({ phase: 'pre', id: `r${n}`, n, tool: 'Read', input: '{}', decision: 'allow', reason: 'r', agent: 'a1' }),
+        JSON.stringify({ phase: 'post', id: `r${n}`, tool: 'Read', result: '"x"', agent: 'a1' })]),
+      ...returned ? [JSON.stringify({ phase: 'post', id: 't0', tool: 'Agent', result: '"done"', agent: 'a1' })] : []];
+    await runToolTurn({ journal: spied, root: turnRoot, id: `telegram:12345678:update:${String(update)}`, prepared: '{}', promptLimit: 32768,
+      deniedRoots: [turnRoot], operations: SINGLE_MACHINE_PROFILE.operations, now: () => 10, redactText: (text: string) => text,
+      fallback: async () => ({ result: 'text-only' }), scratch: plainScratch, detach: keepDetached, authority: 'a', stopped: () => stopped,
+      invoke: async (turn: { stateDirectory: string }) => { writeFileSync(join(turn.stateDirectory, 'admission.jsonl'), rows.join('\n')); return 'answer'; } })
+      .catch(() => null);
+    expect(appended[0]).toMatchObject({ phase: 'reserved', calls: extra + 2 * each, delegation: { children: 2, turnsEach: each } });
+    return (appended[1] as { edges: { state: string; budget: { modelTurns: number } }[] }).edges.map(edge => [edge.state, edge.budget.modelTurns]);
+  };
+  expect(await helperTurn(31, true, false)).toEqual([['returned', each]]);
+  // The operator's stop still ends a helper that is past four turns: its edge is recorded cancelled, never returned.
+  expect(await helperTurn(32, false, true)).toEqual([['cancelled', each]]);
+});
+
 it('keeps an interrupted turn\'s hook record past retention and journals its child edges as unknown at the next launch (Rule 114)', async () => {
   const root = dir(), id = 'telegram:12345678:update:21', authority = 'activation-ref sha256:tools';
   const journal = journalAt(root, 1000);
   // A crash after the hook synced an admitted Agent call and its child start, before the trace was journaled: the
   // reservation is durable and open, the turn directory holds the only record of the child.
-  journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: 15, at: 1,
+  journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1 + 2 * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, at: 1,
     delegation: { children: 2, turnsEach: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, type: SUBSCRIPTION_SUBAGENT_TYPE, authority } } as never);
   const crashed = prepareToolTurn({ root, operation: id, attempt: 0, operations: SINGLE_MACHINE_PROFILE.operations, children: 2,
     scratch: plainScratch, authority });
