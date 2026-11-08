@@ -77,13 +77,14 @@ it('reaches the registered Codex doorway with the recorded 0.156.1 transport and
   expect(binding).toMatchObject({ doorway: doorwayId, invocationPolicyDigest: f.input.activation.invocationPolicyDigest });
 });
 
-it.each(['model', 'policy', 'historical-policy', 'profile', 'expired', 'stopped', 'unknown-doorway'])('refuses %s before physical execution', async kind => {
+it.each(['model', 'policy', 'historical-policy', 'profile', 'unobserved-clock', 'stopped', 'unknown-doorway'])('refuses %s before physical execution', async kind => {
   const f = fixture(), input = { ...f.input, activation: { ...f.input.activation } };
   if (kind === 'model') input.model = 'gpt-other-exact';
   if (kind === 'policy') input.activation.invocationPolicyDigest = encoded('other').hash;
   if (kind === 'historical-policy') input.activation.invocationPolicyDigest = regression.invocationPolicyDigest;
   if (kind === 'profile') input.profile = Object.freeze({ ...input.profile, expectedAccount: 'another@example.invalid' });
-  if (kind === 'expired') input.now = () => input.activation.expiresAt;
+  // activation-stop-1108: the end date never refuses; a clock before the activation was observed still does.
+  if (kind === 'unobserved-clock') input.now = () => input.activation.observedAt - 1;
   if (kind === 'stopped') f.state.stopped = true;
   if (kind === 'unknown-doorway') input.doorwayId = 'unregistered';
   await expect(doorwayProvider(input)).rejects.toThrow();

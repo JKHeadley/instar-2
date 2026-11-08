@@ -616,7 +616,8 @@ it('refuses a cap raise while a model call is UNKNOWN', async () => {
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
 
-it('durably latches observed expiry while refusing non-operator stop requests', () => {
+// activation-stop-1108: the activation end date is a reminder, never a stop; only the operator's stop latches.
+it('keeps running past the activation end and refuses non-operator stop requests', () => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis(), expires: 999 });
@@ -625,18 +626,16 @@ it('durably latches observed expiry while refusing non-operator stop requests', 
       model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
     expect(() => worker.gate()).not.toThrow();
     expect(() => worker.pollGate()).not.toThrow();
-    now = 999; // Equality is already expired, not one tick later.
-    expect(() => worker.gate()).toThrow('stopped');
-    expect(() => worker.pollGate()).toThrow('stopped');
-    expect(journal.view.stop).toBe('trial expired');
-    now = 998; // The durable latch survives a clock moving back.
-    expect(() => worker.gate()).toThrow('stopped');
-    expect(() => worker.pollGate()).toThrow('stopped');
+    now = 999; // At the end, and long after it.
+    expect(() => worker.gate()).not.toThrow();
+    expect(() => worker.pollGate()).not.toThrow();
+    now = 999 + 30 * 86_400_000;
+    expect(() => worker.gate()).not.toThrow();
     expect(() => worker.stop('transport-breaker')).toThrow('only operator stop');
-    expect(journal.view.stop).toBe('trial expired');
+    expect(journal.view.stop).toBeNull();
     journal.close();
     const replay = openPreviewJournal(join(root, 'journal.encrypted'), key);
-    try { expect(replay.view.stop).toBe('trial expired'); } finally { replay.close(); }
+    try { expect(replay.view.stop).toBeNull(); } finally { replay.close(); }
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
 

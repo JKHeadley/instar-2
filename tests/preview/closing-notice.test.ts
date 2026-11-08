@@ -25,45 +25,53 @@ const until = async (predicate, runner) => {
     await new Promise(done => setTimeout(done, 25));
   }
 };
-it('crossing: durable closing message once, then expiry stops the real runner', async () => {
+// activation-stop-1108: the activation end date is a reminder, never a stop. The real runner shows the reminder once and
+// keeps reading and answering past the end; only the operator's stop or a signal ends it.
+const REMINDER = 'Reminder: this agent';
+const reminders = h => kept(h).filter(s => String(s).startsWith(REMINDER));
+const polls = h => sends(h).filter(s => String(s).startsWith('{"kind":"poll"')).length;
+it('crossing: the reminder once, then past the end the real runner keeps answering', async () => {
   const { harness, message, setTime } = setup(200000);
   harness.setUpdates([message(1, 'What is the marker? Juniper.')]);
   const runner = harness.startRunner(harness.liveRoot, 'live', 100000);
   const timeout = setTimeout(() => runner.child.kill('SIGTERM'), 45000);
   try {
-    await until(() => kept(harness).some(s => String(s).startsWith('This agent will stop at')), runner);
-    setTime(END);
-    const child = await runner.exited;
-    expect(child.status, runner.output.stderr).toBe(0);
-    expect(runner.output.stderr).toContain('runner exiting: trial expired');
-    expect(kept(harness).filter(s => String(s).startsWith('This agent will stop at'))).toHaveLength(1);
-    const j = openPreviewJournal(join(harness.liveRoot, 'journal.encrypted'), key);
-    expect(j.view.stop).toBe('trial expired'); j.close();
+    await until(() => reminders(harness).length > 0, runner);
+    setTime(END + 60000);
+    const before = kept(harness).length;
+    harness.setUpdates([message(1, 'What is the marker? Juniper.'), message(2, 'Are you still there?')]);
+    await until(() => kept(harness).length > before, runner);
+    expect(runner.child.exitCode).toBeNull();
+    expect(reminders(harness)).toHaveLength(1);
+    expect(runner.output.stderr).not.toContain('trial expired');
   } finally { clearTimeout(timeout); if (runner.child.exitCode === null) runner.child.kill('SIGTERM'); await runner.exited; }
+  const j = openPreviewJournal(join(harness.liveRoot, 'journal.encrypted'), key);
+  expect(j.view.stop).toBeNull(); j.close();
 }, 60000);
 it('outside the window: no closing message', async () => {
   const { harness, message } = setup(6 * 60000);
   harness.setUpdates([message(1, 'What is the marker? Juniper.')]);
   const run = await harness.runLive(5); expect(run.status, run.stderr).toBe(0);
-  expect(kept(harness).filter(s => String(s).startsWith('This agent will stop at'))).toHaveLength(0);
+  expect(reminders(harness)).toHaveLength(0);
 }, 120000);
 it('a restart inside the window does not repeat it', async () => {
   const { harness, message } = setup(200000);
   harness.setUpdates([message(1, 'first')]);
   await harness.runLive(5); await harness.runLive(5);
-  expect(kept(harness).filter(s => String(s).startsWith('This agent will stop at'))).toHaveLength(1);
+  expect(reminders(harness)).toHaveLength(1);
 }, 120000);
-it('nobody has written yet: no closing message and expiry still stops it', async () => {
+it('nobody has written yet: no reminder, and the end does not stop the runner', async () => {
   const { harness, setTime } = setup(200000);
   harness.setUpdates([]);
   const runner = harness.startRunner(harness.liveRoot, 'live', 100000);
   const timeout = setTimeout(() => runner.child.kill('SIGTERM'), 45000);
   try {
     await until(() => existsSync(join(harness.directory, 'telegram.jsonl')), runner);
-    setTime(END);
-    const child = await runner.exited;
-    expect(child.status, runner.output.stderr).toBe(0);
-    expect(runner.output.stderr).toContain('runner exiting: trial expired');
+    setTime(END + 60000);
+    const before = polls(harness);
+    await until(() => polls(harness) >= before + 3, runner);
+    expect(runner.child.exitCode).toBeNull();
+    expect(runner.output.stderr).not.toContain('trial expired');
     expect(kept(harness)).toHaveLength(0);
   } finally { clearTimeout(timeout); if (runner.child.exitCode === null) runner.child.kill('SIGTERM'); await runner.exited; }
 }, 60000);
@@ -88,11 +96,11 @@ it('minimal path sends while an ordinary model answer is still in flight', async
   try {
     await until(() => existsSync(join(harness.directory, 'model.jsonl')), runner);
     setTime(END - 300000);
-    await until(() => kept(harness).some(s => String(s).startsWith('This agent will stop at')), runner);
-    setTime(END);
-    const child = await runner.exited;
-    expect(child.status, runner.output.stderr).toBe(0);
-    expect(runner.output.stderr).toContain('runner exiting: trial expired');
-    expect(kept(harness).filter(s => String(s).startsWith('This agent will stop at'))).toHaveLength(1);
+    await until(() => reminders(harness).length > 0, runner);
+    setTime(END + 60000);
+    const before = polls(harness);
+    await until(() => polls(harness) >= before + 3, runner);
+    expect(runner.child.exitCode).toBeNull();
+    expect(reminders(harness)).toHaveLength(1);
   } finally { clearTimeout(timeout); if (runner.child.exitCode === null) runner.child.kill('SIGTERM'); await runner.exited; }
 }, 60000);

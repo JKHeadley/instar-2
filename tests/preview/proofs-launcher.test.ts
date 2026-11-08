@@ -43,14 +43,15 @@ const setup = (now = fixtureNow) => {
   return { world, harness, message, record };
 };
 
-it('refuses the same recorded activation after its expiry without polling or sending', async () => {
+// activation-stop-1108: the activation end date is a reminder, never a stop: the same recorded activation launches past it.
+it('launches the same recorded activation past its end date and polls', async () => {
   const { harness } = setup(SUBSCRIPTION_PREVIEW_EXPIRY + 1);
   harness.setUpdates([]);
   const launched = (await harness.runLive(2));
-  expect(launched.status).toBe(1);
+  expect(launched.status, launched.stderr).toBe(0);
   const runs = readFileSync(join(harness.liveRoot, 'runs.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
-  expect(runs.at(-1)).toMatchObject({ reason: 'refused before launch', refused: 'subscription activation expired or clock differs' });
-  expect(existsSync(join(harness.directory, 'telegram.jsonl'))).toBe(false);
+  expect(runs.some(row => row.reason === 'refused before launch')).toBe(false);
+  expect(existsSync(join(harness.directory, 'telegram.jsonl'))).toBe(true);
 }, 60000);
 
 // Held probe evidence (register-contract-map): each probe named here executes on the real launcher and passes.
