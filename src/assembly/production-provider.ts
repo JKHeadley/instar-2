@@ -396,10 +396,13 @@ export const SUBSCRIPTION_TOOL_SCRATCH_PATH_BYTES = 30;
  * plan #615; live 2026-10-03 through the shell, 2026-10-06 through Read). The two things it was carried for are
  * supplied elsewhere: a name is resolved at the turn's network checkpoint, which the shell reaches by address on
  * loopback, and the trust root that checkpoint hands the shell is one of `egress.reads`; with no checkpoint the shell
- * has no network at all. Nothing else outside the scratch volume is readable: other sessions' temporary files, users'
- * homes, mounted volumes and the runner root all lie outside this list. */
+ * has no network at all. One part of /private/etc is machinery too: the TLS library's own configuration and public CA
+ * bundle (/private/etc/ssl, LibreSSL's OPENSSLDIR), which macOS curl opens at start and stops on ("Auto configuration
+ * failed") before it reaches the checkpoint; live ROW16 2026-11-07, both helpers. It holds no host record (/private/etc/hosts
+ * stays refused) and, like every entry here, is read-only. Nothing else outside the scratch volume is readable: other
+ * sessions' temporary files, users' homes, mounted volumes and the runner root all lie outside this list. */
 export const SUBSCRIPTION_TOOL_RUNTIME_READS = Object.freeze(['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/libexec',
-  '/usr/share', '/System', '/private/var/select', '/dev']);
+  '/usr/share', '/System', '/private/var/select', '/private/etc/ssl', '/dev']);
 /** Root-level symlinks whose targets hold a runtime read (/var to /private/var). The sandbox checks a link itself when
  * a path is looked up through it, then checks the resolved target against the read list, so an entry here reopens the
  * link node alone and opens nothing behind it (/var/log stays refused, as /private/var/log is). `/etc` was such an entry

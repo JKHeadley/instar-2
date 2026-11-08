@@ -97,7 +97,8 @@ export function claudeSettingsCheckpoints(json: string, egress: Readonly<{ port:
   for (const read of reads) {
     if (typeof read !== 'string' || !read.startsWith('/') || /(?:^|\/)\.\.?(?:\/|$)/u.test(read) || read.includes('*'))
       return 'the shell\'s read exceptions are not plain absolute paths';
-    if (!(within(read, PROBE.scratch) || FULL_TOOLS_RUNTIME_READS.includes(read) || FULL_TOOLS_RUNTIME_READ_LINKS.includes(read)
+    // A read inside a reviewed runtime location reads less than it, never more (links reopen only the link node: exact).
+    if (!(within(read, PROBE.scratch) || FULL_TOOLS_RUNTIME_READS.some(root => within(read, root)) || FULL_TOOLS_RUNTIME_READ_LINKS.includes(read)
       || (egress?.reads ?? []).includes(read)))
       return `the shell reads ${read}, outside its workspace and the reviewed runtime list`;
     if (protectedPaths.some(path => within(path, read))) return `the shell reads ${read}, which holds the login home, admission state or a denied root`;

@@ -150,7 +150,8 @@ it('writes settings that refuse every read from the root down except the scratch
   expect(() => subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/usr/local bin'] } }, '/profile/home')).toThrow(/absolute and plain/u);
   // Nothing in the runtime list holds user, session or runner data, and the host's own configuration is not on it
   // (w4-t2boundary, plan #615: /private/etc left the list, so a tool reads the machinery a command runs on and no more).
-  for (const read of SUBSCRIPTION_TOOL_RUNTIME_READS) expect(read).toMatch(/^\/(bin|sbin|usr\/(bin|sbin|lib|libexec|share)|System|private\/var\/select|dev)$/u);
+  // Its one part of /private/etc is the TLS library's configuration and public CA bundle (helper-limits-1107), read-only.
+  for (const read of SUBSCRIPTION_TOOL_RUNTIME_READS) expect(read).toMatch(/^\/(bin|sbin|usr\/(bin|sbin|lib|libexec|share)|System|private\/var\/select|private\/etc\/ssl|dev)$/u);
   expect(SUBSCRIPTION_TOOL_RUNTIME_READS).not.toContain('/private/etc');
   // The link spelling reopens only the root-level symlink itself (w4-toolpaths): it resolves on this platform to the
   // directory holding a listed read, so nothing behind it that is not separately listed becomes readable. `/etc` was
