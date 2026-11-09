@@ -22,7 +22,7 @@ Decision: D1 | The requested repository spec is absent at the measured SHA; use 
 Decision: D2 | Report row 63 as historical fc000d65 evidence and zero current-head rows established by the inspected evidence; the parallel proof effort has no completed result at measurement time | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/register-measure-1109-PROGRESS.md
 Prompt review: none; no model-facing behavior changes
 
-1.x FIRST: searched actual JKHeadley/instar origin/main src/, docs/specs/ and history at 6cbe44c819cd97aec1d9c7f470b04148fbca708d. Read src/core/StandardsRegistryParser.ts, scripts/standards-coverage.mjs and docs/specs/CARTOGRAPHER-CONFORMANCE-AUDIT.md; inspected history 84b2220f3a, a10176d728, ac000547bf. Reused named-guard/resolvable-reference measurement discipline through 2.0's existing replay builder. The 1.x existence grading does not establish 2.0 semantic Hold review or Part Two authority, so no scanner is ported. ONEX-LESSONS areas 1 and 5 warn against unknown production SHA and missing evaluation presented as success.
+1.x FIRST: searched actual JKHeadley/instar origin/main src/, docs/specs/ and history at 6cbe44c819cd97aec1d9c7f470b04148fbca708d. Read src/core/StandardsRegistryParser.ts, scripts/standards-coverage.mjs and docs/specs/CARTOGRAPHER-CONFORMANCE-AUDIT.md; inspected history 84b2220f3a, a10176d728, ac000547bf. Reused named-guard/resolvable-reference measurement discipline through 2.0's existing replay builder. The 1.x existence grading does not establish 2.0 semantic Hold review or Part Two authority, so no scanner is ported. ONEX-LESSONS areas 1 and 4 warn against unknown production SHA and missing evaluation presented as success.
 
 Subject (1 path): docs/specs/register-link-1103-spec.md
 

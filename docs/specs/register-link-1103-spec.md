@@ -92,7 +92,7 @@ Searched JKHeadley/instar `origin/main` src/, docs/specs/ and history at
 `scripts/standards-coverage.mjs`, `docs/specs/CARTOGRAPHER-CONFORMANCE-AUDIT.md`;
 history includes 84b2220f3a, a10176d728 and ac000547bf. Reuse their named-guard and
 resolvable-reference discipline through the existing 2.0 builder. Their existence
-grading cannot supply reviewed Hold/Part Two authority. ONEX-LESSONS areas 1 and 5
+grading cannot supply reviewed Hold/Part Two authority. ONEX-LESSONS areas 1 and 4
 warn against unknown production SHAs and missing evaluation presented as proof.
 The simplest robust route is this dated replay and scoped evidence report; no
 scanner, runtime gate, authority provider or second carryover inventory is added.
