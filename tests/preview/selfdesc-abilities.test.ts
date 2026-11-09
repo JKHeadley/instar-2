@@ -61,6 +61,10 @@ const currentChannelNote = (text: string) => compactRecordedNote(text.replace(re
     'captures every inbound message before work; uncertain ones are kept.')
   .replace('- checks replies against remembered turns without a model call.',
     '- with --attribution, checks quotes credited in notes.\n- checks replies against remembered turns; no model call.')
+  // Train-231 intentionally expands the write-only attribution check to notes and replies.
+  // Translate only this inventory line; historical PASSes do not certify the expanded check.
+  .replace('- with --attribution, checks quotes credited in notes.\n',
+    '- checks note and reply credits with --attribution.\n')
   .replace('keeps a faithfulness-checked rolling summary of earlier turns.',
     'keeps a faithfulness-checked summary of earlier turns.')
   .replace('generates the register, rule book, glossary and this briefing from declarations.',
@@ -112,6 +116,16 @@ it('translates only the exact retired inventory entry and retains unrelated capa
   expect(renderedNote(capture.note.replace('changes nothing.', 'changes everything.'))).not.toBe(current);
   expect(renderedNote(capture.note.replace('faithfulness-checked', 'unchecked'))).not.toBe(current);
   expect(capture.note).toContain(retiredStepCheck);
+});
+
+it('translates only the declared write-only attribution inventory line', () => {
+  const oldLine = '- with --attribution, checks quotes credited in notes.\n';
+  const currentLine = '- checks note and reply credits with --attribution.\n';
+  expect(currentChannelNote(oldLine)).toBe(currentLine);
+  expect(currentChannelNote(currentLine)).toBe(currentLine);
+  const drift = oldLine.replace('notes.', 'all files.');
+  expect(currentChannelNote(drift)).toBe(drift);
+  expect(currentChannelNote(drift)).not.toBe(currentLine);
 });
 
 it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and declared capability revisions', () => {
