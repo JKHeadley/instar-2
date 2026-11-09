@@ -1,0 +1,35 @@
+# Change review — train-224 (pref-verbatim-1108 onto live train-220)
+
+Subject base: 32b3a95457a24fea5ca144650ea665e8a4059455
+Review state: open
+Reviewed content: none
+Outcome: Land the reviewed pref-verbatim-1108 head c8c99c2ec12da8750be11bbf01bcded6a9516215 (origin/fix/pref-verbatim-1108: a preference the operator states is stored as the operator's own whole sentence, a verbatim substring of the redacted message that holds the model's chosen clause; distinct clauses of one sentence keep independent lifetimes; overlapping proposals coalesce in either order; a correct or forget retires a widened row only when it quotes exactly that row's recorded clause) on the live build 32b3a954, and replay the register at the merge. 1.x comparison inherited from the member: JKHeadley/instar main 59856987870977bb53f162f9c828efb9a1eb1cc9 src/monitoring/CorrectionLoopDriver.ts:257 and src/core/PreferencesManager.ts:311 upsert a model-written learning by dedupeKey and have no source-bound verbatim sentence to reuse; 2.0's already-ported routing is tightened in place.
+Affected rules: 2, 7, 10, 26, 36, 37, 42, 57, 66, 69, 74, 85, 90, 93, 101, 102, 106, 111, 113, 116, 121
+Affected floors: Secrets: no credential path touched; stored text stays a substring of the already-redacted message. Spend cap: no model call added. Stop: unchanged. No duplicate sends: no send path touched. Durable intake: no row kind added; one optional clause field on the existing memory row, replayed as recorded.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Carried from the member (critical, on every one of its three records): it changes what the journal stores as the operator's preference and when a correction retires it. The train itself adds only an ordinary merge of the exact reviewed head and a mechanical register replay; the desk's exact-head full gate, independent review and live proof still follow this push.
+Side effects: generated/ now names commit 91999afa943a94b5faa185e10ef57e00ebde7ce7 (generation sha256:348e417c607acfb62f0e6ee37c656e5ceeec5130f1b221890df0c18db64d1a7f, 307 entries, 122 rules); otherwise only what the member's records declare (tests/preview/journal.ts, tests/preview/preference-verbatim.test.ts, tests/preview/correction-sticks.test.ts, three review records). Always-sent bytes +0 (PREVIEW_FIXED_PROMPT_BYTES 23_459 unchanged; default-context-floor 6/6).
+Undo and recovery: Reset train-224 to 32b3a95457a24fea5ca144650ea665e8a4059455; the merge commit, the replay commit and this record sit on top of it, and nothing outside the repository is written.
+Multi-machine posture: As the member declares: no new state or service; the existing journal memory record and its existing replication path carry the stored text and the optional clause field.
+Layer below: Read docs/00-the-purpose.md and docs/01-the-rules.md in full at the base, the member report pref-verbatim-1108 (including both repair sections) and the cint-L37 desk chain in full through the Studio API (sha256 verified), the member's three change-review records, and the member's diff, which lands byte-identical on this base (the base did not touch the member's files since its base train-218 fbec7958).
+Bug class: unit
+Bug evidence: reproducer=tests/preview/preference-verbatim.test.ts
+Hook bypass: none; no hook-bypass flag was passed; the shared clone's core.hooksPath points at an untracked husky stub directory and the repository tracks no .husky hook, so no project hook ran or was bypassed; plain git commit, ordinary merge, no stash.
+Convergence: none
+Prompt review: No model instruction or prompt text changes. The member changes how a validated model memory proposal is stored and retired; its recorded shapes replay on this tree: D5 update 46041015 (preswitch-train-220-32b3a954 D-proofroom4-ps) through preference-verbatim 11/11, and the correction-sticks-1023 I4, train-136 and fresh-model records through correction-sticks 7/7, so the new path fires on them.
+Decision: train-224-merge | Ordinary merge of reviewed pref-verbatim-1108 head c8c99c2ec12da8750be11bbf01bcded6a9516215 (origin/fix/pref-verbatim-1108, built on train-218 fbec7958) onto live 32b3a954; only the seven generated/ files conflicted, the member's tests/ and reviews/ delta lands byte-identical to its reviewed diff; member report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/pref-verbatim-1108-PROGRESS.md read in full. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-224-PROGRESS.md
+Decision: train-224-A | Preserve the member's behaviour and tests byte for byte; the base changed none of the member's files since train-218, so there are no overlapping product edits to combine. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-224-PROGRESS.md
+Decision: train-224-B | Branch created directly at the exact live base 32b3a95457a24fea5ca144650ea665e8a4059455 (origin/main already contained); no main merge, no branch movement. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-224-PROGRESS.md
+Decision: train-224-C | No product conflict and no omitted member; the generated/ conflicts were resolved by taking the base side and regenerating by replay, never hand-merged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-224-PROGRESS.md
+Decision: train-224-D | Host-dependent checks in files this train did not change (tests/e2e/register.test.ts timed out on WSL; tests/preview/native-loop.test.ts needs the macOS Seatbelt sandbox; one production-provider-subscription run failed 116 cases and the re-run on the same tree passed 118/118, a flip without a code change) are reported exactly and left to the Studio gate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-224-PROGRESS.md
+Decision: train-224-desk | Ran the desk chain (repin 0, tsc 0, rehash 0) and replayed the register at the merge 91999afa (commit and generation lines only); build-register --check is true. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-224-PROGRESS.md
+Deferral: generated/register.json:1 | not-a-deferral=generated register output replayed mechanically, not prose authored by this train
+Verification: Member tests, direct importers of the changed journal that exercise memory, preference, correction and directive paths, register, subscription, context-floor and READY-gate pinned tests; architecture, lint, typecheck, register and change-review checks. Exact outcomes, including host-dependent ones, in the desk report.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: one ordinary merge of the exact reviewed head and the existing regeneration tools. No added machinery. Existing authorization, secrets, spend, stop, durable intake and unique dispatch guards remain. No fresh unattended-completion claim.
+80/20: Targeted and explicitly requested checks only; no full suite and no second base worktree.
+VERDICT: author submission for desk gate, not independent convergence or live acceptance
