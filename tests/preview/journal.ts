@@ -1017,6 +1017,9 @@ export interface ChannelItem { source: 'conversation'; account: string; id: stri
 export interface ChannelSourceCursor { offset: number; file: string; anchor: string; scanned: number; imported: number; skipped: number }
 /** An operator correction supersedes a source excerpt in model-facing projections only. */
 export interface MemoryChange { mode: 'correct' | 'forget' | 'prefer' | 'remember'; source: string; quote: string; trigger: string; replacement?: string; historical?: true;
+  /** Rules 10/93: on a prefer row whose quote is the widened sentence, the exact clause the model selected. It stays
+   * the preference's lifecycle target: only a correct or forget of that clause retires the sentence. */
+  clause?: string;
   /** Absent for an operator/source message; reply means the agent's actual send intent. */
   in?: 'reply';
   replies?: string[]; summaryPassages?: string[] }
@@ -1889,9 +1892,45 @@ export function replyTimings(view: JournalView) {
 }
 
 const withheld = '[withheld: operator correction or forgetting]';
+/** Rules 93/121: a new preference is stored in the operator's own words. The model's exact clause is widened to the
+ * whole sentence of the message holding it, so a lead-in such as "From now on," is never dropped (proof D5c: 9 of 40
+ * sets stored the clause without it). Deterministic and verbatim; past the 1000-byte bound the clause stays. */
+export function preferenceSentence(message: string, clause: string): string {
+  const at = message.indexOf(clause);
+  if (at < 0) return clause;
+  const ends = /[.!?]["'”’)\]]*(?=\s|$)|\n/g;
+  let start = 0, end = message.length;
+  for (const match of message.matchAll(ends)) {
+    const stop = match.index + match[0].length;
+    if (stop <= at) start = stop;
+    else if (stop >= at + clause.length) { end = stop; break; }
+  }
+  const sentence = message.slice(start, end).trim();
+  return Buffer.byteLength(sentence) <= 1000 ? sentence : clause;
+}
+/** Rule 93: what each prefer clause of one decision stores. A sentence carrying one instruction (its clause, the
+ * sentence itself, or both) is stored once, whole. A sentence in which the model selected two or more distinct
+ * clauses keeps each exact clause, so correcting one never retires another. Order-independent by construction. */
+/** The exact prefer clauses a decision proposes for its own turn, as memoryFrom reads them. */
+const preferClauses = (proposed: unknown, turn: string) => (Array.isArray(proposed) ? proposed.slice(0, 3) : [])
+  .flatMap(item => {
+    const { mode, source, quote } = (item ?? {}) as { mode?: unknown; source?: unknown; quote?: unknown };
+    return mode === 'prefer' && source === turn && typeof quote === 'string' ? [quote] : [];
+  });
+export function preferenceTexts(message: string, clauses: readonly string[]): Map<string, string> {
+  const groups = new Map<string, Set<string>>();
+  for (const clause of clauses) {
+    const sentence = preferenceSentence(message, clause);
+    groups.set(sentence, (groups.get(sentence) ?? new Set<string>()).add(clause));
+  }
+  return new Map(clauses.map(clause => {
+    const sentence = preferenceSentence(message, clause);
+    return [clause, [...groups.get(sentence)!].filter(item => item !== sentence).length > 1 ? clause : sentence];
+  }));
+}
 /** Preference lineage from the recorded change history and the given active changes. */
 const memoryPreferenceState = (view: JournalView, changes: readonly MemoryChange[] = view.memory) => {
-  const active = new Map<string, { source: string; quote: string }>();
+  const active = new Map<string, { source: string; quote: string; clause?: string }>();
   const lineage = new Set<string>();
   // The active projection omits an undone correction, but its replacement
   // remains a historical preference source for source-scoped retirement.
@@ -1907,13 +1946,13 @@ const memoryPreferenceState = (view: JournalView, changes: readonly MemoryChange
   // used to ride every later packet twice (preferences and memoryCandidates), so a root whose operator repeats a
   // reply style grew its always-sent parts by about 210 bytes a turn (live 2026-10-02, proofroom2-rule40-20261002).
   // Every statement stays in the memory and change history and in the lineage (Rule 7).
-  const activate = (key: string, source: string, quote: string) => {
+  const activate = (key: string, source: string, quote: string, clause?: string) => {
     for (const [held, item] of active) if (item.quote === quote) active.delete(held);
-    active.set(key, { source, quote }); lineage.add(key);
+    active.set(key, { source, quote, ...(clause === undefined ? {} : { clause }) }); lineage.add(key);
   };
   for (const change of changes) {
     const key = JSON.stringify([change.source, change.quote]);
-    if (change.mode === 'prefer') activate(key, change.source, change.quote);
+    if (change.mode === 'prefer') activate(key, change.source, change.quote, change.clause);
     else if (active.delete(key) && change.mode === 'correct')
       activate(JSON.stringify([change.trigger, change.replacement]), change.trigger, change.replacement!);
   }
@@ -10999,7 +11038,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     && Number.isFinite(Date.parse(`${day}T00:00:00Z`)) ? wallEpoch(day, '09:00', zone) : undefined;
   /** Reads the answer's declared obligations. The model identifies them by meaning; the runner keeps
    * only exact quotes, listed ids and complete finite records, so nothing is paraphrased into authority. */
-  const obligationsFrom = (parsed: { directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown;
+  const obligationsFrom = (parsed: { directives?: unknown; closeDirectives?: unknown; memory?: unknown; openLoops?: unknown; blocker?: unknown;
     blockerRechecks?: unknown; cancelDeliveries?: unknown }, turn: Turn, reply: string, context: string, at: number,
     memory: readonly MemoryChange[] = []): AnswerObligations => {
     const result: AnswerObligations = {}, zone = ports.timeZone ?? 'America/Los_Angeles', decidedFrom = turn.reservedAt ?? at;
@@ -11031,8 +11070,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // supersession keep their lifecycle. The raw proposal and durable preference remain recorded.
         const preferences = memory.filter(change => change.mode === 'prefer'
           && change.source === turn.id && change.trigger === turn.id);
+        // The same exact clause proposed as a preference coalesces with the preference row that clause stored.
+        const clauses = preferenceTexts(redact(turn.text).text, preferClauses(parsed.memory, turn.id));
         const distinct = added.filter(item => item.supersedes !== undefined
-          || !preferences.some(change => change.quote === item.quote));
+          || !(clauses.has(item.quote as string) && preferences.some(change => change.quote === clauses.get(item.quote as string))));
         result.directives = distinct.flatMap(item => quotes.has(item.quote as string) ? [] : (quotes.add(item.quote as string), [{ quote: item.quote as string,
           ...(item.supersedes === undefined || closing.has(item.supersedes as number) ? {} : (closing.add(item.supersedes as number), { supersedes: item.supersedes as number })) }]));
         // Every open directive rides every packet, so admission keeps them within DIRECTIVE_SHARE of the context
@@ -11209,9 +11250,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const memoryFrom = (proposed: unknown[], trigger: Turn, offered: ReadonlySet<string>, offeredSummary?: string,
     updateEvidence: readonly { id: string; message: string }[] = [], held?: MemoryChange[]): MemoryChange[] | undefined => {
-    const changes: MemoryChange[] = [], seen = new Set<string>();
+    const changes: MemoryChange[] = [], seen = new Set<string>(), kept = new Set<string>();
     const preferences = preferenceState();
     if (!trigger.accepted || !fromOperator(trigger) || proposed.length > 3) return undefined;
+    const preferText = preferenceTexts(redact(trigger.text).text, preferClauses(proposed, trigger.id));
     // Rules 7/10: a prefer item that cites an offered preference record by its own source and exact quote is the
     // model's contextual decision that the preference on file stands unchanged, so it is a no-op rather than a
     // refusal of the whole decision (live canary-copy e2582787, updates 969389758/969389759/969389782). An item
@@ -11306,7 +11348,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         || summaryPassages.some(passage => typeof passage !== 'string' || passage.length < 8
           || Buffer.byteLength(passage) > 1000 || !offeredSummary?.includes(passage)))) return undefined;
       seen.add(JSON.stringify([rawSource, quote]));
-      (heldForget ? held ?? [] : changes).push({ mode: mode === 'update' ? 'correct' : mode, source: rawSource as string, quote, trigger: trigger.id,
+      // A later correct or forget of exactly the clause the model selected retires the sentence stored for it. Any other
+      // quote keeps its own target, even inside that sentence: a shared sentence is not a shared meaning (Rule 10).
+      const widened = original && side === undefined ? preferenceSentence(redact(original.text).text, quote) : quote;
+      const stored = mode === 'prefer' ? preferText.get(quote) ?? quote
+        : !activePreference && preferences.active.get(JSON.stringify([rawSource, widened]))?.clause === quote ? widened : quote;
+      // Raw repeats were refused above; rows that store the same text coalesce here, so neighbors agree in either order.
+      const storedKey = JSON.stringify([mode, rawSource, stored]);
+      if (kept.has(storedKey)) continue;
+      kept.add(storedKey);
+      // Coalesced rows keep the selected clause whichever proposal came first, so either order retires the same way.
+      const selected = mode === 'prefer' ? [...preferText].find(([clause, text]) => text === stored && clause !== stored)?.[0] : undefined;
+      (heldForget ? held ?? [] : changes).push({ mode: mode === 'update' ? 'correct' : mode, source: rawSource as string, quote: stored, trigger: trigger.id,
+        ...(selected === undefined ? {} : { clause: selected }),
         ...(side === 'reply' ? { in: 'reply' as const } : {}),
         ...(mode === 'correct' || mode === 'update' ? { replacement: replacement as string } : {}),
         ...(mode === 'update' ? { historical: true as const } : {}),
