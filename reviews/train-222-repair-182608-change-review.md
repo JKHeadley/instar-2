@@ -18,7 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/mcp-setup.test.ts
 Hook bypass: none
 Convergence: none
-Decision: mcp-install-stable-source | install from one filtered copy of the package instead of the live checkout, because the evidence writers must keep writing into the checkout and npm cannot pack a file that is growing | reported=/Users/adriana/echo-compute/builders/train-222-repair-182608-report.md
+Decision: mcp-install-stable-source | install from one filtered copy of the package instead of the live checkout, because the evidence writers must keep writing into the checkout and npm cannot pack a file that is growing | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-222-PROGRESS.md
 Prompt review: not model-facing: test fixture for the npm install path only.
 
 1.x comparison: JKHeadley/instar main 598569878, tests/integration/development-artifact-update.test.ts builds its package in a temp fixture by copying from the checkout, then runs npm pack on that copy instead of packing the live checkout. This repair reuses that pattern. The same symptom class appears in a 1.x verify run on this machine (local-verify-conflict-breaker-64f7325-package-race.log: npm packing a checkout while a test wrote dist/native/...).
