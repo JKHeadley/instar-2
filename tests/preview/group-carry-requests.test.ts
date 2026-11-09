@@ -256,9 +256,10 @@ it.each(['model', 'send'] as const)('does not repeat a genuinely uncertain %s af
   w.destination.compact(); w.destination.close();
   const resumed = openPreviewJournal(w.target, key);
   await createJournalWorker(resumed, bound).sendRequested();
-  expect(models).toBe(1); expect(sends).toBe(boundary === 'send' ? 2 : 0);
+  expect(models).toBe(1); expect(sends).toBe(boundary === 'send' ? 2 : 1);
   expect(texts.filter(text => text === UNKNOWN_SEND_NOTICE)).toEqual(boundary === 'send' ? [UNKNOWN_SEND_NOTICE] : []);
-  expect(texts.filter(text => text !== UNKNOWN_SEND_NOTICE)).toHaveLength(boundary === 'send' ? 1 : 0);
+  expect(texts.filter(text => text !== UNKNOWN_SEND_NOTICE)).toHaveLength(1);
+  if (boundary === 'model') expect(resumed.view.order.some(turn => turn.noticeClass === 'unknown-answer')).toBe(true);
   resumed.close();
 });
 
