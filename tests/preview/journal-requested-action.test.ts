@@ -174,9 +174,9 @@ it('survives a restart between creating the due turn and answering it, and never
     journal.close(); state.crashDue = false; ({ journal, worker } = open());
     await worker.sendRequested();
     expect(state.dueCalls).toBe(1);
-    expect(pushes()).toEqual([`${priyaHeader}\nI lost my answer to this: the model call's outcome is unknown, and I never repeat it. Ask me again if you still want it.`]);
+    expect(pushes()).toEqual([]);
     journal.close();
-    expect(JSON.parse(status(root).stdout).requestedActions.dueTurns).toEqual([{ update: 1 + 1 / 1024, requests: 1, state: 'accepted' }]);
+    expect(JSON.parse(status(root).stdout).requestedActions.dueTurns).toEqual([{ update: 1 + 1 / 1024, requests: 1, state: 'model UNKNOWN' }]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

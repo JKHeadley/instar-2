@@ -389,14 +389,11 @@ describe('Rule 11: the lookup\'s bounds and floors', () => {
       expect(thrown.inputs).toHaveLength(2);
       expect(thrown.spent()).toBe(2);
       expect(thrown.asked.answer).toBeUndefined();
-      expect(thrown.asked.modelState).toBe('uncertain');
-      expect(thrown.sent).toHaveLength(1);
-      expect(thrown.asked.noticeClass).toBe('unknown-answer');
-      const firstNotice = [...thrown.sent];
+      expect(thrown.sent).toEqual([]);
       await thrown.worker.drain();
       expect(thrown.inputs).toHaveLength(2);
       expect(thrown.spent()).toBe(2);
-      expect(thrown.sent).toEqual(firstNotice);
+      expect(thrown.sent).toEqual([]);
     } finally { thrown.close(); }
     const uncertain = await turn({ answers: [ask(words), { state: 'uncertain' }] });
     try {

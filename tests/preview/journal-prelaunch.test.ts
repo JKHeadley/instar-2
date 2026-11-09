@@ -64,10 +64,9 @@ it.each(['throw', 'uncertain', 'later-refusal'])('retains UNKNOWN after launch: 
   worker.intake([message()]); await worker.drain();
   expect(journal.view.calls).toBe(1); expect(pendingUnknownCalls(journal.view)).toHaveLength(1);
   expect(journal.view.order[0]!.held).not.toBe(MODEL_NOT_STARTED_HOLD);
-  // A settled launched failure now emits one unknown-outcome notice, never another model call.
-  expect(sends).toBe(1);
+  expect(sends).toBe(failure === 'uncertain' ? 1 : 0);
   await worker.drain();
-  expect(sends).toBe(1); expect(journal.view.calls).toBe(1);
+  expect(sends).toBe(failure === 'uncertain' ? 1 : 0); expect(journal.view.calls).toBe(1);
   expect(journal.view.order[0]!.limited).toBeUndefined(); journal.close();
 });
 

@@ -9287,7 +9287,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 journal.append({ kind: 'hold', id: turn.id,
                   reason: error instanceof ModelDisclosureRefused ? GROUP_DISCLOSURE_HOLD : MODEL_NOT_STARTED_HOLD,
                   unusedModel: { corrections: carried, toolCalls: (turn.unusedToolCalls ?? 0) - toolsBefore }, at: ports.now() });
-              if (!(error instanceof ModelPending || error instanceof ModelDisclosureRefused || error instanceof ModelNotStarted))
+              // A thrown adapter/refusal error alone does not prove a worker ended.
+              // Keep ordinary calls reserved unless tool work or host cleanup supplies evidence.
+              if (!(error instanceof ModelPending || error instanceof ModelDisclosureRefused || error instanceof ModelNotStarted)
+                && (ports.toolRoute?.(turn.id) || turn.toolRouted || turn.toolAttempts?.length || turn.toolChecks
+                  || journal.view.callOutcomes.some(row => row.id === input.id && row.role === 'model'
+                    && row.outcome.resources?.cleanup === 'verified')))
                 return { state: 'uncertain' }; // Invocation ended; effects stay unknown, never replayed.
               return false;
             }

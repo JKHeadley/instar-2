@@ -86,6 +86,33 @@ it.each(['cap', 'stop', 'failed-account'] as const)('%s bounds recovery without 
   } finally { f.close(); }
 });
 
+it.each(['verified', 'unresolved', 'absent'] as const)('an ordinary exception needs %s cleanup evidence before accounting', async cleanup => {
+  const f = setup(), id = idOf(367056086);
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/lostanswer-live-2026-10-02.json', import.meta.url), 'utf8')).lostFirstCall.callOutcomes[0];
+  const { id: _id, role: _role, at: _at, ...outcome } = recorded;
+  f.ports.toolRoute = () => false;
+  f.ports.model = async input => {
+    f.calls.push(input);
+    if (input.id.startsWith('recovery:')) return JSON.stringify({ reply: account });
+    if (cleanup !== 'absent') f.journal.append({ kind: 'call-outcome', id, role: 'model', at: f.ports.now(),
+      // Inject a non-timeout failure so the separate ordinary timeout replacement does not run.
+      outcome: { ...outcome, exitCode: 1, localLimit: null, resources: { ...outcome.resources, cleanup } } });
+    throw Error('answer unavailable');
+  };
+  try {
+    f.worker().intake([update(367056086)]); await f.worker().drain();
+    f.journal.compact(); f.reopen(); await f.worker().drain(); await f.worker().drain();
+    expect(f.calls.map(call => call.id)).toEqual(cleanup === 'verified' ? [id, `recovery:${id}`] : [id]);
+    expect(f.sent).toEqual(cleanup === 'verified' ? [account] : []);
+    expect(pendingUnknownCalls(f.journal.view)).toContain(cleanup === 'verified' ? `answer-replaced:${id}` : `answer:${id}`);
+    if (cleanup !== 'verified') {
+      expect(f.journal.view.turns.get(id)?.reserved).toBe(true);
+      expect(f.journal.view.turns.get(id)?.modelState).toBeUndefined();
+      expect(f.journal.view.turns.get(id)?.noticeClass).toBeUndefined();
+    }
+  } finally { f.close(); }
+});
+
 it('replays captured summary, Jev, review and delivered/empty reply shapes as accounting outputs without inventing completion', async () => {
   const recorded = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
   for (const sample of recorded.negativeOutputs) {
