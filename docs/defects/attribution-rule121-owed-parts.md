@@ -1,6 +1,6 @@
 # Rule 121 attribution: the parts the first cut does not ship
 
-**Status:** OPEN. The first part (unit attribution-cut-1107) checks a credited statement when the agent writes it to a note. The parts below are owed and are not built in this tree.
+**Status:** OPEN. The first part (unit attribution-cut-1107) checks a credited statement when the agent writes it to a note. The reviewed attribution-rule121-1106 head 979a1282 supplies parts 1 to 3 in train-231; their real-route acceptance and parts 4 and 5 remain open.
 
 **Owner:** Echo (agent), as owner of the preview trial's reply review and tool admission. Each part lands as its own unit with its own change-review record.
 
@@ -8,15 +8,15 @@
 
 **Owed parts, each from origin/train-202 member attribution-rule121-1106 (979a1282), whose reviewed code is the starting point:**
 
-1. **The send check.** Rule 121 checks a credit "again when it is cited or enforced". The reply path (`attributionOfReply` in `tests/preview/journal.ts`, the revision round objection `ATTRIBUTION_OBJECTION` in `tests/preview/reply-check.ts`, claim-scoped excision after the last revision, and the recap exemption for the turn's own authenticated conversation) is not wired. It depends on the pre-send review order unit (df616f840), which is not in live train-209. Acceptance: a refused reply under enforce is revised or excised on the real route, both sides tested, with the 1.x replay's send sets (H-recap-true, I-send-false) passing.
-2. **Long notes.** A note over 16,384 characters is recorded `unchecked` with no model call (`text longer than one check`); markers inside that bound still get their exact checks and a failed one still refuses. Owed: 1.x `AttributionJudge.chunkForJudge`, with whole-text exact facts and cuts kept outside a credit, as reviewed in rounds 1 and 2 of attribution-rule121-1106. Acceptance: that unit's long-note tests (tail case, cut inside a quote, 8-chunk limit) pass.
-3. **The trail reads.** The `attribution-trace` launcher command (`attributionTrace`, every recorded wording of a claim oldest first) and the record-period counts (`attributionSummary`, the measured unchecked rate). The rows they read are already recorded by the first part. Acceptance: the command reads a real journal read-only.
+1. **The send check.** Rule 121 checks a credit "again when it is cited or enforced". The reply path (`attributionOfReply` in `tests/preview/journal.ts`, the revision round objection `ATTRIBUTION_OBJECTION` in `tests/preview/reply-check.ts`, claim-scoped excision after the last revision, and the recap exemption for the turn's own authenticated conversation) is implemented with its pre-send review dependency in train-231. Real-route acceptance remains open. Acceptance: a refused reply under enforce is revised or excised on the real route, both sides tested, with the 1.x replay's send sets (H-recap-true, I-send-false) passing.
+2. **Long notes.** Implemented in train-231: up to eight chunks share the existing 45-second judge deadline; unread parts are recorded `unchecked`, and failed exact facts still refuse. Uses 1.x `AttributionJudge.chunkForJudge`, with whole-text exact facts and cuts kept outside a credit, as reviewed in rounds 1 and 2 of attribution-rule121-1106. Acceptance: that unit's long-note tests (tail case, cut inside a quote, 8-chunk limit) pass.
+3. **The trail reads.** Implemented in train-231: the `attribution-trace` launcher command (`attributionTrace`, every recorded wording of a claim oldest first) and the record-period counts (`attributionSummary`, the measured unchecked rate). The rows they read are already recorded by the first part. Acceptance: the command reads a real journal read-only.
 4. **Writes the hook does not see.** Notes written by shell commands, tool turns with no checkpoint, and the rolling summary (residue `attr-write-gaps` of attribution-rule121-1106).
 5. **Live proof.** A real Telegram run with a refusal on the real route, the write check on the real route, a record period and the measured timeout rate (residue `attr-live-proof-owed`); real Slack sending once 2.0 Slack replies go live (residue `attr-slack-send-owed`).
 
 ## Graduation (Rules 72 and 73)
 
-The write check ships switched off: it runs only when the runner is launched with `--attribution record` or `--attribution enforce`. Until it graduates it is reported dark, never as a guard. Its graduation commitment uses the preview's existing deadline mechanism: the `preview.attribution-check` declaration in `tests/preview/capabilities.declarations.json` (status `dark`, gate `PREVIEW-ATTRIBUTION-CHECK`) and its entry in `tests/preview/promotion-record.ts`, which must name the same deadline. The register's deadline walker and `capabilityFindings` report it overdue once the deadline passes.
+The attribution checks ship switched off: it runs only when the runner is launched with `--attribution record` or `--attribution enforce`. Until it graduates it is reported dark, never as a guard. Its graduation commitment uses the preview's existing deadline mechanism: the `preview.attribution-check` declaration in `tests/preview/capabilities.declarations.json` (status `dark`, gate `PREVIEW-ATTRIBUTION-CHECK`) and its entry in `tests/preview/promotion-record.ts`, which must name the same deadline. The register's deadline walker and `capabilityFindings` report it overdue once the deadline passes.
 
 - **Owner:** Echo.
 - **Graduation deadline:** 2026-11-21 00:00 UTC.

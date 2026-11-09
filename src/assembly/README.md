@@ -379,7 +379,7 @@ the operator's own chat is released with surviving or unconfirmed objections rec
 and any other audience gets the content-free holding note when the review did not
 complete. The review runs inside the ordinary drain, never on the poll loop, so intake,
 stop and the minimal responder stay reachable while a reviewer is slow. Builds before
-2026-11-05 reviewed continuing-conversation answers after the send; a journal they wrote
+this pre-send change reviewed continuing-conversation answers after the send; a journal they wrote
 may carry the non-additive `reply-review-after-send` marker (generation 5, so an older
 reader must refuse such a copy). That marker is legacy history: an interrupted review it
 left behind is projected once on recovery as unavailable, with no paid call replayed, and

@@ -108,15 +108,16 @@ describe('the verdict', () => {
 });
 
 const FALSE_CREDIT = 'Sam told me never to spawn on the laptop.', HONEST = 'I would avoid the laptop; that is my own view.', KEPT = 'The build is done.';
-interface Scenario { mode?: AttributionMode; answer?: string; judge?: 'refuse' | 'pass' | 'throw' | 'junk' | 'partial' | 'relayed'; revised?: string; crash?: string; maxCalls?: number; note?: string; noteTwice?: boolean; before?: string; ask?: string; imported?: { account: string; id: string; from: string; text: string; conversation: string } }
+interface Scenario { judgeElapsed?: number; mode?: AttributionMode; answer?: string; judge?: 'refuse' | 'pass' | 'throw' | 'junk' | 'partial' | 'relayed'; revised?: string; crash?: string; maxCalls?: number; note?: string; noteTwice?: boolean; before?: string; ask?: string; imported?: { account: string; id: string; from: string; text: string; conversation: string } }
 async function drive(s: Scenario) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'attribution-'))); roots.push(root);
   const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(23), sends: string[] = [], packets: string[] = [];
-  let judged = 0, crashes = 0;
+  let judged = 0, crashes = 0, clock = 1790000000000; const deadlines: number[] = [];
   const reply = s.answer ?? FALSE_CREDIT;
-  const ports = (): PreviewPorts => ({ now: () => 1790000000000, stopped: () => false, prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', 9999999999999), model: async () => reply,
+  const ports = (): PreviewPorts => ({ now: () => clock, stopped: () => false, prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', 9999999999999), model: async () => reply,
     checkOutbound: () => {}, send: async input => { sends.push(input.expectedText); return sends.length; },
-    ...(s.mode ? { attribution: { mode: s.mode, judge: async ({ id, packet }) => {
+    ...(s.mode ? { attribution: { mode: s.mode, judge: async ({ id, packet, deadlineAt }) => {
+      deadlines.push(deadlineAt); clock += s.judgeElapsed ?? 0;
       judged++; packets.push(packet);
       // The real launcher's own recorder writes this row before the answer is read. Refusing it turned every judge answer into
       // UNKNOWN on the real route, and hand-built rows hid that (found live, 2026-11-06): so this goes through the real recorder.
@@ -148,7 +149,7 @@ async function drive(s: Scenario) {
     if (s.noteTwice && s.note !== undefined) await worker.attributionOfNote('toolu_1', s.note);
     if (s.before !== undefined) await worker.attributionOfNote('toolu_0', s.before);
     const note = s.note === undefined ? undefined : await worker.attributionOfNote('toolu_1', s.note);
-    return { sends, judged, packets, note, rows: journal.view.attribution ?? [], turn: journal.view.order[0]!, calls: journal.view.calls };
+    return { sends, judged, packets, deadlines, note, rows: journal.view.attribution ?? [], turn: journal.view.order[0]!, calls: journal.view.calls };
   } finally { journal.close(); }
 }
 
@@ -240,6 +241,16 @@ describe('the write check (stub judge: wiring only)', () => {
     const result = await drive({ mode: 'enforce', answer, note: `${'The build is complete. '.repeat(800)}${FALSE_CREDIT}` });
     expect(result.note).toContain('source unknown');
     expect(result.rows.filter(row => row.id.startsWith('note:')).map(row => row.verdict)).toContain('refuse');
+  });
+  it('all chunks share one judge deadline, and exhausted chunks stay unchecked without another call', async () => {
+    const note = (`Sam asked for the report. ${'Plain text. '.repeat(1500)}
+
+`).repeat(4);
+    const result = await drive({ mode: 'enforce', answer, judge: 'pass', judgeElapsed: 30000, note });
+    expect(result.judged).toBe(2);
+    expect(result.deadlines).toEqual([1790000000000 + ATTRIBUTION_BUDGET_MS, 1790000000000 + ATTRIBUTION_BUDGET_MS]);
+    expect(result.rows.some(row => row.verdict === 'unchecked' && row.cause === 'time budget')).toBe(true);
+    expect(result.note).toBeNull();
   });
   it('text past the check bound is recorded unchecked with no call, never silently dropped, and the note is still written', async () => {
     const filler = `${'The build is complete.\n'.repeat(700)}\n\n`.repeat(ATTRIBUTION_CHUNK_LIMIT + 1);
@@ -400,7 +411,7 @@ describe('the real hook asks the real checkpoint (a note is written or refused b
     expect(result.denied).toBe(false);
   }, 40000);
   it('the attribution wait covers the judge bound, and callers that kill the hook wait for both asks', () => {
-    expect(ATTRIBUTION_WAIT_MS).toBeGreaterThan(ATTRIBUTION_CHUNK_LIMIT * ATTRIBUTION_BUDGET_MS);
+    expect(ATTRIBUTION_WAIT_MS).toBeGreaterThan(ATTRIBUTION_BUDGET_MS);
     expect(ADMISSION_WAIT_MS).toBeLessThan(ATTRIBUTION_WAIT_MS);
     expect(HOOK_PRE_MAX_MS).toBeGreaterThan(ATTRIBUTION_WAIT_MS + ADMISSION_WAIT_MS);
     // The native loop's kill bound defaults to that maximum, so a slow answer is never turned into a refusal there.

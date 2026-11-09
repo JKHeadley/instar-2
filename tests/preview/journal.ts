@@ -1012,7 +1012,6 @@ export type AttributionRow = Omit<Extract<JournalRecord, { kind: 'attribution-ch
 /** A message from the agent's own stored conversation log. Body text never supplies identity.
  * `source` stays a field so journals keep their channel keys; older journals may hold inert `email`
  * items from a removed import route, which replay skips (never recalled or acted on). */
-export type AttributionRow = Omit<Extract<JournalRecord, { kind: 'attribution-check' }>, 'kind' | 'usage'>;
 export interface ChannelItem { source: 'conversation'; account: string; id: string; from: string;
   at: number; text: string; conversation?: string; origin?: 'stored-log' }
 export interface ChannelSourceCursor { offset: number; file: string; anchor: string; scanned: number; imported: number; skipped: number }
@@ -7099,7 +7098,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** One check of exact text, recorded once. The same text is never judged twice, and a call a crash interrupted stays
    * unchecked: its reservation is the record, so it is not replayed. Null when no check ran. */
-  const attributionStep = async (id: string, text: string, surface: AttributionSurface, facts: readonly MarkerFact[], splitCredit: boolean, conversation?: { from: string; text: string }[]): Promise<AttributionResult | null> => {
+  const attributionStep = async (id: string, text: string, surface: AttributionSurface, facts: readonly MarkerFact[], splitCredit: boolean, deadlineAt: number, conversation?: { from: string; text: string }[]): Promise<AttributionResult | null> => {
     const port = ports.attribution;
     if (!port) return null;
     const digest = attributionDigest(text);
@@ -7120,11 +7119,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (splitCredit) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'attribution longer than one check' });
     if (halted() || journal.view.calls >= journal.view.limits.maxCalls)
       return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'call cap' });
+    if (ports.now() >= deadlineAt) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'time budget' });
     gate();
     journal.append({ kind: 'attribution-reserve', id, digest, surface, maxInputTokens: journal.view.limits.maxBytes,
       maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
     try {
-      const answer = await port.judge({ id: `${id}:attribution-check`, deadlineAt: ports.now() + ATTRIBUTION_BUDGET_MS,
+      const answer = await port.judge({ id: `${id}:attribution-check`, deadlineAt,
         packet: attributionPacket({ text, surface, facts, ...(conversation ? { conversation } : {}) }) });
       if (answer.value === null) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'no answer' }, answer.usage);
       return record(decideAttribution(text, surface, facts, parseAttributionAnswer(answer.value)), answer.usage);
@@ -7139,11 +7139,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const attributionOf = async (id: string, text: string, surface: AttributionSurface, conversation?: { from: string; text: string }[]) => {
     if (!ports.attribution) return null;
     const spans = markerFacts(text, () => null), chunks = chunkForJudge(text, ATTRIBUTION_TEXT_MAX, spans), results: AttributionResult[] = [];
+    // One text shares the existing judge budget, so every hook and subscription caller still covers the whole check.
+    const deadlineAt = ports.now() + ATTRIBUTION_BUDGET_MS;
     const read = chunks.slice(0, ATTRIBUTION_CHUNK_LIMIT), facts = markerFacts(text, attributionSource, read.join('').length);
     let start = 0;
     for (const [index, chunk] of read.entries()) {
       const end = start + chunk.length;
-      const result = await attributionStep(index === 0 ? id : `${id}#${String(index)}`, chunk, surface, factsInChunk(facts, start, end), chunkCutsSpan(spans, start, end), conversation);
+      const result = await attributionStep(index === 0 ? id : `${id}#${String(index)}`, chunk, surface, factsInChunk(facts, start, end), chunkCutsSpan(spans, start, end), deadlineAt, conversation);
       if (result) results.push(result);
       start = end;
     }
@@ -8973,7 +8975,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       catch { return; }
     }
   };
-  /** Legacy after-send history (builds before 2026-11-05 selected review after the send for continuing
+  /** Legacy after-send history (builds before this pre-send change selected review after the send for continuing
    * conversations; the register's pre-send team and Part 18 §16 never allowed that order). A journal written
    * by such a build may hold a `reply-review-after-send` marker whose review was interrupted: the durable
    * terminal judgment is projected once, and a reservation without a result is recorded as unavailable and

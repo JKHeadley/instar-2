@@ -183,9 +183,10 @@ const WORKTREE_TOOLS = Object.freeze(['EnterWorktree', 'ExitWorktree']);
 export const RECORD_EXCERPT_CHARS = 4096;
 /** How long the hook waits for one checkpoint answer. */
 export const ADMISSION_WAIT_MS = 15000;
-/** How long the hook waits for Rule 121's answer on a note: the runner's eight bounded chunks (ATTRIBUTION_CHUNK_LIMIT × ATTRIBUTION_BUDGET_MS, 8 × 45 s) plus 5 s for its reservation, record and reply, so a refusal arrives before the note is written. Only a wait
+/** How long the hook waits for Rule 121's answer on a note: the runner's judge bound (ATTRIBUTION_BUDGET_MS, 45 s in
+ * journal.ts) plus 5 s for its reservation, record and reply, so a refusal arrives before the note is written. Only a wait
  * past this, or an unreachable checkpoint, lets the note through unchecked (the check fails open, Rule 95). */
-export const ATTRIBUTION_WAIT_MS = 8 * 45000 + 5000;
+export const ATTRIBUTION_WAIT_MS = 50000;
 /** The longest one `pre` hook can legitimately take on a note: its attribution wait, then its ordinary checkpoint ask,
  * with 10 s for process start and the record. A caller that kills a slower hook (native-loop.mjs) waits at least this. */
 export const HOOK_PRE_MAX_MS = ATTRIBUTION_WAIT_MS + ADMISSION_WAIT_MS + 10000;

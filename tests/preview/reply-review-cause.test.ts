@@ -143,20 +143,48 @@ async function withJournal(run: (path: string) => Promise<void>) {
 }
 
 describe('durable journal', () => {
-  it.each(['before-send', 'after-send'] as const)('%s review: causes survive replay, and the reply goes out exactly as before', async timing => {
+  it('pre-send review: causes survive replay, and the reply goes out exactly as before', async () => {
     await withJournal(async path => {
       const sent: string[] = [];
       const journal = openPreviewJournal(path, key, genesis);
-      const worker = createJournalWorker(journal, worldPorts(sent, {}, { replyReviewTiming: timing }));
+      const worker = createJournalWorker(journal, worldPorts(sent, {}));
       worker.intake([update]);
-      await worker.drain(); await worker.drain(); await worker.reviewReplies();
+      await worker.drain(); await worker.drain();
       expect(sent).toEqual(['I set your reminder for Friday at 9.']);
       journal.close();
       const reopened = openPreviewJournal(path, key, genesis);
       // Only the before-send path has a reserved Jev retry.
-      expect(replyCheckCauses(reopened.view)).toEqual({ 'jev:http-503': timing === 'before-send' ? 2 : 1, 'subscription:rate-limited': 1 });
+      expect(replyCheckCauses(reopened.view)).toEqual({ 'jev:http-503': 2, 'subscription:rate-limited': 1 });
       expect(unavailableChecks(reopened.view.order[0]!).at(-1)).toMatchObject({ path: 'subscription', cause: 'rate-limited', causeDetail: 'rejected:limit' });
       reopened.close();
+    });
+  });
+
+  it('legacy after-send causes survive recovery without another review or send', async () => {
+    await withJournal(async path => {
+      const sent: string[] = [], journal = openPreviewJournal(path, key, genesis);
+      const worker = createJournalWorker(journal, worldPorts(sent, {}, { replyCheck: undefined }));
+      worker.intake([update]); await worker.drain();
+      const turn = journal.view.order[0]!, id = turn.id;
+      journal.append({ kind: 'reply-review-after-send', id, at: now });
+      journal.append({ kind: 'reply-jev-reserve', id, at: now });
+      journal.append({ kind: 'reply-review-reserve', id, candidate: turn.intent!, at: now });
+      journal.append({ kind: 'reply-review-state', id, state: 'complete', at: now });
+      journal.append({ kind: 'reply-check', id, result: { verdict: 'unavailable', ruleIds: [], confidence: null,
+        path: 'jev', latencyMs: 1, cause: 'http-503' }, at: now });
+      journal.append({ kind: 'reply-check', id, result: { verdict: 'unavailable', ruleIds: [], confidence: null,
+        path: 'subscription', latencyMs: 1, cause: 'rate-limited', causeDetail: 'rejected:limit' }, at: now });
+      const calls = journal.view.calls;
+      journal.close();
+      const reopened = openPreviewJournal(path, key);
+      try {
+        const unexpected = async (): Promise<never> => { throw Error('unexpected replay'); };
+        const recovered = createJournalWorker(reopened, worldPorts(sent, { jev: unexpected, escalate: unexpected }, { send: unexpected, model: unexpected }));
+        recovered.recoverAfterSendReviews(); recovered.recoverAfterSendReviews(); await recovered.drain();
+        expect(replyCheckCauses(reopened.view)).toEqual({ 'jev:http-503': 1, 'subscription:rate-limited': 1 });
+        expect(unavailableChecks(reopened.view.order[0]!).at(-1)).toMatchObject({ cause: 'rate-limited', causeDetail: 'rejected:limit' });
+        expect(reopened.view.calls).toBe(calls); expect(sent).toHaveLength(1);
+      } finally { reopened.close(); }
     });
   });
 
@@ -186,7 +214,7 @@ describe('durable journal', () => {
       const worker = createJournalWorker(journal, worldPorts(sent, {
         escalate: async () => { throw Object.assign(Error('x'), { reviewCause: SECRET, causeDetail: SECRET, name: SECRET }); } }));
       worker.intake([update]);
-      await worker.drain(); await worker.drain(); await worker.reviewReplies();
+      await worker.drain(); await worker.drain();
       expect(sent).toEqual(['I set your reminder for Friday at 9.']);
       journal.close();
       const reopened = openPreviewJournal(path, key, genesis);
