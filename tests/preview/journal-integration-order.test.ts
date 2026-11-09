@@ -40,6 +40,8 @@ it('sends a later loss notice while an earlier ordinary turn is held for a pendi
       send: async (input: { text: string }) => { sends.push(input); return sends.length; }, checkOutbound: () => {} };
     let worker = createJournalWorker(journal, ports as never);
     worker.intake([update(1, 'First question'), update(2, 'Second question')]);
+    // Retained custody with no end evidence: a returned throw now settles UNKNOWN instead.
+    journal.append({ kind: 'reserve', id: journal.view.order[0]!.id, at: ports.now() });
     await expect(worker.drain()).rejects.toThrow('interrupted');
     expect(journal.view.order[1]?.modelState).toBe('uncertain');
     journal.close();

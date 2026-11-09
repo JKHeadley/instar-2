@@ -233,7 +233,8 @@ it('says uptime and restarts are unknown when no launch was recorded, and marks 
     const text = selfState(journal.view, readRuns(join(root, 'runs.jsonl')), NOON, 'UTC');
     expect(text).toContain('Run history: no launch has been recorded, so uptime and restarts are unknown.');
     expect(text).toContain('1 turn-model calls and 0 summary-model calls without a durable result');
-    expect(text).toContain('0 send(s) without a durable result');
+    // A thrown, launched call now gets one notice attempt; its null send result remains UNKNOWN.
+    expect(text).toContain('1 send(s) without a durable result');
     expect(() => selfState(journal.view, readRuns(join(root, 'runs.jsonl')), NOON, 'Mars/Olympus')).toThrow(RangeError);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
