@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:541dec53ff2a75f902a6a4f1e725d421025e059989e63ebb2874cb7115ccda63
-Source commit: a93338c4c03110d5721d4a334255e349663ee44e
+Register generation: sha256:a52b5985fd24131b3b82e38cf992e52373e923e714a77fae20ed65bafb376f24
+Source commit: 44978fe32c40325c70036dab2274c3a66d965fc5
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -392,9 +392,9 @@ Terms: term:critical
 
 ## 39. Observability
 
-Every feature ships with metrics. You can't tune what you can't see.
+Every feature ships with metrics that make its effectiveness auditable and gradable. Every capability or process intended to improve over time names its intended outcome, repeatedly evaluates it against a recorded baseline, and shows a clear visual history of progress, regressions and uncertainty at a glance. This covers the whole effort and its material parts. An accountable review reads the evidence and acts on it. The measurement contract names the method and version, success criteria, quality safeguards, owner and review cadence. History keeps sample sizes, freshness, gaps and changes of evaluation; changing a rule is not an improvement. Real activity must be verified through evaluation into the deployed visual, including whether a person understands it at a glance. Missing evidence withholds unsupported improvement claims or promotion while ordinary services continue. Extend the existing measurement, benchmark, decision-quality, maturation and scheduling owners.
 
-Check: Needs the features enumerated before "every" means anything.
+Check: Independently enumerate features, processes, jobs and material parts, then compare their coverage with the contracts; unregistered entries must remain visible. Verify the complete activity-to-visual path and recurring corrective review within existing authority. These are owed implementation checks, not a claim that universal coverage is already enforced; no competing registry, scheduler or promotion authority is created.
 Terms: term:feature
 
 ## 4. Structure Decides Alone Only on an Exact Match
