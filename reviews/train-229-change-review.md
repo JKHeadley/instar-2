@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Integration includes already-reviewed constitutional wording and derived register publication.
-Side effects: Rule book follows exact assigned main text, including its Rule 72 text without the base's added deadline sentence; runtime deadline scoping remains unchanged. Both changelog histories survive (unique sequential revisions); markdown history is rendered. Conversion anchor is derived from actual combined documents, shape and rule declarations, never a native conformance declaration. Generated publication is replayed from committed input.
+Side effects: Rule book follows exact assigned main text, including its Rule 72 text without the base's added deadline sentence; runtime deadline scoping remains unchanged. Both changelog histories survive; the base history remains byte-identical and the incoming amendment is appended as revision 23; markdown history is rendered. Conversion anchor is derived from actual combined documents, shape and rule declarations, never a native conformance declaration. Generated publication is replayed from committed input.
 Undo and recovery: Revert the train integration through a corrective branch and regenerate publication; the live runner and stores are untouched.
 Multi-machine posture: Shared repository documentation; replay measurements are host-local evidence, not live acceptance. No new runtime state or transport.
 Layer below: Full purpose and rule book; member and cint-L37 reports fetched with verified hashes; main amendment review; bootstrapDeclarations, readCommit, conversion binding, and existing deadline behavior. No formal enforcement claim inferred from a source link.
@@ -25,6 +25,7 @@ Decision: train-229-B | Fresh branch directly at exact live 0bde1fda553a2609382d
 Decision: train-229-C | No member omitted; publication overlap resolved by derivation and replay rather than manual generated-content merging. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-229-PROGRESS.md
 Decision: train-229-D | WSL host-dependent checks are separately reported; unchanged native conformance can only be renewed on Studio. No guard or timeout is relaxed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-229-PROGRESS.md
 Decision: train-229-desk | Use existing repin, TypeScript build, owner-manifest rehash and committed-source register replay; derive conversion binding from combined bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-229-PROGRESS.md
+Decision: train-229-history | Preserve the base changelog array as an exact tail, append incoming Rule 39 amendment as revision 23; correct the initial renumbering of the base entry before final handoff. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-229-PROGRESS.md
 Deferral: generated/register.json:1 | not-a-deferral=mechanically generated register publication, not deferred implementation
 Verification: Targeted register, subscription, constitution briefing and pinned consumer checks; lint, typecheck, architecture, register and change-review outputs recorded in the report. Studio report destination above is intentionally absent on WSL.
 
