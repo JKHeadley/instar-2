@@ -106,12 +106,16 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
   const reply = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
   const refuseModel = (res, message) => reply(res, 400, { type: 'error', error: { type: 'invalid_request_error', message } });
 
+  // Carryover 08: the host durably notes each tool preparation before it is allowed, so a restarted host can
+  // prove a lost turn prepared nothing. An upper bound: a later refusal never lowers it. A failed note refuses.
+  const noteTool = state => { if (state.noteTool) { state.noteTool(state.noted + 1); state.noted += 1; } };
   const admit = (state, call) => {
     const tool = String(call.tool_name ?? ''), id = String(call.tool_use_id ?? '');
     if (!/^[A-Za-z0-9._:-]{1,200}$/u.test(id)) return { decision: 'deny', reason: 'admission: exact tool call identity required' };
     if (call.kind === 'tool') {
       // Even an ordinary local write or shell command can be unfinished at a context wall.
       // The owner must not restore a packet prepared before any such work began.
+      try { noteTool(state); } catch { return { decision: 'deny', reason: 'admission: the tool preparation could not be recorded' }; }
       state.toolPreparations++;
       return { decision: 'allow', reason: 'admission: the step is open and no stop is held' };
     }
@@ -192,6 +196,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       if (state.effects.has(id)) return { decision: 'deny', reason: 'admission: this effect was already admitted' };
       const outward = held ? held(JSON.stringify(call.tool_input ?? null)) : 'clear';
       if (outward !== 'clear') return { decision: 'deny', reason: 'effect request failed the held-secret check' };
+      try { noteTool(state); } catch { return { decision: 'deny', reason: 'admission: the tool preparation could not be recorded' }; }
       const verdict = effects.admit({ parent: state.edge, tool, input: call.tool_input ?? null, call: id });
       const record = verdict.doorway ? { doorway: verdict.doorway } : {};
       if (!verdict.admitted) return { decision: 'deny', reason: verdict.reason, ...record };
@@ -277,6 +282,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       try { bindingSnapshot = ownerBrowser.binding(); } catch { return { status: 'unavailable' }; }
       // Set before any await. The effect owner's durable identity also survives a process restart.
       state.ownerReads.add(call);
+      try { noteTool(state); } catch { return ownerBrowserRefused('preparation-refused'); }
       const prepared = effects.admit({ parent: state.edge, tool: OWNER_BROWSER_TOOL, input, call, ownerCause: bindingSnapshot });
       if (!prepared.admitted) return ownerBrowserRefused('preparation-refused');
       cause = prepared.localCause;
@@ -294,10 +300,10 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     /** The model endpoint and admission root for one claim. */
     base(claim) { if (!claimPattern.test(claim)) throw Error('admission gate: exact claim required'); return `http://127.0.0.1:${port}/${secret}/${claim}`; },
     /** Opens a claim with its reserved allowance and the edge its delegations hang from; a new open starts from nothing. */
-    open(claim, { framework, allowance, edge, reserveCall }) {
+    open(claim, { framework, allowance, edge, reserveCall, noteTool: note }) {
       if (!claimPattern.test(claim) || !upstreams[framework] || !Number.isSafeInteger(allowance) || allowance < 1 || !edge?.id)
         throw Error('admission gate: claim, framework, allowance and edge required');
-      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), ownerReads: new Set(), toolPreparations: 0 });
+      claims.set(claim, { framework, allowance, edge, reserveCall, noteTool: note, noted: 0, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), ownerReads: new Set(), toolPreparations: 0 });
     },
     /** Closes a claim: no further call or admission passes. Returns its final state. */
     close(claim) { const state = claims.get(claim); if (state) state.closed = true; return this.state(claim); },

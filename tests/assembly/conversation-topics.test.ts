@@ -204,6 +204,17 @@ it('a failed durable save cannot forward another call', async () => {
   expect(f.state().topics['7']?.spent).toBe(1);
 });
 
+it('tool preparations are noted durably on their own topic claim, in order, and a failed save refuses (carryover 08)', async () => {
+  const f = fixture(); await f.port.run(f.request('7:a')); const claim = f.launches[0]!.worker.claim;
+  expect(f.state().topics['7']).toMatchObject({ claimTools: 0 });
+  f.port.noteToolPreparation!(claim, 1);
+  expect(f.state().topics['7']).toMatchObject({ claimTools: 1 });
+  expect(() => f.port.noteToolPreparation!(claim, 3)).toThrow(/order/);
+  expect(() => f.port.noteToolPreparation!('foreign', 1)).toThrow(/unknown/);
+  f.failSave(); expect(() => f.port.noteToolPreparation!(claim, 2)).toThrow('disk');
+  expect(f.state().topics['7']).toMatchObject({ claimTools: 1 });
+});
+
 it('a withdrawn grant and an unknown claim cannot spend the shared allowance', async () => {
   const f = fixture(); await f.port.run(f.request('7:a'));
   expect(() => f.port.reserveCall('foreign', 1)).toThrow(/unknown/);

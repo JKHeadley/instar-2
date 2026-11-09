@@ -2852,7 +2852,8 @@ async function main() {
                 check: heldVerdict(heldSecrets), ownerRead: conversationSession ? (id, input) => gate.observeOwner(claim, id, input) : null }));
             }
             gate.open(claim, { framework, allowance: edge.budget.calls, edge,
-              ...(conversationSession ? { reserveCall: ordinal => sessionWork.port.reserveCall(claim, ordinal) } : {}) }); },
+              ...(conversationSession ? { reserveCall: ordinal => sessionWork.port.reserveCall(claim, ordinal),
+                noteTool: ordinal => sessionWork.port.noteToolPreparation(claim, ordinal) } : {}) }); },
           admissionState: claim => gate.state(claim),
           closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {});
             const connectors = sessionConnectors.get(claim); sessionConnectors.delete(claim);

@@ -1,6 +1,6 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterAll, afterEach, expect, it } from 'vitest';
 import { rm } from 'node:fs/promises';
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync, symlinkSync, realpathSync, accessSync, constants } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync, symlinkSync, realpathSync, accessSync, constants } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -25,6 +25,21 @@ afterEach(async () => {
   for (const p of roots.splice(0)) await rm(p, { recursive: true, force: true });
 }, 120_000);
 const bytes = (p: string) => readFileSync(join(p, 'mcp.json'), 'utf8');
+// npm packs a file: source by streaming each file. In the full suite, sibling assembly tests
+// append their evidence under this checkout's .instar/lanes, and a file that grows while npm
+// reads it fails the install ("did not encounter expected EOF"). Install from one copy of the
+// package taken before npm runs, without desk files, git, dependencies or ignored output.
+let snapshot: string | undefined;
+const packageSource = () => {
+  if (snapshot) return `file:${snapshot}`;
+  const ignored = new Set(['.git', '.instar', 'node_modules', ...readFileSync('.gitignore', 'utf8').split('\n')
+    .map(line => line.trim().replace(/^\/|\/$/g, '')).filter(line => line && !line.startsWith('#'))]);
+  snapshot = join(mkdtempSync(join(tmpdir(), 'mcp-source-')), 'package');
+  cpSync(process.cwd(), snapshot, { recursive: true, verbatimSymlinks: true,
+    filter: path => !ignored.has(path.slice(process.cwd().length + 1).split('/')[0] ?? '') });
+  return `file:${snapshot}`;
+};
+afterAll(async () => { if (snapshot) await rm(resolve(snapshot, '..'), { recursive: true, force: true }); }, 120_000);
 
 it('installs the 1.x default through the real reader and repeats without writing', () => {
   const p = root(); installMcp(p);
@@ -139,7 +154,7 @@ it('the production npm install carries the loader dependency and migrates before
   const p = root(), cache = process.env.npm_config_cache;
   process.env.npm_config_cache = root();
   try {
-    const result = await updateRoot(p, { release: 'mcp-connect-proof', source: `file:${process.cwd()}` });
+    const result = await updateRoot(p, { release: 'mcp-connect-proof', source: packageSource() });
     expect(result.status).toBe('updated');
     expect(readRootMcp(p).servers).toEqual(DEFAULT_MCP.mcpServers);
     expect(JSON.parse(readFileSync(join(p, 'version.json'), 'utf8')).migrations).toContain('mcp-defaults-1024');
@@ -164,7 +179,7 @@ it('the installed CLI repairs a stale existing default and the same runtime read
   const p = root(), cache = process.env.npm_config_cache;
   process.env.npm_config_cache = root();
   try {
-    await updateRoot(p, { release: 'mcp-selfheal-proof', source: `file:${process.cwd()}` });
+    await updateRoot(p, { release: 'mcp-selfheal-proof', source: packageSource() });
     const prior = readRootMcp(p);
     const stale = { mcpServers: { playwright: { command: 'npx', args: ['-y', '@playwright/mcp@latest'] },
       account: { command: 'operator-connector' } }, reads: ['mcp__playwright__browser_snapshot', 'mcp__account__read'] };
