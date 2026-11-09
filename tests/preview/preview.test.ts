@@ -365,12 +365,14 @@ describe('Stage 1 preview driver (recorded transport only)', () => {
       ? "setTimeout(()=>process.kill(process.pid,'SIGTERM'),25);"
       : 'setTimeout(()=>{clock=2000;},25);';
     const clock = interruption === 'expiry' ? 'let clock=1000;Date.now=()=>clock;' : '';
-    const preload = `import childProcess from 'node:child_process';\nimport {syncBuiltinESMExports} from 'node:module';\n${clock}\nlet polls=0;const nativeSpawnSync=childProcess.spawnSync;childProcess.spawnSync=(exe,args,options)=>{if(args[0]!==${JSON.stringify(join(process.cwd(), 'scripts/limit-exec.sh'))})return nativeSpawnSync(exe,args,options);const q=JSON.parse(Buffer.from(args[1],'base64url').toString('utf8'));if(q.method==='getMe')return {status:0,stdout:JSON.stringify({kind:'response',status:200,bytes:JSON.stringify({ok:true,result:{id:9001,is_bot:true,username:'fixture_bot',first_name:'Preview'}})})};if(q.method==='getUpdates'){polls++;${trigger}throw {message:'HOSTILE\\nSECRET',stack:'\\u001b[31m'};}throw new Error('unexpected method');};syncBuiltinESMExports();\n`;
-    const started = Date.now();
+    const elapsedPath = join(stateRoot, 'backoff-elapsed.json');
+    const preload = `import {writeFileSync} from 'node:fs';\nimport childProcess from 'node:child_process';\nimport {syncBuiltinESMExports} from 'node:module';\n${clock}\nlet backoffStarted;process.on('exit',()=>{if(backoffStarted!==undefined)writeFileSync(${JSON.stringify(elapsedPath)},JSON.stringify(performance.now()-backoffStarted));});\nlet polls=0;const nativeSpawnSync=childProcess.spawnSync;childProcess.spawnSync=(exe,args,options)=>{if(args[0]!==${JSON.stringify(join(process.cwd(), 'scripts/limit-exec.sh'))})return nativeSpawnSync(exe,args,options);const q=JSON.parse(Buffer.from(args[1],'base64url').toString('utf8'));if(q.method==='getMe')return {status:0,stdout:JSON.stringify({kind:'response',status:200,bytes:JSON.stringify({ok:true,result:{id:9001,is_bot:true,username:'fixture_bot',first_name:'Preview'}})})};if(q.method==='getUpdates'){polls++;backoffStarted??=performance.now();${trigger}throw {message:'HOSTILE\\nSECRET',stack:'\\u001b[31m'};}throw new Error('unexpected method');};syncBuiltinESMExports();\n`;
     const result = runRecordedLauncher(stateRoot, preload, { 'expires-at': interruption === 'expiry' ? 2000 : Date.now() + 60_000,
       'max-cycles': 2, 'backoff-ms': 10_000, 'max-backoff-ms': 10_000 });
     expect(result.status, result.stderr).toBe(0);
-    expect(Date.now() - started).toBeLessThan(5_000);
+    // Bound interruption after the failing poll, not unrelated TypeScript-loader startup.
+    // performance.now in the child also stays real when the expiry case replaces Date.now.
+    expect(JSON.parse(readFileSync(elapsedPath, 'utf8'))).toBeLessThan(5_000);
     const state = JSON.parse(readFileSync(join(stateRoot, 'preview-state.json'), 'utf8'));
     expect(state).toMatchObject({ consecutiveErrors: 1, totalErrors: 1,
       stop: { reason: interruption } });
