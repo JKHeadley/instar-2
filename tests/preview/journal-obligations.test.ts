@@ -1,3 +1,4 @@
+import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { selectReportFixture } from './select-report-fixture.js';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { admitEffect, DEFAULT_EFFECT_POLICY, refusedEffectNotices } from './effect-doorway.mjs';
@@ -521,6 +522,71 @@ it('works a due deferral with no further inbound, keeps its result for the next 
     expect(reopened.view.obligationWork['commitment:0']).toMatchObject({ attempts: 1, outcome: 'report' });
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// Carryover row 01: PromiseBeacon's per-commitment timer fires the due identity.
+// A coalesced wake must preserve that ordering when several deadlines passed while idle.
+it.each([true, false])('works the earliest due promised result before a later-due declaration without new inbound (receipt: %s)', async receipt => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/requested-report-proofroom4-2026-10-17.json', import.meta.url), 'utf8')) as {
+    provenance: { sourceUpdate: number }; request: string; answer: string; work: string; delivery: { text: string };
+  };
+  const root = origin(), path = join(root, 'journal.encrypted');
+  let now = T0, allowReceipt = true, attempts = 0, resultAttempts = 0;
+  const sent: string[] = [], work: string[] = [];
+  let journal = openPreviewJournal(path, key, genesis(32768));
+  const answer = JSON.parse(recorded.answer) as { reply: string; openLoops: unknown[] };
+  // Constructed scheduling neighbour: prepend a later-due obligation to the captured declaration.
+  // The recorded promise, request, work output and delivered body are otherwise unchanged.
+  const initial = JSON.stringify({ ...answer, reply: `${LATER} ${answer.reply}`,
+    openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'external' }, ...answer.openLoops] });
+  const worker = () => createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'UTC',
+    checkOutbound: () => {}, model: async input => {
+      if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'The operator requested a later answer.',
+        memory: [], people: [], commitments: [], closed: [] });
+      if (input.id.startsWith('obligation:')) work.push(input.id);
+      const text = input.id.startsWith('obligation:commitment:0:')
+        ? JSON.stringify({ outcome: 'continue', note: 'The invoice export is still processing.' })
+        : input.id.startsWith('obligation:') ? recorded.work : initial;
+      return conversationSessionAnswer({ state: 'complete', text, edge: input.id, child: null,
+        detail: 'recorded output replay' }, input.id, shape => { throw Error(shape); });
+    }, send: async input => {
+      attempts++; if (input.expectedText === recorded.delivery.text) resultAttempts++;
+      if (!allowReceipt) return null; sent.push(input.expectedText); return attempts;
+    } });
+  try {
+    let w = worker();
+    w.intake([{ update_id: recorded.provenance.sourceUpdate, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: recorded.request, date: Math.floor(now / 1000) } }]);
+    await w.drain();
+    expect(journal.view.commitments).toHaveLength(2);
+    const scheduled = obligationSchedule(journal.view);
+    expect(scheduled[1]!.slot).toBeLessThan(scheduled[0]!.slot);
+    expect(dueObligationWork(journal.view, scheduled[1]!.slot - 1)).toEqual([]);
+    now += LOOP_REVISIT_MS;
+    const tied = { ...journal.view, commitments: journal.view.commitments.map(note => ({ ...note, waitsOn: 'external' as const })) };
+    expect(dueObligationWork(tied, now).map(item => item.key)).toEqual(['commitment:0', 'commitment:1']);
+    // Both are overdue after an idle interval, but only one bounded step runs per tick.
+    expect(await w.workObligations()).toBe(true);
+    expect(work).toEqual([`obligation:commitment:1:${scheduled[1]!.slot}`]);
+    expect(journal.view.obligationWork['commitment:0']).toBeUndefined();
+    allowReceipt = receipt;
+    await w.sendRequested();
+    const carrier = journal.view.order.find(turn => turn.requestedAction?.owed)!;
+    expect(carrier.intent).toBe(recorded.delivery.text);
+    expect(journal.view.closed.has(1)).toBe(receipt);
+    expect(journal.view.obligationWork['commitment:1']!.report).toMatchObject({ boundTo: carrier.id });
+    expect(sent.filter(text => text === recorded.delivery.text)).toHaveLength(receipt ? 1 : 0);
+    // The later deadline remains owned; it gets the next step, never a repeated result.
+    expect(await w.workObligations()).toBe(true);
+    expect(work[1]).toBe(`obligation:commitment:0:${scheduled[0]!.slot}`);
+    expect(resultAttempts).toBe(1);
+    const sentAttempts = attempts; // An UNKNOWN result may also produce an infrastructure delivery notice.
+    journal.close(); journal = openPreviewJournal(path, key); w = worker(); allowReceipt = true;
+    await w.sendRequested(); expect(await w.workObligations()).toBe(false);
+    expect(attempts).toBe(sentAttempts); expect(resultAttempts).toBe(1); expect(work).toHaveLength(2);
+    expect(journal.view.closed.has(1)).toBe(receipt);
+    expect(loopHealth(journal.view, now).deliveryUnknown).toBe(receipt ? 0 : 1);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
 it('binds a result to the reply that carries it, settles it only on that reply\'s receipt, and keeps an UNKNOWN send unresolved and unrepeated (Rules 8, 68, 97)', async () => {
