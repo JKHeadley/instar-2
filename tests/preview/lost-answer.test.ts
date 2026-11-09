@@ -198,12 +198,13 @@ describe('fault 1, the other side of each boundary: when no replacement is made'
     } finally { r.close(); }
   });
 
-  it('a replacement whose call throws stays UNKNOWN and is never repeated', async () => {
+  it('a replacement whose call throws stays UNKNOWN, accounts for unfinished work, and is never repeated', async () => {
     const r = await turn([{ uncertain: true, outcome: timedOutA }, 'throw']);
     try {
       expect(r.inputs).toHaveLength(2);
-      expect(r.sent).toEqual([]);
+      expect(r.sent).toEqual([expect.stringContaining('Unfinished: a verified answer')]);
       await r.worker.drain();
+      expect(r.sent).toHaveLength(1);
       expect(r.inputs).toHaveLength(2);
       expect(r.spent()).toBe(2);
     } finally { r.close(); }
