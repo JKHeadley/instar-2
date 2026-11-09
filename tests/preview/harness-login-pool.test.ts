@@ -530,9 +530,9 @@ it('excludes an unavailable member without renumbering holds/history, records on
   expect(pool.status()).toContain('serving-b (active); unavailable (missing authority)');
   expect(pool.status()).toContain('switching only after a typed limit reply');
   expect(pool.status()).toContain('Last switch: serving-a to serving-b, provider-limit');
-  const notices = pool.notices(); // The unavailable member is actionable; the earlier successful switch adds no line.
-  expect(notices.map(notice => notice.key)).toEqual([`doorway:harness-login:${f.configuration.identity}:unavailable:1`]);
-  expect(openReplyNotices([{ id: 'sent', answerNotices: notices, sent: 2 }], pool.notices(), 'next')).toEqual([]);
+  // reply-noise-1108: login 1 is unavailable but login 0 is only on a timed hold, which the outage notice tells; the
+  // exclusion itself and the earlier successful switch add no reply line. Status keeps both.
+  expect(pool.notices()).toEqual([]);
   f.clock.at += 1;
   const reading = capacity(f);
   const recovered = createHarnessLoginPool({ ...f.settings, usage: () => reading });
@@ -809,4 +809,30 @@ it('outage uses fresh live quota and keeps soft pressure distinct from a held ou
   expect(pool.selectSession(0)?.index).toBe(0);
   live = { version: 1, accounts: [] };
   expect(pool.outage()).toBeNull(); // Missing live observation uses the unchanged compatibility source.
+});
+
+// reply-noise-1108: the live 217 reply of 2026-11-08 11:54 PST ended with this line about a login that was dropped while
+// the other approved login kept serving. The person's work was not affected, so the reply carries nothing about it.
+const LIVE_LINE_1108 = 'Approved model login 2 was unavailable and was removed from selection. See status for current login availability.';
+it('reply-noise-1108: a login dropped while another serves adds no reply line, on this run or any later one', () => {
+  const f = fixture();
+  const pool = createHarnessLoginPool({ ...f.settings, unavailable: new Map([[1, 'missing authority']]) });
+  expect(pool.select().profile.reference).toBe('serving-a'); // The person's work runs on the other approved login.
+  expect(pool.state.exclusions.map(item => item.index)).toEqual([1]); // Durable record kept.
+  expect(pool.notices()).toEqual([]);
+  expect(openReplyNotices([], pool.notices(), 'real-task-1154')).toEqual([]);
+  expect(JSON.stringify(pool.notices())).not.toContain(LIVE_LINE_1108);
+  expect(pool.status()).toContain('serving-b; unavailable (missing authority)'); // The pull surface still says it.
+  // A later launch where the member is back reads only the durable exclusion history: still no line.
+  expect(createHarnessLoginPool(f.settings).notices()).toEqual([]);
+});
+it('reply-noise-1108: with no approved login usable, one plain line with no numbering, offered once', () => {
+  const f = fixture();
+  const pool = createHarnessLoginPool({ ...f.settings, unavailable: new Map([[0, 'missing authority'], [1, 'missing authority']]) });
+  const notices = pool.notices();
+  expect(notices).toHaveLength(1);
+  expect(notices[0].line).toBe('None of my approved model logins can be used right now, so new work will wait until one is working again.');
+  expect(notices[0].line).not.toMatch(/[0-9]/u);
+  const sent = [{ id: 'sent', intent: `Done.\n\n${notices[0].line}`, answerNotices: notices, sent: 2 }];
+  expect(openReplyNotices(sent, createHarnessLoginPool({ ...f.settings, unavailable: new Map([[0, 'x'], [1, 'y']]) }).notices(), 'next')).toEqual([]);
 });

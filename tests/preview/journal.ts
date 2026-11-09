@@ -2819,7 +2819,8 @@ const REPORT_SELECTION_GUIDANCE = 'Judge pendingReports.items against current-ta
   + 'A prior answer or follow-up is not proof of current capabilities. This reply is how each offered report reaches the operator, '
   + 'so decide every one exactly once. selectedReports:[key]: its claims remain supported and consistent now; the runner appends it verbatim, '
   + 'so do not also restate it. carriedReports:[{key,quote}]: your reply itself gives this result in your own words, and quote copies word for word the part of your reply that gives it; the runner appends only a short '
-  + 'marker. rejectedReports:[{key,objection}]: unverifiable or contradictory and your reply does not give the result, with a concise objection '
+  + 'marker, so carry an item only when your reply alone tells the operator its result; one passage may give several. '
+  + 'An item your reply does not answer is selected or rejected, never carried. rejectedReports:[{key,objection}]: unverifiable or contradictory and your reply does not give the result, with a concise objection '
   + '(at most 1000 bytes), to return it to owned rework. An undecided report stays owed, not completed or delivered. '
   + 'Explain relevant uncertainty without repeating unsupported claims.';
 /** What the runner's line says for a result the agent gave in its own words. The agent's declaration decides delivery; these
