@@ -38,6 +38,8 @@ Subject (5 paths): tests/preview/journal.ts, tests/preview/lost-answer.test.ts, 
 
 Direct-importer regression updates: a thrown launched call now records uncertainty and attempts its existing notice once. Requested-action restart asserts that one notice receipt rather than silence; self-state counts the UNKNOWN notice send rather than claiming no send was attempted.
 
+Mechanical register maintenance: refresh the requested-action test reference through the desk-provided owner-manifest rehash script, then regenerate the source register. No native conformance certificate is changed; the Studio must re-pin it from its contract run.
+
 Independent side-effects review: recovery_review inspected the implementation and tests, raised stop-race, stale-custody, fallback, route-exhaustion and rollback concerns, then concurred after their repair. This is an independent code/test review, not a live or desk gate verdict. Accepted limits are row01 and missing exact worker-end evidence.
 
 ## Closing block
