@@ -117,11 +117,14 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
   const latestAttempt = attempts.reduce<(typeof attempts)[number] | undefined>((latest, work) =>
     !latest || work.last >= latest.last ? work : latest, undefined);
   const oldestTurn = turns[0];
+  // A held message and shed due work are separate causes; naming only the first hid 15 shed steps (duework-stuck-1108).
+  const held = oldestTurn?.held !== undefined ? `held: ${oldestTurn.held}` : null;
+  const shed = due.length && !obligationCapacity(view)
+    ? `model-call capacity reserved for replies (${view.calls} of ${view.limits.maxCalls} calls used)` : null;
   const inhibition = view.stop ?? (now >= view.expires ? 'trial expired'
     : view.calls >= view.limits.maxCalls ? 'model-call allowance used'
       : turns.length && view.replies >= view.limits.maxReplies ? 'reply allowance used'
-        : oldestTurn?.held !== undefined ? `held: ${oldestTurn.held}`
-          : due.length && !obligationCapacity(view) ? 'model-call capacity reserved for replies' : null);
+        : [held, shed].filter(reason => reason !== null).join('; ') || null);
   const deliverable = schedule.filter(item => item.awaitingDelivery && owedResultAuthority(view,
     { key: item.key, slot: view.obligationWork[item.key]!.lastSlot })).length;
   const deliveryHold = view.stop ?? (now >= view.expires ? 'trial expired'

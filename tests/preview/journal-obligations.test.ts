@@ -732,7 +732,13 @@ it('starts scheduled work only inside the stop, allowance and capacity fences, a
     again.clock.now += LOOP_REVISIT_MS + 60_000;
     expect(again.journal.view.calls).toBe(3);
     expect(await again.worker.workObligations()).toBe(false);
-    expect(loopHealth(again.journal.view, again.clock.now)).toMatchObject({ dueWork: 1, inhibition: 'model-call capacity reserved for replies' });
+    expect(loopHealth(again.journal.view, again.clock.now)).toMatchObject({ dueWork: 1, inhibition: 'model-call capacity reserved for replies (3 of 5 calls used)' });
+    // duework-stuck-1108: a held message ahead of the shed work hid the shedding; both causes are named.
+    const view = again.journal.view, at = again.clock.now;
+    const heldView = { ...view, order: [...view.order, { id: 'telegram:held', update: 10_000, text: 'held', raw: '{}',
+      accepted: true, at, reserved: false, held: 'group disclosure refused' }] } as typeof view;
+    expect(loopHealth(heldView, at).inhibition).toBe('held: group disclosure refused; model-call capacity reserved for replies (3 of 5 calls used)');
+    expect(loopHealth({ ...heldView, calls: 0 }, at).inhibition).toBe('held: group disclosure refused');
     again.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
