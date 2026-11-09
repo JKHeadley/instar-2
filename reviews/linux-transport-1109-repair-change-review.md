@@ -23,6 +23,8 @@ Deferral: generated/register.json:1 | not-a-deferral=mechanical register publica
 
 1.x comparison: inherited the accepted research of actual JKHeadley/instar main 6cbe44c819cd97aec1d9c7f470b04148fbca708d: src/monitoring/hostMemoryPressure.ts, docs/specs/forkbomb-prevention-simple.md, history 9c178dc4b/a75a55402/4bfa23f7b and ONEX-LESSONS.md section 6. Reuse platform-correct observations and bounded launches through existing 2.0 helpers; memory parsers and the host semaphore do not fit Telegram child-launch wiring. This repair adds exact-composition evidence through the existing 2.0 contract, with no runtime reimplementation.
 
+Publication: generated register replay from source commit 4612ac0f01fdb866f561bf87fc2773fa28e2d7e7 records generation sha256:f0f66396070402803336f8213dcc4c3e4d4e7399a841d949db194e949fa8a217 (307 entries, 122 rules). Architecture now passes. Delegated owner-manifest and inventory-chain refreshes found zero stale pins; only the existing register publication needed regeneration.
+
 ## Closing block
 
 simplestRobustRoute: this is the simplest route: run the existing native contract, renew its certificate only from successful evidence, and replay existing register publication. Start guard requires Darwin and the exact declared runtime; the ten-case post-renewal contract and architecture check guard the end state. Resource and authority floors remain unchanged; no new mechanism or live deployment claim.
