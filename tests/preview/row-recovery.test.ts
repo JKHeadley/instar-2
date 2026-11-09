@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { createJournalWorker, openPreviewJournal, pendingUnknownCalls, ModelPending, ModelNotStarted,
-  type PreviewPorts, type CallOutcome } from './journal-test-worker.js';
+  type PreviewPorts, type CallOutcome, type JournalRecord } from './journal-test-worker.js';
 // @ts-expect-error Physical adapter is JavaScript.
 import { toolTurnEligible } from './tool-turn.mjs';
 const genesis = { kind: 'genesis' as const, bot: '8813073094', chat: '7654321', operator: '7654321',
@@ -184,3 +184,61 @@ it.each([3, 20])('retains the finished/unfinished path after tool eligibility di
     expect(f.sent[0]).toContain('Finished and recorded:'); expect(f.sent[0]).toContain('Unfinished:');
   } finally { f.close(); }
 });
+
+// Same diagnostic wrapper used by journal-agent.mjs modelRoute().
+// @ts-expect-error Physical adapter is JavaScript.
+import { observedSubscriptionIO } from './call-diagnostics.mjs';
+it('a completed recovery provider call retains its physical outcome and delivers its account', async () => {
+  const f = setup();
+  const errors: string[] = [];
+  f.ports.model = async input => {
+    f.calls.push(input);
+    const io = observedSubscriptionIO({ execute: async () => ({ code: 0, limited: false,
+      stdout: JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
+        result: JSON.stringify({ reply: account }), usage: { output_tokens: 20 } }) }) },
+      { maxTokens: 2048, maxOutputBytes: 65536 }, input.id,
+      (row: never) => f.journal.append(row), { elapsed: () => 0, at: f.ports.now });
+    try { await io.execute({ stdin: input.context }); }
+    catch (error) { errors.push(String(error)); throw error; }
+    if (!input.id.startsWith('recovery:')) return { state: 'uncertain', toolChecks: 8 };
+    return JSON.stringify({ reply: account });
+  };
+  try {
+    f.worker().intake([update(367056089)]); await f.worker().drain();
+    expect(f.journal.view.callOutcomes.some(row => row.id === idOf(367056089))).toBe(true);
+    expect({ errors, sent: f.sent }).toEqual({ errors: [], sent: [account] });
+    const physical = f.journal.view.callOutcomes.find(row => row.id === `recovery:${idOf(367056089)}`);
+    expect(physical?.outcome).toMatchObject({ exitCode: 0, type: 'result', subtype: 'success', outputTokens: 20 });
+    expect(physical?.outcome.diagnostic?.rawOutputExcerpt).toContain(account);
+    f.journal.compact(); f.reopen(); await f.worker().drain();
+    expect(f.journal.view.callOutcomes.find(row => row.id === physical?.id)).toEqual(physical);
+    expect(f.sent).toEqual([account]); expect(f.calls).toHaveLength(2);
+  } finally { f.close(); }
+});
+
+it.each(['missing-parent', 'unreserved-parent', 'original-reservation', 'ordinary-replacement', 'wrong-parent', 'wrong-role'] as const)(
+  'recovery physical outcome refuses %s without its exact replacement reservation', async mode => {
+    const f = setup(), id = idOf(367056089);
+    try {
+      if (mode !== 'missing-parent') f.worker().intake([update(367056089)]);
+      if (!['missing-parent', 'unreserved-parent'].includes(mode)) f.journal.append({ kind: 'reserve', id, at: f.ports.now() });
+      if (mode === 'ordinary-replacement') {
+        const recorded = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/lostanswer-live-2026-10-02.json'), 'utf8'));
+        const { id: _id, role, at: _at, ...outcome } = recorded.lostFirstCall.callOutcomes[0];
+        f.journal.append({ kind: 'call-outcome', id, role, outcome, at: f.ports.now() });
+        f.journal.append({ kind: 'answer-replace', id, state: 'uncertain', at: f.ports.now() });
+      }
+      if (mode === 'wrong-parent' || mode === 'wrong-role') {
+        f.journal.append({ kind: 'model-uncertain', id, state: 'uncertain', at: f.ports.now() });
+        f.journal.append({ kind: 'answer-replace', id, state: 'uncertain', recovery: true, at: f.ports.now() });
+      }
+      const operation = `recovery:${mode === 'wrong-parent' ? idOf(367056086) : id}`;
+      const io = observedSubscriptionIO({ execute: async () => ({ code: 0, limited: false,
+        stdout: JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify({ reply: account }) }) }) },
+        { maxTokens: 2048, maxOutputBytes: 65536 }, operation,
+        (row: Extract<JournalRecord, { kind: 'call-outcome' }>) => f.journal.append(mode === 'wrong-role' ? { ...row, role: 'reply-review' } : row),
+        { elapsed: () => 0, at: f.ports.now });
+      await expect(io.execute({ stdin: text })).rejects.toThrow('preview journal: call outcome malformed');
+      expect(f.journal.view.callOutcomes.some(row => row.id === operation)).toBe(false);
+    } finally { f.close(); }
+  });

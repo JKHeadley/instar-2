@@ -3382,7 +3382,11 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
   // (live D run 2026-10-03: every work step settled uncertain, so no result ever waited for delivery).
   const work = /^obligation:((?:commitment|blocker):(?:0|[1-9][0-9]*)):(0|[1-9][0-9]*)$/u.exec(row.id);
   const index = /^summary:index:(0|[1-9][0-9]*)$/u.exec(row.id);
-  const valid = work ? row.role === 'model' && view.obligationWork[work[1]!]?.inFlight === Number(work[2])
+  // Recovery has its own physical invocation ID, but the parent owns its charged replacement.
+  const recovery = row.id.startsWith('recovery:') ? view.turns.get(row.id.slice(9)) : undefined;
+  const valid = row.id.startsWith('recovery:') ? row.role === 'model' && !!recovery?.reserved
+    && recovery.answerReplaced === true && recovery.answerAccount === true
+    : work ? row.role === 'model' && view.obligationWork[work[1]!]?.inFlight === Number(work[2])
     : index ? row.role === 'summary' && view.indexOpen?.key === `index:${index[1]!}`
     : row.role === 'summary' ? !!summary && view.summaryReservations.has(Number(summary[1]))
     && (summary[2] === undefined || view.summaryReviews.has(Number(summary[1])))
