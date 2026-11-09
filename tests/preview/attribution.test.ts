@@ -10,7 +10,7 @@ import { createJournalWorker, openPreviewJournal, type PreviewPorts } from './jo
 import { ATTRIBUTION_BUDGET_MS, importChannelItems } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { JEV_MODEL, jevQuestions } from './reply-check.js';
-import { attributionPacket, decideAttribution, markerFacts, normalizeWords, parseAttributionAnswer, parseMarker, worthJudging,
+import { ATTRIBUTION_CHUNK_LIMIT, ATTRIBUTION_TEXT_MAX, attributionPacket, attributionSummary, chunkForJudge, attributionTrace, ATTRIBUTION_OBJECTION, decideAttribution, markerFacts, normalizeWords, parseAttributionAnswer, parseMarker, worthJudging,
   type AttributionMode, type SourceRecord } from './attribution.js';
 import { LIVE_JUDGMENTS } from './model-call-boundary.js';
 // @ts-expect-error the hook's decision stays plain JavaScript
@@ -82,9 +82,10 @@ describe('the verdict', () => {
     const imported = markerFacts(sourced, () => ({ ...record, strength: 'identity-only' }));
     expect(decideAttribution(sourced, 'write', imported, parseAttributionAnswer(claim({ ownWords: 'unclear' })))).toMatchObject({ verdict: 'unchecked', cause: 'author unclear' });
   });
-  it('states what code proved, and no conversation reaches a note check', () => {
-    const packet = attributionPacket({ text: sourced, surface: 'write', facts });
+  it('states what code proved, and keeps the conversation off every surface but send', () => {
+    const packet = attributionPacket({ text: sourced, surface: 'write', facts, conversation: [{ from: 'Sam', text: 'hi' }] });
     expect(packet).toContain('"strength":"verified"'); expect(packet).not.toContain('conversation');
+    expect(attributionPacket({ text: sourced, surface: 'send', facts, conversation: [{ from: 'Sam', text: 'hi' }] })).toContain('conversation');
   });
   it('an unreadable answer throws, so the caller records unchecked', () => {
     expect(() => parseAttributionAnswer('no json here')).toThrow(); expect(() => parseAttributionAnswer('{"claims":[{}]}')).toThrow();
@@ -96,6 +97,12 @@ describe('the verdict', () => {
     // An unsourced or labelled claim answers neither question, so neither is required of it.
     expect(parseAttributionAnswer(claim({ marker: null, ownWords: null, faithful: null }))).toHaveLength(1);
     expect(parseAttributionAnswer(claim({ labelled: true, ownWords: null, faithful: null }))).toHaveLength(1);
+  });
+  it('chunks long text as 1.x did: every character is in some chunk, each within the bound', () => {
+    const text = `${'The build is complete. '.repeat(800)}\n\n${'Para.\n'.repeat(4000)}${FALSE_CREDIT}`, chunks = chunkForJudge(text);
+    expect(chunks.length).toBeGreaterThan(1); expect(chunks.every(chunk => chunk.length <= ATTRIBUTION_TEXT_MAX)).toBe(true);
+    expect(chunks.join('').replace(/\s/gu, '')).toBe(text.replace(/\s/gu, '')); expect(chunks.at(-1)).toContain(FALSE_CREDIT);
+    expect(chunkForJudge(sourced)).toEqual([sourced]);
   });
   it('is a registered judgment with a signal authority', () => { expect(LIVE_JUDGMENTS['attribution-check'].authority).toBe('signal'); });
 });
@@ -135,6 +142,7 @@ async function drive(s: Scenario) {
   try {
     if (s.imported) importChannelItems(journal, [{ source: 'conversation', at: 1789000000000, ...s.imported }], s.imported.account, 1790000000000);
     worker.intake([{ update_id: 1, message: { message_id: 1, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: s.ask ?? 'Where should builds run?' } }]);
+    if (s.crash && s.note === undefined) { await expect(worker.drain()).rejects.toThrow('TEST crash'); journal.close(); journal = open(false); worker = createJournalWorker(journal, ports()); }
     await worker.drain();
     if (s.crash && s.note !== undefined) { await expect(worker.attributionOfNote('toolu_1', s.note)).rejects.toThrow('TEST crash'); journal.close(); journal = open(false); worker = createJournalWorker(journal, ports()); }
     if (s.noteTwice && s.note !== undefined) await worker.attributionOfNote('toolu_1', s.note);
@@ -144,13 +152,53 @@ async function drive(s: Scenario) {
   } finally { journal.close(); }
 }
 
+describe('the send check on the real worker (stub judge: wiring only)', () => {
+  it('absent, nothing runs and the reply is unchanged', async () => {
+    const result = await drive({}); expect(result.sends).toEqual([FALSE_CREDIT]); expect(result.rows).toEqual([]);
+  });
+  it('record mode writes the refusal and changes nothing the reader sees', async () => {
+    const result = await drive({ mode: 'record' });
+    expect(result.sends).toEqual([FALSE_CREDIT]); expect(result.judged).toBe(1);
+    expect(result.rows).toMatchObject([{ surface: 'send', mode: 'record', verdict: 'refuse', findings: [{ reason: 'unsourced' }] }]);
+  });
+  it('enforce sends the agent\'s honest revision, and checks the revision too', async () => {
+    const result = await drive({ mode: 'enforce', revised: HONEST });
+    expect(result.sends).toEqual([HONEST]); expect(result.turn.release?.objections).toContain(ATTRIBUTION_OBJECTION);
+    expect(result.rows.map(row => row.verdict)).toEqual(['refuse', ...(worthJudging(HONEST, []) ? ['pass'] : [])]);
+  });
+  it('enforce excises a refused claim the agent kept, and the rest of the answer still leaves', async () => {
+    const result = await drive({ mode: 'enforce', answer: `${FALSE_CREDIT} ${KEPT} The tests all passed on the Studio this morning.` });
+    expect(result.sends).toHaveLength(1); expect(result.sends[0]).not.toContain('Sam told me'); expect(result.sends[0]).toContain(KEPT);
+  });
+  it('enforce with nothing left sends the holding notice, never the credit', async () => {
+    const result = await drive({ mode: 'enforce' });
+    expect(result.sends).toHaveLength(1); expect(result.sends[0]).not.toContain('Sam told me');
+  });
+  it.each(['throw', 'junk'] as const)('a judge that %ss passes unchecked and is counted', async judge => {
+    const result = await drive({ mode: 'enforce', judge });
+    expect(result.sends).toEqual([FALSE_CREDIT]); expect(result.rows).toMatchObject([{ verdict: 'unchecked' }]);
+  });
+  it('counts one model call against the allowance', async () => {
+    const plain = await drive({ mode: 'record', answer: KEPT }), credited = await drive({ mode: 'record' });
+    expect(credited.calls).toBe(plain.calls + 1);
+  });
+  it('a crash after the reservation leaves it unchecked and never replays the call', async () => {
+    const result = await drive({ mode: 'record', crash: 'after:attribution-reserve' });
+    expect(result.judged).toBe(0); expect(result.rows).toMatchObject([{ verdict: 'unchecked', cause: 'interrupted' }]);
+  });
+  it('a plain reply makes no call', async () => {
+    const result = await drive({ mode: 'enforce', answer: KEPT }); expect(result.judged).toBe(0); expect(result.rows).toEqual([]);
+  });
+  it('hands the judge the authenticated conversation', async () => {
+    const result = await drive({ mode: 'record' });
+    expect(JSON.parse(result.packets[0]!).packet.conversation).toEqual([{ from: 'the operator', text: 'Where should builds run?' }]);
+  });
+});
+
 describe('the write check (stub judge: wiring only)', () => {
   const answer = KEPT;
   it('absent, nothing runs and the note clears', async () => {
     const result = await drive({ answer, note: FALSE_CREDIT }); expect(result.note).toBeNull(); expect(result.rows).toEqual([]);
-  });
-  it('a reply is not checked in this first part: the send check is owed', async () => {
-    const result = await drive({ mode: 'enforce' }); expect(result.sends).toEqual([FALSE_CREDIT]); expect(result.judged).toBe(0); expect(result.rows).toEqual([]);
   });
   it('counts one model call against the allowance, and a plain note makes none', async () => {
     const plain = await drive({ mode: 'record', answer, note: KEPT }), credited = await drive({ mode: 'record', answer, note: FALSE_CREDIT });
@@ -166,6 +214,15 @@ describe('the write check (stub judge: wiring only)', () => {
     expect(result.judged).toBe(1); expect(result.calls).toBe(used); expect(result.note).toBeNull();
     expect(result.rows).toMatchObject([{ id: 'note:toolu_0', verdict: 'pass' }, { id: 'note:toolu_1', verdict: 'unchecked', cause: 'call cap' }]);
   });
+  it('a long note with words not in the record is still refused by code', async () => {
+    const day = new Date(1790000000000).toISOString().slice(0, 10);
+    const result = await drive({ mode: 'enforce', answer, note: `Sam: "never on the laptop" [source: telegram 7654321/1 ${day}]\n${'The build is complete. '.repeat(800)}` });
+    expect(result.judged).toBe(0); expect(result.note).toContain('Rule 121'); expect(result.rows).toMatchObject([{ verdict: 'refuse', findings: [{ reason: 'quote-not-in-record' }] }]);
+  });
+  it('a crash after the reservation leaves it unchecked and never replays the call', async () => {
+    const result = await drive({ mode: 'record', answer, note: FALSE_CREDIT, crash: 'after:attribution-reserve' });
+    expect(result.judged).toBe(0); expect(result.rows).toMatchObject([{ verdict: 'unchecked', cause: 'interrupted' }]);
+  });
   it('enforce refuses a false credit in a note with the way through, and records it', async () => {
     const result = await drive({ mode: 'enforce', answer, note: FALSE_CREDIT });
     expect(result.note).toContain('source unknown');
@@ -179,19 +236,16 @@ describe('the write check (stub judge: wiring only)', () => {
     const result = await drive({ mode: 'enforce', answer, judge: 'throw', note: FALSE_CREDIT });
     expect(result.note).toBeNull(); expect(result.rows).toMatchObject([{ verdict: 'unchecked' }]);
   });
-  it('a note longer than one check is recorded unchecked with no call, never judged on a part, and is still written', async () => {
+  it('a false credit after a long run of plain text is still judged and refused (review 2026-11-07 tail case)', async () => {
     const result = await drive({ mode: 'enforce', answer, note: `${'The build is complete. '.repeat(800)}${FALSE_CREDIT}` });
+    expect(result.note).toContain('source unknown');
+    expect(result.rows.filter(row => row.id.startsWith('note:')).map(row => row.verdict)).toContain('refuse');
+  });
+  it('text past the check bound is recorded unchecked with no call, never silently dropped, and the note is still written', async () => {
+    const filler = `${'The build is complete.\n'.repeat(700)}\n\n`.repeat(ATTRIBUTION_CHUNK_LIMIT + 1);
+    const result = await drive({ mode: 'enforce', answer, note: `${filler}${FALSE_CREDIT}` });
     expect(result.note).toBeNull(); expect(result.judged).toBe(0);
-    expect(result.rows).toMatchObject([{ id: 'note:toolu_1', verdict: 'unchecked', cause: 'text longer than one check' }]);
-  });
-  it('a long note with words not in the record is still refused by code', async () => {
-    const day = new Date(1790000000000).toISOString().slice(0, 10);
-    const result = await drive({ mode: 'enforce', answer, note: `Sam: "never on the laptop" [source: telegram 7654321/1 ${day}]\n${'The build is complete. '.repeat(800)}` });
-    expect(result.judged).toBe(0); expect(result.note).toContain('Rule 121'); expect(result.rows).toMatchObject([{ verdict: 'refuse', findings: [{ reason: 'quote-not-in-record' }] }]);
-  });
-  it('a crash after the reservation leaves it unchecked and never replays the call', async () => {
-    const result = await drive({ mode: 'record', answer, note: FALSE_CREDIT, crash: 'after:attribution-reserve' });
-    expect(result.judged).toBe(0); expect(result.rows).toMatchObject([{ verdict: 'unchecked', cause: 'interrupted' }]);
+    expect(result.rows).toMatchObject([{ id: `note:toolu_1#${String(ATTRIBUTION_CHUNK_LIMIT)}`, verdict: 'unchecked', cause: `text past ${String(ATTRIBUTION_CHUNK_LIMIT)} checks` }]);
   });
   it('a partial answer on a sourced claim records unchecked, never pass', async () => {
     const note = `Sam: "Where should builds run?" [source: telegram 7654321/1 ${new Date(1790000000000).toISOString().slice(0, 10)}]`;
@@ -238,6 +292,77 @@ describe('imported records resolve, and prove less than a live turn', () => {
   });
 });
 
+describe('a long note never turns a true credit into a refusal (review round 2: the cut fell inside the quote)', () => {
+  const quote = 'The build is green. Please ship it after the final test.', date = new Date(1789000000000).toISOString().slice(0, 10);
+  const marker = `[source: telegram 52075/84421 ${date}]`, imported = (text = quote) => ({ account: 'echo:telegram', id: 'telegram:52075:84421', from: 'telegram:7654321', text, conversation: 'Telegram topic 52075' });
+  const before = (offset: number) => 'The build is complete. '.repeat(1600).slice(0, offset);
+  const packetText = (packet: string) => (JSON.parse(packet) as { packet: { text: string } }).packet.text;
+  it.each([16000, 16280, 16340, 16360, 16375])('true words at offset %s clear, and the judge reads the quote and marker whole', async offset => {
+    const credit = `Sam said: "${quote}" ${marker}`, result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', imported: imported(), note: `${before(offset)}\n${credit}` });
+    expect(result.note).toBeNull(); expect(result.rows.filter(row => row.verdict === 'refuse')).toEqual([]);
+    expect(result.packets.filter(packet => packetText(packet).includes(quote) && packetText(packet).includes(marker))).toHaveLength(1);
+    expect(result.packets.filter(packet => packetText(packet).includes('The build is green') && !packetText(packet).includes(quote))).toEqual([]);
+  });
+  it.each([16000, 16280, 16340])('words not in the record at offset %s are still refused by code', async offset => {
+    const result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', imported: imported(), note: `${before(offset)}\nSam said: "Never ship. Not even on Monday." ${marker}` });
+    expect(result.note).toContain('Rule 121'); expect(result.rows.flatMap(row => row.findings.map(finding => finding.reason))).toEqual(['quote-not-in-record']);
+  });
+  it('a marker with no quoted words is still refused wherever the cut falls', async () => {
+    const result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', imported: imported(), note: `${before(16340)}\nSam said this ${marker}` });
+    expect(result.note).toContain('Rule 121'); expect(result.rows.flatMap(row => row.findings.map(finding => finding.reason))).toEqual(['no-quote']);
+  });
+  it('a marker the bound would have cut stays whole, and is not called malformed', async () => {
+    const result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', imported: imported(), note: `${before(16384 - `\nSam said: "${quote}" [source: telegr`.length)}\nSam said: "${quote}" ${marker}` });
+    expect(result.note).toBeNull(); expect(result.rows.filter(row => row.verdict === 'refuse')).toEqual([]);
+  });
+  it('a quote running over a paragraph break keeps its marker', async () => {
+    const words = 'Ship it.\n\nThen tell me.', result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', imported: imported(words), note: `${'A line.\n'.repeat(2046)}\n"Ship it.\n\nThen tell me." ${marker}` });
+    expect(result.note).toBeNull(); expect(result.rows.filter(row => row.verdict === 'refuse')).toEqual([]);
+  });
+  it('each chunk numbers its own markers, so a judged claim in a later chunk finds its record', async () => {
+    const credit = `Sam said: "${quote}" ${marker}`, note = `${credit}\n${before(16340)}\n${credit}`;
+    const result = await drive({ mode: 'enforce', answer: KEPT, judge: 'relayed', imported: imported(), note });
+    const packets = result.packets.map(packet => (JSON.parse(packet) as { packet: { markers: { index: number }[] } }).packet.markers.map(item => item.index));
+    expect(packets.length).toBeGreaterThan(1); expect(packets.at(-1)).toEqual([0]);
+    expect(result.rows.flatMap(row => row.findings).map(finding => [finding.reason, finding.ref])).toEqual(packets.map(() => ['relayed', 'telegram 52075/84421']));
+  });
+  it('an attribution longer than one check has its exact facts proved and its reading recorded unchecked, never a refusal', async () => {
+    const long = 'The build is green. '.repeat(1000), day = new Date(1790000000000).toISOString().slice(0, 10);
+    const result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', ask: long, note: `Sam said: "${long}" [source: telegram 7654321/1 ${day}]` });
+    expect(result.note).toBeNull(); expect(result.judged).toBe(0);
+    expect(result.rows.length).toBeGreaterThan(0); expect(result.rows.every(row => row.verdict === 'unchecked' && row.cause === 'attribution longer than one check')).toBe(true);
+  });
+  it('an attribution longer than one check with words not in the record is refused by code', async () => {
+    const long = 'The build is green. '.repeat(1000), result = await drive({ mode: 'enforce', answer: KEPT, judge: 'pass', imported: imported(quote), note: `Sam said: "${long}" ${marker}` });
+    expect(result.note).toContain('Rule 121'); expect(result.judged).toBe(0);
+    expect(result.rows.flatMap(row => row.findings.map(finding => finding.reason))).toEqual(['quote-not-in-record']);
+  });
+  it('no cut falls inside a kept span, every character stays in order, and each chunk keeps the bound', () => {
+    const credit = `Sam: "${quote}" ${marker}`, text = `${before(16300)}\n${credit}\n${before(16350)}\n${credit}\n${before(9000)}`, spans = markerFacts(text, () => null);
+    const chunks = chunkForJudge(text, ATTRIBUTION_TEXT_MAX, spans);
+    expect(chunks.join('')).toBe(text); expect(chunks.every(chunk => chunk.length <= ATTRIBUTION_TEXT_MAX)).toBe(true);
+    expect(chunks.filter(chunk => chunk.includes(marker)).every(chunk => chunk.includes(quote))).toBe(true);
+    expect(chunks.join('').split(marker)).toHaveLength(3); expect(spans).toHaveLength(2);
+  });
+  it('a span no check can hold is cut at the bound, so the loop always advances', () => {
+    const text = 'x'.repeat(40000), chunks = chunkForJudge(text, 16384, [{ start: 0, end: 40000 }]);
+    expect(chunks.map(chunk => chunk.length)).toEqual([16384, 16384, 7232]);
+  });
+});
+
+describe('the trail', () => {
+  it('counts what passed unchecked and why, so the timeout rate is a number', () => {
+    expect(attributionSummary([{ verdict: 'pass', latencyMs: 100, surface: 'send' }, { verdict: 'unchecked', cause: 'judge failed', latencyMs: 45000, surface: 'send' }, { verdict: 'refuse', latencyMs: 0, surface: 'write' }]))
+      .toMatchObject({ checks: 3, bySurface: { send: 2, write: 1 }, uncheckedBy: { 'judge failed': 1 } });
+  });
+  const row = (at: number, span: string, verdict: string, ref?: string) => ({ at, id: `t${at}`, surface: 'write', mode: 'record', verdict, spans: [{ span, ...(ref ? { ref } : {}) }], findings: [] });
+  it('reads every wording of a claim back, oldest first, by words or by ref', () => {
+    const rows = [row(3000, 'Sam\'s standing rule: no laptop', 'refuse'), row(1000, 'Sam corrected me about the laptop', 'pass', 'telegram 1/2'), row(2000, 'an unrelated line', 'pass')];
+    expect(attributionTrace(rows, 'laptop').map(item => item.at)).toEqual([new Date(1000).toISOString(), new Date(3000).toISOString()]);
+    expect(attributionTrace(rows, 'telegram 1/2')).toHaveLength(1);
+  });
+});
+
 describe('the real hook asks the real checkpoint (a note is written or refused before the file changes)', () => {
   const run = async (note: (call: string, text: string) => Promise<string | null>, path: string, content: string) => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'attribution-hook-'))); roots.push(root);
@@ -275,7 +400,7 @@ describe('the real hook asks the real checkpoint (a note is written or refused b
     expect(result.denied).toBe(false);
   }, 40000);
   it('the attribution wait covers the judge bound, and callers that kill the hook wait for both asks', () => {
-    expect(ATTRIBUTION_WAIT_MS).toBeGreaterThan(ATTRIBUTION_BUDGET_MS);
+    expect(ATTRIBUTION_WAIT_MS).toBeGreaterThan(ATTRIBUTION_CHUNK_LIMIT * ATTRIBUTION_BUDGET_MS);
     expect(ADMISSION_WAIT_MS).toBeLessThan(ATTRIBUTION_WAIT_MS);
     expect(HOOK_PRE_MAX_MS).toBeGreaterThan(ATTRIBUTION_WAIT_MS + ADMISSION_WAIT_MS);
     // The native loop's kill bound defaults to that maximum, so a slow answer is never turned into a refusal there.

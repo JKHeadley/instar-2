@@ -3,8 +3,6 @@
 // one recorded model judgment decides what only reading can (is this a credit, does the line claim more than the words).
 // The 1.x design is docs/specs/attribution-paper-trail.md in JKHeadley/instar. Here the journal replaces its ledger,
 // pins and peer lookups: the journal is the log, it never rotates, and it replicates on its own.
-// First part (attribution-cut-1107): the write check only. The send check, chunking of long text and the trace/summary
-// reads are deferred; docs/defects/attribution-rule121-owed-parts.md names each and its owner.
 import { createHash } from 'node:crypto';
 
 export type AttributionMode = 'record' | 'enforce';
@@ -16,10 +14,12 @@ export interface SourceRecord { by: string; strength: SourceStrength; at: number
 export type AttributionRefusal = 'malformed-marker' | 'cannot-be-shown' | 'date-mismatch' | 'no-quote' | 'quote-not-in-record'
   | 'unsourced' | 'unsourced-rule' | 'promoted-unsourced' | 'relayed' | 'overstated';
 export interface AttributionFinding { reason: AttributionRefusal; span: string; why: string; person?: string; ref?: string }
-export interface MarkerFact { index: number; marker: string; ref: string | null; quote: string | null; record: SourceRecord | null; refusal: AttributionRefusal | null }
+/** Text offsets: from the opening of the quote a marker backs (or the marker, when it has none) to the marker's end. */
+export interface TextSpan { start: number; end: number }
+export interface MarkerFact extends TextSpan { index: number; marker: string; ref: string | null; quote: string | null; record: SourceRecord | null; refusal: AttributionRefusal | null }
 /** `unchecked` is never a pass: no verdict exists (timeout, unreadable answer, no call allowance). It is counted. */
 export type AttributionVerdict = 'pass' | 'refuse' | 'unchecked';
-/** What the row keeps of each credit it saw, passed or refused: the later wording a future trace reads back. */
+/** What the row keeps of each credit it saw, passed or refused: the later wording a trace reads back. */
 export interface CreditedSpan { span: string; person?: string; ref?: string }
 export interface AttributionResult { verdict: AttributionVerdict; findings: AttributionFinding[]; cause?: string; claims: number; spans?: CreditedSpan[] }
 
@@ -40,10 +40,10 @@ export const normalizeWords = (text: string) => text.normalize('NFKC').replace(/
 
 /** The quote a marker backs: the last quoted words since the previous marker, closing on the marker's own line. A person's
  * words can run over several lines; the marker that claims them cannot sit lines away. */
-function quoteBefore(text: string, from: number, at: number): string | null {
+function quoteBefore(text: string, from: number, at: number): { words: string; start: number } | null {
   const last = [...text.slice(from, at).matchAll(/"([^"]+)"|\u201c([^\u201d]+)\u201d/gu)].at(-1);
   if (!last || text.slice(from + last.index + last[0].length, at).includes('\n')) return null;
-  return (last[1] ?? last[2])!;
+  return { words: (last[1] ?? last[2])!, start: from + last.index };
 }
 
 /** The exact facts. No model is asked about any of these, and a failed one is a refusal on its own. Markers from `upto` on
@@ -51,15 +51,15 @@ function quoteBefore(text: string, from: number, at: number): string | null {
 export function markerFacts(text: string, resolve: (ref: string) => SourceRecord | null, upto = text.length): MarkerFact[] {
   let from = 0;
   return [...text.matchAll(MARKER)].filter(match => match.index < upto).map((match, index) => {
-    const marker = match[0], parsed = parseMarker(marker), previous = from;
-    from = match.index + marker.length;
-    if (!parsed) return { index, marker, ref: null, quote: null, record: null, refusal: 'malformed-marker' as const };
-    const quote = quoteBefore(text, previous, match.index), record = resolve(parsed.ref);
+    const marker = match[0], parsed = parseMarker(marker), previous = from, end = match.index + marker.length;
+    from = end;
+    if (!parsed) return { index, marker, start: match.index, end, ref: null, quote: null, record: null, refusal: 'malformed-marker' as const };
+    const found = quoteBefore(text, previous, match.index), quote = found?.words ?? null, record = resolve(parsed.ref);
     const refusal: AttributionRefusal | null = !record ? 'cannot-be-shown'
       : new Date(record.at).toISOString().slice(0, 10) !== parsed.date ? 'date-mismatch'
         : quote === null ? 'no-quote'
           : !normalizeWords(record.text).includes(normalizeWords(quote)) ? 'quote-not-in-record' : null;
-    return { index, marker, ref: parsed.ref, quote, record, refusal };
+    return { index, marker, start: found?.start ?? match.index, end, ref: parsed.ref, quote, record, refusal };
   });
 }
 
@@ -92,14 +92,55 @@ export const ATTRIBUTION_QUESTION = [
   'Answer with only this JSON on one line: {"claims":[{"span":string,"person":string|null,"kind":"statement"|"rule"|"decision"|"preference"|"instruction"|"rule-refusal","marker":number|null,"labelled":boolean,"stillCredits":boolean,"recap":boolean,"ownWords":"own"|"relayed"|"unclear"|null,"faithful":boolean|null,"why":string}]}. why is one short sentence. No credit at all is {"claims":[]}.',
 ].join('\n');
 
-/** One call reads at most this much text. A longer note is recorded unchecked with no call; chunking it is owed. */
+/** One call reads at most this much text. Longer text is split by chunkForJudge and every chunk is checked. */
 export const ATTRIBUTION_TEXT_MAX = 16_384;
+/** Rule 60: one text takes at most this many judge calls (128 KiB of prose). Past it the rest is recorded unchecked, never dropped. */
+export const ATTRIBUTION_CHUNK_LIMIT = 8;
 
-/** The packet for one check. A conversation for the send surface's recap exemption is owed with the send check. */
-export function attributionPacket(input: { text: string; surface: AttributionSurface; facts: readonly MarkerFact[] }): string {
+/** Where to end the chunk starting at `at`: a paragraph, line or sentence end past half the bound, and never inside a kept
+ * span. When the bound falls inside one that fits in a chunk, the chunk ends before it (at a boundary if there is one), so
+ * a credit reaches the judge whole. A span longer than a chunk is cut at the bound. */
+function chunkEnd(text: string, at: number, limit: number, keep: readonly TextSpan[]): number {
+  const near = keep.filter(span => span.end > at && span.start < limit);
+  const clear = (cut: number) => near.every(span => cut <= span.start || cut >= span.end);
+  const held = near.find(span => span.start < limit && limit < span.end);
+  const fits = held && held.start > at && held.end - held.start <= limit - at;
+  const ceiling = fits ? held.start : limit, floor = fits ? at : at + (limit - at) / 2;
+  for (const separator of ['\n\n', '\n', '. ']) {
+    for (let found = text.lastIndexOf(separator, ceiling - separator.length); found >= 0 && found + separator.length > floor; found = found ? text.lastIndexOf(separator, found - 1) : -1)
+      if (clear(found + separator.length)) return found + separator.length;
+  }
+  return ceiling;
+}
+
+/** 1.x AttributionJudge.chunkForJudge: every character is in exactly one chunk, each within the call's input bound, split at
+ * paragraph boundaries first. `keep` (markerFacts' spans) marks what a cut must stay out of. */
+export function chunkForJudge(text: string, max = ATTRIBUTION_TEXT_MAX, keep: readonly TextSpan[] = []): string[] {
+  const chunks: string[] = [];
+  let at = 0;
+  while (text.length - at > max) {
+    const end = chunkEnd(text, at, at + max, keep);
+    chunks.push(text.slice(at, end));
+    at = end;
+  }
+  chunks.push(text.slice(at));
+  return chunks;
+}
+
+/** The whole text's facts one chunk answers for, numbered within the chunk as its packet numbers them. 1.x kept this split
+ * too: the model counts markers within its chunk, the caller's exact facts belong to the whole text. */
+export const factsInChunk = (facts: readonly MarkerFact[], start: number, end: number): MarkerFact[] => facts
+  .filter(fact => fact.end - fact.marker.length >= start && fact.end - fact.marker.length < end).map((fact, index) => ({ ...fact, index }));
+/** True when a chunk edge falls inside a span, which only an attribution longer than one check can make happen. */
+export const chunkCutsSpan = (spans: readonly TextSpan[], start: number, end: number) => spans
+  .some(span => (span.start < start && start < span.end) || (span.start < end && end < span.end));
+
+/** The packet for one chunk. The caller chunks with chunkForJudge, so text is never cut here. */
+export function attributionPacket(input: { text: string; surface: AttributionSurface; facts: readonly MarkerFact[]; conversation?: readonly { from: string; text: string }[] }): string {
   return JSON.stringify({ packet: { surface: input.surface, text: input.text,
     markers: input.facts.map(fact => ({ index: fact.index, marker: fact.marker, quote: fact.quote,
-      record: fact.record && { sender: fact.record.by, strength: fact.record.strength, text: fact.record.text } })) } });
+      record: fact.record && { sender: fact.record.by, strength: fact.record.strength, text: fact.record.text } })),
+    ...(input.surface === 'send' && input.conversation ? { conversation: input.conversation } : {}) } });
 }
 
 interface JudgedClaim { span: string; person: string | null; kind: string; marker: number | null; labelled: boolean; stillCredits: boolean;
@@ -124,6 +165,16 @@ export function parseAttributionAnswer(value: string): JudgedClaim[] {
 }
 
 /** Turns the facts and the reading into a verdict. A span the model invented is dropped, as in 1.x. */
+/** One text's result from its chunks' results: any refusal refuses, else any unchecked part leaves it unchecked. */
+export function mergeAttribution(results: readonly AttributionResult[]): AttributionResult | null {
+  if (!results.length) return null;
+  if (results.length === 1) return results[0]!;
+  const findings = results.flatMap(result => result.findings), spans = results.flatMap(result => result.spans ?? []);
+  const unchecked = results.find(result => result.verdict === 'unchecked');
+  return { verdict: findings.length ? 'refuse' : unchecked ? 'unchecked' : 'pass', findings, claims: results.reduce((sum, result) => sum + result.claims, 0),
+    ...(spans.length ? { spans } : {}), ...(!findings.length && unchecked?.cause !== undefined ? { cause: unchecked.cause } : {}) };
+}
+
 export function decideAttribution(text: string, surface: AttributionSurface, facts: readonly MarkerFact[], claims: readonly JudgedClaim[]): AttributionResult {
   const findings: AttributionFinding[] = facts.filter(fact => fact.refusal).map(fact => ({ reason: fact.refusal!, span: fact.marker,
     why: REFUSAL_WHY[fact.refusal!], ...(fact.ref ? { ref: fact.ref } : {}) }));
@@ -164,10 +215,27 @@ const REFUSAL_WHY: Record<AttributionRefusal, string> = {
   overstated: 'the line claims more than the logged words',
 };
 
+export const ATTRIBUTION_OBJECTION = 'unsourced_attribution';
 /** What the mind reads on a refusal. Honest labelling always has a way through. */
 export function attributionReason(result: AttributionResult): string {
   const lines = result.findings.slice(0, 4).map(finding => `"${finding.span.slice(0, 160)}" (${finding.reason}: ${finding.why})`);
   return `Rule 121: ${lines.join('; ')}. Either quote the person's exact words with [source: <id you can see> <YYYY-MM-DD>], or remove the credit and say it is your own view, or say "source unknown" without presenting it as their rule.`;
+}
+
+/** Rule 121's trail for some words or a ref: every recorded wording, oldest first, each with the record it cited. */
+export function attributionTrace(rows: readonly { at: number; id: string; surface: string; verdict: string; mode: string; spans?: readonly CreditedSpan[]; findings: readonly AttributionFinding[] }[], query: string) {
+  const wanted = normalizeWords(query);
+  const hit = (item: { span: string; ref?: string }) => normalizeWords(item.span).includes(wanted) || item.ref === query;
+  return rows.filter(row => [...(row.spans ?? []), ...row.findings].some(hit)).sort((a, b) => a.at - b.at).map(row => ({ at: new Date(row.at).toISOString(), id: row.id, surface: row.surface, mode: row.mode,
+    verdict: row.verdict, wordings: (row.spans ?? []).filter(hit), refused: row.findings.filter(hit).map(finding => finding.reason) }));
+}
+
+/** The record period's numbers: how many checks, how many refused, and what passed unchecked and why (the timeout rate). */
+export function attributionSummary(rows: readonly { verdict: string; cause?: string; latencyMs: number; surface: string }[]) {
+  const count = (values: readonly string[]) => Object.fromEntries([...new Set(values)].sort().map(value => [value, values.filter(item => item === value).length]));
+  const judged = rows.map(row => row.latencyMs).filter(ms => ms > 0).sort((a, b) => a - b);
+  return { checks: rows.length, bySurface: count(rows.map(row => row.surface)), byVerdict: count(rows.map(row => row.verdict)),
+    uncheckedBy: count(rows.filter(row => row.verdict === 'unchecked').map(row => row.cause ?? 'unknown')), medianMs: judged[Math.floor(judged.length / 2)] ?? null };
 }
 
 export const attributionDigest = (text: string) => createHash('sha256').update(text).digest('hex');

@@ -56,7 +56,7 @@ import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
 import { JEV_MODEL, jevQuestions, publicCredentialRegister, concealSecretMaterial, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { assertLiveJudgment, modelCallRecord, sha256 } from './model-call-boundary.js';
-import { ATTRIBUTION_QUESTION } from './attribution.js';
+import { ATTRIBUTION_QUESTION, attributionSummary, attributionTrace } from './attribution.js';
 import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { readAnswer, taskFields } from './answer-reading.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
@@ -781,7 +781,7 @@ async function main() {
   const retrospectiveEnabled = options.retrospective !== 'false';
   // Part 18 (plan #402): the live sentinels, all on by default; `--sentinels none` (or a subset) is the off-switch.
   const sentinelFamilies = sentinelFamiliesOf(options.sentinels);
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'carry-group', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract', 'install-login', 'prepare-logins', 'test-copy'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'carry-group', 'audit', 'export-memory', 'attribution-trace', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract', 'install-login', 'prepare-logins', 'test-copy'].includes(command)) throw Error('preview: unknown command');
   if (command === 'test-copy') {
     // test-copy-1020: a NEW root holding a copy of the source's journal, explicitly rebound (and recorded as rebound) to a
     // test bot and the operator's own private chat on it. The source root is only read; logins, custody and the
@@ -933,6 +933,14 @@ async function main() {
       process.stdout.write(`${JSON.stringify({ frontier, exitFrontier: exited?.frontier ?? null,
         frontierMatches: exited?.frontier === frontier, records })}\n`);
     } finally { journal.close(); }
+    return;
+  }
+  if (command === 'attribution-trace') {
+    // Rule 121: read-only. With --query, every recorded wording of a claim, oldest first, by words or a marker's ref; without, the counts.
+    const journal = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+    const rows = journal.view.attribution ?? [];
+    try { process.stdout.write(`${JSON.stringify(options.query ? attributionTrace(rows, options.query) : attributionSummary(rows), null, 2)}\n`); }
+    finally { journal.close(); }
     return;
   }
   if (command === 'export-memory') {
@@ -2213,7 +2221,6 @@ async function main() {
       preparePacket: preparation.run,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
-      replyReviewTiming: conversationSession ? 'after-send' : 'before-send',
       toolRoute: id => conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id) ? true : preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
       // Scheduled obligations keep their existing route; continuing operator conversation is selected below.
       // The session route is taken only while its grant holds and the call allowance can hold the
@@ -3082,7 +3089,7 @@ async function main() {
       while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
         await delay(Math.min(100, until - clock.elapsed()));
     }
-        let summaryJob = null, stepJob = null, retroJob = null, replyReviewJob = null;
+        let summaryJob = null, stepJob = null, retroJob = null;
     const checkStepsLater = () => {
       if (!stepCheckEnabled || stepJob) return;
       stepJob = worker.checkSteps().catch(() => {}).finally(() => { stepJob = null; });
@@ -3095,9 +3102,10 @@ async function main() {
 
     const sourceState = options['agent-state-dir'] ? agentState(options['agent-state-dir']) : null;
     const summarizeLater = () => {
-      // Reviews advise after delivery and never occupy the ordinary send lane. The worker
-      // owns one serial pass and rebuilds pending work from durable intents after restart.
-      if (!replyReviewJob) replyReviewJob = worker.reviewReplies().catch(() => {}).finally(() => { replyReviewJob = null; });
+      // Every answer is reviewed before its intent inside the ordinary drain (register §11). A journal
+      // written by a build that reviewed after the send may still owe a projection for an interrupted
+      // review; that recovery makes no call, sends nothing and is idempotent.
+      try { worker.recoverAfterSendReviews(); } catch { /* retried after the next drain */ }
       // After the reply: the deterministic coherence check records its findings for the next
       // packet. It makes no call and cannot hold the reply already attempted;
       // its synchronous journal write can slightly delay the next poll.
@@ -3323,7 +3331,6 @@ async function main() {
     try {
       await lane.settle();
       if (lane.error() && !signalled) throw lane.error();
-      await replyReviewJob;
       await summaryJob;
       await stepJob;
       await retroJob;

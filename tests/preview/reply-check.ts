@@ -1,3 +1,4 @@
+import { ATTRIBUTION_OBJECTION } from './attribution.js';
 import { credentialDisplayLabel } from './credential-display.js';
 import { machineLink } from './coherence-check.js';
 /** Live preview reply supervision. Jev's eight measured message questions and two detection
@@ -541,7 +542,8 @@ export function topicNameReason(threads: readonly number[], names: ReadonlyMap<n
 /** Most revise rounds per reply: one, inside the existing call allowance and the shared deadline. */
 export const REPLY_REVISION_ROUNDS = 1;
 /** What each non-rule objection asks the agent to consider. */
-const OBJECTION_TEXT: Readonly<Record<string, string>> = { [BARE_TOPIC_OBJECTION]: 'The reply refers to a named topic only by its number.' };
+const OBJECTION_TEXT: Readonly<Record<string, string>> = { [BARE_TOPIC_OBJECTION]: 'The reply refers to a named topic only by its number.',
+  [ATTRIBUTION_OBJECTION]: 'The reply credits a person with something the logged messages do not show (Rule 121).' };
 export const objectionText = (objection: string): string | undefined =>
   Object.hasOwn(REPLY_RULES, objection) ? REPLY_RULES[objection as ReplyRule] : OBJECTION_TEXT[objection];
 /** The agent's answer to one objection: accept it, reject it with a stated reason, or no decision when it

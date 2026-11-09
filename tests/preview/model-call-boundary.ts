@@ -42,8 +42,8 @@ export const LIVE_JUDGMENTS = Object.freeze({
   retrospective: { route: 'preview-subscription', actions: ['record-review', 'discard'], default: 'discard', authority: 'signal', invalid: 'pass failed: no grade, finding or candidate is recorded and every case stays owed' },
   'jev-step-check': { route: 'typesafe-jev', actions: ['record-verdict'], default: 'record-verdict', authority: 'signal', invalid: 'unavailable verdict recorded; observation only, no effect' },
   'attribution-check': { route: 'preview-subscription', actions: ['clear', 'object'], default: 'clear', authority: 'signal',
-    mandatory: 'under --attribution enforce a refused note is not written and the agent gets the way through; exact marker facts are decided by code, never by this judgment',
-    invalid: 'no usable answer or past its bound: recorded unchecked and counted, the note is written (Rule 121 fails open on reachability, as the reply review does)' },
+    mandatory: 'under --attribution enforce a refused note is not written and a refused reply span leaves by claim-scoped excision; exact marker facts are decided by code, never by this judgment',
+    invalid: 'no usable answer or past its bound: recorded unchecked and counted, the note is written and the reply is not held (Rule 121 fails open on reachability)' },
 } as const);
 export type LiveJudgment = keyof typeof LIVE_JUDGMENTS;
 

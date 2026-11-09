@@ -55,8 +55,8 @@ import { evaluateMinimalPath, minimalResponse } from '../../src/operator/live.js
 import type { IndependentSurfaceVerifierPort, InstalledShape, MinimalDependency, SurfaceChallenge, VerifiedSurfaceProof } from '../../src/operator/contracts.js';
 import { authenticateTelegramSender, principalBoundToUpdate, systemWriters, verifiedAtIntake, TELEGRAM_ADAPTER, testOriginWriter, writerBoundToRaw, writerRecord, type SystemMethod, type WriteOrigin, type WriterRecord } from './intake-principal.js';
 import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
-import { ATTRIBUTION_TEXT_MAX, attributionDigest, attributionPacket, attributionReason, decideAttribution, markerFacts, parseAttributionAnswer, worthJudging,
-  type AttributionFinding, type AttributionMode, type AttributionResult, type AttributionSurface, type AttributionVerdict, type CreditedSpan, type SourceRecord } from './attribution.js';
+import { ATTRIBUTION_CHUNK_LIMIT, ATTRIBUTION_OBJECTION, ATTRIBUTION_TEXT_MAX, attributionDigest, chunkCutsSpan, chunkForJudge, factsInChunk, mergeAttribution, attributionReason, decideAttribution, markerFacts, parseAttributionAnswer, worthJudging,
+  attributionPacket, type AttributionFinding, type AttributionMode, type AttributionResult, type AttributionSurface, type AttributionVerdict, type CreditedSpan, type MarkerFact, type SourceRecord } from './attribution.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type SettledSendOutcome, type Speaker } from './outbound-provenance.js';
 import { acceptedMemoryFailure, memoryFailureOffer, memoryFailures, memoryLearningLine, memoryLessons, validStoredMemoryFailure, withLearnedCues,
   MEMORY_FAILURE_DECISION, type MemoryFailureProposal } from './memory-learning.js';
@@ -212,7 +212,7 @@ export const REPLY_REVIEW_FIXED_BYTES = 2040;
  * SETTLED_REVIEW_BYTES, so a turn whose reply restates several earlier settled blockers can still build a
  * review prompt past this reserve. The flat 8192 did not bound that case either; a review that will not fit
  * is recorded `unavailable` and the reply is still released (Rules 86, 95), never held. */
-/** Rule 121's judge gets its own bound; a call past it clears the note as `unchecked` and is counted. */
+/** Rule 121's judge gets its own bound inside the reply's turn; a call past it passes as `unchecked` and is counted. */
 export const ATTRIBUTION_BUDGET_MS = 45_000;
 export const replyReviewReserveFor = (maxBytes: number) =>
   Math.min(PREVIEW_REPLY_BOUND_BYTES + REPLY_REVIEW_FIXED_BYTES, Math.floor(maxBytes / 4));
@@ -1012,6 +1012,7 @@ export type AttributionRow = Omit<Extract<JournalRecord, { kind: 'attribution-ch
 /** A message from the agent's own stored conversation log. Body text never supplies identity.
  * `source` stays a field so journals keep their channel keys; older journals may hold inert `email`
  * items from a removed import route, which replay skips (never recalled or acted on). */
+export type AttributionRow = Omit<Extract<JournalRecord, { kind: 'attribution-check' }>, 'kind' | 'usage'>;
 export interface ChannelItem { source: 'conversation'; account: string; id: string; from: string;
   at: number; text: string; conversation?: string; origin?: 'stored-log' }
 export interface ChannelSourceCursor { offset: number; file: string; anchor: string; scanned: number; imported: number; skipped: number }
@@ -1273,7 +1274,7 @@ export type JournalRecord =
   | { kind: 'reply-review-after-send'; id: string; at: number }
   /** Rule 121: a judge call is reserved before it runs, so a crash leaves an UNKNOWN call and never a replay. */
   | { kind: 'attribution-reserve'; id: string; digest: string; surface: AttributionSurface; maxInputTokens?: number; maxOutputTokens?: number; at: number }
-  /** Rule 121's record: the text's digest, the verdict and each finding. `id` is the write it belongs to. */
+  /** Rule 121's record: the text's digest, the verdict and each finding. `id` is the turn or write it belongs to. */
   | { kind: 'attribution-check'; id: string; digest: string; surface: AttributionSurface; mode: AttributionMode; verdict: AttributionVerdict;
     findings: AttributionFinding[]; claims: number; spans?: CreditedSpan[]; cause?: string; latencyMs: number; usage?: ModelUsage; at: number }
   | { kind: 'reply-jev-reserve'; id: string; retry?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -3227,8 +3228,9 @@ export function capacityRefused(view: JournalView, row: JournalRecord): boolean 
     || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
     || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'index-reserve' || row.kind === 'reply-review-reserve'
       || row.kind === 'held-notice-review-reserve' || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry' || row.kind === 'lookup'
-      || row.kind === 'answer-replace' || row.kind === 'obligation-start' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve' || row.kind === 'retro-duty-reserve'
-      || row.kind === 'attribution-reserve') && view.calls >= view.limits.maxCalls)
+      || row.kind === 'answer-replace' || row.kind === 'obligation-start' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve' || row.kind === 'retro-duty-reserve')
+      && view.calls >= view.limits.maxCalls)
+    || (row.kind === 'attribution-reserve' && view.calls >= view.limits.maxCalls)
     || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
     || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies);
 }
@@ -6283,8 +6285,6 @@ export interface PreviewPorts {
     retractProposal?(): RetractProposal | undefined };
   /** Rule 121. Absent: no attribution check runs and nothing changes. `judge` is the one recorded model call. */
   attribution?: { mode: AttributionMode; judge(prepared: { id: string; packet: string; deadlineAt: number }): Promise<{ value: string | null; usage?: ModelUsage }> };
-  /** Continuing conversations send first; model review is a durable signal for the next turn. */
-  replyReviewTiming?: 'before-send' | 'after-send';
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
     verdict: 'pass' | 'violation' | 'unavailable'; latencyMs: number; retryable?: true; usage?: ModelUsage }>;
     /** The mind's one revision of an objected draft (same model envelope as review). Absent: no revision round. */
@@ -7097,41 +7097,75 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     return null;
   };
-  /** Rule 121 at write time: the agent's own note, checked once per exact text before the file changes. Null clears it; a
-   * string refuses with the way through. Record mode never refuses. Anything but a refusal clears: a note the judge could
-   * not read is counted, not lost, and a crash after the reservation leaves it unchecked, never a replayed call. */
-  const attributionOfNote = async (call: string, text: string): Promise<string | null> => {
-    const port = ports.attribution, id = `note:${call}`, digest = attributionDigest(text);
+  /** One check of exact text, recorded once. The same text is never judged twice, and a call a crash interrupted stays
+   * unchecked: its reservation is the record, so it is not replayed. Null when no check ran. */
+  const attributionStep = async (id: string, text: string, surface: AttributionSurface, facts: readonly MarkerFact[], splitCredit: boolean, conversation?: { from: string; text: string }[]): Promise<AttributionResult | null> => {
+    const port = ports.attribution;
     if (!port) return null;
-    const refused = (result: AttributionResult) => port.mode === 'enforce' && result.verdict === 'refuse' ? attributionReason(result) : null;
+    const digest = attributionDigest(text);
     const prior = journal.view.attribution?.find(row => row.id === id && row.digest === digest);
-    if (prior) return refused(prior);
-    // Sources are looked up only inside the bound one call reads, so a long note never scans the journal per marker.
-    const facts = markerFacts(text, attributionSource, ATTRIBUTION_TEXT_MAX);
+    if (prior) return prior;
     const names = [operatorName(journal.view), ...journal.view.people.map(person => person.name)].filter((name): name is string => Boolean(name));
     if (!facts.length && !worthJudging(text, names)) return null;
     const started = ports.now();
     const record = (result: AttributionResult, usage?: ModelUsage) => {
-      journal.append({ kind: 'attribution-check', id, digest, surface: 'write', mode: port.mode, verdict: result.verdict, findings: result.findings,
+      journal.append({ kind: 'attribution-check', id, digest, surface, mode: port.mode, verdict: result.verdict, findings: result.findings,
         claims: result.claims, ...(result.spans?.length ? { spans: result.spans } : {}), ...(result.cause === undefined ? {} : { cause: result.cause }), latencyMs: Math.max(0, ports.now() - started),
         ...(usage ? { usage } : {}), at: ports.now() });
-      return refused(result);
+      return result;
     };
     // A failed exact fact needs no reading: nothing a model says can put the words in the record.
-    if (facts.some(fact => fact.refusal)) return record(decideAttribution(text, 'write', facts, []));
-    // Owed: 1.x chunking. Until then a note longer than one check is recorded unchecked, never judged on a part.
-    if (text.length > ATTRIBUTION_TEXT_MAX) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'text longer than one check' });
-    if (halted() || journal.view.calls >= journal.view.limits.maxCalls) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'call cap' });
+    if (facts.some(fact => fact.refusal)) return record(decideAttribution(text, surface, facts, []));
+    // A judge shown part of a credit would read it as unsourced. The exact facts above held; the reading did not happen.
+    if (splitCredit) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'attribution longer than one check' });
+    if (halted() || journal.view.calls >= journal.view.limits.maxCalls)
+      return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'call cap' });
     gate();
-    journal.append({ kind: 'attribution-reserve', id, digest, surface: 'write', maxInputTokens: journal.view.limits.maxBytes,
+    journal.append({ kind: 'attribution-reserve', id, digest, surface, maxInputTokens: journal.view.limits.maxBytes,
       maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
     try {
-      const answer = await port.judge({ id: `${id}:attribution-check`, deadlineAt: ports.now() + ATTRIBUTION_BUDGET_MS, packet: attributionPacket({ text, surface: 'write', facts }) });
+      const answer = await port.judge({ id: `${id}:attribution-check`, deadlineAt: ports.now() + ATTRIBUTION_BUDGET_MS,
+        packet: attributionPacket({ text, surface, facts, ...(conversation ? { conversation } : {}) }) });
       if (answer.value === null) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'no answer' }, answer.usage);
-      return record(decideAttribution(text, 'write', facts, parseAttributionAnswer(answer.value)), answer.usage);
+      return record(decideAttribution(text, surface, facts, parseAttributionAnswer(answer.value)), answer.usage);
     } catch (error) {
       return record({ verdict: 'unchecked', findings: [], claims: 0, cause: error instanceof SyntaxError ? 'unreadable answer' : 'judge failed' });
     }
+  };
+  /** The whole text, chunked as 1.x did: every chunk is its own recorded check under the same call cap and stop, and the
+   * first keeps the plain id so a short text is recorded exactly as before. The exact facts come from the whole text, so a
+   * cut can never change one. Past ATTRIBUTION_CHUNK_LIMIT the rest is recorded `unchecked` with no call and no source
+   * lookup, so an unread tail is counted, never silently dropped. */
+  const attributionOf = async (id: string, text: string, surface: AttributionSurface, conversation?: { from: string; text: string }[]) => {
+    if (!ports.attribution) return null;
+    const spans = markerFacts(text, () => null), chunks = chunkForJudge(text, ATTRIBUTION_TEXT_MAX, spans), results: AttributionResult[] = [];
+    const read = chunks.slice(0, ATTRIBUTION_CHUNK_LIMIT), facts = markerFacts(text, attributionSource, read.join('').length);
+    let start = 0;
+    for (const [index, chunk] of read.entries()) {
+      const end = start + chunk.length;
+      const result = await attributionStep(index === 0 ? id : `${id}#${String(index)}`, chunk, surface, factsInChunk(facts, start, end), chunkCutsSpan(spans, start, end), conversation);
+      if (result) results.push(result);
+      start = end;
+    }
+    if (chunks.length > ATTRIBUTION_CHUNK_LIMIT) {
+      const tailId = `${id}#${String(ATTRIBUTION_CHUNK_LIMIT)}`, tail = chunks.slice(ATTRIBUTION_CHUNK_LIMIT).join(''), digest = attributionDigest(tail);
+      const prior = journal.view.attribution?.find(row => row.id === tailId && row.digest === digest);
+      const result: AttributionResult = prior ?? { verdict: 'unchecked', findings: [], claims: 0, cause: `text past ${String(ATTRIBUTION_CHUNK_LIMIT)} checks` };
+      if (!prior) journal.append({ kind: 'attribution-check', id: tailId, digest, surface, mode: ports.attribution.mode, verdict: 'unchecked', findings: [],
+        claims: 0, cause: result.cause!, latencyMs: 0, at: ports.now() });
+      results.push(result);
+    }
+    return mergeAttribution(results);
+  };
+  /** The send check reads the turn's own authenticated conversation, so a recap of it needs no marker. */
+  const attributionOfReply = (turn: Turn, text: string) => attributionOf(turn.id, text, 'send',
+    journal.view.order.filter(item => remembered(item) && item.update <= turn.update && !item.requestedAction).slice(-12)
+      .map(item => ({ from: fromOperator(item) ? operatorName(journal.view) ?? 'the operator' : 'another Telegram user', text: item.text.slice(0, 1200) })));
+  /** Rule 121 at write time: the agent's own note, before the file changes. Null clears it; a string refuses with the way through.
+   * Record mode never refuses. Anything but a refusal clears: a note the judge could not read is counted, not lost. */
+  const attributionOfNote = async (call: string, text: string): Promise<string | null> => {
+    const result = await attributionOf(`note:${call}`, text, 'write');
+    return ports.attribution?.mode === 'enforce' && result?.verdict === 'refuse' ? attributionReason(result) : null;
   };
   // Conservative identity for an exact restatement. A different value keeps a
   // different key; semantic near-matches remain separate for the model to judge.
@@ -8939,62 +8973,28 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       catch { return; }
     }
   };
-  const reviewAfterSend = async (turn: Turn): Promise<void> => {
-    if (ports.replyReviewTiming !== 'after-send' || !ports.replyCheck || turn.intent === undefined
-      || turn.answer === undefined || halted()) return;
-    if (turn.afterSendReview) {
-      if (turn.checked === undefined) {
-        const review = turn.replyChecks?.at(-1);
-        // A durable terminal judgment only needs its coherence projection rebuilt. A Jev pass is terminal
-        // only when no contextual review was required; a reservation without a result is never replayed.
-        const terminal = review?.path === 'subscription' || review?.path === 'holding'
-          || review?.path === 'jev' && review.verdict === 'pass' && !turn.reviewReserved
-            && !confidentReplyNeedsReview(projectedReplyPrompt(turn.prompt));
-        if (!terminal) journal.append({ kind: 'reply-check', id: turn.id, result: {
-          verdict: 'unavailable', ruleIds: review?.ruleIds ?? [], confidence: null, path: 'holding', latencyMs: 0,
-          cause: 'interrupted', reason: 'retrospective review interrupted; no paid call replayed'
-            + (review ? `; recorded ${review.path} ${review.verdict}: ${review.reason ?? 'no reason recorded'}` : ''),
-        }, at: ports.now() });
-        checkCoherence(turn);
-      }
-      return;
-    }
-    if (turn.jevReserved || turn.reviewReserved) return;
-    journal.append({ kind: 'reply-review-after-send', id: turn.id, at: ports.now() });
-    const text = turn.intent, candidateDigest = createHash('sha256').update(text).digest('hex');
-    const checkPorts = { ...ports.replyCheck, now: ports.now,
-      deadlineAt: ports.now() + REPLY_CHECK_BUDGET_MS,
-      reserveEscalation: (candidate: string, prompt?: string) => {
-        if (halted() || journal.view.calls >= journal.view.limits.maxCalls) return false;
-        journal.append({ kind: 'reply-review-reserve', id: turn.id, candidate,
-          ...(prompt === undefined ? {} : { prompt }), maxInputTokens: journal.view.limits.maxBytes,
-          maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); return true;
-      },
-      record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id,
-        result: { ...result, candidateDigest }, at: ports.now() }) };
-    // No replay of a paid call after a crash. Its durable reservation remains UNKNOWN.
-    if (journal.view.jevChecks >= journal.view.limits.maxReplies) {
-      await reviewReply(text, turn.id, checkPorts, [], projectedReplyPrompt(turn.prompt));
-    } else {
-      const shared = fromOperator(turn) ? disclosedApproval(journal.view) : undefined;
-      const facts = shared && approvalFacts(shared);
-      journal.append({ kind: 'reply-jev-reserve', id: turn.id,
-        maxInputTokens: Buffer.byteLength(jevRequestBody(text, facts)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
-      await checkReply(text, turn.id, checkPorts, projectedReplyPrompt(turn.prompt), facts);
-    }
+  /** Legacy after-send history (builds before 2026-11-05 selected review after the send for continuing
+   * conversations; the register's pre-send team and Part 18 §16 never allowed that order). A journal written
+   * by such a build may hold a `reply-review-after-send` marker whose review was interrupted: the durable
+   * terminal judgment is projected once, and a reservation without a result is recorded as unavailable and
+   * never paid again. No review starts here: every answer now takes the pre-send route in drainTopic. */
+  const recoverAfterSendHistory = (turn: Turn): void => {
+    if (!turn.afterSendReview || turn.checked !== undefined || turn.intent === undefined || turn.answer === undefined || halted()) return;
+    const review = turn.replyChecks?.at(-1);
+    // A durable terminal judgment only needs its coherence projection rebuilt. A Jev pass is terminal
+    // only when no contextual review was required; a reservation without a result is never replayed.
+    const terminal = review?.path === 'subscription' || review?.path === 'holding'
+      || review?.path === 'jev' && review.verdict === 'pass' && !turn.reviewReserved
+        && !confidentReplyNeedsReview(projectedReplyPrompt(turn.prompt));
+    if (!terminal) journal.append({ kind: 'reply-check', id: turn.id, result: {
+      verdict: 'unavailable', ruleIds: review?.ruleIds ?? [], confidence: null, path: 'holding', latencyMs: 0,
+      cause: 'interrupted', reason: 'retrospective review interrupted; no paid call replayed'
+        + (review ? `; recorded ${review.path} ${review.verdict}: ${review.reason ?? 'no reason recorded'}` : ''),
+    }, at: ports.now() });
     checkCoherence(turn);
   };
-  // The durable intents are the queue. One serial review pass runs beside the send drain,
-  // within its existing concurrency ceiling; provider admission and spend limits still apply.
-  // A crash retains the intent/reservation, and reviewAfterSend recovers without replaying spend.
-  let replyReviewJob: Promise<void> | null = null;
-  const reviewReplies = (): Promise<void> => {
-    if (replyReviewJob) return replyReviewJob;
-    replyReviewJob = (async () => {
-      for (const turn of journal.view.order) await reviewAfterSend(turn);
-    })().finally(() => { replyReviewJob = null; });
-    return replyReviewJob;
-  };
+  /** One pass over legacy after-send history: no model call, no send, no spend; idempotent after it. */
+  const recoverAfterSendReviews = (): void => { for (const turn of journal.view.order) recoverAfterSendHistory(turn); };
   /** Ordinary answers drain on every cycle. A requested action is proactive: it is created and answered only at
    * the due point `sendRequested()`, or just after admitting an already-late relative request.
    * Both paths settle queued withdrawals first (Rules 57, 93). */
@@ -10029,10 +10029,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             ? `${topicNameReason(topics, topicNames(journal.view))}; ${LINK_SHAPE_REASON}` : topicNameReason(topics, topicNames(journal.view));
           return { rules, reason };
         };
-        const { rules: linkRules, reason: linkReason } = usableRefs(reply);
+        const { rules: shapeRules, reason: shapeReason } = usableRefs(reply);
+        // Rule 121 on the draft: a refusal enters the same one revision round as a link objection. Only enforce does.
+        const attributionEnforced = ports.attribution?.mode === 'enforce';
+        const draftAttribution = turn.answer !== undefined ? await attributionOfReply(turn, reply) : null;
+        const attributionObjection = attributionEnforced && draftAttribution?.verdict === 'refuse' ? attributionReason(draftAttribution) : undefined;
+        const linkRules = attributionObjection === undefined ? shapeRules : [...shapeRules, ATTRIBUTION_OBJECTION];
+        const linkReason = attributionObjection === undefined ? shapeReason : shapeRules.length ? `${attributionObjection}; ${shapeReason}` : attributionObjection;
 
-        const retrospective = ports.replyReviewTiming === 'after-send' && turn.answer !== undefined && !turn.requestedAction;
-        if (ports.replyCheck && !retrospective) {
+        // Every model-written answer, continuing conversation or not, takes this one pre-send review before its
+        // intent (register §11's pre-send team; Part 18 §16; Rules 4, 14, 86, 95). Its bounds are unchanged: one
+        // response round, the shared 60 s deadline, the call allowance, advisory release for the operator's own
+        // chat and the content-free holding note for any other audience. Nothing selects review after the send.
+        if (ports.replyCheck) {
           const reviewed = turn.replyChecks?.at(-1);
           if (turn.noticeClass !== 'unknown-answer' && turn.reviewReserved && reviewed?.path === 'subscription' && (reviewed.verdict === 'pass' || reviewed.verdict === 'violation')
             && turn.reviewCandidate !== undefined && turn.reviewMentionedDates !== undefined
@@ -10183,8 +10192,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const checkRow = linkOnly ? undefined : turn.replyChecks?.filter(item => item.candidateDigest === undefined
               || item.candidateDigest === candidateDigest).at(-1);
             const objections = [...new Set([...(credentialShape ? ['credential'] : []), ...(checkRow?.ruleIds ?? []), ...linkRules])];
-            const reason = linkOnly ? linkReason : checkRow?.reason ?? (decision === 'violation' ? undefined
+            const reviewReason = linkOnly ? linkReason : checkRow?.reason ?? (decision === 'violation' ? undefined
               : capRefused ? 'review not run: call cap reached' : 'review unavailable');
+            const reason = !linkOnly && attributionObjection !== undefined ? [attributionObjection, reviewReason].filter(Boolean).join('; ') : reviewReason;
             // One shared deadline bounds the whole loop: checks, escalation, the agent's response and the
             // review of its revision (ruling 2 section A budget; Rules 55, 60, 77). Past it, advisory
             // objections are released with no decision and a held candidate stays held.
@@ -10240,7 +10250,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 const draft = resultLines.reduce((text, line) => text.replace(line, ''),
                   continuity?.spoken ? reply.replace(`${continuity.disclosure} `, '') : reply);
                 try { outcome = await ports.replyCheck.revise({ text: concealSecretMaterial(redact(draft).text, heldValues), id: turn.id, originalPrompt,
-                  ruleIds: objections.filter(item => item !== BARE_TOPIC_OBJECTION) as ReplyRule[], objections,
+                  ruleIds: objections.filter(item => item !== BARE_TOPIC_OBJECTION && item !== ATTRIBUTION_OBJECTION) as ReplyRule[], objections,
                   ...(checkRow?.findings ? { findings: checkRow.findings } : {}),
                   ...(ownWordResults.length ? { carried: ownWordResults.map(item => ({ key: item.key, text: concealSecretMaterial(redact(item.text).text, heldValues) })) } : {}),
                   ...(reason === undefined ? {} : { reason }), deadlineAt: revisionDeadline }); }
@@ -10413,7 +10423,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Failure leaves the answer byte-for-byte intact and requeues its grounded correction sources.
         let correctionDeferred = turn.answerCorrection !== undefined;
         const correction = boundedCorrection(turn.answerCorrection);
-        if (correction && !retrospective && !heldBack && speaker === 'agent' && ports.replyCheck && turn.prompt !== undefined) {
+        if (correction && !heldBack && speaker === 'agent' && ports.replyCheck && turn.prompt !== undefined) {
           const candidate = `${reply.trimEnd()}\n\n${correction}`;
           const deadline = (turn.jevReservedAt ?? turn.reviewReservedAt ?? turn.answerAt ?? ports.now()) + REPLY_CHECK_BUDGET_MS;
           const heldValues = (() => { try { return ports.heldSecrets?.() ?? []; } catch { return []; } })();
@@ -10460,6 +10470,26 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             release = { ...(release ?? { review: 'violation' as const, reason: finalReason, revised: false }), objections,
               dispositions: [...answered, ...noDecisions(objections.slice(prior.length))],
               final: { digest: createHash('sha256').update(reply).digest('hex'), links } };
+          }
+        }
+        // Rule 121 on the final text. A revision is a new text, so it gets its own check; an unchanged reply reuses the
+        // recorded verdict. Under enforce a claim still refused leaves by excision, as any named claim does, and a reply
+        // with nothing left becomes the holding notice. An `unchecked` verdict is counted, never held.
+        if (turn.answer !== undefined && held === undefined && !heldBack) {
+          const finalAttribution = await attributionOfReply(turn, reply);
+          if (attributionEnforced && finalAttribution?.verdict === 'refuse') {
+            const body = (actionHeader === undefined ? reply : reply.slice(actionHeader.length + 1)).replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
+            const cut = exciseNamedClaims(body, finalAttribution.findings.map(finding => finding.span));
+            const objections = [...new Set([...(release?.objections ?? []), ATTRIBUTION_OBJECTION])];
+            if (cut.removed.length && !cut.unlocated.length && substantiveReply(cut.text)) {
+              reply = actionHeader === undefined ? disclosed(cut.text) : `${actionHeader}\n${cut.text}`;
+              release = { ...(release ?? { review: 'violation' as const, revised: false }), objections, reason: attributionReason(finalAttribution),
+                dispositions: noDecisions(objections), withheld: { rules: [ATTRIBUTION_OBJECTION as ReplyRule], removed: cut.removed, unlocated: cut.unlocated } };
+            } else {
+              reply = actionHeader === undefined ? disclosed(HOLDING_REPLY) : `${actionHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`;
+              heldBack = true; speaker = 'infrastructure'; release = undefined;
+              held = { objections, reason: attributionReason(finalAttribution), dispositions: noDecisions(objections) };
+            }
           }
         }
         // The reviewer's answer on whether this exact text reports a shared-access approval is read before any fixed
@@ -12139,15 +12169,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const checkCoherence = (reviewed?: Turn) => {
     for (const turn of journal.view.order) {
       if (turn.intent === undefined || turn.checked !== undefined || turn.answer === undefined) continue;
-      // A pending asynchronous review must not acquire a terminal coherence projection before
-      // its judgment exists. Only that review's completion/recovery projects its own findings.
-      if (ports.replyReviewTiming === 'after-send' && ports.replyCheck && !turn.requestedAction
-        && !turn.jevReserved && !turn.reviewReserved && !turn.afterSendReview && turn !== reviewed) continue;
+      // A legacy after-send marker (see recoverAfterSendHistory) projects only through its own recovery, so a
+      // fast neighbouring check cannot hide a judgment that was still owed when that build stopped.
       if (turn.afterSendReview && turn !== reviewed) continue;
       const earlier = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update < turn.update).map(item => item.text);
       let findings: CoherenceFinding[], failed = false;
       try { findings = checkCoherenceOf({ reply: sentText(turn)!, earlier }); } catch { findings = []; failed = true; }
-      // Surviving pre-send objections reach the mind by the same note (Rules 14, 86).
+      // Legacy history: a judgment recorded after the send reaches the mind by the same note (Rules 14, 86).
       if (turn.afterSendReview) {
         const review = turn.replyChecks?.at(-1);
         if (review && review.verdict !== 'pass') findings = [{ rule: 58,
@@ -12603,7 +12631,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     await answerLimited();
     await noticeClosing();
     await pollReviewRequests(); await issueRetractRequest(); };
-  return { attributionOfNote, intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
+  return { attributionOfNote, intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, recoverAfterSendReviews, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };
