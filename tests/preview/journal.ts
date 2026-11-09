@@ -1889,6 +1889,22 @@ export function replyTimings(view: JournalView) {
 }
 
 const withheld = '[withheld: operator correction or forgetting]';
+/** Rules 93/121: a new preference is stored in the operator's own words. The model's exact clause is widened to the
+ * whole sentence of the message holding it, so a lead-in such as "From now on," is never dropped (proof D5c: 9 of 40
+ * sets stored the clause without it). Deterministic and verbatim; past the 1000-byte bound the clause stays. */
+export function preferenceSentence(message: string, clause: string): string {
+  const at = message.indexOf(clause);
+  if (at < 0) return clause;
+  const ends = /[.!?]["'”’)\]]*(?=\s|$)|\n/g;
+  let start = 0, end = message.length;
+  for (const match of message.matchAll(ends)) {
+    const stop = match.index + match[0].length;
+    if (stop <= at) start = stop;
+    else if (stop >= at + clause.length) { end = stop; break; }
+  }
+  const sentence = message.slice(start, end).trim();
+  return Buffer.byteLength(sentence) <= 1000 ? sentence : clause;
+}
 /** Preference lineage from the recorded change history and the given active changes. */
 const memoryPreferenceState = (view: JournalView, changes: readonly MemoryChange[] = view.memory) => {
   const active = new Map<string, { source: string; quote: string }>();
@@ -10999,7 +11015,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     && Number.isFinite(Date.parse(`${day}T00:00:00Z`)) ? wallEpoch(day, '09:00', zone) : undefined;
   /** Reads the answer's declared obligations. The model identifies them by meaning; the runner keeps
    * only exact quotes, listed ids and complete finite records, so nothing is paraphrased into authority. */
-  const obligationsFrom = (parsed: { directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown;
+  const obligationsFrom = (parsed: { directives?: unknown; closeDirectives?: unknown; memory?: unknown; openLoops?: unknown; blocker?: unknown;
     blockerRechecks?: unknown; cancelDeliveries?: unknown }, turn: Turn, reply: string, context: string, at: number,
     memory: readonly MemoryChange[] = []): AnswerObligations => {
     const result: AnswerObligations = {}, zone = ports.timeZone ?? 'America/Los_Angeles', decidedFrom = turn.reservedAt ?? at;
@@ -11031,8 +11047,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // supersession keep their lifecycle. The raw proposal and durable preference remain recorded.
         const preferences = memory.filter(change => change.mode === 'prefer'
           && change.source === turn.id && change.trigger === turn.id);
+        // The same exact clause proposed as a preference coalesces; the stored preference is its whole sentence.
+        const clauses = new Set((Array.isArray(parsed.memory) ? parsed.memory as { mode?: unknown; quote?: unknown }[] : [])
+          .flatMap(item => item?.mode === 'prefer' && typeof item.quote === 'string' ? [item.quote] : []));
         const distinct = added.filter(item => item.supersedes !== undefined
-          || !preferences.some(change => change.quote === item.quote));
+          || !(clauses.has(item.quote as string) && preferences.some(change => change.quote === preferenceSentence(redact(turn.text).text, item.quote as string))));
         result.directives = distinct.flatMap(item => quotes.has(item.quote as string) ? [] : (quotes.add(item.quote as string), [{ quote: item.quote as string,
           ...(item.supersedes === undefined || closing.has(item.supersedes as number) ? {} : (closing.add(item.supersedes as number), { supersedes: item.supersedes as number })) }]));
         // Every open directive rides every packet, so admission keeps them within DIRECTIVE_SHARE of the context
@@ -11306,7 +11325,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         || summaryPassages.some(passage => typeof passage !== 'string' || passage.length < 8
           || Buffer.byteLength(passage) > 1000 || !offeredSummary?.includes(passage)))) return undefined;
       seen.add(JSON.stringify([rawSource, quote]));
-      (heldForget ? held ?? [] : changes).push({ mode: mode === 'update' ? 'correct' : mode, source: rawSource as string, quote, trigger: trigger.id,
+      // A later correct or forget quoting only the clause names the same stored sentence, so it still retires it.
+      const widened = original && side === undefined ? preferenceSentence(redact(original.text).text, quote) : quote;
+      const stored = mode === 'prefer' || !activePreference && preferences.active.has(JSON.stringify([rawSource, widened])) ? widened : quote;
+      if (stored !== quote && seen.has(JSON.stringify([rawSource, stored]))) continue;
+      seen.add(JSON.stringify([rawSource, stored]));
+      (heldForget ? held ?? [] : changes).push({ mode: mode === 'update' ? 'correct' : mode, source: rawSource as string, quote: stored, trigger: trigger.id,
         ...(side === 'reply' ? { in: 'reply' as const } : {}),
         ...(mode === 'correct' || mode === 'update' ? { replacement: replacement as string } : {}),
         ...(mode === 'update' ? { historical: true as const } : {}),
