@@ -274,7 +274,8 @@ the existing custody key and conversation ownership fence, outside worker-readab
 Corrupt or unreadable state refuses; it never becomes an empty queue. Admission applies
 backpressure at 64 pending inputs, 4096 retained inputs and 1 MiB per input, preserving
 all already accepted records. A queued input remains queued after a proved non-dispatch;
-a dispatched but unresolved input becomes uncertain on restart and is never replayed.
+a dispatched but unresolved input becomes uncertain on restart and is never replayed,
+except the carryover 08 re-run below.
 A repeated exact input returns its recorded outcome; conflicting bytes refuse.
 Terminal startup preserves the 1.x 90-second fresh and 120-second resume waits.
 A resumed process that dies before input gets one fresh start with complete agent-owned
@@ -391,6 +392,14 @@ keeps the original envelope. A closed batch whose result was not yet checkpointe
 through the correlated adapter before worker retirement; queued messages still drain after
 restart. An interrupted tool-bearing turn without a correlated completion remains uncertain,
 never automatically repeated as if its effects had not happened.
+Carryover 08 ports 1.x `recoverStuckMessages`: after a host restart, an accepted
+question with no correlated answer is re-run once more by the new host, at most three
+dispatches in all, so it is answered once. The admission checkpoint durably notes each
+tool preparation through `noteToolPreparation` before allowing it (a failed note refuses
+the tool), and the input records that count at dispatch. Re-run requires an unchanged
+count, the old process's child edges all closed, no unknown outward send, remaining
+allowance, a single input and no earlier worker or context recovery. Anything else,
+including state without the count, stays uncertain as before.
 
 While a message waits behind a reserved turn, the journal can send one fixed progress line
 after 45 seconds (Rule 87's bounded pace; the unit brief selects the interval). Durable
