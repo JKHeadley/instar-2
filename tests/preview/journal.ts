@@ -1905,6 +1905,26 @@ export function preferenceSentence(message: string, clause: string): string {
   const sentence = message.slice(start, end).trim();
   return Buffer.byteLength(sentence) <= 1000 ? sentence : clause;
 }
+/** Rule 93: what each prefer clause of one decision stores. A sentence carrying one instruction (its clause, the
+ * sentence itself, or both) is stored once, whole. A sentence in which the model selected two or more distinct
+ * clauses keeps each exact clause, so correcting one never retires another. Order-independent by construction. */
+/** The exact prefer clauses a decision proposes for its own turn, as memoryFrom reads them. */
+const preferClauses = (proposed: unknown, turn: string) => (Array.isArray(proposed) ? proposed.slice(0, 3) : [])
+  .flatMap(item => {
+    const { mode, source, quote } = (item ?? {}) as { mode?: unknown; source?: unknown; quote?: unknown };
+    return mode === 'prefer' && source === turn && typeof quote === 'string' ? [quote] : [];
+  });
+export function preferenceTexts(message: string, clauses: readonly string[]): Map<string, string> {
+  const groups = new Map<string, Set<string>>();
+  for (const clause of clauses) {
+    const sentence = preferenceSentence(message, clause);
+    groups.set(sentence, (groups.get(sentence) ?? new Set<string>()).add(clause));
+  }
+  return new Map(clauses.map(clause => {
+    const sentence = preferenceSentence(message, clause);
+    return [clause, [...groups.get(sentence)!].filter(item => item !== sentence).length > 1 ? clause : sentence];
+  }));
+}
 /** Preference lineage from the recorded change history and the given active changes. */
 const memoryPreferenceState = (view: JournalView, changes: readonly MemoryChange[] = view.memory) => {
   const active = new Map<string, { source: string; quote: string }>();
@@ -11047,11 +11067,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // supersession keep their lifecycle. The raw proposal and durable preference remain recorded.
         const preferences = memory.filter(change => change.mode === 'prefer'
           && change.source === turn.id && change.trigger === turn.id);
-        // The same exact clause proposed as a preference coalesces; the stored preference is its whole sentence.
-        const clauses = new Set((Array.isArray(parsed.memory) ? parsed.memory as { mode?: unknown; quote?: unknown }[] : [])
-          .flatMap(item => item?.mode === 'prefer' && typeof item.quote === 'string' ? [item.quote] : []));
+        // The same exact clause proposed as a preference coalesces with the preference row that clause stored.
+        const clauses = preferenceTexts(redact(turn.text).text, preferClauses(parsed.memory, turn.id));
         const distinct = added.filter(item => item.supersedes !== undefined
-          || !(clauses.has(item.quote as string) && preferences.some(change => change.quote === preferenceSentence(redact(turn.text).text, item.quote as string))));
+          || !(clauses.has(item.quote as string) && preferences.some(change => change.quote === clauses.get(item.quote as string))));
         result.directives = distinct.flatMap(item => quotes.has(item.quote as string) ? [] : (quotes.add(item.quote as string), [{ quote: item.quote as string,
           ...(item.supersedes === undefined || closing.has(item.supersedes as number) ? {} : (closing.add(item.supersedes as number), { supersedes: item.supersedes as number })) }]));
         // Every open directive rides every packet, so admission keeps them within DIRECTIVE_SHARE of the context
@@ -11228,9 +11247,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const memoryFrom = (proposed: unknown[], trigger: Turn, offered: ReadonlySet<string>, offeredSummary?: string,
     updateEvidence: readonly { id: string; message: string }[] = [], held?: MemoryChange[]): MemoryChange[] | undefined => {
-    const changes: MemoryChange[] = [], seen = new Set<string>();
+    const changes: MemoryChange[] = [], seen = new Set<string>(), kept = new Set<string>();
     const preferences = preferenceState();
     if (!trigger.accepted || !fromOperator(trigger) || proposed.length > 3) return undefined;
+    const preferText = preferenceTexts(redact(trigger.text).text, preferClauses(proposed, trigger.id));
     // Rules 7/10: a prefer item that cites an offered preference record by its own source and exact quote is the
     // model's contextual decision that the preference on file stands unchanged, so it is a no-op rather than a
     // refusal of the whole decision (live canary-copy e2582787, updates 969389758/969389759/969389782). An item
@@ -11327,9 +11347,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       seen.add(JSON.stringify([rawSource, quote]));
       // A later correct or forget quoting only the clause names the same stored sentence, so it still retires it.
       const widened = original && side === undefined ? preferenceSentence(redact(original.text).text, quote) : quote;
-      const stored = mode === 'prefer' || !activePreference && preferences.active.has(JSON.stringify([rawSource, widened])) ? widened : quote;
-      if (stored !== quote && seen.has(JSON.stringify([rawSource, stored]))) continue;
-      seen.add(JSON.stringify([rawSource, stored]));
+      const stored = mode === 'prefer' ? preferText.get(quote) ?? quote
+        : !activePreference && preferences.active.has(JSON.stringify([rawSource, widened])) ? widened : quote;
+      // Raw repeats were refused above; rows that store the same text coalesce here, so neighbors agree in either order.
+      const storedKey = JSON.stringify([mode, rawSource, stored]);
+      if (kept.has(storedKey)) continue;
+      kept.add(storedKey);
       (heldForget ? held ?? [] : changes).push({ mode: mode === 'update' ? 'correct' : mode, source: rawSource as string, quote: stored, trigger: trigger.id,
         ...(side === 'reply' ? { in: 'reply' as const } : {}),
         ...(mode === 'correct' || mode === 'update' ? { replacement: replacement as string } : {}),
