@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:f5ea90a941e0b79c1e7b7dcaad75d6f1224e6b2ef2069b494260572d0cd0f63b
-Source commit: 06f08dcb6ad684de438a90e0714129047d604aa3
+Register generation: sha256:b6324941df9f2bc1675612f22482a784a1bf5614ae29e8a64f9439e5a6f9bde4
+Source commit: 792b54fec26f1376af8bc4d327beb18ddda9c88e
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -392,9 +392,9 @@ Terms: term:critical
 
 ## 39. Observability
 
-Every feature ships with metrics. You can't tune what you can't see.
+Every feature ships with metrics that make its effectiveness auditable and gradable. Every capability or process intended to improve over time names its intended outcome, repeatedly evaluates it against a recorded baseline, and shows a clear visual history of progress, regressions and uncertainty at a glance. This covers the whole effort and its material parts. An accountable review reads the evidence and acts on it. The measurement contract names the method and version, success criteria, quality safeguards, owner and review cadence. History keeps sample sizes, freshness, gaps and changes of evaluation; changing a rule is not an improvement. Real activity must be verified through evaluation into the deployed visual, including whether a person understands it at a glance. Missing evidence withholds unsupported improvement claims or promotion while ordinary services continue. Extend the existing measurement, benchmark, decision-quality, maturation and scheduling owners.
 
-Check: Needs the features enumerated before "every" means anything.
+Check: Independently enumerate features, processes, jobs and material parts, then compare their coverage with the contracts; unregistered entries must remain visible. Verify the complete activity-to-visual path and recurring corrective review within existing authority. These are owed implementation checks, not a claim that universal coverage is already enforced; no competing registry, scheduler or promotion authority is created.
 Terms: term:feature
 
 ## 4. Structure Decides Alone Only on an Exact Match
@@ -653,7 +653,7 @@ Terms: (none)
 
 Every feature graduates test agent → development agent → fleet, with a declared graduation test and deadline, and with default-on for the fleet as the last rung unless a recorded user-preference decision keeps it off. Every rung has machine-checkable thresholds against the feature's own logged behaviour. A threshold met raises the feature to the recurring review, whose model decides; it never flips anything by itself. A fleet default stays a reviewed code change.
 
-Check: Every gated feature declares both and the deadline is enforced. A deadline that has passed fails only builds that change the feature it belongs to, and puts an item in front of the operator; every other build keeps moving. The direct fix for 20-of-92. 1.x holds the thresholds in its feature ladder and fails the build on a switched-off flag with no entry; 2.0's equivalent needs building.
+Check: Every gated feature declares both and the deadline is enforced. The direct fix for 20-of-92. 1.x holds the thresholds in its feature ladder and fails the build on a switched-off flag with no entry; 2.0's equivalent needs building.
 Terms: term:feature, term:user
 
 ## 73. A Dark Feature Guards Nothing
