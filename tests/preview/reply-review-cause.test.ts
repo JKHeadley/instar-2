@@ -163,7 +163,8 @@ describe('durable journal', () => {
   it('legacy after-send causes survive recovery without another review or send', async () => {
     await withJournal(async path => {
       const sent: string[] = [], journal = openPreviewJournal(path, key, genesis);
-      const worker = createJournalWorker(journal, worldPorts(sent, {}, { replyCheck: undefined }));
+      const initialPorts = worldPorts(sent, {}); delete initialPorts.replyCheck;
+      const worker = createJournalWorker(journal, initialPorts);
       worker.intake([update]); await worker.drain();
       const turn = journal.view.order[0]!, id = turn.id;
       journal.append({ kind: 'reply-review-after-send', id, at: now });
