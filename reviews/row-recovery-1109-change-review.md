@@ -40,7 +40,7 @@ Direct-importer regression updates: a thrown launched call now records uncertain
 Further direct-importer fixtures retain the same meaning: lookup/group-carry assert one notice without repeating UNKNOWN work; integration-order explicitly reserves unresolved first-turn custody; tool-failure excludes recovery IDs from its tool stub, accounts for incomplete evidence, and asserts stop rejection without sending. Independent reviewer concurred with these test-only changes.
 
 Mechanical register maintenance: refresh the requested-action test reference through the desk-provided owner-manifest rehash script, then regenerate the source register. No native conformance certificate is changed; the Studio must re-pin it from its contract run.
-Register replay regenerated successfully from source commit17ccb5bc344d30c1f785953e7a6ea8ef76e08d89; the generated files in this review carry that source binding, not a native host verdict.
+Register replay regenerated successfully from source commit3afdcac6c613244bebd65b9a519d9cd06522fd77; the generated files in this review carry that source binding, not a native host verdict.
 
 Independent side-effects review: recovery_review inspected the implementation and tests, raised stop-race, stale-custody, fallback, route-exhaustion and rollback concerns, then concurred after their repair. This is an independent code/test review, not a live or desk gate verdict. Accepted limits are row01 and missing exact worker-end evidence.
 
