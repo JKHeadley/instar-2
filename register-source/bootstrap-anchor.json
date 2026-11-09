@@ -3,7 +3,7 @@
   "approvalBasis": "Repository replay publication pin; exact operator approval is recorded in PR/changelog history; replay has no entering-force authority.",
   "shape": "sha256:5fed389f3c69716128db9d3016de139ad4d955ee5f9ea33589e95a25fb1a6801",
   "documents": {
-    "docs/01-the-rules.md": "sha256:344810ed2d6d9b7259512d16f4aaabd55b1e3a985e74cec7f2bbcd73a43889c4",
+    "docs/01-the-rules.md": "sha256:8e209a001ec3499fd1bc4bfe0379f4ae8f2fb0d25ef99d22c834fb008b254521",
     "docs/02-the-register.md": "sha256:04809a1ce2128b61323a82a260b3550dbb3b5bb8852716cc604aaacb9ef78012",
     "docs/03-the-glossary.md": "sha256:68ca7a31f025c270a1b90ced1df965671c3e188df7076e6dde1c50d3c9f7cba0",
     "docs/07-the-declarations.md": "sha256:be690d1a07a73287d36b4e3dff9d927271c1b94e5d90611b33b215b69408734b",
