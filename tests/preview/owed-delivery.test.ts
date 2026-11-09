@@ -287,3 +287,65 @@ it('an unknown acknowledgement does not revoke the operator’s distinct request
     expect(w.state.sends.filter(send => send.text.includes(result))).toHaveLength(1);
   } finally { w.journal.close(); }
 });
+
+// Carryover row 01, 1.x a62ab55f6/28527b241: each topic's promise keeps its own state, survives restart and is
+// delivered once, in its own topic, independently of a neighbour. Here the neighbour's work step is cut off by a
+// worker loss (the process dies mid-call) and is recovered by the next worker.
+it('delivers each topic\'s owed result once, in its own topic, across a restart and a lost worker', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'owed-two-topics-'))); dirs.push(dir);
+  const path = join(dir, 'journal.encrypted');
+  const asks = { 42: 'Finish the invoice check and send me the result when it is done.',
+    77: 'Finish the shipping check and send me the result when it is done.' } as const;
+  const results = { 0: 'The invoice check is complete: all three totals agree.',
+    1: 'The shipping check is complete: both parcels left on Monday.' } as Record<number, string>;
+  const state = { now: start, lose: true, sends: [] as { text: string; thread: number | undefined }[] };
+  let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '-1001234', operator: '7654321',
+    grant: 'grant:owed-result', configurationDigest: 'sha256:offline', expires: start + 10 * LOOP_REVISIT_MS,
+    maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 32768, cursor: 0, forum: true });
+  const ports: PreviewPorts = { now: () => state.now, stopped: () => false, timeZone: 'UTC', checkOutbound: () => {},
+    groupDisclosure: async () => true,
+    model: async input => {
+      const work = /^obligation:commitment:(\d+):/u.exec(input.id);
+      if (work) {
+        // The first worker dies inside the second topic's step: its call never returns.
+        if (work[1] === '1' && state.lose) return new Promise<never>(() => {});
+        return JSON.stringify({ outcome: 'report', report: results[Number(work[1])] });
+      }
+      if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'The operator requested two checks.', people: [], commitments: [], closed: [] });
+      const ask = Object.values(asks).find(text => input.question.includes(text))!;
+      const quote = `I will ${ask.slice(7, ask.indexOf(' and send'))} and send you the result.`;
+      return JSON.stringify({ reply: quote, memory: [], dated: [],
+        openLoops: [{ kind: 'promise', quote, waitsOn: 'nothing', deliveryRequest: ask }] });
+    }, send: async input => { state.sends.push({ text: input.expectedText, thread: input.thread }); return state.sends.length; } };
+  let worker = createJournalWorker(journal, ports);
+  const reopen = () => { journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports); };
+  try {
+    worker.intake(([42, 77] as const).map((thread, index) => ({ update_id: index + 1, message: {
+      chat: { id: -1001234, type: 'supergroup', is_forum: true }, from: { id: 7654321 }, text: asks[thread],
+      date: Math.floor(start / 1000), message_thread_id: thread } })));
+    await worker.drain();
+    expect(journal.view.commitments.map(note => journal.view.turns.get(note.source)?.thread)).toEqual([42, 77]);
+    state.now += LOOP_REVISIT_MS;
+    expect(await worker.workObligations()).toBe(true);
+    expect(journal.view.obligationWork['commitment:0']!.report?.text).toBe(results[0]);
+    void worker.workObligations(); // Worker loss: the step for topic 77 is durably started, then its process is gone.
+    await new Promise(resolve => setImmediate(resolve));
+    expect(journal.view.obligationWork['commitment:1']!.inFlight).toBeDefined();
+    state.lose = false; reopen();
+    await worker.sendRequested();
+    // The recovered worker settles the lost step without inventing a result, then redoes it on the next slot.
+    await worker.workObligations();
+    expect(journal.view.obligationWork['commitment:1']!.inFlight).toBeUndefined();
+    state.now += LOOP_REVISIT_MS; reopen();
+    while (!journal.view.obligationWork['commitment:1']!.report && await worker.workObligations()) state.now += LOOP_REVISIT_MS;
+    expect(journal.view.obligationWork['commitment:1']!.report?.text).toBe(results[1]);
+    reopen(); await worker.sendRequested(); await worker.sendRequested();
+    const delivered = (text: string) => state.sends.filter(send => send.text.includes(text));
+    expect(delivered(results[0]!)).toEqual([{ text: `Here is the finished result you asked me to send:\n${results[0]}`, thread: 42 }]);
+    expect(delivered(results[1]!)).toEqual([{ text: `Here is the finished result you asked me to send:\n${results[1]}`, thread: 77 }]);
+    expect([...journal.view.closed.keys()].sort()).toEqual([0, 1]);
+    const sent = state.sends.length;
+    reopen(); await worker.sendRequested(); expect(await worker.workObligations()).toBe(false);
+    expect(state.sends).toHaveLength(sent);
+  } finally { journal.close(); }
+});

@@ -2470,9 +2470,12 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
         awaitingDelivery: attachableReport(work), deliveryUnknown: !attachableReport(work) });
   return items;
 }
-/** Work steps due now: never one in flight or one whose result still waits to reach the operator. */
+/** Work steps due now: never one in flight or one whose result still waits to reach the operator.
+ * Preserve PromiseBeacon's deadline-directed dispatch under the coalesced wake: declaration order
+ * must not put a later deadline ahead of the earliest due result. Equal slots retain their order. */
 export const dueObligationWork = (view: JournalView, now: number) =>
-  obligationSchedule(view).filter(item => !item.inFlight && !item.awaitingDelivery && !item.deliveryUnknown && item.slot <= now);
+  obligationSchedule(view).filter(item => !item.inFlight && !item.awaitingDelivery && !item.deliveryUnknown && item.slot <= now)
+    .sort((left, right) => left.slot - right.slot);
 /** Earliest actionable work anchor; timers are hints, never work or send authority. */
 export function nextObligationAt(view: JournalView): number | null {
   if (view.stop || !obligationCapacity(view)) return null;
