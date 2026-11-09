@@ -34,7 +34,7 @@
       ],
       "gate": {
         "test": "PREVIEW-MEDIA-CUSTODY",
-        "deadline": 1794355200000
+        "deadline": 1795478400000
       }
     }
   },
