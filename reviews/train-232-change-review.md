@@ -32,8 +32,8 @@ Verification: Required register, provider-subscription, context-floor and pinned
 
 1.x comparison: member researched 6cbe44c819cd97aec1d9c7f470b04148fbca708d; independently fetched actual JKHeadley/instar main da163b4b023ceb7eb79b555810379fd045e24c17 and searched src/core/StandardsRegistryParser.ts, docs/specs/CARTOGRAPHER-CONFORMANCE-AUDIT.md and history 84b2220f3/a10176d72/ac000547b. Reuse named enforcement references and separate provenance from proof through existing 2.0 replay. The 1.x existence grading cannot establish reviewed Hold/Part Two authority, so no scanner is ported. ONEX-LESSONS areas 1 and 4: unknown production SHA and missing evaluation cannot become proof.
 
-simplestRobustRoute: This is the simplest robust route: one ordinary merge and existing desk regeneration tools. No added machinery. Start is the exact reviewed member and live base; end is the pushed integrated tree with named gate evidence; host and resource limits remain unchanged. No autonomous completion or live acceptance claim.
-80/20: No new product logic; targeted and explicitly required checks only. Full combined and live gates remain the desk's assignment.
 Independent review: /root/review_train232 concurred with merge, review record and regenerated publication; no findings. All 307 register entries have identical semantic content; only source-commit and generation identifiers changed. Read-only review, no independent test-run or live-acceptance claim.
 
+simplestRobustRoute: This is the simplest robust route: one ordinary merge and existing desk regeneration tools. No added machinery. Start is the exact reviewed member and live base; end is the pushed integrated tree with named gate evidence; host and resource limits remain unchanged. No autonomous completion or live acceptance claim.
+80/20: No new product logic; targeted and explicitly required checks only. Full combined and live gates remain the desk's assignment.
 VERDICT: author submission for independent desk gate
