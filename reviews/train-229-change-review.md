@@ -16,7 +16,7 @@ Multi-machine posture: Shared repository documentation; replay measurements are 
 Layer below: Full purpose and rule book; member and cint-L37 reports fetched with verified hashes; main amendment review; bootstrapDeclarations, readCommit, conversion binding, and existing deadline behavior. No formal enforcement claim inferred from a source link.
 Bug class: none
 Hook bypass: none; core.hooksPath is .husky/_, which is absent in this worktree; common hooks directory holds samples. Ordinary merges and commits, no stash.
-Convergence: author integration only; independent and live gates remain desk-owned.
+Convergence: none
 Prompt review: No model-facing prompt, parser or acceptance decision changes. Constitution excerpts actually sent by briefing retain their existing pins. Requested context tests verify that consumer.
 Decision: train-229-main | Merge exact 4e99924ea03080e1c62e4c8fc845c7f6b794129a; reviewed provenance in reviews/observability-improvement-evidence-change-review.md. Rule book uses main text; both historical changelog entries retained; generated conflicts regenerated. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-229-PROGRESS.md
 Decision: train-229-member | Merge exact reviewed 761b3028fca8342673f9947b8e46415818e6d1f7; report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/register-measure-1109-PROGRESS.md; member's two files retained byte for byte. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-229-PROGRESS.md
@@ -26,6 +26,7 @@ Decision: train-229-C | No member omitted; publication overlap resolved by deriv
 Decision: train-229-D | WSL host-dependent checks are separately reported; unchanged native conformance can only be renewed on Studio. No guard or timeout is relaxed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-229-PROGRESS.md
 Decision: train-229-desk | Use existing repin, TypeScript build, owner-manifest rehash and committed-source register replay; derive conversion binding from combined bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-229-PROGRESS.md
 Decision: train-229-history | Preserve the base changelog array as an exact tail, append incoming Rule 39 amendment as revision 23; correct the initial renumbering of the base entry before final handoff. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-229-PROGRESS.md
+Decision: train-229-record | Reuse the exact metadata repair already merged as 7912b0d079c41675c069de2752a74aaddbb753ac (PR 198) for the imported Rule 39 review record; no duplicate repair or newer product head. Main merge remains exactly 4e99924. Set this train record Convergence to the required none value. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-229-PROGRESS.md
 Deferral: generated/register.json:1 | not-a-deferral=mechanically generated register publication, not deferred implementation
 Verification: Targeted register, subscription, constitution briefing and pinned consumer checks; lint, typecheck, architecture, register and change-review outputs recorded in the report. Studio report destination above is intentionally absent on WSL.
 
