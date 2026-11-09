@@ -12,14 +12,14 @@ it('P5-SEAM-RC-R9-F3-ADMISSION-BINDINGS P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION 
   const original = readFileSync('src/rungraph/rungraph.declarations.json', 'utf8');
   // Byte-identical except named governance metadata updates: Rule 39 metrics coverage,
   // the explicit operator-emergency-stop basis for the existing ruled-three rung, and
-  // the 2026-11-10 bounded graduation ceiling while production liveProof is absent
-  // (docs/defects/preview-dark-feature-deadlines-2026-11-01.md, register commit c69f89ec).
+  // the recorded keep-dark review date (2026-11-24) while production liveProof is absent
+  // (docs/defects/preview-dark-feature-deadlines-2026-11-01.md, 2026-11-09 dispositions).
   // Gate authority, category, fail direction, preserved input, records and holds stay intact.
   const reviewed = execFileSync('git', ['show', '330097eecca10780d7109146f60732b95556fb35:src/rungraph/rungraph.declarations.json'], { encoding: 'utf8' });
   expect(original).toBe(reviewed
     .replace('"standards": [26, 31, 33, 34, 63, 68, 69, 96],', '"standards": [26, 31, 33, 34, 39, 63, 68, 69, 96],')
     .replace('"decidesAlone": "ruled-three",', '"decidesAlone": "ruled-three",\n      "decidesAloneBasis": "operator-emergency-stop",')
-    .replace('"deadline": 1791158400000', '"deadline": 1794268800000'));
+    .replace('"deadline": 1791158400000', '"deadline": 1795478400000'));
   expect(original).not.toBe(reviewed);
 
   const legacy = setup();

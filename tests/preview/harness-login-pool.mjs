@@ -416,10 +416,12 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     },
     // stale-login-line-1107: a successful switch adds no line to a reply (Rules 87/88): it needs no operator action
     // and is not the task's result. The switch stays in durable history and on the status pull surface.
-    notices: () => [
-      ...(state.exclusions ?? []).map(({ index }) => ({ key: `doorway:harness-login:${identity}:unavailable:${index}`,
-        line: `Approved model login ${index + 1} was unavailable and was removed from selection. See status for current login availability.` })),
-    ],
+    // reply-noise-1108: a login dropped from selection while another approved login still serves changes nothing for
+    // the person's work (Rules 87/88): it stays in state.exclusions and on the status pull surface. A reply carries one
+    // plain line, keyed once per pool, only while no approved login can be used at all; a timed hold is the outage notice's.
+    notices: () => entries.length && entries.every(entry => unavailable.has(entry.index)) ? [{
+      key: `doorway:harness-login:${state.noticeIdentity ?? identity}:none-usable`,
+      line: 'None of my approved model logins can be used right now, so new work will wait until one is working again.' }] : [],
     status: () => harnessLoginPoolStatus(configuration, state, unavailable, observedUsage, now),
     get state() { return structuredClone(state); },
   });
