@@ -34,7 +34,9 @@ Prompt finding: e8708c7fea24 | quoted-evidence | Existing production wording tes
 
 Side-effects review: over-block — missing live custody evidence still holds execution; under-block — unobserved lost workers without an exact end record are not declared dead; signal/authority — exact stored outcomes authorize only accounting, never new tool authority; interaction — one replacement cap and original send identity prevent repeated accounting/sends; external surface — one factual final account can replace silence; rollback — disable new writes but retain compatible projection readers and durable history; posture — same owned local journal. Row01 remains OPEN under the specific task's03/08-first allowance.
 
-Subject (3 paths): tests/preview/journal.ts, tests/preview/lost-answer.test.ts, tests/preview/row-recovery.test.ts
+Subject (5 paths): tests/preview/journal.ts, tests/preview/lost-answer.test.ts, tests/preview/row-recovery.test.ts, tests/preview/journal-requested-action.test.ts, tests/preview/self-state.test.ts
+
+Direct-importer regression updates: a thrown launched call now records uncertainty and attempts its existing notice once. Requested-action restart asserts that one notice receipt rather than silence; self-state counts the UNKNOWN notice send rather than claiming no send was attempted.
 
 Independent side-effects review: recovery_review inspected the implementation and tests, raised stop-race, stale-custody, fallback, route-exhaustion and rollback concerns, then concurred after their repair. This is an independent code/test review, not a live or desk gate verdict. Accepted limits are row01 and missing exact worker-end evidence.
 
