@@ -31,7 +31,7 @@ Prompt finding: e8708c7fea24 | quoted-evidence | Existing production wording tes
 
 1.x comparison: Inherits row-recovery-1109's comparison at 6cbe44c819cd97aec1d9c7f470b04148fbca708d (src/monitoring/ResumeQueue.ts, src/core/PendingInjectStore.ts, src/monitoring/CommitmentTracker.ts). Rechecked actual JKHeadley/instar origin/main e7a2630e20f4eff1ed52db8797e1af6d3754a7c2: searched src/, docs/specs/ and git history; read ResumeQueue.ts eligibility/reconciliation, docs/specs/restart-reply-order-and-loss.eli16.md and docs/specs/false-ratelimit-recovery-completed-sessions.md; history aceb6aedc6/fdd91944d7/5129779c36/92a21075da/ab26b7ca36 and ONEX-LESSONS sections2/3/5. Reuse evidence-gated bounded recovery and durable identity. Copying an at-least-once queue mismatches 2.0's stronger unique-send journal; no new queue is needed.
 
-Verification: Exact initial reproduction: 2 failed / 49 passed. After the source repair the original two unchanged files pass 51/51. Targeted neighbors, recorded row recovery, required pinned tests and mechanical checks are recorded in the Studio progress report.
+Verification: Exact initial reproduction: 2 failed / 49 passed. After the source repair the original two unchanged files pass 51/51. 247 unique targeted tests pass across 12 files, including all 28 row-recovery cases and restored ordinary-exception neighbors; typecheck and architecture pass. Source register replay binds e72eb66a334bb8dab83a0bc1d3d7cafc3d3ec796. Final pushed-head pinned tests and mechanical checks are recorded in the Studio progress report.
 
 ## Closing block
 
