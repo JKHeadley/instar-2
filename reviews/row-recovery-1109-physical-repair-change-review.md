@@ -33,6 +33,8 @@ Subject (2 paths): tests/preview/journal.ts, tests/preview/row-recovery.test.ts
 
 1.x comparison (inherited and rechecked): actual JKHeadley/instar main6cbe44c819cd97aec1d9c7f470b04148fbca708d: src/monitoring/ResumeQueue.ts (durable bounded revival), src/core/PendingInjectStore.ts (intake custody, at-least-once injection), src/monitoring/CommitmentTracker.ts (durable promise ownership). Searched src/, docs/specs/, git history and read ONEX-LESSONS2/3/5, autonomous-run-outlives-session.eli16.md and restart-reply-order-and-loss.eli16.md. Reused durable identity/bounds and honest outcomes; direct transplantation would introduce at-least-once external effects. Existing 2.0 encrypted journal and send identity already hold stronger outbound uniqueness. History inspected:4018bf338,11d127b5e,1b4350998,e8576a096,28527b241.
 
+Mechanical register maintenance: desk rehash and repin scripts changed no manifest or inventory bytes. Regenerated generated/ from source commit 06f08dcb6ad684de438a90e0714129047d604aa3 to refresh the journal source pin; this is replay/shape evidence only, not native conformance.
+
 ## Closing block
 
 simplestRobustRoute: Reuse the existing recovery replacement reservation at physical-outcome validation. A four-line branch retains distinct invocation identity without bypassing diagnostics or introducing a queue. Existing cap, stop, disclosure and unique-send guards remain; live acceptance remains desk work.
