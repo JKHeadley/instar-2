@@ -1017,6 +1017,9 @@ export interface ChannelItem { source: 'conversation'; account: string; id: stri
 export interface ChannelSourceCursor { offset: number; file: string; anchor: string; scanned: number; imported: number; skipped: number }
 /** An operator correction supersedes a source excerpt in model-facing projections only. */
 export interface MemoryChange { mode: 'correct' | 'forget' | 'prefer' | 'remember'; source: string; quote: string; trigger: string; replacement?: string; historical?: true;
+  /** Rules 10/93: on a prefer row whose quote is the widened sentence, the exact clause the model selected. It stays
+   * the preference's lifecycle target: only a correct or forget of that clause retires the sentence. */
+  clause?: string;
   /** Absent for an operator/source message; reply means the agent's actual send intent. */
   in?: 'reply';
   replies?: string[]; summaryPassages?: string[] }
@@ -1927,7 +1930,7 @@ export function preferenceTexts(message: string, clauses: readonly string[]): Ma
 }
 /** Preference lineage from the recorded change history and the given active changes. */
 const memoryPreferenceState = (view: JournalView, changes: readonly MemoryChange[] = view.memory) => {
-  const active = new Map<string, { source: string; quote: string }>();
+  const active = new Map<string, { source: string; quote: string; clause?: string }>();
   const lineage = new Set<string>();
   // The active projection omits an undone correction, but its replacement
   // remains a historical preference source for source-scoped retirement.
@@ -1943,13 +1946,13 @@ const memoryPreferenceState = (view: JournalView, changes: readonly MemoryChange
   // used to ride every later packet twice (preferences and memoryCandidates), so a root whose operator repeats a
   // reply style grew its always-sent parts by about 210 bytes a turn (live 2026-10-02, proofroom2-rule40-20261002).
   // Every statement stays in the memory and change history and in the lineage (Rule 7).
-  const activate = (key: string, source: string, quote: string) => {
+  const activate = (key: string, source: string, quote: string, clause?: string) => {
     for (const [held, item] of active) if (item.quote === quote) active.delete(held);
-    active.set(key, { source, quote }); lineage.add(key);
+    active.set(key, { source, quote, ...(clause === undefined ? {} : { clause }) }); lineage.add(key);
   };
   for (const change of changes) {
     const key = JSON.stringify([change.source, change.quote]);
-    if (change.mode === 'prefer') activate(key, change.source, change.quote);
+    if (change.mode === 'prefer') activate(key, change.source, change.quote, change.clause);
     else if (active.delete(key) && change.mode === 'correct')
       activate(JSON.stringify([change.trigger, change.replacement]), change.trigger, change.replacement!);
   }
@@ -11345,15 +11348,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         || summaryPassages.some(passage => typeof passage !== 'string' || passage.length < 8
           || Buffer.byteLength(passage) > 1000 || !offeredSummary?.includes(passage)))) return undefined;
       seen.add(JSON.stringify([rawSource, quote]));
-      // A later correct or forget quoting only the clause names the same stored sentence, so it still retires it.
+      // A later correct or forget of exactly the clause the model selected retires the sentence stored for it. Any other
+      // quote keeps its own target, even inside that sentence: a shared sentence is not a shared meaning (Rule 10).
       const widened = original && side === undefined ? preferenceSentence(redact(original.text).text, quote) : quote;
       const stored = mode === 'prefer' ? preferText.get(quote) ?? quote
-        : !activePreference && preferences.active.has(JSON.stringify([rawSource, widened])) ? widened : quote;
+        : !activePreference && preferences.active.get(JSON.stringify([rawSource, widened]))?.clause === quote ? widened : quote;
       // Raw repeats were refused above; rows that store the same text coalesce here, so neighbors agree in either order.
       const storedKey = JSON.stringify([mode, rawSource, stored]);
       if (kept.has(storedKey)) continue;
       kept.add(storedKey);
+      // Coalesced rows keep the selected clause whichever proposal came first, so either order retires the same way.
+      const selected = mode === 'prefer' ? [...preferText].find(([clause, text]) => text === stored && clause !== stored)?.[0] : undefined;
       (heldForget ? held ?? [] : changes).push({ mode: mode === 'update' ? 'correct' : mode, source: rawSource as string, quote: stored, trigger: trigger.id,
+        ...(selected === undefined ? {} : { clause: selected }),
         ...(side === 'reply' ? { in: 'reply' as const } : {}),
         ...(mode === 'correct' || mode === 'update' ? { replacement: replacement as string } : {}),
         ...(mode === 'update' ? { historical: true as const } : {}),

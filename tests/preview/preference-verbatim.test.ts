@@ -94,6 +94,31 @@ it.each([['clause first', ['keep replies short', 'From now on, keep replies shor
     expect(last).toEqual([{ text, source: ids[0] }]);
   });
 
+it('Rule 93: correcting an unrelated fact in the same sentence keeps the preference across a reopen', async () => {
+  // Astra round 2: the model selected only the preference clause; a later fact correction quoting another part of
+  // that sentence corrects the fact and must not retire the preference stored for the sentence.
+  const first = 'My name is Alex, and please keep replies short.';
+  const fix = 'Correction: My name is Sam.';
+  const { memory, last, ids } = await run([first, fix, 'What style will you use?'], {
+    [first]: ['keep replies short'],
+    [fix]: [{ mode: 'correct', source: 1, quote: 'My name is Alex', replacement: 'My name is Sam' }] }, true);
+  expect(memory.filter(item => item.mode !== 'remember')).toEqual([
+    { mode: 'prefer', source: ids[0], quote: first, clause: 'keep replies short', trigger: ids[0] },
+    { mode: 'correct', source: ids[0], quote: 'My name is Alex', replacement: 'My name is Sam', trigger: ids[1] }]);
+  // The preference stays; the corrected fact inside its sentence is withheld by the existing correction projection.
+  expect(last).toEqual([{ text: '[withheld: operator correction or forgetting], and please keep replies short.', source: ids[0] }]);
+});
+
+it.each([['clause first', ['keep replies short', 'From now on, keep replies short.']],
+  ['sentence first', ['From now on, keep replies short.', 'keep replies short']]])(
+  'a coalesced sentence keeps its selected clause as the retirement target (%s)', async (_order, quotes) => {
+    const text = 'From now on, keep replies short.';
+    const replacement = 'Give detailed explanations from now on.';
+    const { last, ids } = await run([text, replacement, 'What style will you use?'], {
+      [text]: quotes, [replacement]: [{ mode: 'correct', source: 1, quote: 'keep replies short', replacement }] }, true);
+    expect(last).toEqual([{ text: replacement, source: ids[1] }]);
+  });
+
 it('still refuses a genuine raw repeat and a clause the message does not hold', async () => {
   const text = 'From now on, keep replies short.';
   const repeat = await run([text, 'Anything new?'], { [text]: ['keep replies short', 'keep replies short'] });

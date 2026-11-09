@@ -40,7 +40,8 @@ it('replays I4 once through the preference store, carries it into a fresh worker
   const w = world();
   try {
     await w.say(correction.update, correction.question);
-    expect(w.journal.view.memory).toEqual([{ mode: 'prefer', source: correction.id, trigger: correction.id, quote: 'Your replies are too long — keep them to two sentences.' }]);
+    expect(w.journal.view.memory).toEqual([{ mode: 'prefer', source: correction.id, trigger: correction.id, quote: 'Your replies are too long — keep them to two sentences.',
+      clause: 'keep them to two sentences' }]);
     // The recorded answer proposed the very same clause in two stores. One durable preference is enough.
     expect(w.journal.view.directives).toEqual([]);
     expect(w.sends).toEqual([JSON.parse(correction.output).reply.answer]);
@@ -145,7 +146,7 @@ it('replays the fresh-model before/correction/reopen/after/quoted-neighbor resul
     expect(fresh.records[2]!.delivered.split(/(?<=[.!?])\s+/u)).toHaveLength(2);
     expect(JSON.parse(w.packets[2]!).preferences).toEqual([{ source: 'telegram:12345678:update:2', text: 'Your replies are too long — keep them to two sentences.' }]);
     expect(w.journal.view.memory).toEqual([{ mode: 'prefer', source: 'telegram:12345678:update:2',
-      trigger: 'telegram:12345678:update:2', quote: 'Your replies are too long — keep them to two sentences.' }]);
+      trigger: 'telegram:12345678:update:2', quote: 'Your replies are too long — keep them to two sentences.', clause: 'keep them to two sentences' }]);
     expect(w.journal.view.directives).toEqual([]);
     expect(w.sends).toHaveLength(4);
   } finally { w.journal.close(); }
