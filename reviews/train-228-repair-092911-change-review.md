@@ -30,6 +30,14 @@ Decision: train-228-repair-092911-anchor | Derive the anchor from merged bytes w
 
 Publication evidence: Replayed ef534b571cbd9c73acd594c98f1893ba9076e7a9 with 307 entries, 122 rules and 34 terms; generation sha256:37e9e6be89be6621e6b036790961775424faa068de5fb0d7a6346a557c0163ac; `--check` true on the final head (the later main merge changes only a review record). Desk rehash and repin tools changed no owner-reference or grounding-inventory pins. Build, TypeScript, lint and register:check passed on node 24.14.1.
 
+## Report recovery — 2026-11-09
+
+The Studio received the original report as `train-228-repair-092911-PROGRESS.md`, while the three decisions above cite `train-228-repair-092911-build-report.md`. Restore the original bytes at that cited lanes path (SHA-256 `81bbd6356c04c557f67a330e4a9aac1ed91e4b7d3daba9b122709a7c5a07f695`); retain the source and its historical verification limits. This paperwork repair changes no product code, constitutional wording, checks or pins. Its scope is ordinary; the critical classification above still describes the original merge.
+
+1.x comparison for this recovery: inspected JKHeadley/instar main `eaf43103f7580efc029c761297bd7b33cf86adf4`, `src/core/DecisionJournal.ts`, `docs/specs/decision-journal-principle-required.eli16.md`, `docs/specs/full-decision-visibility-enactment.eli16.md`, and history `ab26b7ca36c1375d855f08c9a6a66e84e2b656e2`. The journal preserves readable decision reasons and evidence; it does not repair 2.0 absolute report locators. ONEX-LESSONS.md sections 5 and 6 reinforce artifact-location and actual-reader verification. Reuse the existing `scripts/change-review.mjs` Rule 102 consumer and the genuine report; no runtime transplant or new mechanism is needed.
+
+Decision: train-228-report-recovery | Restore the original report at its declared Studio path, preserving its bytes and decision IDs, rather than changing the citations or weakening the checker. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-228-repair-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: an ordinary merge, a changelog splice that keeps both histories, the register's own hash functions for the anchor, register replay, and the existing desk rehash/repin tools. No new runtime machinery.
