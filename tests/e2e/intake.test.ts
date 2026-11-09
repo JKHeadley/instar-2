@@ -8,13 +8,16 @@ import { canonical } from '../../src/index.js';
 import { createFactStore } from '../../src/facts/index.js';
 import type { InboundRoute } from '../../src/intake/index.js';
 import { privateKey } from '../facts/fixtures.js';
+import { retryOnceAfterChildStall } from './child-stall-retry.js';
 
 // Every child below is one fresh-process boot of scripts/test-intake-restart.mjs, which returns
 // in well under a second; its three fsyncSync calls — one of them on a directory — are the only
 // unbounded waits in it, and on 2026-10-05 one such child sat at 0% CPU for 54 minutes and the
 // whole suite waited on it, because no callsite here named a timeout. 20 s is tighter than each
-// case's own 30 s budget, so a repeat fails inside the case on Node's own ETIMEDOUT naming this
-// child rather than freezing the run. A callsite that names its own timeout is left exactly as
+// case's own budget, so a repeat fails inside the case on Node's own ETIMEDOUT naming this
+// child rather than freezing the run. It repeated on 2026-11-08 past this bound, so the
+// process-death case reruns one stalled cut once, whole and fresh (./child-stall-retry.ts;
+// docs/defects/intake-restart-child-stall.md), inside a 120 s budget that holds a stall plus a rerun. A callsite that names its own timeout is left exactly as
 // written by tests/setup/bound-children.mjs, so this bound — not the doorway's — is the one in
 // force here, and the doorway's explanation is deliberately not raised for it.
 const harnessBound = { timeout: 20_000, killSignal: 'SIGKILL' } as const;
@@ -24,12 +27,13 @@ it('P4-NF-01 P4-NF-03 P4-NF-04 P4-NF-06 P4-NF-11 P4-NF-14 public boot survives p
   const base = { frames: f.frames, context: f.context, observer: f.deps.author.principal, privateKey,
     registerContext: f.r.context, registerInput: f.registerInput,
     evidence: value(f.deps.adapter.authenticate(message(), route, f.f.now)), route, at: 100 };
-  for (const cut of ['capture', 'intake-receipt', 'intake-resolved', 'intake-admitted', 'intake-stop']) {
+  for (const cut of ['capture', 'intake-receipt', 'intake-resolved', 'intake-admitted', 'intake-stop']) retryOnceAfterChildStall(cut, () => {
     const directory = mkdtempSync(join(tmpdir(), 'instar-intake-'));
     const raw = cut === 'intake-stop' ? stop : message();
     try {
       const killed = spawnSync(process.execPath, ['scripts/test-intake-restart.mjs'], {
         input: JSON.stringify({ ...base, directory, raw, cut }), encoding: 'utf8', ...harnessBound });
+      if (killed.error) throw killed.error;
       expect(killed.status, killed.stderr).toBe(86);
       const run = (raw: string, eventId = route.eventId) => JSON.parse(execFileSync(process.execPath, ['scripts/test-intake-restart.mjs'], {
         input: JSON.stringify({ ...base, directory, raw, route: { ...route, eventId } }), encoding: 'utf8', ...harnessBound }));
@@ -49,8 +53,8 @@ it('P4-NF-01 P4-NF-03 P4-NF-04 P4-NF-06 P4-NF-11 P4-NF-14 public boot survives p
         expect(run(raw).admitted).toEqual(resumed.admitted);
       }
     } finally { rmSync(directory, { recursive: true, force: true }); }
-  }
-}, 30000);
+  });
+}, 120000);
 
 it('P4-NF-02 P4-NF-03 P4-NF-10 P4-NF-14 public fresh-process boot keeps requester service and bound stop reachable through hostile receipt history', () => {
   const f=intakeFixture(); f.bind();
