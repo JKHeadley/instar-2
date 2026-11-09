@@ -1,22 +1,6 @@
 [
   {
     "revision": 23,
-    "date": "2026-11-08",
-    "status": "draft",
-    "cause": {
-      "kind": "conversation",
-      "note": "Justin, topic 102965, 2026-11-08 12:00 PST: \"I agree with your recommended changes to the constitution to prevent things from being blocked\" [source: telegram 102965/140776 2026-11-08], answering the desk's proposal of the exact sentence in 102965/140750. \"you\" in the approved sentence reads \"the operator\" to match the document's third-person voice. Final-head GitHub code-owner approval and merge pending."
-    },
-    "changes": [
-      {
-        "what": "Rule 72's check states the deadline effect: \"A deadline that has passed fails only builds that change the feature it belongs to, and puts an item in front of the operator; every other build keeps moving.\"",
-        "why": "On 2026-11-07 from 16:00 to about 19:30 every new build, urgent fixes included, was refused because deadlines on two switched-off features had passed; the deadline now bites the change to its own feature and reaches the operator as an item instead of halting unrelated work.",
-        "ref": "Justin, topic 102965, 2026-11-08 12:00 PST: \"I agree with your recommended changes to the constitution to prevent things from being blocked\" [source: telegram 102965/140776 2026-11-08], answering the desk's proposal of the exact sentence in 102965/140750. \"you\" in the approved sentence reads \"the operator\" to match the document's third-person voice. Final-head GitHub code-owner approval and merge pending."
-      }
-    ]
-  },
-  {
-    "revision": 22,
     "date": "2026-11-05",
     "status": "draft",
     "cause": {
@@ -28,6 +12,22 @@
         "what": "Strengthen existing foundational Rule 39 Observability with measurable outcomes, recorded baselines, versioned repeated evaluations, understandable visual history, whole-effort and material-part coverage, independent coverage checks and accountable recurring corrective review.",
         "why": "Telemetry and an active or completed process do not by themselves prove improvement; unregistered work and gaps must stay visible, and evidence must reach a visual a person understands.",
         "ref": "Echo proposal Telegram 139374/139375 and Justin reply 139374/139377 2026-11-05; paired 1.x Observability amendment and constitution-alignment map."
+      }
+    ]
+  },
+  {
+    "revision": 22,
+    "date": "2026-11-08",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 102965, 2026-11-08 12:00 PST: \"I agree with your recommended changes to the constitution to prevent things from being blocked\" [source: telegram 102965/140776 2026-11-08], answering the desk's proposal of the exact sentence in 102965/140750. \"you\" in the approved sentence reads \"the operator\" to match the document's third-person voice. Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Rule 72's check states the deadline effect: \"A deadline that has passed fails only builds that change the feature it belongs to, and puts an item in front of the operator; every other build keeps moving.\"",
+        "why": "On 2026-11-07 from 16:00 to about 19:30 every new build, urgent fixes included, was refused because deadlines on two switched-off features had passed; the deadline now bites the change to its own feature and reaches the operator as an item instead of halting unrelated work.",
+        "ref": "Justin, topic 102965, 2026-11-08 12:00 PST: \"I agree with your recommended changes to the constitution to prevent things from being blocked\" [source: telegram 102965/140776 2026-11-08], answering the desk's proposal of the exact sentence in 102965/140750. \"you\" in the approved sentence reads \"the operator\" to match the document's third-person voice. Final-head GitHub code-owner approval and merge pending."
       }
     ]
   },
