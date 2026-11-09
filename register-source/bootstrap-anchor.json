@@ -297,7 +297,7 @@
     },
     {
       "number": 39,
-      "declarationHash": "sha256:2d0bddf359afef25b54512c186645c49b111a5fec708cddeb86775616b0c138a",
+      "declarationHash": "sha256:a893ff0ea51765ca94a35c8edfb5a4180353cd8cd24821e2d875cb062162a957",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
@@ -357,7 +357,7 @@
     },
     {
       "number": 72,
-      "declarationHash": "sha256:3280028e336e0bf813047f37572e1a2a77544a34eaf6090926a1c66e270c88cd",
+      "declarationHash": "sha256:dd0a0b0829d88c96165b1624990900996c1e7d6d241177f6f0870ced3fb76fe4",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
