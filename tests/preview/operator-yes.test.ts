@@ -69,8 +69,9 @@ it('reads only the exact proposal shape, and bounds every request by the governe
   expect(inside.kind).toBe('request');
   if (inside.kind !== 'request') return;
   expect(inside.request.limits).toEqual({ maxCalls: 12, maxReplies: 8, maxTurns: 8 });
-  // A request never outlives the trial: here the trial ends first; with a later end it lapses after the window (plan #373).
-  expect(inside.request.expiresAt).toBe(2000_000);
+  // A request keeps its own window whatever the activation end (a reminder, never a stop): here the end comes first
+  // and the request still lapses only after the window (plan #373; activation-stop-1108 request-lifetimes-unclamped).
+  expect(inside.request.expiresAt).toBe(500 + OPERATOR_REQUEST_MS);
   const window = proposeOperatorRequest(state({ expires: 900_000_000 }), { action: 'raise-caps' }, 'turn-1', 500);
   expect(window.kind === 'request' && window.request.expiresAt).toBe(500 + OPERATOR_REQUEST_MS);
   expect(wellFormedRequest(inside.request, 'turn-1', 'grant:preview')).toBe(true);

@@ -34,7 +34,7 @@ it.each([false, true])('shipped session admission forwards listed connectors and
       journal: { view: { expires: 100000 }, sessionWorkRecords: () => [] },
       sessionWork: { port: { reserveCall: () => {} } }, sessionAdmissionCommand, admissionBase: join(root, 'admission'), layout: null,
       sessionLimits: { deadlineMs: 10000, maxSessions: 2 }, framework: 'claude-code', required: () => 'model', options: {},
-      context: {}, wallNow: () => 1000, hostStopped: () => false, ownerMachine: 'local', launchedAt: 1000, delay: async () => {},
+      context: {}, sessionWorkLifetime: (view, now) => Math.max(view.expires, now + 365 * 24 * 3600 * 1000), wallNow: () => 1000, hostStopped: () => false, ownerMachine: 'local', launchedAt: 1000, delay: async () => {},
       doorway: { id: 'doorway' }, mountVolume: () => {}, closeStepEgress: async () => {},
       readRootMcp, prepareSessionAdmission, admissionConfig: () => ({ operations: [] }),
       attachEgress: async () => ({ proxy: {} }), networkToolReads: () => [], heldVerdict: () => () => 'clear', heldSecrets: {},
