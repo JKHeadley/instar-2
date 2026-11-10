@@ -49,6 +49,8 @@ Independent review: review_rule72 found no behavioral regression in the port and
 
 Mechanical pins: the desk-provided rehash-owner-manifests tool refreshed the two references to tests/rungraph/scope.test.ts. Its repin-chain tool refreshed the two changed source hashes in production-grounding-inventory.json and that inventory digest in check-assembly-contracts.mjs. No manifest population or runtime certificate was changed.
 
+Validation: npm run build and npm run typecheck passed; 31 focused tests passed with41 existing skips. Current-clock repository replay from c97900bd1499fd846dc500c6701b2678e7fc6ba5 passed with273 entries,122 rules and10 overdue attention items. No historical clock override was used. Static reviewer concurred with the model-record prerequisite. Pinned WSL run:50 passed and5 untouched launcher failures retained for Studio; native darwin R105 certificate renewal belongs to desk. Final register checks and diff checks are reported in the builder handoff.
+
 simplestRobustRoute: Reuse the approved implementation and existing derive/replay tools, preserving main's governing history; no new subsystem or parallel deadline authority.
 80/20: One narrow port and focused boundary/replay tests; independent review examines the port before submission, final landing review belongs to the desk.
 VERDICT: author submission; not a final-head approval or deployment claim
