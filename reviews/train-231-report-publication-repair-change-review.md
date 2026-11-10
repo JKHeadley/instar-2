@@ -1,15 +1,15 @@
 # Change review — train-231 report publication repair
 
-Subject base: 0c9d0d1fdc6b97d7b7d6444564178e8cacf35d9b
+Subject base: 2fd50c8c699466d5c9b29f45db7289d835a01b5a
 Review state: open
 Reviewed content: none
 Outcome: Restore the authentic 160156 repair report at the Studio path already cited by its five Rule 102 decisions, allowing the existing native renewal to finish publication.
 Affected rules: 26, 37, 74, 101, 102, 105, 111, 112, 113, 115, 116, 121
 Affected floors: secrets — unchanged; spend cap — unchanged; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged. No executable behavior changes.
 Operator questions: none
-Suggested tier: ordinary
-Declared tier: ordinary
-Tier rationale: This commit records delivery of an existing desk report. The already-reviewed native renewal commits are preserved intact, not recreated.
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: The review covers delivery of the existing native certificate and dependent publication from the task head, plus restoration of the desk report. The already-reviewed native renewal commits are preserved intact, not recreated.
 Side effects: The change-review checker can read the previously missing report and resolve all five decision IDs. Historical M5 verification remains the prior author's evidence, not a new Studio test claim.
 Undo and recovery: Revert this review record if its account is wrong. Preserve the authentic source report and its delivered copy; deleting the copy restores the five demonstrated failures.
 Multi-machine posture: The report is a Studio-local desk artifact under the mandated absolute lanes path and is never staged. Git carries source, certificate, register publication and review; the report must be present separately on the gate host.
@@ -18,6 +18,7 @@ Bug class: none
 Bug evidence: Desk artifact publication failure; supplied native build excerpt names precisely these five missing-report failures. Fresh final gate results are recorded in the report below.
 Hook bypass: none; core.hooksPath unset and common hooks directory contains sample hooks only. Plain commits.
 Convergence: none
+Deferral: generated/register.json:1 | not-a-deferral=mechanically replayed register descriptions introduce no deferred work
 Decision: train-231-report-copy | Copy the authentic prior report verbatim to its already-declared build-report path; preserve provenance and the checker instead of rewriting decisions or creating placeholder evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-231-repair-PROGRESS.md
 Decision: train-231-native-reuse | Fast-forward the three preserved pipeline commits 81636cb3f, 4664a750a and 0c9d0d1fd after inspecting their native-only 9/10 stale-certificate and 10/10 renewed contract evidence. Their parent is the task head; reuse the owning repair and register replay without hand-editing pins. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-231-repair-PROGRESS.md
 
