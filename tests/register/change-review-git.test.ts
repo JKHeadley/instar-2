@@ -17,14 +17,17 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 
 function repo() {
   const dir = mkdtempSync(join(tmpdir(), 'change-review-')); dirs.push(dir);
-  const git = (...args: string[]) => { const r = spawnSync('git', args, { cwd: dir, encoding: 'utf8', env }); if (r.status !== 0) throw Error(r.stderr); return r.stdout.trim(); };
+  // The fixture driver knows when its target advances; pin HEAD now, never at check time.
+  let boundary: string | undefined;
+  const scopedEnv = () => ({ ...env, ...(boundary ? { CHANGE_REVIEW_BASE: boundary } : {}) });
+  const git = (...args: string[]): string => { const r = spawnSync('git', args, { cwd: dir, encoding: 'utf8', env }); if (r.status !== 0) throw Error(r.stderr); if (args[0] === 'update-ref' && args[1] === 'refs/remotes/origin/live') boundary = git('rev-parse', args[2]!); return r.stdout.trim(); };
   const write = (path: string, text: string) => { mkdirSync(dirname(join(dir, path)), { recursive: true }); writeFileSync(join(dir, path), text); };
-  const commit = (message: string) => { git('add', '-A'); git('commit', '-q', '-m', message); return git('rev-parse', 'HEAD'); };
-  const run = (script: string, ...args: string[]) => { const r = spawnSync(process.execPath, [script, ...args], { cwd: dir, encoding: 'utf8', env }); return { status: r.status, out: `${r.stdout}\n${r.stderr}` }; };
+  const commit = (message: string) => { git('add', '-A'); git('commit', '-q', '-m', message); const head = git('rev-parse', 'HEAD'); boundary ??= head; return head; };
+  const run = (script: string, ...args: string[]) => { const r = spawnSync(process.execPath, [script, ...args], { cwd: dir, encoding: 'utf8', env: scopedEnv() }); return { status: r.status, out: `${r.stdout}\n${r.stderr}` }; };
   git('init', '-q', '-b', 'main');
   return { dir, git, write, commit, check: (...a: string[]) => run(CHECKER, ...a), governed: (...a: string[]) => run(GOVERNED, ...a),
     read: (path: string) => readFileSync(join(dir, path), 'utf8'),
-    runAsync: (...args: string[]) => new Promise<number>(done => { const c = spawn(process.execPath, [CHECKER, ...args], { cwd: dir, env, stdio: 'ignore' }); c.on('close', code => done(code ?? -1)); }) };
+    runAsync: (...args: string[]) => new Promise<number>(done => { const c = spawn(process.execPath, [CHECKER, ...args], { cwd: dir, env: scopedEnv(), stdio: 'ignore' }); c.on('close', code => done(code ?? -1)); }) };
 }
 const ledgerRows = (dir: string) => readFileSync(join(dir, '.git', 'instar-change-evidence.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l) as Record<string, unknown>);
 // A fixture gate: `npm run test:gate` writes the vitest-shaped report the mode file names.
@@ -331,7 +334,7 @@ describe('only own records require prompt dispositions', () => {
     }
     for (const explicit of [false, true]) {
       const checked = spawnSync(process.execPath, [CHECKER, 'check'], {
-        cwd: r.dir, encoding: 'utf8', env: { ...env, ...(explicit ? { CHANGE_REVIEW_BASE: boundary } : {}) },
+        cwd: r.dir, encoding: 'utf8', env: { ...env, CHANGE_REVIEW_BASE: explicit ? boundary : 'refs/remotes/origin/live' },
       });
       expect(checked.status, checked.stdout + checked.stderr).toBe(disposition ? 0 : 1);
       expect(checked.stdout).not.toContain('older-record prompt debt:');
@@ -365,6 +368,12 @@ describe('only own records require prompt dispositions', () => {
     const checked = r.check('check'); expect(checked.status).toBe(1);
     expect(checked.out).toContain(expected);
     expect(checked.out).toContain('older-record prompt debt: 1 records,');
+  }, 120_000);
+  it('refuses an unspecified target even when remote refs and review records exist', () => {
+    const { r } = setup();
+    const checked = spawnSync(process.execPath, [CHECKER, 'check'], { cwd: r.dir, encoding: 'utf8', env });
+    expect(checked.status).toBe(2);
+    expect(checked.stdout + checked.stderr).toContain('Rule 95: change boundary unknown');
   }, 120_000);
   it('lets CHANGE_REVIEW_BASE win and fails closed for an invalid override', () => {
     const { r, base, older } = setup();
