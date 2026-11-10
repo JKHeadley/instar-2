@@ -15,7 +15,7 @@ Undo and recovery: Revert the implementation and tests together; no persisted da
 Multi-machine posture: Machine-local Git evidence by design; the caller supplies the same unit target on each machine. Implementation and tests replicate through Git. Shallow or missing history refuses rather than changing the answer by host.
 Layer below: Real Git B -> A -> H history, partial remote at A, live train beyond main, multiple repair review ranges, advanced target, shallow/unrelated/crisscross histories; existing deadline ownership and notice consumer tests.
 Bug class: integration
-Bug evidence: reproducer=tests/register/change-scope.test.ts reproduces omitted feature.ts on 2f7a76ad and requires unknown without a supplied boundary; with the unit base both paths remain visible. Existing Rule 72 tests prove own-feature refusal, unrelated notice and unknown refusal.
+Bug evidence: reproducer=tests/register/change-scope.test.ts
 Hook bypass: none
 Convergence: none
 Decision: scope-base-1109-D1 | Require the existing caller-supplied target; neither unrelated remote reachability nor the latest repair Subject base establishes the unit boundary. Use its unique merge-base and fail closed otherwise. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/register-scope-base-1109-PROGRESS.md
