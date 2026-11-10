@@ -1,3 +1,4 @@
+import { changeCommits, scopeGit } from './change-scope.mjs';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -158,27 +159,15 @@ export function build(root, commit, options = {}) {
     entries: register.entries.length, rules: checked.graph.rules.length, terms: register.entries.filter(e => e.declaration.kind === 'terms').length,
     warnings: checked.terms.warnings.length, prerequisites: checked.graph.prerequisites.length } };
 }
-// Rule 72: the files the current change touches, so a passed deadline fails only the build that
-// changes what it belongs to. The change's own commits follow check-change-review's changeScope():
-// HEAD's commits not reachable from any remote tip that does not itself contain HEAD (a train or
-// pushed branch containing HEAD is this change, not its base), or not reachable from
-// REGISTER_CHANGE_BASE / CHANGE_REVIEW_BASE when the caller knows the boundary. Their touched paths
-// (deletions included), plus uncommitted and untracked files, are the change. A git failure returns
-// null and every passed deadline then fails, as before (Rule 95: release integrity fails closed).
+// Rule 72: retain all touched committed paths (including deletions and reverts),
+// plus local changes. An unknown target/history returns null: Rule 95 fails closed.
 export function changedFiles(root) {
-  const git = (args, input) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024,
-    ...(input === undefined ? { stdio: ['ignore', 'pipe', 'ignore'] } : { input, stdio: ['pipe', 'pipe', 'ignore'] }) }).trim();
-  const lines = text => text.split('\n').filter(Boolean);
-  const contains = (tip, head) => { try { git(['merge-base', '--is-ancestor', head, tip]); return true; } catch { return false; } };
+  const paths = text => text.split('\0').filter(Boolean);
   try {
-    const base = process.env.REGISTER_CHANGE_BASE ?? process.env.CHANGE_REVIEW_BASE;
-    const head = git(['rev-parse', 'HEAD']);
-    const excluded = base !== undefined ? [git(['rev-parse', '--verify', `${base}^{commit}`])]
-      : lines(git(['for-each-ref', '--format=%(objectname)', 'refs/remotes'])).filter(tip => !contains(tip, head));
-    const commits = git(['rev-list', 'HEAD', '--not', ...new Set(excluded)]);
-    const committed = commits ? lines(git(['diff-tree', '--stdin', '--root', '-m', '-r', '--no-commit-id', '--name-only', '--no-renames'], commits + '\n')) : [];
-    return [...new Set([...committed, ...lines(git(['diff', '--name-only', '--no-renames', 'HEAD'])),
-      ...lines(git(['ls-files', '--others', '--exclude-standard']))])].sort();
+    const commits = changeCommits(root, process.env.REGISTER_CHANGE_BASE ?? process.env.CHANGE_REVIEW_BASE);
+    const committed = commits ? paths(scopeGit(root, ['diff-tree', '--stdin', '--root', '-m', '-r', '--no-commit-id', '--name-only', '--no-renames', '-z'], commits + '\n')) : [];
+    return [...new Set([...committed, ...paths(scopeGit(root, ['diff', '--name-only', '--no-renames', '-z', 'HEAD'])),
+      ...paths(scopeGit(root, ['ls-files', '--others', '--exclude-standard', '-z']))])].sort();
   } catch { return null; }
 }
 export async function run(args, root = process.cwd()) {
