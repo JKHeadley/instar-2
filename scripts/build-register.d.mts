@@ -13,3 +13,4 @@ export function build(root: string, commit: string, options: {
   authorityPrerequisites: { site: string; record: string; required: string }[];
   conversion: { documents: Record<string, string>; sources: { path: string; symbol: string; declaration: { requiredFacts: Record<string, unknown> } }[] }; metrics: { prerequisites: number } };
 export function changedFiles(root: string): string[] | null;
+export function deadlineLines(message: string): string[];

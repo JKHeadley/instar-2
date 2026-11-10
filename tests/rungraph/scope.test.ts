@@ -94,19 +94,25 @@ it('Rule 72 an overdue rungraph-core deadline fails only a change to that featur
     references: [...f.context.references!, { provider: 'fixture', id: 'P5-NF-54' }] };
   const declarations = [registration, { ...f.bound, id: 'rungraph.bound' },
     ...registration.standards.map((n: number) => f.rule(n, { deadline: deadline + 1000 }))];
-  const generated = value(generateRegister(f.input(declarations), context));
+  // The feature carries its real committed provenance (the register's declaredBy for rungraph-core);
+  // the fixture's other declarations keep the fixture source outside the rungraph module.
+  const input = { ...f.input(declarations), sources: declarations.map(d => d === registration
+    ? f.source(d, 'src/rungraph/rungraph.ts', 'runGraphConstruct') : f.source(d, 'docs/example.md')) };
+  const generated = value(generateRegister(input, context));
   const graph = value(buildRuleGraph(generated, 'renewal', [],
     { fixtures: [{ id: 'P5-NF-54', stage: 'build' }], probes: [], sentinels: [], semanticReviews: [] }, context));
-  const own = generated.entries.find(e => e.declaration.id === 'rungraph-core')!.declaration.declaredBy.path;
+  expect(generated.entries.find(e => e.declaration.id === 'rungraph-core')!.declaration.declaredBy.path).toBe('src/rungraph/rungraph.ts');
   // (a) overdue plus an unrelated change: passes, exactly one attention item for this deadline.
-  const unrelated = value(checkDeadlines(graph, generated, [], f.f.clock(deadline + 1), context, ['src/unrelated/elsewhere.ts']));
+  const unrelated = value(checkDeadlines(graph, generated, [], f.f.clock(deadline + 1), context, ['src/unrelated/elsewhere.ts', 'src/rungraph-other.ts']));
   expect(unrelated.attention).toEqual([{ id: `deadline:feature:rungraph-core:${deadline}`, rule: 72, subject: 'rungraph-core',
     dueBy: deadline, owner: 'rungraph-core', action: 'graduate rungraph-core or set a new deadline' }]);
-  // (b) overdue plus a change to the feature's own declaration source: fails.
-  expect(detail(checkDeadlines(graph, generated, [], f.f.clock(deadline), context, ['src/unrelated/elsewhere.ts', own])))
-    .toContain('feature rungraph-core graduation overdue');
+  // (b) overdue plus a change to any implementation file of the feature, not only its declaring
+  // source: the service that constructs it, its graph, and the record decoders. Each fails.
+  for (const own of ['src/rungraph/rungraph.ts', 'src/rungraph/service.ts', 'src/rungraph/graph.ts', 'src/rungraph/records.ts'])
+    expect(detail(checkDeadlines(graph, generated, [], f.f.clock(deadline), context, ['src/unrelated/elsewhere.ts', own])))
+      .toContain('feature rungraph-core graduation overdue');
   // (c) not overdue: unchanged for either change.
-  for (const changed of [[own], ['src/unrelated/elsewhere.ts']])
+  for (const changed of [['src/rungraph/graph.ts'], ['src/unrelated/elsewhere.ts']])
     expect(value(checkDeadlines(graph, generated, [], f.f.clock(deadline - 1), context, changed))).toEqual({ attention: [] });
 });
 it('P5-NF-55 P5-NF-55-PARTIAL scoped live-core workload measures fold latency, retained facts, pending and conflicts', () => {

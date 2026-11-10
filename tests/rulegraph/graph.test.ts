@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decode } from '../../src/index.js';
-import { buildRuleGraph, checkDeadlines, checkGraphLoops, decodeCheckRun, checkSeparation, semanticReviewSubject } from '../../src/register/index.js';
+import { buildRuleGraph, checkDeadlines, deadlineNotice, generateRegister, checkGraphLoops, decodeCheckRun, checkSeparation, semanticReviewSubject } from '../../src/register/index.js';
 import type { CheckCatalog, RuleGraph } from '../../src/register/index.js';
 import { setup, json, value, detail, clone } from '../register/fixtures.js';
 
@@ -53,16 +53,30 @@ describe('both-way rule graph and deadlines', () => {
     const s = setup(); const deferred = { rule: 4, class: 'deferred', part: 9, ceiling: 1000, owner: 'review', overdueAction: 'surface' };
     const r = s.build([s.rule(4), s.holder([deferred])]); const graph = value(buildRuleGraph(r, 'branch', [], catalog, s.context));
     // (a) overdue, unrelated change: the build passes and the deadline reaches the operator once.
-    const passed = value(checkDeadlines(graph, r, [], s.f.clock(1000), s.context, ['src/other.ts', 'docs/notes.md']));
+    const passed = value(checkDeadlines(graph, r, [], s.f.clock(1000), s.context, ['scripts/other.mjs', 'docs/notes.md']));
     expect(passed.attention).toEqual([{ id: 'deadline:deferred:holder:4:1000', rule: 4, subject: 'holder', dueBy: 1000, owner: 'review', action: 'surface' }]);
-    // (b) overdue, the change touches the holder's source or its colocated sidecar: the build fails.
-    for (const touched of ['src/example.ts', 'src/example.declarations.json'])
-      expect(detail(checkDeadlines(graph, r, [], s.f.clock(1001), s.context, ['src/other.ts', touched]))).toContain('P3-NF-24: deadline passed for deferred:holder:4');
+    // (b) overdue, the change touches the holder's declaring module (its source, a sidecar or any other
+    // file in that directory): the build fails.
+    for (const touched of ['src/example.ts', 'src/example.declarations.json', 'src/sibling-implementation.ts'])
+      expect(detail(checkDeadlines(graph, r, [], s.f.clock(1001), s.context, ['scripts/other.mjs', touched]))).toContain('P3-NF-24: deadline passed for deferred:holder:4');
+    // The desk's notice line: one stable line per deadline, also carried by the refusal.
+    expect(passed.attention.map(deadlineNotice)).toEqual(['REGISTER-DEADLINE OVERDUE: deadline:deferred:holder:4:1000; rule 4; holder; owner review; surface']);
+    expect(detail(checkDeadlines(graph, r, [], s.f.clock(1000), s.context, ['src/example.ts'])))
+      .toContain('; REGISTER-DEADLINE OVERDUE: deadline:deferred:holder:4:1000; rule 4; holder; owner review; surface');
     // (c) not overdue: unchanged, whatever the change touches.
     expect(value(checkDeadlines(graph, r, [], s.f.clock(999), s.context, ['src/example.ts']))).toEqual({ attention: [] });
     // An unknown change fails closed exactly as before (Rule 95), and a landing still fails regardless of scope.
     expect(detail(checkDeadlines(graph, r, [], s.f.clock(1000), s.context, null))).toContain('P3-NF-24');
-    expect(detail(checkDeadlines(graph, r, [9], s.f.clock(999), s.context, ['src/other.ts']))).toContain('P3-NF-24: deferred part 9');
+    expect(detail(checkDeadlines(graph, r, [9], s.f.clock(999), s.context, ['scripts/other.mjs']))).toContain('P3-NF-24: deferred part 9');
+  });
+  it('a document deadline owns only its exact document, not siblings or same-stem files', () => {
+    const s = setup(), rule = s.rule(4);
+    const r = value(generateRegister(s.input([rule], { sources: [s.source(rule, 'docs/rule.md')] }), s.context));
+    const graph = value(buildRuleGraph(r, 'branch', [], catalog, s.context));
+    expect(value(checkDeadlines(graph, r, [], s.f.clock(1001), s.context,
+      ['docs/other.md', 'docs/rule.ts']))).toMatchObject({ attention: [expect.objectContaining({ rule: 4 })] });
+    expect(detail(checkDeadlines(graph, r, [], s.f.clock(1001), s.context, ['docs/rule.md'])))
+      .toContain('REGISTER-DEADLINE OVERDUE:');
   });
   it('P3-NF-24 deferrals cannot survive unknown parts, a landing, or a ceiling', () => {
     const s = setup(); const deferred = { rule: 4, class: 'deferred', part: 9, ceiling: 1000, owner: 'review', overdueAction: 'surface' };

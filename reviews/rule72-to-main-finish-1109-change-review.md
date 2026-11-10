@@ -2,14 +2,15 @@
 
 Subject base: bf894399df5d0b7b056bf8fe92e51606336a43ec
 Review state: open
+Correction: This finish preserved a flawed remote-tip scope algorithm. The PR199 independent review reproduced an earlier feature commit hidden by an unmerged remote tip; rule72-to-main-fix-1109-change-review.md replaces that algorithm with the target merge-base. Historical timings below do not establish correct scope.
 Outcome: Complete PR 199's macOS evidence: renew the native composition certificate through the existing digest tool and replay dependent publication. Keep the native journal contract inside its recorded activation window using the existing advancing-clock fixture pattern, port the accepted four-build register test budget, and replace the new per-remote ancestry subprocess loop with Git’s equivalent bulk ref query.
 Affected rules: 26, 34, 37, 49, 70, 72, 74, 90, 91, 95, 101, 102, 105, 111, 112, 113, 115, 116, 119.
 Affected floors: Secrets custody, spend cap, stop, no duplicate sends and durable intake retain their existing checks. Production activation expiry is unchanged.
 Operator questions: none; no rule wording changes in this finish. Final head approval remains with Justin; no merge or deployment.
 Suggested tier: critical
 Declared tier: critical
-Tier rationale: Native certificate evidence changes, while executable product behavior is unchanged.
-Side effects: The native declaration certifies the measured macOS composition. Register publication follows that source. Only the journal test child's clock is injected; elapsed time still advances. Change scope keeps the same remote reachability predicate, now evaluated by one Git command; failed Git reads still return null. All native and register assertions remain intact; the register fixture receives its already-measured execution budget from the live line.
+Tier rationale: Native certificate evidence changes, while the bulk query preserves the old successful-read selection, including its subsequently discovered scope bug.
+Side effects: The native declaration certifies the measured macOS composition. Register publication follows that source. Only the journal test child's clock is injected; elapsed time still advances. Change scope keeps the same remote reachability predicate, now evaluated by one Git command; the bulk query fails closed on read errors, whereas the old inner ancestry catch could mistake an error for a negative result. All native and register assertions remain intact; the register fixture receives its already-measured execution budget from the live line.
 Undo and recovery: Revert the fixture repair if necessary; restore a certificate only with its matching composition and regenerate publication. A stale certificate cannot certify new bytes.
 Multi-machine posture: The certificate is deliberately specific to Darwin and its exact Node runtime. The deterministic Rule 72 implementation retains its existing git-derived behavior across machines.
 Layer below: scripts/composition-digest.mjs compositionClosure/compositionDigest/currentRuntime; scripts/check-architecture.mjs parityMatrix; tests/preview/native-harness-contract.test.ts; the established proofs-launcher advancing-clock fixture; desk digest writer and register replay; Git for-each-ref --no-contains versus merge-base --is-ancestor.
@@ -39,6 +40,6 @@ The 20-file Studio run passed 207 tests with 41 existing skips; its sole failure
 
 The rule document remains byte-identical to 2f7a76ad, blob aca97ca45b6c39aba4d5e9da46c19ac24241c6b2. No governing wording, published numbering, pipeline or train branch changes.
 
-simplestRobustRoute: Reuse the existing native contract, fixture-clock pattern, digest writer and register replay. Use Git’s native bulk predicate instead of spawning once per remote ref; no new authority or subsystem.
+simplestRobustRoute: Reuse the existing native contract, fixture-clock pattern, digest writer and register replay. The historical bulk predicate removed per-ref subprocess cost but did not fix the boundary; the repair now uses the target merge-base. No new authority or subsystem.
 80/20: One small fixture repair plus mechanical certification/publication; targeted serial tests and required fast checks, with the pipeline owning the full suite.
 VERDICT: author submission; no independent approval asserted

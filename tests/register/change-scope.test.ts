@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { changedFiles } from '../../scripts/build-register.mjs';
+import { changedFiles, deadlineLines } from '../../scripts/build-register.mjs';
 
 const roots: string[] = [];
 const directory = () => { const root = mkdtempSync(join(tmpdir(), 'register-scope-')); roots.push(root); return root; };
@@ -23,7 +23,7 @@ function fixture() {
   git('update-ref', 'refs/remotes/origin/feature', head);
   const child = git('commit-tree', 'HEAD^{tree}', '-p', head, '-m', 'future');
   git('update-ref', 'refs/remotes/origin/future', child);
-  return { root, git, head };
+  return { root, git, head, base };
 }
 
 it('keeps own commits when pushed or contained by a remote descendant, plus dirty and untracked paths', () => {
@@ -45,4 +45,45 @@ it('fails closed for an unreadable boundary or a directory outside Git', () => {
   vi.stubEnv('REGISTER_CHANGE_BASE', 'missing-boundary');
   expect(changedFiles(root)).toBeNull();
   expect(changedFiles(directory())).toBeNull();
+});
+
+it('keeps an earlier own-feature commit also reachable from another unmerged remote branch (PR 199 review)', () => {
+  const { root, git, head } = fixture();
+  git('update-ref', 'refs/remotes/origin/partial-feature', head);
+  writeFileSync(join(root, 'unrelated.ts'), 'second commit'); git('add', '.'); git('commit', '-qm', 'unrelated');
+  expect(changedFiles(root)).toEqual(['feature.ts', 'unrelated.ts']);
+});
+
+it('uses the target merge-base without claiming target-only changes', () => {
+  const { root, git, head, base } = fixture();
+  git('checkout', '-qb', 'target', base);
+  writeFileSync(join(root, 'target-only.ts'), 'target'); git('add', '.'); git('commit', '-qm', 'target');
+  vi.stubEnv('CHANGE_REVIEW_BASE', 'target');
+  git('checkout', '-q', '--detach', head);
+  expect(changedFiles(root)).toEqual(['feature.ts']);
+});
+
+it('fails closed without the target even when unrelated remote tips exist', () => {
+  const { root, git } = fixture();
+  git('update-ref', '-d', 'refs/remotes/origin/main');
+  expect(changedFiles(root)).toBeNull();
+});
+
+it('exposes a refusal notice on its own line for the Studio reader, and ignores other errors', () => {
+  const notice = 'REGISTER-DEADLINE OVERDUE: deadline:feature:rungraph-core:1792886400000; rule 72; rungraph-core';
+  expect(deadlineLines(`feature rungraph-core graduation overdue; ${notice}`)).toEqual([notice]);
+  expect(deadlineLines('source pin trails')).toEqual([]);
+});
+
+it('fails closed when target history is unrelated or has multiple merge-bases', () => {
+  const { root, git, head, base } = fixture();
+  const unrelated = git('commit-tree', 'HEAD^{tree}', '-m', 'unrelated root');
+  git('update-ref', 'refs/remotes/origin/main', unrelated);
+  expect(changedFiles(root)).toBeNull();
+  const sibling = git('commit-tree', 'HEAD^{tree}', '-p', base, '-m', 'sibling');
+  const left = git('commit-tree', 'HEAD^{tree}', '-p', head, '-p', sibling, '-m', 'left merge');
+  const right = git('commit-tree', 'HEAD^{tree}', '-p', sibling, '-p', head, '-m', 'right merge');
+  git('checkout', '-q', '--detach', left); git('update-ref', 'refs/remotes/origin/main', right);
+  expect(git('merge-base', '--all', left, right).split('\n')).toHaveLength(2);
+  expect(changedFiles(root)).toBeNull();
 });

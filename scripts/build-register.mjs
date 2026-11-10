@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { decodeMeasurement, canonical, schemas } from '../dist/index.js';
 import { generateRegister, generationOf, renderRegister, invariantCoverage, implementedInvariants, decodeCheckRun,
-  decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion } from '../dist/register/index.js';
+  decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion, deadlineNotice } from '../dist/register/index.js';
 import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, trailingInputs, value, bytes, isDeclarationSource, isActionSource, actionRegistry } from './register-source.mjs';
 import { checkWiring, scanSources } from './check-register-wiring.mjs';
 import { capabilityBriefing, checkShipped } from './register-shipped.mjs';
@@ -159,22 +159,20 @@ export function build(root, commit, options = {}) {
     warnings: checked.terms.warnings.length, prerequisites: checked.graph.prerequisites.length } };
 }
 // Rule 72: the files the current change touches, so a passed deadline fails only the build that
-// changes what it belongs to. The change's own commits follow check-change-review's changeScope():
-// HEAD's commits not reachable from any remote tip that does not itself contain HEAD (a train or
-// pushed branch containing HEAD is this change, not its base), or not reachable from
-// REGISTER_CHANGE_BASE / CHANGE_REVIEW_BASE when the caller knows the boundary. Their touched paths
-// (deletions included), plus uncommitted and untracked files, are the change. A git failure returns
-// null and every passed deadline then fails, as before (Rule 95: release integrity fails closed).
+// changes what it belongs to.
+// The caller's target/base (or this repository's main target) defines the change, never other
+// unmerged remote tips. Require a unique merge-base; missing/ambiguous history is unknown (Rule 95).
+// Retain every committed touched path, including deletions, plus local and untracked changes.
 export function changedFiles(root) {
   const git = (args, input) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024,
     ...(input === undefined ? { stdio: ['ignore', 'pipe', 'ignore'] } : { input, stdio: ['pipe', 'pipe', 'ignore'] }) }).trim();
   const lines = text => text.split('\n').filter(Boolean);
   try {
-    const base = process.env.REGISTER_CHANGE_BASE ?? process.env.CHANGE_REVIEW_BASE;
-    const head = git(['rev-parse', 'HEAD']);
-    const excluded = base !== undefined ? [git(['rev-parse', '--verify', `${base}^{commit}`])]
-      : lines(git(['for-each-ref', '--format=%(objectname)', '--no-contains', head, 'refs/remotes']));
-    const commits = git(['rev-list', 'HEAD', '--not', ...new Set(excluded)]);
+    const target = process.env.REGISTER_CHANGE_BASE ?? process.env.CHANGE_REVIEW_BASE ?? 'refs/remotes/origin/main';
+    const base = git(['rev-parse', '--verify', `${target}^{commit}`]);
+    const boundaries = lines(git(['merge-base', '--all', 'HEAD', base]));
+    if (boundaries.length !== 1) return null;
+    const commits = git(['rev-list', 'HEAD', '--not', boundaries[0]]);
     const committed = commits ? lines(git(['diff-tree', '--stdin', '--root', '-m', '-r', '--no-commit-id', '--name-only', '--no-renames'], commits + '\n')) : [];
     return [...new Set([...committed, ...lines(git(['diff', '--name-only', '--no-renames', 'HEAD'])),
       ...lines(git(['ls-files', '--others', '--exclude-standard']))])].sort();
@@ -217,10 +215,19 @@ export async function run(args, root = process.cwd()) {
     if (check) { if (!existsSync(path) || readFileSync(path, 'utf8') !== text) throw new Error(`P3-NF-01/P3-NF-09: generated ${name} differs`); }
     else writeFileSync(path, text);
   }
-  // Each passed deadline this build did not touch is one operator attention item (Rule 72).
+  // Each passed deadline this build did not touch is one operator attention item (Rule 72). It goes to
+  // the desk's existing deadline notice reader as a REGISTER-DEADLINE line on stderr (stdout stays the
+  // JSON summary); a refusing build's error message carries the same line (see deadlineLines).
+  for (const line of result.attention.map(deadlineNotice)) console.error(line);
   console.log(JSON.stringify({ generation: result.generation.id, commit, ...result.metrics, check, authority: 'shape-only', mode,
     ...(result.attention.length ? { attention: result.attention } : {}) }));
 }
+// A deadline refusal (Rule 72: this build changes the overdue feature) ends with its notice line;
+// print it on a line of its own so the desk's reader, which only reads lines starting with it, sees it.
+export function deadlineLines(message) {
+  const at = String(message).indexOf('REGISTER-DEADLINE ');
+  return at < 0 ? [] : [String(message).slice(at)];
+}
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  run(process.argv.slice(2)).catch(error => { console.error(error.message); process.exitCode = 1; });
+  run(process.argv.slice(2)).catch(error => { console.error(error.message); for (const line of deadlineLines(error.message)) console.error(line); process.exitCode = 1; });
 }
