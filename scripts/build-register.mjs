@@ -169,12 +169,11 @@ export function changedFiles(root) {
   const git = (args, input) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024,
     ...(input === undefined ? { stdio: ['ignore', 'pipe', 'ignore'] } : { input, stdio: ['pipe', 'pipe', 'ignore'] }) }).trim();
   const lines = text => text.split('\n').filter(Boolean);
-  const contains = (tip, head) => { try { git(['merge-base', '--is-ancestor', head, tip]); return true; } catch { return false; } };
   try {
     const base = process.env.REGISTER_CHANGE_BASE ?? process.env.CHANGE_REVIEW_BASE;
     const head = git(['rev-parse', 'HEAD']);
     const excluded = base !== undefined ? [git(['rev-parse', '--verify', `${base}^{commit}`])]
-      : lines(git(['for-each-ref', '--format=%(objectname)', 'refs/remotes'])).filter(tip => !contains(tip, head));
+      : lines(git(['for-each-ref', '--format=%(objectname)', '--no-contains', head, 'refs/remotes']));
     const commits = git(['rev-list', 'HEAD', '--not', ...new Set(excluded)]);
     const committed = commits ? lines(git(['diff-tree', '--stdin', '--root', '-m', '-r', '--no-commit-id', '--name-only', '--no-renames'], commits + '\n')) : [];
     return [...new Set([...committed, ...lines(git(['diff', '--name-only', '--no-renames', 'HEAD'])),
