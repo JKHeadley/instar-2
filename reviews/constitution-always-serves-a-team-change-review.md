@@ -1,8 +1,8 @@
 # Change review — An Instar Agent Always Serves a Team
 
 Subject base: 7912b0d079c41675c069de2752a74aaddbb753ac
-Review state: open
-Reviewed content: none
+Review state: frozen
+Reviewed content: sha256:77c756bae332748b841df5e62c64f3952e8459cb7bccb875ee713a3ff4dad266
 Outcome: Record the operator's approved wording as Rule 123, An Instar Agent Always Serves a Team: every feature treats an agent as serving several people with roles (owner, member, guest) by default; anything a person creates or is given has an owner, is private to that owner by default, and can be shared with chosen people or the whole team; access comes only through the owner's signed team record, and the agent can narrow but never widen it; a one-person feature is an exception that states its reason; a one-person agent is a team of one. A new rule in Needs building, because no check exists yet.
 Affected rules: 31 and 113 (extended from machines to people; neither is changed), 18 (sovereignty: the agent narrows access but never widens it, consistent with acting only inside recorded grants), 120 and 121 (its source requirement applies to this change's quotes), the purpose's least-revelation rule (Rule 123 names the owner and share that decide what a recipient may see; it does not change that rule), and new 123. 119 applies to this change: it names its 1.x counterpart. Purpose unchanged. History preserves prior revisions; Rule 123 stays a coverage gap until its check is built.
 Affected floors: secrets — no custody or revelation changes; spend cap — no provider calls or budget changes; stop — no cancellation changes; no duplicate sends — no dispatch changes; durable intake — no journal or admission changes. The rule gives the agent no power to grant access.
