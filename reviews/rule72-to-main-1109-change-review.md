@@ -18,6 +18,9 @@ Bug class: unit
 Bug evidence: reproducer=tests/rulegraph/graph.test.ts
 Hook bypass: none; core.hooksPath is .husky/_ but that directory is absent in this worktree; no bypass flags used.
 Convergence: none
+Deferral: tests/rulegraph/graph.test.ts:70 | not-a-deferral=Fixture assertions for the existing deferred-part deadline; no implementation work is deferred.
+Deferral: tests/rulegraph/graph.test.ts:63 | not-a-deferral=Fixture assertions for the existing deferred-part deadline; no implementation work is deferred.
+Deferral: tests/rulegraph/graph.test.ts:61 | not-a-deferral=Fixture assertions for the existing deferred-part deadline; no implementation work is deferred.
 Prompt review: src/register/workflow.ts changes deterministic deadline result plumbing only; no model prompts or dispatch instructions change, no fixture trigger is embedded and neutral dispatch is unaffected.
 Deferral: tests/rulegraph/graph.test.ts:53 | not-a-deferral=Fixture data and assertions for existing deferred-part deadline enforcement; no implementation is deferred.
 Deferral: tests/rulegraph/graph.test.ts:54 | not-a-deferral=Fixture data and assertions for existing deferred-part deadline enforcement; no implementation is deferred.

@@ -18,6 +18,10 @@ Bug class: unit
 Bug evidence: reproducer=tests/preview/native-harness-contract.test.ts
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains only sample hooks, inspected on the Studio.
 Convergence: none
+Deferral: tests/rulegraph/graph.test.ts:70 | not-a-deferral=Fixture assertions for the existing deferred-part deadline; no implementation work is deferred.
+Deferral: tests/rulegraph/graph.test.ts:65 | not-a-deferral=Fixture assertions for the existing deferred-part deadline; no implementation work is deferred.
+Deferral: tests/rulegraph/graph.test.ts:63 | not-a-deferral=Fixture assertions for the existing deferred-part deadline; no implementation work is deferred.
+Deferral: tests/rulegraph/graph.test.ts:61 | not-a-deferral=Fixture assertions for the existing deferred-part deadline; no implementation work is deferred.
 Decision: R72-NATIVE-CLOCK | Replay the recorded journal activation within its valid window using the proofs-launcher clock pattern; preserve production expiry and every assertion. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule72-to-main-finish-1109-PROGRESS.md
 Decision: R72-NATIVE-TOOL | This branch has the nine-case contract, so use the existing digest writer between recorded contract runs rather than the newer ten-case renewal wrapper; require all nine cases to pass. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule72-to-main-finish-1109-PROGRESS.md
 Decision: R72-COUNTERPART | Add the required PR-body declaration for this 2.0-only build-scope port; retain the cross-book difference for independent Rule 119 review. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule72-to-main-finish-1109-PROGRESS.md

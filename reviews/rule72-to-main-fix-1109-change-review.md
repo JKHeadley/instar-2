@@ -17,6 +17,10 @@ Bug class: unit
 Bug evidence: reproducer=tests/register/change-scope.test.ts
 Hook bypass: none; use plain commits.
 Convergence: none
+Deferral: tests/rulegraph/graph.test.ts:70 | not-a-deferral=Fixture assertions for the existing deferred-part deadline; no implementation work is deferred.
+Deferral: tests/rulegraph/graph.test.ts:65 | not-a-deferral=Fixture assertions for the existing deferred-part deadline; no implementation work is deferred.
+Deferral: tests/rulegraph/graph.test.ts:63 | not-a-deferral=Fixture assertions for the existing deferred-part deadline; no implementation work is deferred.
+Deferral: tests/rulegraph/graph.test.ts:61 | not-a-deferral=Fixture assertions for the existing deferred-part deadline; no implementation work is deferred.
 Decision: R72-REPAIR-PORT | Port the owning live repair, including real-provenance tests and the existing notice adapter, without transplanting its different composition certificate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule72-to-main-fix-1109-PROGRESS.md
 Decision: R72-TARGET-BASE | Require one merge-base against the caller target or origin/main; missing or ambiguous boundary returns null, never an empty change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule72-to-main-fix-1109-PROGRESS.md
 
@@ -29,6 +33,9 @@ The history c7603b400..2f7a76ad for src/rulegraph/graph.ts, src/register/workflo
 The Git bug remains on live 2f7a76ad in scripts/build-register.mjs:172-178: contains catches errors as false, and excluded subtracts every non-containing remote tip. This repair is only on the assigned PR; the desk owns routing the live repair.
 
 ## Verification and limitations
+
+Source regressions pass, including eight real-Git/notice cases, real rungraph provenance and exact document ownership. The reviewer deadline proof passes; the Git proof now returns both feature.ts and unrelated.ts where the old code returned only unrelated.ts. A copy with the repaired expected outcomes passes. Native contract passes 9/9 after the repository digest tool renews the measured 246-file composition; typecheck/build pass. The actual Studio reader expression accepts ten lines from an unrelated repair-delta CLI --check and one from the whole-PR refusal. These are captured outputs, not an assertion that an operator message was sent.
+
 
 Evidence and exact command outputs live at /Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule72-to-main-fix-1109-PROGRESS.md and the adjacent rule72-to-main-fix-1109-evidence directory. The inherited source/tests and earlier failed findings remain in history. The corrected default PR boundary exposes an actual overdue preview-conversation change inherited from PR199: tests/preview is its declaring module. That refusal must remain visible; using a later base to pass this PR would conceal part of its change. Separate isolated CLI probes demonstrate unrelated success and own-feature refusal without asserting that the entire PR is green.
 
