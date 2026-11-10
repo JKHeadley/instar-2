@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:beca13c55c4028568c260aa41a52f07fdc6c4308978b351fff13441405fcd716",
-  "commit": "81636cb3f2810e018004c198cff99500050491da",
+  "generation": "sha256:29a2956c1d682a0f7be94ca17e08d840b929ed4d852c09930057ad0c06bb1877",
+  "commit": "3f0f3f8dbe1397b61595251a3dcb71865f6e092e",
   "launchers": {
     "bin/instar2.mjs": [
       {
@@ -89,7 +89,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": false,
-        "text": "checks note and reply credits with --attribution."
+        "text": "with --attribution, checks quotes credited in notes."
       },
       {
         "id": "preview.coherence-check",
@@ -235,7 +235,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks note and reply credits with --attribution."
+        "text": "with --attribution, checks quotes credited in notes."
       },
       {
         "id": "preview.coherence-check",
@@ -381,7 +381,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks note and reply credits with --attribution."
+        "text": "with --attribution, checks quotes credited in notes."
       },
       {
         "id": "preview.coherence-check",
@@ -527,7 +527,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks note and reply credits with --attribution."
+        "text": "with --attribution, checks quotes credited in notes."
       },
       {
         "id": "preview.coherence-check",
@@ -673,7 +673,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks note and reply credits with --attribution."
+        "text": "with --attribution, checks quotes credited in notes."
       },
       {
         "id": "preview.coherence-check",
@@ -819,7 +819,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "checks note and reply credits with --attribution."
+        "text": "with --attribution, checks quotes credited in notes."
       },
       {
         "id": "preview.coherence-check",
