@@ -1,5 +1,21 @@
 [
   {
+    "revision": 24,
+    "date": "2026-11-09",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Restores revision 22's approved sentence, which the merge of main 7912b0d0 into train-231 (27464913f) dropped from Rule 72 while this changelog kept revision 22. Approval: Justin, topic 102965, 2026-11-08 12:00 PST: \"I agree with your recommended changes to the constitution to prevent things from being blocked\" [source: telegram 102965/140776 2026-11-08], answering the desk's proposal of the exact sentence in 102965/140750. \"you\" in the approved sentence reads \"the operator\" to match the document's third-person voice. Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Rule 72's check again carries revision 22's approved sentence: \"A deadline that has passed fails only builds that change the feature it belongs to, and puts an item in front of the operator; every other build keeps moving.\"",
+        "why": "A merge resolution took main's older Rule 72 row, so the rule book and its changelog disagreed; live train-228 kept the approved sentence.",
+        "ref": "commit c7603b400 (revision 22); merge loss 27464913f; restored in the train-231 merge of live 2f7a76adc. Justin, topic 102965, 2026-11-08 12:00 PST: \"I agree with your recommended changes to the constitution to prevent things from being blocked\" [source: telegram 102965/140776 2026-11-08], answering the desk's proposal of the exact sentence in 102965/140750. \"you\" in the approved sentence reads \"the operator\" to match the document's third-person voice. Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 23,
     "date": "2026-11-05",
     "status": "draft",
