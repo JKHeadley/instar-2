@@ -17,6 +17,12 @@ Bug class: unit
 Bug evidence: reproducer=tests/rulegraph/graph.test.ts
 Hook bypass: none; core.hooksPath is .husky/_ but that directory is absent in this worktree; no bypass flags used.
 Convergence: none
+Prompt review: src/register/workflow.ts changes deterministic deadline result plumbing only; no model prompts or dispatch instructions change, no fixture trigger is embedded and neutral dispatch is unaffected.
+Deferral: tests/rulegraph/graph.test.ts:53 | not-a-deferral=Fixture data and assertions for existing deferred-part deadline enforcement; no implementation is deferred.
+Deferral: tests/rulegraph/graph.test.ts:54 | not-a-deferral=Fixture data and assertions for existing deferred-part deadline enforcement; no implementation is deferred.
+Deferral: tests/rulegraph/graph.test.ts:57 | not-a-deferral=Fixture data and assertions for existing deferred-part deadline enforcement; no implementation is deferred.
+Deferral: tests/rulegraph/graph.test.ts:60 | not-a-deferral=Fixture data and assertions for existing deferred-part deadline enforcement; no implementation is deferred.
+Deferral: tests/rulegraph/graph.test.ts:65 | not-a-deferral=Fixture data and assertions for existing deferred-part deadline enforcement; no implementation is deferred.
 Decision: R72-HISTORY | Preserve main Rule39 revision22 and append Rule72 revision23; the live target reverses these and replacing main history would violate Rule90. Retain old JSON bytes and regenerate Markdown. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule72-to-main-1109-PROGRESS.md
 Decision: R72-TEST-PORT | Main lacks the live branch's renewed rungraph deadline test setup; transplant the Rule72 test with required imports against main's actual declaration, without changing that declaration or its deadline. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule72-to-main-1109-PROGRESS.md
 
@@ -37,7 +43,9 @@ Counterpart: none newly authored here. This ports the already-approved 2.0-speci
 
 Over-block: missing git scope retains fail-closed behavior. Under-block: the approved ownership model covers the declaration source and colocated files, not a transitive dependency closure. Layer: existing deadline owner and build adapter; no parallel authority. Signal/authority: deterministic enforcement of governed state under Rules4/95, unrelated deadlines emit attention. Interactions: workflow returns attention to the build summary; unchanged loop, model freshness and subsidy checks still apply. External surfaces: build JSON gains attention when overdue; no live dispatch. Rollback is a revert and replay; all hosts consume the same git bytes.
 
-Independent review: review_rule72 found no behavioral regression in the port and agreed with the rungraph adaptation and preserved history. Its one medium concern, missing API declarations in scripts/build-register.d.mts, is addressed. This is a local review, not Astra final-head approval.
+Independent review: review_rule72 found no behavioral regression in the port and agreed with the rungraph adaptation and preserved history. Its one medium concern, missing API declarations in scripts/build-register.d.mts, is addressed. The reviewer re-read the typed API, anchor and side-effects artifact and concurred with no remaining concern. This is a local review, not Astra final-head approval.
+
+Mechanical pins: the desk-provided rehash-owner-manifests tool refreshed the two references to tests/rungraph/scope.test.ts. Its repin-chain tool refreshed the two changed source hashes in production-grounding-inventory.json and that inventory digest in check-assembly-contracts.mjs. No manifest population or runtime certificate was changed.
 
 simplestRobustRoute: Reuse the approved implementation and existing derive/replay tools, preserving main's governing history; no new subsystem or parallel deadline authority.
 80/20: One narrow port and focused boundary/replay tests; independent review examines the port before submission, final landing review belongs to the desk.
