@@ -7,7 +7,7 @@ import { join, resolve, relative, isAbsolute } from 'node:path';
 import { homedir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { assertAgentPaths } from './agent-paths.mjs';
-import { hostResources, limitedFileArgv } from './resource-owner.mjs';
+import { hostResources, limitedFileArgv, limitShell, userTaskQuery } from './resource-owner.mjs';
 
 /** Read native nonsecret preferences without following links or replacing malformed state. */
 function readInteractiveConfig(path) {
@@ -66,16 +66,18 @@ export function prepareSubscriptionInteractive(configDirectory, workingDirectory
 }
 
 /** The transport child's own bounds: per-process handles, and user-ID process headroom. */
-const TRANSPORT_LIMITS = Object.freeze({ handleCount: 256, processCount: 4 });
-/** The user ID's current process count plus the transport headroom, or null when it cannot be read.
+// Linux counts threads: Node uses seven at startup and four more for DNS/libuv.
+const TRANSPORT_LIMITS = Object.freeze({ handleCount: 256, processCount: 4, linuxTaskCount: 16 });
+/** The user ID's current task count (threads on Linux) plus the transport headroom, or null when it cannot be read.
  * Its subject is the user ID, not the transport's tree: it caps a fork burst, never the tree's size. */
 function transportProcessLimit() {
   const uid = typeof process.getuid === 'function' ? process.getuid() : null;
   if (uid === null || uid === 0) return null;
   let count = 0;
-  try { count = execFileSync('/bin/ps', ['-U', String(uid), '-o', 'pid='], { encoding: 'utf8', timeout: 2000, env: { PATH: '/usr/bin:/bin' },
+  try { count = execFileSync('/bin/ps', userTaskQuery(uid), { encoding: 'utf8', timeout: 2000, env: { PATH: '/usr/bin:/bin' },
     stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(line => line.trim()).length; } catch { count = 0; }
-  return count > 0 ? count + TRANSPORT_LIMITS.processCount : null;
+  const headroom = process.platform === 'linux' ? TRANSPORT_LIMITS.linuxTaskCount : TRANSPORT_LIMITS.processCount;
+  return count > 0 ? count + headroom : null;
 }
 
 export const productionStorageIO = Object.freeze({ pid: process.pid,
@@ -175,7 +177,7 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
     /** Sequential and waited on synchronously: short calls (identity, send, acknowledge). */
     invoke(input, credential) {
       const { env, timeout, argv } = launch(input);
-      const child = spawnSync('/bin/sh', argv, { input: credential, encoding: 'utf8', timeout, maxBuffer: MAX_TRANSPORT_BYTES,
+      const child = spawnSync(limitShell(), argv, { input: credential, encoding: 'utf8', timeout, maxBuffer: MAX_TRANSPORT_BYTES,
         env, stdio: ['pipe', 'pipe', 'ignore'] });
       // Rule 26: an error label is no proof. Only a child that never got a process id sent nothing.
       if (child.error) return settle(null, '', !child.pid);
@@ -188,7 +190,7 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
       const { env, timeout, argv } = launch(input);
       return new Promise(resolve => {
         let child;
-        try { child = spawn('/bin/sh', argv, { env, stdio: ['pipe', 'pipe', 'ignore'] }); }
+        try { child = spawn(limitShell(), argv, { env, stdio: ['pipe', 'pipe', 'ignore'] }); }
         catch { resolve(settle(null, '')); return; }
         let chunks = [], size = 0, failed = false;
         const fail = () => { failed = true; chunks = []; try { child.kill('SIGKILL'); } catch { /* already gone */ } };
