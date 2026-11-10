@@ -17,6 +17,8 @@ export interface WorkflowChecks {
   readonly boundaries: readonly EnforcementBoundary[]; readonly claims: readonly { kind: string; complete: boolean }[];
   readonly separations: readonly { site: string; record: string; execution: StandingContext; writer: VerifiedPrincipal; scope: Scope; action: string }[];
   readonly bootstrapRules: readonly { number: number; declarationHash: string; owner: string }[];
+  /** The current change's files (Rule 72 deadline scope); absent or null when unknown. */
+  readonly changed?: readonly string[] | null;
 }
 export function runRegisterChecks(register: GeneratedRegister, checks: WorkflowChecks, context: RegisterContext) {
   return checked('RegisterWorkflowChecks', { register, checks }, context, () => {
@@ -55,9 +57,9 @@ export function runRegisterChecks(register: GeneratedRegister, checks: WorkflowC
       }
     }
     const graph = take(buildRuleGraph(register, checks.branch, checks.runs, checks.catalog, context, checks.bootstrapRules));
-    take(checkDeadlines(graph, register, checks.landedParts, checks.now, context));
+    const { attention } = take(checkDeadlines(graph, register, checks.landedParts, checks.now, context, checks.changed ?? null));
     const terms = take(resolveTerms(register, context));
-    return { graph, terms, pairing, authorityPrerequisites,
+    return { graph, terms, pairing, authorityPrerequisites, attention,
       authority: replay ? 'shape-only' : checks.mode === 'bootstrap' ? 'bootstrap-prerequisites' : 'checked-candidate' };
   });
 }

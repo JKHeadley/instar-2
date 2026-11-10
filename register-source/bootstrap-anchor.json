@@ -3,8 +3,8 @@
   "approvalBasis": "Repository replay publication pin; exact operator approval is recorded in PR/changelog history; replay has no entering-force authority.",
   "shape": "sha256:25ee29a3eac960ce783f87fe1cd329833c4643cab7cfa7195e44b09d363b688c",
   "documents": {
-    "docs/01-the-rules.md": "sha256:8e209a001ec3499fd1bc4bfe0379f4ae8f2fb0d25ef99d22c834fb008b254521",
-    "docs/02-the-register.md": "sha256:9e229cfae1fb784736286f72b16124a461e473f93cbe0e284cd75f1e7c282db5",
+    "docs/01-the-rules.md": "sha256:7d381ad9384104d63561238953970603e287b312fc230fd298f5fee704eb8927",
+    "docs/02-the-register.md": "sha256:04809a1ce2128b61323a82a260b3550dbb3b5bb8852716cc604aaacb9ef78012",
     "docs/03-the-glossary.md": "sha256:68ca7a31f025c270a1b90ced1df965671c3e188df7076e6dde1c50d3c9f7cba0",
     "docs/07-the-declarations.md": "sha256:be690d1a07a73287d36b4e3dff9d927271c1b94e5d90611b33b215b69408734b",
     "docs/rules/91-a-document-reads-as-its-first-version.md": "sha256:49e37e4f31009804f28a2dd38f67b3c894a5d662d3a4ea2d9c703310252492a0"
@@ -357,7 +357,7 @@
     },
     {
       "number": 72,
-      "declarationHash": "sha256:dd0a0b0829d88c96165b1624990900996c1e7d6d241177f6f0870ced3fb76fe4",
+      "declarationHash": "sha256:3280028e336e0bf813047f37572e1a2a77544a34eaf6090926a1c66e270c88cd",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
