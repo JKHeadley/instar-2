@@ -10,6 +10,10 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    env:
+      # PR scope is the target; a main push is the update from its prior head.
+      CHANGE_REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      REGISTER_CHANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
     steps:
       - uses: actions/checkout@v4
         with:

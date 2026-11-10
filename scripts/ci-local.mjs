@@ -5,7 +5,8 @@
 // must never depend on them. What a single machine genuinely cannot reproduce (the two-
 // architecture compare) is reported as such — never as a pass.
 //
-//   node scripts/ci-local.mjs [--out .ci-local-result.json]
+//   CHANGE_REVIEW_BASE=<exact unit target> node scripts/ci-local.mjs [--out .ci-local-result.json]
+// The caller supplies its target, just as the PR/main event does in GitHub; never infer it from a push tip.
 //
 // There is deliberately no shortcut flag: every run is the full parity run, including both
 // workflow `npm ci` steps. Exit status is 0 only when at least one required step executed and

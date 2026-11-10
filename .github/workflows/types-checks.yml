@@ -1,5 +1,8 @@
 name: constitutional-types
-on: [push, pull_request]
+on:
+  pull_request:
+  push:
+    branches: [main]
 jobs:
   contract:
     strategy:
@@ -11,6 +14,10 @@ jobs:
           - os: ubuntu-24.04-arm
             arch: arm64
     runs-on: ${{ matrix.os }}
+    env:
+      # Feature pushes have no declared unit target; their PR supplies it.
+      CHANGE_REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      REGISTER_CHANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
     steps:
       - uses: actions/checkout@v4
         with:
