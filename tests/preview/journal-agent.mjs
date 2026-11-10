@@ -3189,8 +3189,9 @@ async function main() {
         || !ownerHeld() || !activationMatchesJournal(journal.view, activation) ? null : nextObligationAt(journal.view),
       after: (ms, fire) => { const timer = setTimeout(fire, ms); timer.unref(); return () => clearTimeout(timer); },
       wake: () => workCycle(false, true) });
-    updateVerifying = () => Boolean(stepJob || replyReviewJob || retroJob || summaryJob);
-    updateIdle = () => lane.admissible() && !summaryJob && !stepJob && !retroJob && !replyReviewJob
+    // Before-send reply review belongs to the ordinary lane, whose idle guard covers the whole drain.
+    updateVerifying = () => Boolean(stepJob || retroJob || summaryJob);
+    updateIdle = () => lane.admissible() && !summaryJob && !stepJob && !retroJob
       && Object.keys(journal.view.activeSessionWork ?? {}).length === 0;
     if (updateEnabled) {
       try {

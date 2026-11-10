@@ -72,7 +72,7 @@ it.skipIf(!processLimitAvailable)('real installer, idle drain, watchdog recreati
     const first = run();
     expect(first.status, first.stderr + first.stdout).toBe(0);
     const state = () => JSON.parse(readFileSync(join(root, 'update-state.json'), 'utf8'));
-    expect(state().runtime.handshake).toMatchObject({ status: 'verified', expectedVersion: '0.1.1', runningVersion: '0.1.1' });
+    expect(state().runtime.handshake, first.stderr + first.stdout + JSON.stringify(state())).toMatchObject({ status: 'verified', expectedVersion: '0.1.1', runningVersion: '0.1.1' });
     expect(state().runtime.request.status).toBe('drained');
     expect(state().runtime.healthyRelease).toBe('v0.1.1');
     const runs = () => readFileSync(join(root, 'runs.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
