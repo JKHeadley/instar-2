@@ -1,7 +1,7 @@
 # Generated glossary
 
-Register generation: sha256:dd520289d7bd3e1b70396b384deaf6bfdf17e68b2b6b4dbf08788238b86f40e9
-Source commit: d819d93ac3029e254fff5f47259ec577efde9100
+Register generation: sha256:291e99a5c7fbf6c4affee4dfdce8bcbbbb24e8fec9188b28757c85d2633fedba
+Source commit: 2526322a05869e80fc7d5e09f93d6faed2d613fc
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -75,7 +75,7 @@ A capability the system offers that has a name a person could ask for. A module 
 not a feature; "private views" is. The test: could it appear in the agent's own briefing as
 something it can do? (Rules 34, 39, 62, 72, 76.)
 
-Used by: rule:105, rule:118, rule:122, rule:30, rule:34, rule:39, rule:52, rule:62, rule:72, rule:73, rule:78, rule:8, rule:84, rule:91
+Used by: rule:105, rule:118, rule:122, rule:123, rule:30, rule:34, rule:39, rule:52, rule:62, rule:72, rule:73, rule:78, rule:8, rule:84, rule:91
 
 ## governed port
 
