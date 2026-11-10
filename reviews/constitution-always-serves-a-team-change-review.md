@@ -33,5 +33,5 @@ Subject (14 paths): docs/01-the-rules.changelog.json, docs/01-the-rules.changelo
 ## Closing block
 
 simplestRobustRoute: This proposal is the simplest robust route: one new row in the existing rule table, its rationale and source note, its changelog entry, and the existing register regeneration. No new mechanism or gate is introduced here; the check is named for later building, as every Needs-building rule does.
-80/20: PENDING independent read.
+80/20: An independent read by codex-cli (gpt-6.1-sol, a different model family) of the source changes in both books on 2026-11-10 returned NO with 2 must-fix. One was in the 1.x counterpart (a device requirement the operator did not approve), fixed there and confirmed by a narrow re-read returning YES. The other was this record: it read as open while claiming a pass; this record is now completed and frozen. The read confirmed the 2.0 rule body matches the approved wording exactly, every cited quote matches including the curly apostrophe, the counts are consistent (22 + 9 + 79 + 13 = 123), and no contradiction with the rules examined. Its notes: the generated outputs were not in the diff it read (they are reproduced by the --check run above), and the backdated replay check does not establish a current-clock build (named under Known red).
 VERDICT: author submission; the independent verdict is recorded as a pass
