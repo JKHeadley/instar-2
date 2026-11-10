@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:f09d94f2230254a4fc32cb077abb86af4b373874d22d7f8235176d90aa576d8b
-Source commit: 4148add149dbcfd102bc0a172f01c98077f4ce14
+Register generation: sha256:224d851271cb75cbfbf56e4e3c19b9d3233d99f49bd84487cd48cddfa49dc393
+Source commit: 6506af11f45e767119a392f43aed43cf7ac582a8
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -653,7 +653,7 @@ Terms: (none)
 
 Every feature graduates test agent → development agent → fleet, with a declared graduation test and deadline, and with default-on for the fleet as the last rung unless a recorded user-preference decision keeps it off. Every rung has machine-checkable thresholds against the feature's own logged behaviour. A threshold met raises the feature to the recurring review, whose model decides; it never flips anything by itself. A fleet default stays a reviewed code change.
 
-Check: Every gated feature declares both and the deadline is enforced. The direct fix for 20-of-92. 1.x holds the thresholds in its feature ladder and fails the build on a switched-off flag with no entry; 2.0's equivalent needs building.
+Check: Every gated feature declares both and the deadline is enforced. A deadline that has passed fails only builds that change the feature it belongs to, and puts an item in front of the operator; every other build keeps moving. The direct fix for 20-of-92. 1.x holds the thresholds in its feature ladder and fails the build on a switched-off flag with no entry; 2.0's equivalent needs building.
 Terms: term:feature, term:user
 
 ## 73. A Dark Feature Guards Nothing
