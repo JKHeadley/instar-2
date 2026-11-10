@@ -175,7 +175,7 @@
       "models": [
         {
           "id": "claude-sonnet-5",
-          "verifiedAt": 1790519680619,
+          "verifiedAt": 1793563015140,
           "freshFor": 2885119381
         }
       ],
@@ -183,7 +183,7 @@
       "subsidy": {
         "ratio": 1,
         "basis": "estimated",
-        "updatedAt": 1790519680619,
+        "updatedAt": 1793563015140,
         "freshFor": 2885119381
       }
     },

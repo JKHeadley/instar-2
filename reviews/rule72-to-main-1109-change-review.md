@@ -3,13 +3,13 @@
 Subject base: 7912b0d079c41675c069de2752a74aaddbb753ac
 Review state: open
 Outcome: Port the already-approved Rule 72 wording and complete deadline-scope implementation from c7603b400, with the replay-anchor refresh of 338eb8674, onto main. An unrelated build keeps moving and reports overdue items; a build changing the owning feature still fails.
-Affected rules: 4, 26, 49, 70, 72, 74, 90, 91, 95, 101, 102, 111, 113, 116, 119.
+Affected rules: 4, 26, 49, 56, 70, 72, 74, 90, 91, 95, 101, 102, 111, 113, 116, 119.
 Affected floors: Secrets custody, spend cap, emergency stop, no duplicate sends and durable intake are unchanged. No runtime approval authority is added.
 Operator questions: none; Justin approved the sentence in topic 102965, message 140776, 2026-11-08 12:00 PST, replying to proposal 140750. Final-head review remains with the desk; no merge is authorized here.
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Constitutional wording and release-integrity deadline enforcement, even though this is a narrow port of an approved change.
-Side effects: Only an exact owning source or colocated declaration change keeps the overdue refusal. Unrelated overdue items reach build-register output. Unknown change scope still fails closed; unknown/landed parts and stale model/subsidy checks remain refusals. No feature is enabled or deadline extended. The document hashes, Rule72 declaration hash and conversion pin must be derived together. Replay is shape-only and grants no runtime authority.
+Side effects: Only an exact owning source or colocated declaration change keeps the overdue refusal. Unrelated overdue items reach build-register output. Unknown change scope still fails closed; unknown/landed parts and stale model/subsidy checks remain refusals. No feature is enabled or deadline extended. The prerequisite model-map record from a28df32c6 carries its original November1 measured verification time, without extending freshness or changing the model or subsidy estimate. The document hashes, Rule72 declaration hash and conversion pin must be derived together. Replay is shape-only and grants no runtime authority.
 Undo and recovery: Revert source and regenerate outputs from a corrective committed source; preserve approved governing history through a corrective revision if already landed. No runtime data migration.
 Multi-machine posture: Machine independent, derived from the same git source and change file list; clock is supplied at the build adapter, pure core receives it. No new state store, message sender or deployment change.
 Layer below: src/rulegraph/graph.ts, src/register/workflow.ts, scripts/build-register.mjs, scripts/register-source.mjs and bootstrapDeclarations, canonical hashing, declaration provenance and the existing changeScope git boundary; 1.x comparison below.
@@ -28,6 +28,8 @@ Decision: R72-TEST-PORT | Main lacks the live branch's renewed rungraph deadline
 
 Decision: R72-ANCHOR | Preserve main bootstrap shape pin; target live build has a different bootstrap-shape.json. Derive document/rule hashes and conversion pin with repository canonical/bootstrap tools; all other target anchor fields match. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule72-to-main-1109-PROGRESS.md
 Decision: R72-TYPES | Independent reviewer identified missing typed API surface; add changed option, attention result and changedFiles declaration alongside implemented JavaScript. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule72-to-main-1109-PROGRESS.md
+
+Decision: R72-MODEL-RECORD | Current-clock replay exposed main expired Rule56 record. Carry the exact two timestamp changes and provenance note from live ancestor a28df32c68f22e2acb872291d47af64ac6d8e868; preserve the existing freshness window and estimated subsidy, with no newly asserted verification. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule72-to-main-1109-PROGRESS.md
 
 ## ELI16
 
