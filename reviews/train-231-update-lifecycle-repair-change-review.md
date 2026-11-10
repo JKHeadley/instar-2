@@ -4,7 +4,7 @@ Subject base: 075cbd62b2fa899a6f9c27e8fbe06eb9fb628600
 Review state: open
 Reviewed content: none
 Outcome: Let the real updater drain and activate an installed release again. Both readiness closures still referenced the removed replyReviewJob variable and threw before restart; remove those references while retaining the ordinary lane guard that now owns before-send review.
-Affected rules: 26, 34, 37, 44, 55, 60, 61, 70, 74, 101, 102, 111, 113, 116, 121
+Affected rules: 26, 34, 37, 44, 55, 60, 61, 70, 74, 91, 101, 102, 111, 113, 116, 121
 Affected floors: secrets — unchanged; spend cap — unchanged; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged. Existing admission, stop, peer, active-work and session guards remain intact.
 Operator questions: none
 Suggested tier: critical
@@ -18,12 +18,15 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/update-lifecycle.test.ts
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample files only. Plain git commit.
 Convergence: none
+Deferral: generated/register.json:1 | not-a-deferral=mechanical replay retains existing register descriptions; no deferred work is introduced
 Prompt review: No model prompt, parser, review verdict or answer acceptance logic changes. The touched runner contains prompt sources, but this diff changes only updater readiness closures. Existing before-send review remains inside the ordinary drain; no live-model replay is claimed or needed for an undefined updater binding.
 Decision: train-231-updater-lane | Remove the two dangling replyReviewJob references; the existing ordinary lane owns and guards the review, so a new tracker or timeout increase would add machinery without addressing the source failure. Retain diagnostic state on the failing assertion. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-231-repair-PROGRESS.md
 
+Decision: train-231-updater-register | Run the delegated owner-manifest and chain tools, which change no pins, then mechanically replay the register against af983d844b86013093c495350054662570431b01 to bind the changed runner bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-231-repair-PROGRESS.md
+
 1.x FIRST: Searched actual JKHeadley/instar origin/main 6255068a82bf61d771b30f59883eed5a66e9ac58 src/ and docs/specs/ update paths and relevant git history. Read src/core/AutoUpdater.ts restart handshake, src/core/UpdateChecker.ts candidate validation and docs/specs/auto-updater-restart-activation-visibility.md; inspected 41bda81c08 (validate native candidate before restart), 4cba69a2ed (leftover backup recovery), and 015fa6cb16 (boot/update holds). Read ONEX-LESSONS.md section 6. Reuse the already-carried distinction between installed bytes and verified running release, real startup proof and retained prior release. This undefined binding belongs to the 2.0 runner's moved before-send review; retain the carried updater protocol and repair its readiness caller rather than importing unrelated 1.x code.
 
-Verification: The unmodified targeted test and the diagnostic run both reproduced the exact missing handshake. Diagnostic update-state records lastError "replyReviewJob is not defined" after completing installation of 0.1.1. Targeted lifecycle, TypeScript and final cheap-check outputs are recorded in the linked progress report. The physical test exercises both successful candidate activation and failed-candidate rollback, including unchanged authority and zero model calls or sends. No full-suite result is claimed; the pipeline owns that run.
+Verification: The unmodified targeted test and the diagnostic run both reproduced the exact missing handshake. Diagnostic update-state records lastError "replyReviewJob is not defined" after completing installation of 0.1.1. After the fix the targeted physical lifecycle passes 1/1 in 176 seconds. TypeScript and architecture checks pass. The source-pin refusal is resolved by a mechanical register replay, generation c05c7398, with unchanged 307 entries and 122 rules. Final cheap-check outputs are recorded in the linked progress report. The physical test exercises both successful candidate activation and failed-candidate rollback, including unchanged authority and zero model calls or sends. No full-suite result is claimed; the pipeline owns that run.
 
 ## Closing block
 
