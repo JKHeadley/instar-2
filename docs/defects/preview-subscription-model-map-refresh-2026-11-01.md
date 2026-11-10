@@ -1,0 +1,7 @@
+# Preview subscription model-map freshness — 2026-11-01
+
+The exact-head register replay reached `model map stale for preview-subscription-claude` after the October 31 parser and dark-feature deadlines were dispositioned. The former model verification and subsidy estimate timestamp was 2026-09-27 (`1790519680619`), and its declared freshness window had elapsed. This was an independent release gate, not a worker-exit capture test failure.
+
+Echo made one non-serving subscription test call through the enrolled sagemind-luna profile on 2026-11-01 at 19:56 UTC, selecting `claude-sonnet-5` explicitly with session persistence disabled. It exited 0 in 11.8 seconds with `is_error=false` and `MODEL_OK`; the response reported `service_tier=standard` and no fallback credit. The call establishes that the named model doorway answered on that profile at that time. It does not establish future quota availability or live task quality. No request used Justin's serving login.
+
+The model's `verifiedAt` and the subscription subsidy estimate's `updatedAt` are refreshed together to `1793563015140` in `tests/preview/reply-check.declarations.json`. The existing `freshFor` window and estimated ratio remain unchanged; the subsidy remains explicitly estimated. This record is not proof of a monetary discount. Echo owns renewing the probe before the next freshness expiry and keeping serving-placement quota checks separate.

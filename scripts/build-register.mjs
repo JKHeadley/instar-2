@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { decodeMeasurement, canonical, schemas } from '../dist/index.js';
 import { generateRegister, generationOf, renderRegister, invariantCoverage, implementedInvariants, decodeCheckRun,
-  decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion } from '../dist/register/index.js';
+  decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion, deadlineNotice } from '../dist/register/index.js';
 import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, trailingInputs, value, bytes, isDeclarationSource, isActionSource, actionRegistry } from './register-source.mjs';
 import { checkWiring, scanSources } from './check-register-wiring.mjs';
 import { capabilityBriefing, checkShipped } from './register-shipped.mjs';
@@ -17,7 +17,7 @@ const emptyCatalog = { fixtures: [], probes: [], sentinels: [], semanticReviews:
 // Derived pin for this repository replay publication. The desk refreshes the
 // anchor's document and rule hashes and this literal in the same reviewed PR.
 // Operator approval of that PR authorizes publication; this pin grants no runtime authority.
-const approvedConversion = 'sha256:15e4b83604d3aaad0dacbd9a50bb40e97f87878ddb159439d85e6ea876ed2cdb';
+const approvedConversion = 'sha256:56e00c2ae9e1d68a8d1bdcac72f6976fe7c708f126683255d1dff166c3a6d2ff';
 function resolveBuildReferences(root, input, workflow, provider, shape, owner) {
   return (workflow.references ?? []).map(reference => {
     if (reference.provider === 'decoder') {
@@ -148,15 +148,35 @@ export function build(root, commit, options = {}) {
       impossible: ['missing typed declaration argument'], swept: ['resolved static core calls'],
       residual: ['reflection', 'computed ids', 'plugins', 'configuration-loaded routes', ...wiring.residual.map(r => r.reason)] })),
     claims: workflow.claims ?? context.shape.kinds.map(k => ({ kind: k.name, complete: false })),
-    bootstrapRules: converting ? anchor.rules : [] };
+    bootstrapRules: converting ? anchor.rules : [], changed: options.changed ?? null };
   const checked = value(runRegisterChecks(register, checks, context));
   const generation = value(generationOf(register, context));
   const outputs = value(renderRegister(register, generation, checked.terms, checked.graph, context));
   const capabilities = { generation: generation.id, commit: register.commit, ...capabilityBriefing(register, input.inventory, input.show) };
   return { input, register, generation, outputs, completion, conversion, graph: checked.graph, capabilities,
-    authorityPrerequisites: checked.authorityPrerequisites, ownerArtifacts: owner.artifacts, metrics: {
+    authorityPrerequisites: checked.authorityPrerequisites, attention: checked.attention, ownerArtifacts: owner.artifacts, metrics: {
     entries: register.entries.length, rules: checked.graph.rules.length, terms: register.entries.filter(e => e.declaration.kind === 'terms').length,
     warnings: checked.terms.warnings.length, prerequisites: checked.graph.prerequisites.length } };
+}
+// Rule 72: the files the current change touches, so a passed deadline fails only the build that
+// changes what it belongs to.
+// The caller's target/base (or this repository's main target) defines the change, never other
+// unmerged remote tips. Require a unique merge-base; missing/ambiguous history is unknown (Rule 95).
+// Retain every committed touched path, including deletions, plus local and untracked changes.
+export function changedFiles(root) {
+  const git = (args, input) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024,
+    ...(input === undefined ? { stdio: ['ignore', 'pipe', 'ignore'] } : { input, stdio: ['pipe', 'pipe', 'ignore'] }) }).trim();
+  const lines = text => text.split('\n').filter(Boolean);
+  try {
+    const target = process.env.REGISTER_CHANGE_BASE ?? process.env.CHANGE_REVIEW_BASE ?? 'refs/remotes/origin/main';
+    const base = git(['rev-parse', '--verify', `${target}^{commit}`]);
+    const boundaries = lines(git(['merge-base', '--all', 'HEAD', base]));
+    if (boundaries.length !== 1) return null;
+    const commits = git(['rev-list', 'HEAD', '--not', boundaries[0]]);
+    const committed = commits ? lines(git(['diff-tree', '--stdin', '--root', '-m', '-r', '--no-commit-id', '--name-only', '--no-renames'], commits + '\n')) : [];
+    return [...new Set([...committed, ...lines(git(['diff', '--name-only', '--no-renames', 'HEAD'])),
+      ...lines(git(['ls-files', '--others', '--exclude-standard']))])].sort();
+  } catch { return null; }
 }
 export async function run(args, root = process.cwd()) {
   const flag = name => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
@@ -173,7 +193,7 @@ export async function run(args, root = process.cwd()) {
   if (selectedModes.length > 1 || selectedModes.length && workflow?.mode && workflow.mode !== selectedModes[0][1]) throw new Error('ambiguous bootstrap/replay/normal workflow');
   const provider = flag('--provider') ? (await import(pathToFileURL(resolve(root, flag('--provider'))))).provider : undefined;
   const mode = selectedModes[0]?.[1] ?? workflow?.mode ?? (!workflow ? recorded.mode : undefined);
-  const result = build(root, commit, { mode, workflow, provider, ...(flag('--now') ? { now: Number(flag('--now')) } : {}) });
+  const result = build(root, commit, { mode, workflow, provider, changed: changedFiles(root), ...(flag('--now') ? { now: Number(flag('--now')) } : {}) });
   const tracked = execFileSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).trim().split('\n');
   const live = tracked.filter(p => Object.hasOwn(result.input.sources, p) || p.startsWith('docs/rules/') && p.endsWith('.md')
     || isDeclarationSource(p) || isActionSource(p) || p.startsWith('register-source/') && p.endsWith('.json')).sort();
@@ -195,8 +215,19 @@ export async function run(args, root = process.cwd()) {
     if (check) { if (!existsSync(path) || readFileSync(path, 'utf8') !== text) throw new Error(`P3-NF-01/P3-NF-09: generated ${name} differs`); }
     else writeFileSync(path, text);
   }
-  console.log(JSON.stringify({ generation: result.generation.id, commit, ...result.metrics, check, authority: 'shape-only', mode }));
+  // Each passed deadline this build did not touch is one operator attention item (Rule 72). It goes to
+  // the desk's existing deadline notice reader as a REGISTER-DEADLINE line on stderr (stdout stays the
+  // JSON summary); a refusing build's error message carries the same line (see deadlineLines).
+  for (const line of result.attention.map(deadlineNotice)) console.error(line);
+  console.log(JSON.stringify({ generation: result.generation.id, commit, ...result.metrics, check, authority: 'shape-only', mode,
+    ...(result.attention.length ? { attention: result.attention } : {}) }));
+}
+// A deadline refusal (Rule 72: this build changes the overdue feature) ends with its notice line;
+// print it on a line of its own so the desk's reader, which only reads lines starting with it, sees it.
+export function deadlineLines(message) {
+  const at = String(message).indexOf('REGISTER-DEADLINE ');
+  return at < 0 ? [] : [String(message).slice(at)];
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  run(process.argv.slice(2)).catch(error => { console.error(error.message); process.exitCode = 1; });
+  run(process.argv.slice(2)).catch(error => { console.error(error.message); for (const line of deadlineLines(error.message)) console.error(line); process.exitCode = 1; });
 }

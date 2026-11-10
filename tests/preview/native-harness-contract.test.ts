@@ -143,7 +143,14 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
   }, 240000);
 
   it(TITLES[id]?.journal ?? `journal ${id}`, () => {
-    const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile, { INSTAR_PREVIEW_CUTOVER_DOORWAY: id });
+    // Replay the recorded activation inside its valid window, as proofs-launcher does.
+    // Keep elapsed time advancing; production expiry and refusal checks are unchanged.
+    const clockOrigin = Date.now(), clockImport = 'data:text/javascript,' + encodeURIComponent(
+      `const actualNow = Date.now; Date.now = () => ${NOW} + actualNow() - ${clockOrigin};`);
+    const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile, {
+      INSTAR_PREVIEW_CUTOVER_DOORWAY: id,
+      NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${clockImport}`].filter(Boolean).join(' '),
+    });
     harness.setUpdates([message(world, 1, 'What is the marker? Juniper.')]);
     expect(harness.launchLive(2).status).toBe(0);
     const sends = () => harness.calls().filter(call => call.kind === 'send');

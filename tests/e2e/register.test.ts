@@ -449,5 +449,8 @@ describe('compiled register build adapter lifecycle', () => {
       const fail = await runNode(['scripts/build-register.mjs', '--out', root, '--check']);
       expect(fail.status).not.toBe(0); expect(fail.stderr).toContain('P3-NF-09');
     } finally { rmSync(root, { recursive: true, force: true }); }
-  }, 30_000);
+  // Four shipped-CLI replay builds over the real tree. Measured on the Mama PC (WSL2,
+  // 2026-10-03, w4-ugaps): past 30s on cint-L45 itself, before this change. Same fixture
+  // execution-budget class as the two cases above (docs/defects/full-suite-load-timeouts.md).
+  }, 120_000);
 });
