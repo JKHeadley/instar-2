@@ -1,15 +1,15 @@
 # Change review — train-250 answer-check diagnosis
 
-Subject base: 0e90204af53e7459561ec7fc59144cb13bf06af1
+Subject base: 47d0dffffc4d0c48bdf190d0c70b1bee27a568d6
 Review state: open
 Reviewed content: none
-Outcome: Record why the answer gate reported a false failure and reuse the single shared train-249 probe repair. The candidate delivered the requested marker; the browser observer had already returned on an infrastructure reminder.
+Outcome: Supplement the original train-250 integration review with the copied live-path evidence. Record why the answer gate reported a false failure and reuse the single shared train-249 probe repair. The candidate delivered the requested marker; the browser observer had already returned on an infrastructure reminder.
 Affected rules: 26, 34, 35, 36, 37, 42, 43, 49, 62, 70, 74, 89, 101, 102, 111, 113, 116, 123
 Affected floors: secrets remain in existing vault/child memory; spend cap and stop unchanged; no duplicate sends preserved by read-only diagnosis and the existing one-send probe; durable intake and delivery receipts unchanged.
 Operator questions: none
-Suggested tier: ordinary
+Suggested tier: critical
 Declared tier: ordinary
-Tier rationale: This commit records diagnosis and shared desk artifact custody; it changes no product behavior, test guard, prompt or authority.
+Tier rationale: The review subject includes the original critical integration; this evidence supplement changes only documentation and shared desk artifact custody, with no product behavior, test guard, prompt or authority change. Original integration evidence remains in reviews/train-250-change-review.md.
 Side effects: No product change. The shared desk repair waits within the existing 420-second bound for the probe's existing exact marker in its requested topic. Generic sender behavior and the final journal/API-accepted/browser evidence checks remain unchanged. It may wait longer when an infrastructure notice precedes an answer, as intended.
 Undo and recovery: This documentation-only commit can be reverted without changing the journal. Shared desk files have .bak-train-249-repair backups, owned by train-249. Do not revert those independently or resend an uncertain probe. Retain the failed copy read-only for evidence.
 Multi-machine posture: Studio-local proof instrumentation, with the existing room lock and bot ownership. No product ownership, replication or transfer change.
