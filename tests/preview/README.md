@@ -15,7 +15,7 @@ authority, store or outbound path.
 
 ## Capabilities
 
-- `preview-private-reports`: private pages (operator only): {reply:Markdown,privateViewTitle:title (1–256 chars)}; seven days. Host adds dashboard link or phone-unavailable notice.
+- `preview-private-reports`: operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable.
 
 The journal runner's capability briefing is generated from these lines and the feature declarations beside the shipped sources; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
