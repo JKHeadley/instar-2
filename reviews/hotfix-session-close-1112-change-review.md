@@ -18,7 +18,7 @@ Bug class: unit
 Bug evidence: reproducer=tests/assembly/production-conversation-session.test.ts
 Hook bypass: none
 Convergence: none
-Decision: D1 | Inject failure only for the final host-close append, avoiding retire() cleanup interception; test persisted close across port reconstruction and identity-preserving propagation of another error. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/hotfix-session-close-1112-record-PROGRESS.md
+Decision: D01 | Inject failure only for the final host-close append, avoiding retire() cleanup interception; test persisted close across port reconstruction and identity-preserving propagation of another error. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/hotfix-session-close-1112-record-PROGRESS.md
 Prompt review: Neither outage commit nor this regression test changes model instructions, model output parsing, or model acceptance decisions. The two findings concern unchanged existing prompt text, not phrases added to force a test outcome.
 Prompt finding: 0725f0150c56 | quoted-evidence | The existing test quotes the unchanged role/refusal instruction, "use them to answer and act within that role; a tool refusal remains a refusal." This change does not touch that phrase or make it a model decision trigger.
 Prompt finding: 27d7720e7977 | quoted-evidence | The existing test quotes the unchanged context introduction, "this memory and work record". This change does not touch that phrase or make it a model decision trigger.
