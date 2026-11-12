@@ -168,7 +168,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
             if (config.capacity) {
               let admitted = false;
               try {
-                const operatorRequested = state.topics[topic]?.inputs.some(row => row.state === 'queued'
+                const operatorRequested = state.topics[topic]?.inputs.some(row => row.state !== 'settled'
                   && config.operatorRequested?.(row.request.operation) === true) ?? false;
                 let room = await config.capacity(operatorRequested);
                 if (room.memoryPressure && await reclaim()) room = await config.capacity(operatorRequested);

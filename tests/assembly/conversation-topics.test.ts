@@ -985,3 +985,31 @@ it('a held topic reopens through its existing factory after another topic renews
   expect(await f.port.collect('7:held')).toMatchObject({ outcome: { state: 'complete' } });
   expect(timers.size).toBe(0); await f.port.close();
 });
+
+it('operator CPU priority survives accepted-input worker recovery without another delivery', async () => {
+  const f = fixture(8, 6, 16, 600000); let lost = false; const checked: boolean[] = [];
+  const adapterFor = f.config.createAdapter;
+  Object.assign(f.config, { contextRecoveryAllowed: () => true, operatorRequested: () => true,
+    capacity: async (operator = false) => { checked.push(operator); return { admit: operator, memoryPressure: false }; },
+    createAdapter: (topic: string, resolve: Parameters<typeof adapterFor>[1]) => {
+      const adapter = adapterFor(topic, resolve);
+      return { ...adapter, observe: async (input: Parameters<typeof adapter.observe>[0]) => {
+        if (input.delivery && !lost) { lost = true; return { observations: [{ kind: 'exit' as const, evidence: 'exited:worker-exit' }], cursor: input.cursor + 1, complete: true }; }
+        return adapter.observe(input);
+      } };
+    } });
+  Object.assign(f.config.io, { admissionState: () => ({ refused: false, openDelegations: [], uncertainEffects: 0, toolPreparations: 0 }) });
+  expect(await f.port.run(f.request('7:operator'))).toMatchObject({ state: 'complete' });
+  expect(checked).toEqual([true, true]); expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(1);
+  expect(f.state().topics['7']!.inputs[0]?.workerRecovery).toBe('continued'); await f.port.close();
+});
+
+it('a settled operator turn cannot lend CPU priority to later background work', async () => {
+  const f = fixture(8, 6, 16, 600000); const checked: boolean[] = [];
+  Object.assign(f.config, { maxSteps: 1, operatorRequested: (operation: string) => operation === '7:operator',
+    capacity: async (operator = false) => { checked.push(operator); return { admit: operator, memoryPressure: false }; } });
+  expect(await f.port.run(f.request('7:operator'))).toMatchObject({ state: 'complete' });
+  expect(await f.port.run(f.request('7:background'))).toMatchObject({ state: 'queued' });
+  expect(checked).toEqual([true, false]); expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+  await f.port.close();
+});

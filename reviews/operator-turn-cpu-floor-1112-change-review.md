@@ -41,3 +41,5 @@ VERDICT: author submission; no independent production acceptance claim
 
 Independent second pass: review_path concurs with the revised implementation and side-effects review after repairs for mixed-principal queues, renewal fencing, lazy host reopening and safe retry continuation. Accepted minor residue: a revoked grant can leave the last capacity reason visible until ordinary maintenance refreshes state; the status explicitly qualifies retries by authorization. Test execution and live acceptance remain separate evidence.
 Measured change: 84 product lines added+removed across the sampler, coordinator and shipped runner; 99 including the assembly README. Test and review lines excluded from the product measure.
+
+Recovery boundary: CPU priority also follows an unfinished accepted operator input during existing lost-worker/context replacement. A second can-fail test returned uncertain before this repair and completes afterward with two worker launches and one delivery. Historical settled turns grant no priority. The retry timer remains restricted to queued inputs. review_path independently concurred with this expansion.
