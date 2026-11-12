@@ -4604,5 +4604,7 @@ model uses `deferredReports` for relevance or freshness-only objections and `rej
 concrete defects in the result. Only the latter returns ordinary results to work. A writer pass
 retires undelivered results with a complete checklist after five days since their source message,
 retaining results and reasons in `results-retired` records. Open work, dependencies, unknown sends
-and new explicit result defects are excluded. One pull-status line and one sentence on the next
+and unresolved withheld objections (including legacy rows without a defect marker) are excluded.
+Retired context yields whole results to the existing byte limit with an omitted count; source-subject
+memory lookup prioritizes matching retained results without deleting the archive. One pull-status line and one sentence on the next
 ordinary reply disclose retirement; the source audience can ask to list the retained results.

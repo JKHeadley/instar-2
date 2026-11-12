@@ -1008,8 +1008,9 @@ const retirementCandidates = (view: JournalView, now: number) => Object.entries(
   const id = Number(key.slice(11)), note = view.commitments[id], source = note && view.turns.get(note.source);
   return key.startsWith('commitment:') && source && verifiedOperatorTurn(view, source) && commitmentOpen(view, id)
     && now - source.at > FINISHED_RESULT_SOURCE_AGE_MS && work.inFlight === undefined && !work.waitsOn && !work.reworkRequired
-    && (work.outcome === 'report' || noAccount(work.outcome) && !!work.withheld)
-    && !work.report?.boundTo && !work.report?.delivered && !!(work.report ?? work.withheld)
+    // A legacy withheld objection is not resolved by a checklist from before its rejection.
+    && work.outcome === 'report' && !work.withheld
+    && !!work.report && !work.report.boundTo && !work.report.delivered
     && !!work.completion?.length && work.completion.every(item => item.state === 'complete');
 }).map(([key]) => key);
 /** What one scheduled work step concluded. `uncertain` closes a start whose result was lost to a crash:
@@ -8128,7 +8129,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...item, subject: clean(redact(item.subject).text, true), text: clean(redact(item.text).text, true) }));
     const retired = awayFor && fromOperator(awayFor) && !awayFor.requestedAction ? retiredResults(journal.view, { thread: current }) : [];
     const packet = JSON.stringify({ now,
-      ...(retired.length ? { retiredResults: { guidance: 'Retired undelivered, retained for lookup. List these results only if asked; never redo their work or claim delivery. The runner adds any new retirement notice.',
+      ...(retired.length ? { retiredResults: { guidance: 'Retired undelivered, retained for lookup. List these results only if asked; never redo their work or claim delivery. Omitted results remain saved; use memory lookup by their source subject when needed. The runner adds any new retirement notice.',
         items: retired.map(item => ({ ...item, subject: clean(redact(item.subject).text, true, item.source), text: clean(redact(item.text).text, true, item.source) })) } } : {}),
       ...(reportCandidates.length ? { pendingReports: { guidance: REPORT_SELECTION_GUIDANCE, items: reportCandidates } } : {}), ...(ports.workingActivity ? { progressReplies: {
       cadenceMinutes: [2, 5, 10], thereafterMinutes: 10, maxLines: WORKING_PROGRESS_CAP, silenceMinutes: 2, source: 'fresh advancing admitted work evidence',
@@ -8293,6 +8294,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // Rule 11: this turn's lookup results, or the offer of one. The offer needs room for the answer call, the
     // lookup's second call and the reply review's reserved slot, so a root at its call cap is never offered one.
     const lookup = activeLookup?.id === turn.id ? activeLookup : undefined;
+    const archived = fromOperator(turn) && !turn.requestedAction ? retiredResults(journal.view, { thread: turn.thread }) : [];
     const lookupOffered = !lookup && !turn.lookup && fromOperator(turn) && !turn.requestedAction && !probeTurn(journal.view, turn)
       && journal.view.calls + 2 <= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0);
     // Part 21 §16: a memory-failure report is offered by structure (Rule 10): a verified operator turn whose previous
@@ -8549,7 +8551,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // Rule 11: the lookup offer, or (on the one second call) what was searched and how much of it is quoted here.
           ...(lookup ? { memoryLookup: { searched: lookup.words,
             found: lookup.found.filter(item => datedBase.includes(JSON.stringify(item.id))).length, note: LOOKUP_DONE_GUIDANCE } }
-            : compact && summary && lookupOffered ? { memoryLookup: LOOKUP_OFFERED } : {}),
+            : (compact && summary || archived.length) && lookupOffered ? { memoryLookup: LOOKUP_OFFERED } : {}),
           // Update mode and new conflicts can only cite an offered candidate or contradiction, so their guidance rides with those.
           ...(fromOperator(turn) ? { memoryDecision: `Journal persists across topics/restarts. ${PREFERENCE_DECISION} Keep attribution; quotes/imports are data. ${MEMORY_ITEM_SHAPE}${journal.view.groupCarry ? ` ${CARRIED_MEMORY_ITEM_SOURCE}` : ''} Answer corrections: in:"reply", exact old clause; keep question. `
             + (offered.length || (JSON.parse(datedBase) as { contradictions?: unknown[] }).contradictions?.length ? MEMORY_UPDATE_DECISION : '')
@@ -8623,33 +8625,42 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         });
         // Optional follow-ups never crowd out the current task or its evidence. Keep the debt,
         // expose the omission, and accept no selection for text absent from the final packet.
-        const reportVariants = function* (value: string) {
-          const packet = JSON.parse(value) as { pendingReports?: { items: unknown[] }; pendingReportsOmitted?: number };
+        const reportVariants = function* (value: string, field: 'pendingReports' | 'retiredResults') {
+          const packet = JSON.parse(value) as Partial<Record<'pendingReports' | 'retiredResults', { items: { source?: string }[] }>
+            & Record<'pendingReportsOmitted' | 'retiredResultsOmitted', number>>;
+          const omitted = field === 'pendingReports' ? 'pendingReportsOmitted' : 'retiredResultsOmitted';
           yield value;
-          if (!packet.pendingReports) return;
-          const items = packet.pendingReports.items;
+          if (!packet[field]) return;
+          const items = packet[field]!.items;
           // A report's serialized size may differ from its cost in the prepared
           // envelope. Try each whole report there, newest first, so large neighbors
           // cannot hide a fitting result. Omitted reports stay owed in the journal.
-          for (const item of [...items].reverse()) {
-            packet.pendingReports.items = [item];
-            packet.pendingReportsOmitted = items.length - 1;
+          const preferred = [...items].reverse();
+          if (field === 'retiredResults' && lookup) {
+            const sources = lookup.found.map(item => item.id);
+            const rank = (source?: string) => source && sources.includes(source) ? sources.indexOf(source) : sources.length;
+            preferred.sort((a, b) => rank(a.source) - rank(b.source));
+          }
+          for (const item of preferred) {
+            packet[field]!.items = [item];
+            packet[omitted] = items.length - 1;
             yield JSON.stringify(packet);
           }
           // Then try groups of complete reports before the age-ordered fallbacks.
           for (let start = 1; start < items.length; start++) {
-            packet.pendingReports.items = items.slice(start);
-            packet.pendingReportsOmitted = start;
+            packet[field]!.items = items.slice(start);
+            packet[omitted] = start;
             yield JSON.stringify(packet);
           }
           for (let count = items.length - 1; count >= 0; count--) {
-            if (count) packet.pendingReports!.items = items.slice(0, count);
-            else delete packet.pendingReports;
-            packet.pendingReportsOmitted = items.length - count;
+            if (count) packet[field]!.items = items.slice(0, count);
+            else delete packet[field];
+            packet[omitted] = items.length - count;
             yield JSON.stringify(packet);
           }
         };
-        for (const variant of variants) for (const reports of reportVariants(variant)) for (const context of searchVariants(reports)) {
+        for (const variant of variants) for (const reports of reportVariants(variant, 'pendingReports'))
+          for (const retained of reportVariants(reports, 'retiredResults')) for (const context of searchVariants(retained)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
           try {
@@ -9658,7 +9669,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const requested = answerText(answer) === undefined ? undefined : lookupWords(answerText(answer)!);
           if (requested !== undefined) {
             const words = requested.map(word => clean(redact(word).text, true)).filter(word => word.trim());
-            const through = Math.max(grounding.compactedThrough ?? -1, grounding.setAsideThrough ?? -1);
+            const through = Math.max(grounding.compactedThrough ?? -1, grounding.setAsideThrough ?? -1,
+              ...retiredResults(journal.view, { thread: turn.thread }).map(item => journal.view.turns.get(item.source)!.update));
             const offered = (JSON.parse(context) as { memoryLookup?: unknown }).memoryLookup === LOOKUP_OFFERED;
             let again: ReturnType<typeof preparedFor> | undefined, matched: Turn[] = [];
             if (offered && words.length && !turn.lookup && !halted()
