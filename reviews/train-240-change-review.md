@@ -32,3 +32,5 @@ simplestRobustRoute: One ordinary exact-head merge and the existing desk regener
 VERDICT: author submission; independent desk owns landing approval
 
 Decision: train-240-review-repair | Restore governed draft status and both spec versions, index inherited decisions in their original reports, and carry replay publication in the final review range. Preserve the reviewed no-shape implementation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-240-PROGRESS.md
+
+Publication coverage: regenerated outputs from source cf0b90467 are committed with this review update, including the preceding 90c943ad7 replay. Final report records exact SHA and checks.
