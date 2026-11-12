@@ -57,6 +57,8 @@ Burn merge 9767a5b8d does not remove any of these paths or introduce the compact
 
 Recorded evidence: retrospective-duty-followup-train-1-2026-10-08.json replays summary:715672480, uncertain summary 715672483, undecided Jev 715672482, unsure Jev 969389570, reply-review 969389923, delivered 715672479 and empty-context 715672550. Shipped follow-up uses requested-report-proofroom4-2026-10-17.json update 46040219; group disclosure replays proofroom-summary-cascade-stall-2026-09-30.json answer 715672480. Retry replays login-swap-1112.json updates 367056327/328. Captures stay unchanged. All four primary feature suites, restored awareness, self-description, live-failure-regressions and default-context-floor pass; final launcher and gate results are in the report.
 
+Register publication: replayed with the existing generator from 346434e2d5940d5b4bb05fc5c4be7dac073a1649; 312 entries, 123 rules. This record covers the generated follow-up. Final checks, pushed head and exact status are recorded in the Studio report.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the existing context ladder and restored live text; repair outdated fixture dependencies and roster without new mechanisms. Guards remain exact standing, grounding, finite byte/spend/stop limits and durable unique delivery. No deployed or independent acceptance claim.

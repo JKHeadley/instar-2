@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:f35250e39aeed9e735557836bee95031a5fc06790f23896017db8ba8cc907352",
-  "commit": "9767a5b8d1d3ede12c6548fac36d96fe9e96f565",
+  "generation": "sha256:2e34adcc5d2dbeba78452eb8444d0f33b603a65bf8537a581e5fe4bc8bf651ad",
+  "commit": "346434e2d5940d5b4bb05fc5c4be7dac073a1649",
   "launchers": {
     "bin/instar2.mjs": [
       {
@@ -9,7 +9,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "saves Telegram files with bounded admission; keeps refused messages."
       },
       {
         "id": "harness-doorway-parity",
@@ -41,7 +41,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers operator chat/topics; encrypts inbound media with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -49,7 +49,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -57,7 +57,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions, works promises; sends requested results, else holds for next message."
       },
       {
         "id": "preview-private-reports",
@@ -65,7 +65,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
+        "text": "owner-only pages (7d): {reply:Markdown,privateViewTitle:title (1–256 chars)}; host adds link/phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -73,7 +73,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -81,7 +81,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -171,7 +171,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "saves Telegram files with bounded admission; keeps refused messages."
       },
       {
         "id": "harness-doorway-parity",
@@ -203,7 +203,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers operator chat/topics; encrypts inbound media with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -211,7 +211,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -219,7 +219,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions, works promises; sends requested results, else holds for next message."
       },
       {
         "id": "preview-private-reports",
@@ -227,7 +227,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
+        "text": "owner-only pages (7d): {reply:Markdown,privateViewTitle:title (1–256 chars)}; host adds link/phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -235,7 +235,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -243,7 +243,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -333,7 +333,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "saves Telegram files with bounded admission; keeps refused messages."
       },
       {
         "id": "harness-doorway-parity",
@@ -365,7 +365,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers operator chat/topics; encrypts inbound media with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -373,7 +373,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -381,7 +381,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions, works promises; sends requested results, else holds for next message."
       },
       {
         "id": "preview-private-reports",
@@ -389,7 +389,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
+        "text": "owner-only pages (7d): {reply:Markdown,privateViewTitle:title (1–256 chars)}; host adds link/phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -397,7 +397,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -405,7 +405,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -495,7 +495,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "saves Telegram files with bounded admission; keeps refused messages."
       },
       {
         "id": "harness-doorway-parity",
@@ -527,7 +527,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers operator chat/topics; encrypts inbound media with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -535,7 +535,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -543,7 +543,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions, works promises; sends requested results, else holds for next message."
       },
       {
         "id": "preview-private-reports",
@@ -551,7 +551,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
+        "text": "owner-only pages (7d): {reply:Markdown,privateViewTitle:title (1–256 chars)}; host adds link/phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -559,7 +559,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -567,7 +567,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -657,7 +657,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "saves Telegram files with bounded admission; keeps refused messages."
       },
       {
         "id": "harness-doorway-parity",
@@ -689,7 +689,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers operator chat/topics; encrypts inbound media with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -697,7 +697,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -705,7 +705,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions, works promises; sends requested results, else holds for next message."
       },
       {
         "id": "preview-private-reports",
@@ -713,7 +713,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
+        "text": "owner-only pages (7d): {reply:Markdown,privateViewTitle:title (1–256 chars)}; host adds link/phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -721,7 +721,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -729,7 +729,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -819,7 +819,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "saves Telegram files with bounded admission; keeps refused messages."
       },
       {
         "id": "harness-doorway-parity",
@@ -851,7 +851,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers operator chat/topics; encrypts inbound media with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -859,7 +859,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -867,7 +867,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions, works promises; sends requested results, else holds for next message."
       },
       {
         "id": "preview-private-reports",
@@ -875,7 +875,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
+        "text": "owner-only pages (7d): {reply:Markdown,privateViewTitle:title (1–256 chars)}; host adds link/phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -883,7 +883,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -891,7 +891,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
