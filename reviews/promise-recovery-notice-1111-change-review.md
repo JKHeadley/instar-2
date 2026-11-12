@@ -39,7 +39,7 @@ Decision: promise-notice-recheck | Revalidate eligibility after asynchronous adm
 
 Independent review: review_promise_notice read this diff and foundation, raised outcome/history and post-admission eligibility findings, and concurred after repairs. Artifact retained by builder in /tmp/promise-notice-independent-review.md; desk gate review remains independent acceptance.
 
-Mechanical registration: The authenticated desk rehash script refreshed exactly one test-artifact hash in register-source/owner-references/preview.json after npm run build. The desk inventory repin script changed zero entries. Register replay pins the committed source bytes; it is shape evidence, not native self-host certification.
+Mechanical registration: The authenticated desk rehash script refreshed exactly one test-artifact hash in register-source/owner-references/preview.json after npm run build. The desk inventory repin script changed zero entries. Register replay pins source commit 986adb684c7cc4711c2fa3a40eec20a2703fae57, generation fd717d8f30318923212f73ed11547df4c0ca0f6c1d590486d7136ba57bc3b582; it is shape evidence, not native self-host certification.
 
 ## Closing block
 
