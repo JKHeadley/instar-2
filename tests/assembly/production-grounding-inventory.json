@@ -5329,7 +5329,7 @@
     "src/register/fact-schema.ts": "aae18ddf069e54b065e0fc1799874a8815a663da2ed87146855a7522d08dcb62",
     "src/register/generator.ts": "638fde09f07160f0d1b3e35982ac31d8ec98f577734ed68846052d00ed2dbb00",
     "src/register/governance.ts": "8436e0a0bfd96daef6c16972f23c7c27d86ffd05e2327b5a82611142d24c6b1e",
-    "src/register/index.ts": "7e5b9db52920c7489a537513f8077649025412964006e0587d8e5b586135ff1c",
+    "src/register/index.ts": "b4646a67c930bcb815726ed7d4d15e7a8551f7405b0992cd7dcbcbd0554cb986",
     "src/register/landing.ts": "115b4e76af6175803107d1c4ace19132355bdfcfbcaeaa82ddb52f36722c4a5d",
     "src/register/owner-contracts.ts": "51098748a53c467d902355de5a1d511c9beca7d027ab23cdd7995bf95b772f7c",
     "src/register/records.ts": "41856d75860be6da16b821abd42af447a26052ad8936165720d64deb66e9217d",
