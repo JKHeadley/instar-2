@@ -177,6 +177,7 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
       const catalog = await profileCatalog(root);
       context = await chromium.launchPersistentContext(initial.userDataDir, { ...catalog.config.browser.contextOptions, headless: true, serviceWorkers: 'block' });
       context.setDefaultTimeout(5000); context.setDefaultNavigationTimeout(10000);
+      const protectors = new WeakMap();
       const install = async scope => {
         const attached = new WeakMap();
         const protect = page => {
@@ -195,6 +196,7 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
           })());
           return attached.get(page);
         };
+        protectors.set(scope, protect);
         scope.on('page', page => { void protect(page); });
         await Promise.all(scope.pages().map(protect));
         scope.on('requestfinished', request => finished(request._guid, 'observed'));
@@ -224,6 +226,10 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
       await install(context);
       backend = new playwrightTools.BrowserBackend({ ...catalog.config, saveSession: false, snapshot: { mode: 'none' } }, context, catalog.tools);
       await backend.initialize({ cwd: initial.userDataDir });
+      const newTab = backend._context.newTab.bind(backend._context);
+      backend._context.newTab = async name => {
+        const tab = await newTab(name); await protectors.get(tab.page.context())(tab.page); return tab;
+      };
       const isolated = backend._context._createIsolatedContext.bind(backend._context);
       backend._context._createIsolatedContext = async name => { const scope = await isolated(name); await install(scope); return scope; };
       backend._context.redactSecrets = text => {

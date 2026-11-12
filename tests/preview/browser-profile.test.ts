@@ -140,7 +140,7 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   const gate = await createAdmissionGate({ append, effects, stopped: () => stopped, now: Date.now, held: (text: string) => text.includes(secret) ? 'held' : 'clear', profileBrowser: () => Boolean(readRootMcp(root)?.browserProfile) });
   cleanup.push(() => gate.stop());
   const deadline = Date.now() + 90000;
-  gate.open('claim', { framework: 'claude-code', allowance: 80, edge: { id: 'proof-edge', child: 'claim', budget: { deadline } } });
+  gate.open('claim', { framework: 'claude-code', allowance: 100, edge: { id: 'proof-edge', child: 'claim', budget: { deadline } } });
   const privateDirectory = join(root, 'private'); mkdirSync(privateDirectory);
   let guestDispatched = false;
   expect((await gate.observeOwner('guest', 'guest-call', {}, { tool: 'mcp__playwright__browser_snapshot',
@@ -198,8 +198,11 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   expect(JSON.stringify(await worker.rpc('tools/call', { name: 'browser_tabs', arguments: { action: 'list' } }))).toContain('1:');
   expect(await worker.call('browser_navigate', { url: `${origin}/ws` })).toMatchObject({ status: 'observed', text: expect.stringContaining('WebSocket works') });
   expect(socketMessages).toBe(1);
-  expect(await worker.call('browser_tabs', { action: 'new', isolatedContext: 'separate', url: origin })).toMatchObject({ status: 'observed', text: expect.stringContaining('LOGIN') });
-  await worker.call('browser_tabs', { action: 'close' });
+  for (const isolatedContext of ['separate', 'second-isolated', 'third-isolated']) {
+    const tab = await worker.call('browser_tabs', { action: 'new', isolatedContext, url: origin });
+    expect(tab, tab.reason).toMatchObject({ status: 'observed', text: expect.stringContaining('LOGIN') });
+    await worker.call('browser_tabs', { action: 'close' });
+  }
   const beforeFrameWrites = writes;
   expect((await worker.call('browser_navigate', { url: `${origin}/cross-frame` })).status).toBe('observed');
   expect(writes).toBe(beforeFrameWrites + 1);

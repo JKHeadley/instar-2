@@ -48,6 +48,7 @@ channels; it is not a claim that its traffic was inspected by Chromium.
 
 Every page and frame uses context routing and Chromium request interception.
 Named isolated contexts receive the same installation before their pages open.
+New tabs await the checkpoint before navigation starts.
 The pinned backend's first popup request has no frame/CDP target yet: that exact
 request is instead admitted as an `UNINTERCEPTED` consequential operation before
 dispatch. WebSocket origins are checked and each outgoing message passes the
