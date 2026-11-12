@@ -79,6 +79,13 @@ export function buildRunArgv(directory) {
   }
   try { if (!statSync(resolve(root, 'journal.encrypted')).isFile()) refuse('installed journal is missing'); }
   catch { refuse('installed journal is missing'); }
+  // Rules 2/44/100: the standing trust `instar2 setup` recorded (effect-policy.json, Part Twelve) reaches the runner's
+  // effect doorway only through --effect-policy (setup-standing-trust.mjs prints the same instruction). Without it the
+  // runner decides with the empty default: listed connector reads still run, but every recorded grant (a connected
+  // account's write, the owner GitHub read) is silently refused in a copy that works on the hand-maintained launcher.
+  // Rules 15/77/95: unavailable trust refuses affected effects at the checkpoint, never ordinary conversation.
+  // The runner reads a bounded record at startup and each decision; no empty-policy fallback.
+  const policyPath = resolve(root, 'effect-policy.json');
   const argv = ['run', '--root', root];
   const add = (name, value) => argv.push(`--${name}`, String(value));
   for (const name of required.slice(0, 8)) add(name, o[name]);
@@ -88,6 +95,7 @@ export function buildRunArgv(directory) {
   if (primary.toolsActivation) add('tools-activation', primary.toolsActivation);
   add('conversation-session', o['conversation-session']);
   if (primary.sessionActivation) add('session-work-activation', primary.sessionActivation);
+  add('effect-policy', policyPath);
   for (const [name, value] of Object.entries(limits)) add(name, value);
   return argv;
 }
