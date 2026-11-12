@@ -25,7 +25,9 @@ Team posture: Test-local metadata only; existing operator grants, member/guest b
 Rule 42 declaration: notice/status still derive refused versus unknown delivery from durable send outcomes; this repair adds the missing declaration without changing enforcement.
 Evidence report: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/context-default-1112-repair-PROGRESS.md.
 
-Subject (11 paths, plus the existing review declaration): register-source/owner-references/preview.json, tests/integration/host-watch.test.ts, tests/preview/channel-source-launcher.test.ts, tests/preview/harness-login-launcher.test.ts, tests/preview/journal-agent-resources.test.ts, tests/preview/journal-cutover-harness.mjs, tests/preview/journal-overlap.test.ts, tests/preview/review-layers-canary.test.ts, tests/preview/runner-exit-reason.test.ts, tests/preview/self-state-launcher.test.ts, tests/preview/tools-default.test.ts
+Subject (11 source paths, the existing review declaration and derived generated/ output): register-source/owner-references/preview.json, tests/integration/host-watch.test.ts, tests/preview/channel-source-launcher.test.ts, tests/preview/harness-login-launcher.test.ts, tests/preview/journal-agent-resources.test.ts, tests/preview/journal-cutover-harness.mjs, tests/preview/journal-overlap.test.ts, tests/preview/review-layers-canary.test.ts, tests/preview/runner-exit-reason.test.ts, tests/preview/self-state-launcher.test.ts, tests/preview/tools-default.test.ts
+
+Register reproduction: delegated desk rehash refreshed the journal-agent-resources fixture pin. Replay from committed source 47dc372a375d4aca60d5eba26f588cacaa3a216a produced generation sha256:bbd0aeac5de410ff8c64a004885235431a882f5cf046ad43c600e2f10cedc665. Eight generated files changed mechanically.
 
 ## Closing block
 
