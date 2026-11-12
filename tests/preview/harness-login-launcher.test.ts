@@ -208,7 +208,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     expect(sends.some(row => row.text.includes(encodedPrimary))).toBe(false);
     if (!secretAnswer) expect(sends.some(row => row.text.includes('second approved login answered'))).toBe(true);
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
-    expect(journal.view.order[0].modelState).toBe(['pool', 'installed', 'imported', 'missing', 'renamed', 'copied', 'lost-build', 'refused-token'].includes(mode) ? 'rejected'
+    expect(journal.view.order[0].modelState).toBe(refusedToken ? 'rejected'
       : signedOut ? undefined : 'complete');
     expect(journal.view.order.map(turn => turn.update)).toEqual([1, 2, 3]);
     const completed = journal.view.order.filter(turn => turn.modelState === 'complete');
@@ -228,9 +228,13 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     expect(new Set(completed.map(turn => turn.sent)).size).toBe(completed.length);
     const failed = journal.view.order.filter(turn => turn.modelState !== 'complete');
     if (['pool', 'installed', 'imported', 'missing', 'renamed', 'copied', 'lost-build'].includes(mode)) {
-      expect(failed).toHaveLength(1); expect(failed[0].update).toBe(1);
-      expect(failed[0].failureClass).toBe('capacity'); expect(failed[0].sent).toBeUndefined();
-      expect(failed[0].raw).toContain('Please say hello.'); // Retained failed work, never replayed as another attempt.
+      // Only the captured zero-usage quota failure retries; its same turn answers once on B.
+      expect(failed).toHaveLength(0); expect(completed.map(turn => turn.update)).toEqual([1, 2, 3]);
+      expect(completed[0].capacityLogins).toEqual(['serving-a', 'serving-b']);
+      expect(journal.view.failureClasses.get('capacity')).toBe(1);
+      expect(completed[0].raw).toContain('Please say hello.');
+      expect(rows.filter(row => row.account === 'serving-a')).toHaveLength(1);
+      expect(sends).toHaveLength(3);
     } else if (refusedToken) {
       // The refused call is settled as the one ordinary failure line; it is never retried. Later turns run on B.
       expect(failed).toHaveLength(1); expect(failed[0].update).toBe(1); expect(failed[0].failureClass).toBe('rejected');

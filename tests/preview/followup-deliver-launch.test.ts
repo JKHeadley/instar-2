@@ -124,7 +124,7 @@ createServer((req,res)=>{const chunks=[]; req.on('data',b=>chunks.push(b)); req.
     else expect(sends()[0].body.text).toContain(JSON.parse(recorded.work).report);
     if (mode==='uncertain') expect(sends()[1].body.text).toContain('My answer may not have arrived.');
     journal = openPreviewJournal(path, OFFLINE_STORAGE_KEY);
-    expect(journal.view.closed.has(0)).toBe(mode!=='uncertain');
+    expect(journal.view.closed.has(0), JSON.stringify({ commitments: journal.view.commitments, turns: journal.view.order.map(t => ({ id: t.id, text: t.text, grounding: t.grounding, dropped: t.packetDropped, answer: t.answer, obligations: t.obligations })) })).toBe(mode!=='uncertain');
     expect(journal.view.obligationWork['commitment:0'].report.delivered !== undefined).toBe(mode==='delivered');
     journal.close();
     // A fresh launcher rereads the durable receipt; it must not deliver the result again.

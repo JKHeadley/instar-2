@@ -380,7 +380,7 @@ it.each([['model', false], ['subscription', false], ['send', false], ['model', t
     'modelRoute', 'performance', 'required', 'options', 'recordModelCall', 'selectLogin', 'loginPool', `return (async ${subscriptionCode});`)(
     journalProxy, requireAt('subscription'), ModelDisclosureRefused, () => {}, null,
     () => ({ invoke: async () => { modelLaunch.started(); providerCalls++; return { state: 'complete', bytes: recorded.text }; } }),
-    { now: () => 0 }, () => 'fixture', {}, () => {}, () => ({}), null);
+    { now: () => 0 }, () => 'fixture', {}, () => {}, () => ({ profile: { reference: 'disclosure-fixture-login' } }), null);
   const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools', 'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', 'conversationSession', `return (${modelFunction});`)(
     journalProxy, requireAt('model'), () => false, () => false, () => { throw Error('unused'); },
     async (prepared: string, id: string) => { const result = await subscription('answer', prepared, id, {}); return { state: result.state, value: result.bytes }; },

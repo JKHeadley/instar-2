@@ -191,7 +191,7 @@ measured bound proposal is in the R5 progress handoff.
 
 ## Capabilities
 
-- `harness-doorway-parity`: binds each harness and model doorway to certified code; the rest are unproven.
+- `harness-doorway-parity`: binds harness/model doors to certified code; others unproven.
   Details: binds each supported harness and model doorway to its certified code and runtime; the rest are marked unproven or unsupported.
 
 ## Continuing conversation (proof-room option)

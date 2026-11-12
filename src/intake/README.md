@@ -192,5 +192,5 @@ maps all 29 design checks to actual executed tests and explicit out-of-slice ski
 
 ## Capabilities
 
-- `intake-slice`: captures every inbound message before work; uncertain ones are kept.
+- `intake-slice`: captures inbound before work; keeps uncertain messages.
   Details: every inbound requester message is captured and receipted or held before any work, with an exact dedup, authentication, resolution and operator-stop brake; an uncertain arrival is kept, never discarded.

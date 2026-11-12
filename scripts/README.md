@@ -24,10 +24,10 @@ The operator still supplies every real approval; the agent never approves as the
 
 ## Capabilities
 
-- `threadline-default-exchange`: local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts.
+- `threadline-default-exchange`: local peer data: owner-signed private scope, custody, checkpoints, signed receipts.
   Details: sends and receives private peer data through the checkpoint, with owner-signed scope, custody and authenticated receipts; local routes only. See `docs/threadline-default.md`.
 
-- `installed-update-verification`: updates itself; a failure keeps the current release.
+- `installed-update-verification`: self-updates; failure keeps current release.
   Details: The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Idle same-release repair uses that transaction; automatic host commands use the existing maintenance resource owner, and the standalone command attaches its own. A durable healthy release supports watchdog recreation, with schema refusal before unsafe fallback. Details and row-87 evidence: `docs/update.md`.
 
 ## Placement
