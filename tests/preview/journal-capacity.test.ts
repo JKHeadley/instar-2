@@ -145,9 +145,11 @@ const { id: _id, role: _role, at: _at, ...timeoutOutcome } = timeoutCapture.lost
 
 it.each(['capacity', 'not-started', 'unknown', 'success'] as const)(
   'handles a format retry ending in %s without refunding the first call', async outcome => {
-    const { journal, path } = setup(); let calls = 0; const sent: string[] = [];
+    const { journal, path } = setup(); let calls = 0, recoveryCalls = 0; const sent: string[] = [];
     const ports: PreviewPorts = { now: () => 1000, stopped: () => false, checkOutbound: () => {},
       model: async ({ id }) => {
+        // The shipped recovery route has no tools; its uncertain account remains charged too.
+        if (id.startsWith('recovery:')) { recoveryCalls++; return { state: 'uncertain' }; }
         calls++;
         // Each invocation may reserve tool liability. Only the unlaunched invocation's share is released.
         journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: calls - 1, calls: 3, at: 1000 });
@@ -160,7 +162,9 @@ it.each(['capacity', 'not-started', 'unknown', 'success'] as const)(
     const worker = createJournalWorker(journal, ports);
     worker.intake([message(1)]); await worker.drain();
     expect(calls).toBe(2);
-    expect(journal.view.calls).toBe(outcome === 'not-started' ? 4 : 8);
+    const charged = outcome === 'not-started' ? 4 : outcome === 'unknown' ? 9 : 8;
+    expect(journal.view.calls).toBe(charged);
+    expect(recoveryCalls).toBe(outcome === 'unknown' ? 1 : 0);
     expect(journal.view.toolTurns?.reservedCalls).toBe(outcome === 'not-started' ? 3 : 6);
     expect(journal.view.tokenCalls[0]).toMatchObject({ input: 20, output: 10, observedInput: true, observedOutput: true });
     if (outcome === 'capacity') {
@@ -170,11 +174,13 @@ it.each(['capacity', 'not-started', 'unknown', 'success'] as const)(
       expect(sent).toEqual([MODEL_NOT_STARTED_REPLY]); expect(journal.view.order[0]?.held).toBe(MODEL_NOT_STARTED_HOLD);
       expect(journal.view.tokenTotals.answer).toMatchObject({ inputTokens: 20, outputTokens: 10, unknownCalls: 0 });
     } else if (outcome === 'success') expect(sent[0]).toContain('Recovered answer');
-    else expect(sent).toEqual([]);
-    expect(pendingUnknownCalls(journal.view)).toHaveLength(outcome === 'unknown' ? 1 : 0);
+    else { expect(sent).toHaveLength(1); expect(sent[0]).toContain('Unfinished:'); }
+    expect(pendingUnknownCalls(journal.view)).toHaveLength(outcome === 'unknown' ? 2 : 0);
     journal.compact(); journal.close(); const reopened = openPreviewJournal(path, key);
     await createJournalWorker(reopened, ports).drain(); expect(calls).toBe(2);
-    expect(reopened.view.calls).toBe(outcome === 'not-started' ? 4 : 8); reopened.close();
+    expect(recoveryCalls).toBe(outcome === 'unknown' ? 1 : 0);
+    expect(sent).toHaveLength(1);
+    expect(reopened.view.calls).toBe(charged); reopened.close();
   });
 
 it.each(['capacity', 'not-started'] as const)('handles %s on the replacement of the recorded timeout while retaining UNKNOWN', async outcome => {

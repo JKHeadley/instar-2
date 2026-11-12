@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
-import { createJournalWorker, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 // @ts-expect-error Shipped physical runner is JavaScript.
 import { runToolTurn } from './tool-turn.mjs';
@@ -23,6 +23,8 @@ async function replay(mode: Mode, returned?: unknown, unknownSend = false, gateR
     from: { id: 7654321 }, text: capture.prompt } };
   const ports = { now: () => 1000, stopped: () => stopped,
     model: async (input: { id: string }) => {
+      // Production routes recovery IDs away from the tool loop. Exercise its factual fallback.
+      if (input.id.startsWith('recovery:')) return { state: 'uncertain' as const };
       const outcome = await runToolTurn({ journal, root, id: input.id, prepared: '{}', promptLimit: 131072,
         deniedRoots: [root], operations: SINGLE_MACHINE_PROFILE.operations, now: () => 1000, redactText: (text: string) => text,
         stopped: () => stopped, fallback: async () => { throw Error('unexpected fallback'); },
@@ -51,7 +53,9 @@ async function replay(mode: Mode, returned?: unknown, unknownSend = false, gateR
     }, checkOutbound: () => {}, send: async (input: { expectedText: string }) => { sent.push(input.expectedText); return unknownSend ? null : 1; } };
   try {
     const worker = createJournalWorker(journal, ports);
-    worker.intake([update]); await worker.drain();
+    worker.intake([update]);
+    if (mode === 'stop') await expect(worker.drain()).rejects.toThrow('preview stopped');
+    else await worker.drain();
     if (stopped) await expect(worker.drain()).rejects.toThrow('preview stopped');
     else await worker.drain();
     const before = structuredClone(journal.view.order[0]);
@@ -67,9 +71,9 @@ for (const mode of ['exit-1', 'rejected', 'uncertain'] as const) it(`T4 ${mode}:
   expect(capture).toMatchObject({ sourceUpdate: 46040734, modelExit: 1, answer: null, telegramMessageId: null });
   expect(result.launches).toBe(1);
   expect(result.sent).toHaveLength(1);
-  expect(result.sent[0]).toContain(UNKNOWN_ANSWER_NOTICE);
-  expect(result.sent[0]).toContain('6 tool checks returned results');
-  expect(result.sent[0]).toContain('requested result remains unverified');
+  expect(result.sent[0]).toContain('Finished and recorded:');
+  expect(result.sent[0]).toContain('6 tool calls returned results');
+  expect(result.sent[0]).toContain('Unfinished: a verified answer');
   expect(result.sent[0]).not.toContain('curl');
   expect(result.before).toMatchObject({ modelState: 'uncertain', toolChecks: 6, noticeClass: 'unknown-answer', sent: 1 });
   expect(result.after).toMatchObject({ modelState: 'uncertain', toolChecks: 6, sent: 1 });
@@ -80,20 +84,23 @@ it('a refused host checkpoint after six checked tools reaches one honest notice'
   const result = await replay('exit-1', undefined, false, true);
   expect(result.launches).toBe(1);
   expect(result.sent).toHaveLength(1);
-  expect(result.sent[0]).toContain('6 tool checks returned results');
+  expect(result.sent[0]).toContain('6 tool calls returned results');
   expect(result.after).toMatchObject({ modelState: 'uncertain', toolChecks: 6, noticeClass: 'unknown-answer' });
 });
 
-it('a refused host checkpoint with an incomplete tool result remains held', async () => {
+it('a refused host checkpoint with an incomplete tool result accounts for unfinished work without replay', async () => {
   const result = await replay('missing-result', undefined, false, true);
   expect(result.launches).toBe(1);
-  expect(result.sent).toEqual([]);
+  expect(result.sent).toHaveLength(1);
+  expect(result.sent[0]).toContain('Unfinished: a verified answer');
   expect(result.after?.toolChecks).toBeUndefined();
 });
 
-for (const mode of ['missing-result', 'stop', 'no-checks'] as const) it(`${mode}: incomplete evidence or stop never authorizes replay or the checked-results notice`, async () => {
+for (const mode of ['missing-result', 'stop', 'no-checks'] as const) it(`${mode}: incomplete evidence permits only accounting; stop remains silent`, async () => {
   const result = await replay(mode);
-  expect(result.launches).toBe(1); expect(result.sent).toEqual([]);
+  expect(result.launches).toBe(1);
+  if (mode === 'stop') expect(result.sent).toEqual([]);
+  else { expect(result.sent).toHaveLength(1); expect(result.sent[0]).toContain('Unfinished: a verified answer'); }
   expect(result.after?.toolChecks).toBeUndefined();
 });
 

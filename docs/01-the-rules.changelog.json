@@ -1,5 +1,21 @@
 [
   {
+    "revision": 24,
+    "date": "2026-11-09",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Restores revision 22's approved wording (Justin, topic 102965, 2026-11-08 12:00 PST [source: telegram 102965/140776 2026-11-08]); no new wording. Branch train-230's merge of main 7912b0d0 (a79f17e4c) kept main's rule text and dropped the sentence while its changelog kept revision 22; the merge of live build 2f7a76ad puts the approved text back. Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Restore Rule 72's approved check sentence: \"A deadline that has passed fails only builds that change the feature it belongs to, and puts an item in front of the operator; every other build keeps moving.\"",
+        "why": "A merge had dropped the sentence from the rule text while the history still recorded it as made; the text and its history now agree again, matching the live build.",
+        "ref": "Revision 22; Justin, topic 102965, 2026-11-08 12:00 PST [source: telegram 102965/140776 2026-11-08]; reviews/train-230-repair-161815-change-review.md."
+      }
+    ]
+  },
+  {
     "revision": 23,
     "date": "2026-11-05",
     "status": "draft",
