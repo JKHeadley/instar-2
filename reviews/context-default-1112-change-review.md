@@ -4,7 +4,7 @@ Subject base: e3cb0f08d3a74d70c9e059edbd64fc457492bfff
 Review state: open
 Reviewed content: none
 Outcome: A fresh journal derives its complete-prompt allowance from the selected model’s captured window and the measured fixed packet; existing journals retain their own cap. Fixed-context overflow produces an honest saved-input notice and retains that input for recall after an authorized raise.
-Affected rules: 4, 7, 13, 14, 15, 30, 36, 40, 44, 47, 55, 60, 75, 77, 78, 84, 95, 96, 101, 103, 113, 116, 123; purpose: no arbitrary capability limit and no loss of self-knowledge
+Affected rules: 4, 7, 13, 14, 15, 30, 36, 40, 42, 44, 47, 55, 60, 75, 77, 78, 84, 95, 96, 101, 103, 113, 116, 123; purpose: no arbitrary capability limit and no loss of self-knowledge
 Affected floors: secrets — existing redaction/custody; spend cap — same call/turn/output/effect bounds, finite larger input and unchanged subscription UNKNOWN charge; stop — same checks; no duplicate sends — same durable intent/receipt and replay test; durable intake — unchanged encrypted originals, including context-limited input after repair
 Operator questions: none
 Suggested tier: critical

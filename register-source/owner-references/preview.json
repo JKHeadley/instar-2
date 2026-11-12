@@ -127,7 +127,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-agent-resources.test.ts",
-        "hash": "sha256:5a54dbcb8fd7540873adf98d5651addb69299cb6a75791a144df8930435e3868"
+        "hash": "sha256:f6e91c20f45425473fa5de541fb17abf47f70ad43ce8d8c10aded05305555a96"
       }
     },
     {

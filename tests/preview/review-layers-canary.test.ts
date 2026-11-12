@@ -141,7 +141,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         '--operator-sender-id', world.configuration.operatorSenderId,
         '--grant-reference', trial.id, '--configuration-digest', trial.configurationDigest,
         '--expires-at', String(trial.expiresAt), '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),
-        '--login-profile', profile, '--model', world.model,
+        '--login-profile', profile, '--model', world.model, '--model-context-tokens', '1000000',
         '--bot-username', world.configuration.botUsername, '--max-cycles',
         mode === 'summary-contradiction' ? '1' : '3', '--max-poll-seconds', '1'],
       { cwd: process.cwd(), timeout: CHILD_TIMEOUT, env });

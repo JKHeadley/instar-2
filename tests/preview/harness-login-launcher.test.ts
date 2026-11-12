@@ -124,7 +124,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       'tests/preview/journal-agent.mjs', 'run', '--root', root, '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id, '--configuration-digest', trial.configurationDigest,
       '--expires-at', String(trial.expiresAt), '--tools', 'off', '--activation-record', logins[0].activation, '--login-profile', logins[0].profile,
-      ...(mode === 'pool' || signedOut ? ['--login-pool', manifest] : []), '--harness-user', 'offline-harness', '--operator-records', join(directory, 'operator-records'), '--model', world.model,
+      ...(mode === 'pool' || signedOut ? ['--login-pool', manifest] : []), '--harness-user', 'offline-harness', '--operator-records', join(directory, 'operator-records'), '--model', world.model, '--model-context-tokens', '1000000',
       '--bot-username', world.configuration.botUsername, '--max-cycles', '6', '--max-poll-seconds', '1'];
     const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'synthetic', INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',

@@ -90,7 +90,7 @@ server.listen(0,'127.0.0.1',()=>process.stdout.write(String(server.address().por
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
       '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),
-      '--login-profile', profile, '--model', world.model, '--bot-username', world.configuration.botUsername,
+      '--login-profile', profile, '--model', world.model, '--model-context-tokens', '1000000', '--bot-username', world.configuration.botUsername,
       '--max-cycles', '1', '--max-poll-seconds', '1'];
     const env = { ...process.env,
       INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),

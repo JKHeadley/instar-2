@@ -47,7 +47,7 @@ async function launch(name: string, authority: (record) => object | null, extra:
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
       '--activation-record', activationPath, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile,
-      '--model', world.model, '--bot-username', world.configuration.botUsername, '--max-cycles', '2', '--max-poll-seconds', '1', ...extra],
+      '--model', world.model, '--model-context-tokens', '1000000', '--bot-username', world.configuration.botUsername, '--max-cycles', '2', '--max-poll-seconds', '1', ...extra],
     { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env: { ...process.env,
       INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'), INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'offline-placeholder',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` } });
@@ -177,7 +177,7 @@ async function liveStatus(initial, withdraw: (seal, unsealed, authorityPath: str
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
       '--activation-record', activationPath, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile,
-      '--model', world.model, '--bot-username', world.configuration.botUsername, '--max-cycles', '12', '--max-poll-seconds', '1'],
+      '--model', world.model, '--model-context-tokens', '1000000', '--bot-username', world.configuration.botUsername, '--max-cycles', '12', '--max-poll-seconds', '1'],
     { cwd: process.cwd(), stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env,
       INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'), INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'offline-placeholder',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` } });
