@@ -140,7 +140,7 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
   const { redact } = await import('../../src/recall/redact.js');
   const { METHOD_OVERRIDES } = await import('./tool-admission.mjs');
   const root = process.argv[3], name = process.argv[4], initial = readBrowserProfile(root, name);
-  let context, backend, action, refusal, outputHeld, active = false, effectSequence = 0;
+  let context, backend, action, refusal, outputHeld, protectCode, active = false, effectSequence = 0;
   const effects = new Map(), networkEffects = new Map(), completions = new Map();
   const finished = (requestId, status) => {
     for (const effect of networkEffects.get(requestId) ?? []) {
@@ -153,6 +153,10 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
   const prepareRequest = (request, networkId) => {
     const headers = Object.fromEntries(Object.entries(request.headers).map(([key, value]) => [key.toLowerCase(), value]));
     const methods = [request.method, ...METHOD_OVERRIDES.flatMap(key => String(headers[key] ?? '').split(',').map(value => value.trim().toUpperCase()).filter(Boolean))];
+    if (secretMaterialIn(JSON.stringify({ url: request.url, body: request.postData ?? request.postDataEntries,
+      headers: Object.fromEntries(Object.entries(headers).filter(([name]) => !['cookie', 'authorization'].includes(name))) }), [...held])) {
+      refusal = 'output-secret-check'; return Promise.resolve(false);
+    }
     const method = methods.find(value => !['GET', 'HEAD'].includes(value));
     if (!method) return Promise.resolve(true);
     if (!action) return Promise.resolve(false);
@@ -235,6 +239,12 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
         });
       };
       await install(context);
+      protectCode = async () => {
+        for (const scope of context.browser().contexts()) {
+          if (!protectors.has(scope)) await install(scope);
+          await Promise.all(scope.pages().map(protectors.get(scope)));
+        }
+      };
       backend = new playwrightTools.BrowserBackend({ ...catalog.config, saveSession: false, snapshot: { mode: 'none' } }, context, catalog.tools);
       await backend.initialize({ cwd: initial.userDataDir });
       const newTab = backend._context.newTab.bind(backend._context);
@@ -257,7 +267,12 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
     await capture();
     action = { tool, input, completions: [] }; refusal = null; outputHeld = false;
     try {
-      const output = await backend.callTool(tool, input);
+      const output = tool === 'browser_run_code_unsafe'
+        ? await (await import('./browser-code.mjs')).runProfileCode({ context, page: backend._context.currentTab().page,
+          code: input.filename ? readFileSync(input.filename, 'utf8') : input.code,
+          clear: text => !redact(text).count && !secretMaterialIn(text, [...held]), allowed, protect: protectCode, capture,
+          refused: reason => { refusal = reason; } })
+        : await backend.callTool(tool, input);
       await Promise.all(action.completions);
       if (refusal) return profileRefused(refusal);
       const page = backend._context.currentTab()?.page;

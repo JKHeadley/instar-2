@@ -37,14 +37,20 @@ non-GET/HEAD traffic receives a separate durable consequential identity containi
 the tool input, method, URL and body digest; uncertain writes cannot be repeated.
 Workers cannot supply this host-owned request envelope.
 
-`browser_run_code_unsafe` executes in the server process and can use `fetch`
-outside browser interception. Each call therefore passes the existing effect
-owner as consequential, even if a read list or reversible registration says
-otherwise. The refusal names the required target and profile grant. Filename
-operations, isolated-context creation and binary/file transfer tools also use
-this class where ordinary request/text interception cannot cover the operation.
-The grant authorizes the whole such operation, including its un-intercepted
-channels; it is not a claim that its traffic was inspected by Chromium.
+`browser_run_code_unsafe` retains the pinned handler and Playwright client API in
+an OS-confined child of the existing resource-owned browser process. The child
+cannot read profile/host files, write enforcement code, open sockets or spawn
+processes. It reaches the browser through the pinned Playwright protocol; the
+custodian checks credential-bearing responses before delivering them to code.
+Server-side `fetch` uses a bounded host transport that checks URL, headers and
+body before dispatch. Replacing the worker's JavaScript globals cannot replace
+these checks or the kernel boundary. Host process/file/listener control stays
+behind the custody checkpoint; ordinary page APIs and permitted fetch remain.
+Each code call remains consequential under its existing whole-operation grant,
+without an additional prompt. Filename operations, isolated-context creation and
+binary/file transfer tools retain that classification. A scope grant never
+waives the credential checkpoint. The fixed-worker macOS profile is required;
+an unavailable confinement mechanism refuses without an unconfined fallback.
 
 Every page and frame uses context routing and Chromium request interception.
 Named isolated contexts receive the same installation before their pages open.
@@ -57,10 +63,10 @@ HTTP observations follow network completion. WebSocket observations mean a
 message was handed to the transport, not that the remote application accepted it.
 
 Cookies, local/session storage and IndexedDB strings are inventoried across
-browser contexts and frames before and after tool execution. Credential checks
+browser contexts and frames before and after tool execution and before code receives a protocol response. Credential checks
 run before output reaches the worker or its journal. The parent retains a bounded,
 additive inventory over host-private IPC and checks results independently, so code
-executing in the child cannot bypass the checkpoint by forging a protocol reply.
+executing in the confined code child cannot bypass the checkpoint by forging a protocol reply.
 The inventory never enters a model response or journal. Automatic MCP snapshot and
 console files are not published; console tools retain their in-memory messages
 and use the same checked output. The host child's stderr is not exposed. Existing
