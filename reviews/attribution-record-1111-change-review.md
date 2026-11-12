@@ -48,7 +48,9 @@ An agent can say that someone set a rule without being able to show where that p
 
 Over-block: none added; the new surface always returns no refusal. Under-block: deliberately no enforcement, unknown sources remain observable only. Abstraction: existing journal model-call and review owners. Signal vs authority: records only, no new authority. Interactions: serial with existing post-send reviews; consumes the same bounded allowance. External surfaces: existing model doorway only, no new notification or route. Rollback: switch off; journal remains compatible. Missing judgments and long inputs keep the existing explicit unchecked record.
 
-Verification: See attribution-record-1111-PROGRESS.md for commands and exit codes; author submission does not claim live deployment.
+Verification: Four focused suites passed (124 tests), followed by 19 selected recording/replay cases including modern and legacy partial-delivery handling. Production build and typecheck passed. Final checks and host-dependent results are recorded in attribution-record-1111-PROGRESS.md; no live deployment is claimed.
+Independent review: reviewer review_attribution concurred after repair of startup switch observation and modern/legacy partial-delivery handling; no remaining substantive concern.
+Mechanical pins: owner-reference preview artifact hash and generated register generation/source-commit references were refreshed by the existing desk hash tool and register generator. No declarations or authority widened.
 
 ## Closing block
 
