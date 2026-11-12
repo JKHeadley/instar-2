@@ -75,8 +75,9 @@ export function createProfileBrowser({ binding, hold, check, call, deadline, sto
           const row = JSON.parse(line);
           if (row.effect) {
             let admitted = false;
-            const adapter = Object.assign(() => new Promise(resolve => {
-              admitted = true; pending.set(`effect:${row.effect}`, resolve);
+            const adapter = Object.assign(() => new Promise((resolve, reject) => {
+              admitted = true; pending.set(`effect:${row.effect}`, result => result.status === 'observed'
+                ? resolve(result) : reject(Error('browser request completion unavailable')));
               child.stdin.write(`${JSON.stringify({ effect: row.effect, admitted: true })}\n`);
             }), { binding });
             void call(`browser-effect:${row.effect}`, `mcp__playwright__${row.tool}`, row.input, adapter)
@@ -122,7 +123,7 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
   const { METHOD_OVERRIDES } = await import('./tool-admission.mjs');
   const root = process.argv[3], name = process.argv[4], initial = readBrowserProfile(root, name);
   let context, page, action, refusal, active = false, effectSequence = 0;
-  const effects = new Map(), networkEffects = new Map();
+  const effects = new Map(), networkEffects = new Map(), completions = new Map();
   const prepareRequest = (request, networkId) => {
     const headers = Object.fromEntries(Object.entries(request.headers).map(([key, value]) => [key.toLowerCase(), value]));
     const methods = [request.method, ...METHOD_OVERRIDES.flatMap(key => String(headers[key] ?? '').split(',').map(value => value.trim().toUpperCase()).filter(Boolean))];
@@ -133,6 +134,7 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
     if (body === null || !networkId) return Promise.resolve(false);
     const effect = ++effectSequence, input = { ...action.input, browserEffect: { method, url: request.url,
       bodyDigest: `sha256:${createHash('sha256').update(body).digest('hex')}` } };
+    action.completions.push(new Promise(resolve => completions.set(effect, resolve)));
     return new Promise(resolve => {
       effects.set(effect, resolve);
       networkEffects.set(networkId, [...networkEffects.get(networkId) ?? [], effect]);
@@ -159,7 +161,11 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
       page = context.pages()[0] ?? await context.newPage();
       const network = await context.newCDPSession(page);
       const finished = (event, status) => {
-        for (const effect of networkEffects.get(event.requestId) ?? []) process.stdout.write(`${JSON.stringify({ effectDone: effect, status })}\n`);
+        for (const effect of networkEffects.get(event.requestId) ?? []) {
+          if (status !== 'observed') refusal = 'network-result-unavailable';
+          completions.get(effect)?.(); completions.delete(effect);
+          process.stdout.write(`${JSON.stringify({ effectDone: effect, status })}\n`);
+        }
         networkEffects.delete(event.requestId);
       };
       network.on('Network.loadingFinished', event => finished(event, 'observed'));
@@ -173,7 +179,7 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
       await network.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
     }
     await capture();
-    action = { tool, input }; refusal = null;
+    action = { tool, input, completions: [] }; refusal = null;
     try {
       if (tool === 'browser_navigate') await page.goto(input.url);
       else if (tool === 'browser_click') await page.locator(input.selector).click();
@@ -181,6 +187,7 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
       else if (tool === 'browser_hover') await page.locator(input.selector).hover();
       else if (tool === 'browser_press_key') await page.keyboard.press(input.key);
       else if (tool === 'browser_wait_for') await page.getByText(input.text, { exact: true }).waitFor();
+      await Promise.all(action.completions);
       if (refusal) return profileRefused(refusal);
       if (!allowed(page.url())) return profileRefused('site-scope');
       const result = { status: 'observed', url: page.url(), text: await page.locator('body').ariaSnapshot() };

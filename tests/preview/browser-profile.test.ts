@@ -79,6 +79,8 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
     if (req.url === '/new-token') { res.setHeader('Content-Type', 'text/html'); res.end(`<body>${displayedToken}</body>`); return; }
     if (req.url === '/escape') { res.writeHead(302, { Location: escape }); res.end(); return; }
     if (req.url === '/same-site') { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    if (req.url === '/lost-form') { res.setHeader('Content-Type', 'text/html'); res.end('<form method="post" action="/lost"><button>Save</button></form>'); return; }
+    if (req.url === '/lost') { req.socket.destroy(); return; }
     if (req.url === '/override') { res.setHeader('Content-Type', 'text/html'); res.end('<h1>Override attempt</h1><script>fetch("/", {headers:{"X-HTTP-Method-Override":"POST"}})</script>'); return; }
     if (req.url === '/idb-leak') { res.setHeader('Content-Type', 'text/html'); res.end('<body><script>const r=indexedDB.open("authdb");r.onsuccess=()=>{const q=r.result.transaction("auth").objectStore("auth").get("credential");q.onsuccess=()=>{document.body.innerHTML="<p>Leak ready</p><p></p>";document.body.lastChild.textContent=q.result;};};</script>'); return; }
     if (req.method === 'POST' || req.headers['x-http-method-override'] === 'POST') {
@@ -123,7 +125,7 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   const gate = await createAdmissionGate({ append, effects, stopped: () => stopped, now: Date.now, held: (text: string) => text.includes(secret) ? 'held' : 'clear', profileBrowser: () => Boolean(readRootMcp(root)?.browserProfile) });
   cleanup.push(() => gate.stop());
   const deadline = Date.now() + 90000;
-  gate.open('claim', { framework: 'claude-code', allowance: 30, edge: { id: 'proof-edge', child: 'claim', budget: { deadline } } });
+  gate.open('claim', { framework: 'claude-code', allowance: 40, edge: { id: 'proof-edge', child: 'claim', budget: { deadline } } });
   const privateDirectory = join(root, 'private'); mkdirSync(privateDirectory);
   let guestDispatched = false;
   expect((await gate.observeOwner('guest', 'guest-call', {}, { tool: 'mcp__playwright__browser_snapshot',
@@ -164,6 +166,11 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   expect(preparedAtWrite).toBe(true); expect(observedBeforeWrite).toBe(false);
   expect(await worker.call('browser_click', { selector: 'button' })).toMatchObject({ status: 'refused' }); expect(writes).toBe(1);
   expect(rows.filter(row => row.state === 'prepared' && row.cause?.includes('bodyDigest'))).toHaveLength(1);
+  await worker.call('browser_navigate', { url: `${origin}/lost-form` });
+  expect(await worker.call('browser_click', { selector: 'button' })).toMatchObject({ status: 'refused' });
+  const uncertain = rows.find(row => row.state === 'prepared' && row.cause?.includes('bodyDigest') && row.cause.includes(`${origin}/lost`));
+  expect(uncertain).toBeDefined();
+  expect(rows.some(row => row.id === uncertain!.id && row.state === 'observed')).toBe(false);
   expect(await worker.call('browser_navigate', { url: `${origin}/leak` })).toMatchObject({ status: 'refused', reason: 'output-secret-check' });
   await worker.call('browser_navigate', { url: `${origin}/idb-leak` });
   const leaked = await worker.call('browser_wait_for', { text: 'Leak ready' });
