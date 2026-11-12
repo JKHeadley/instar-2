@@ -47,7 +47,7 @@ The integration adds one capability-line repair (two changed product lines) afte
 
 Desk C is unused: no conflicts or left-out heads. Desk D is unused: missing marked affects changed code on Studio, not a remote host exemption. Always-sent allowance is the reviewed 23,619 bytes, default turn headroom 3,013 against unchanged 3,000 guard; member measured summary envelope 23,575. No guard or timeout changes by this train.
 
-Desk replay: final review-repair source 8acfa8aa7f737173559fd26efdef543abb03dcf3 produced generation sha256:7d52e4546160de46db415d3532814b7ced5b3a722fbb2554ee5bba8e17a01291 (309 entries, 123 rules, shape-only replay). Inventory and owner-reference rehash changed no pins; architecture passed with no R105 finding.
+Desk replay: final briefing-repair source ef0bb07074b8fa9d360612491ce556a18fad59e5 produced generation sha256:336969491bd0c2ffe8a35586c9995ad55966b0b642f3187d7529c69073d4683a (309 entries, 123 rules, shape-only replay). Inventory and owner-reference rehash changed no pins.
 
 simplestRobustRoute: One ordinary exact-head merge and the established desk chain. Reuse the reviewed implementation, shorten its capability sentence to the existing bound, and add no runtime mechanism. Start is the specified live base, end is integrated committed bytes, bounded capability text and truthful verification, limits are the five existing floors and the shared-dependency prohibition. Live phone proof and independent landing approval are not claimed here.
 80/20: Target changed files and direct consumers plus mandated context/register/provider checks; no full repository suite. Preserve failures as evidence and identify their cause.
