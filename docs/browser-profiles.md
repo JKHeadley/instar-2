@@ -75,8 +75,8 @@ The explicit MCP export sources are `browser_cookie_list`, `browser_cookie_get`,
 `browser_stop_recording`, `browser_stop_tracing`, and `browser_stop_video`. Protocol
 sources include BrowserContext/APIRequestContext cookies/storageState, API fetchLog,
 Request/Response headers, Tracing harExport/tracingStopChunk, their Artifact/Stream
-results, Page video artifacts, Browser crStopTracing, and CDP Network/Storage cookie
-getters, DOMStorage getDOMStorageItems, IndexedDB requestData and trace IO streams.
+results, Page video artifacts, Browser stopTracing, and CDP Network/Storage cookie
+getters, DOMStorage getDOMStorageItems, IndexedDB requestData and trace event/IO streams.
 
 Ordinary page text is not compared with a profile's cookie or storage inventory.
 There is no such inventory or 64 KB inventory shutdown. The installation's known

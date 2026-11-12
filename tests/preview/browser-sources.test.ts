@@ -90,6 +90,21 @@ it('projects real cookie/storage/CDP sources and HAR archive streams while ordin
     const { binary } = await stream.read({ size: 4096 });
     expect(binary.length).toBe(0);
     await stream.close({});
+    const browser = remote.browser();
+    await browser.startTracing(page);
+    await page.evaluate(() => 1 + 1);
+    const trace = await browser._channel.stopTracing({});
+    const traceStream = await trace.artifact.saveAsStream({});
+    expect((await traceStream.stream.read({ size: 4096 })).binary.length).toBe(0);
+    await traceStream.stream.close({});
+    const traceEvents: { value: unknown[] }[] = [];
+    cdp.on('Tracing.dataCollected', (event: { value: unknown[] }) => traceEvents.push(event));
+    const traceDone = new Promise<void>(resolve => cdp.once('Tracing.tracingComplete', resolve));
+    await cdp.send('Tracing.start', { transferMode: 'ReportEvents' });
+    await page.evaluate(() => 2 + 2);
+    await cdp.send('Tracing.end'); await traceDone;
+    expect(traceEvents.length).toBeGreaterThan(0);
+    expect(traceEvents.every(event => event.value.length === 0)).toBe(true);
     expect(events.length).toBeGreaterThan(0);
     expect(events.every(event => JSON.stringify(event) === '{}')).toBe(true);
   } finally {

@@ -30,7 +30,7 @@ export function projectProtocol(dispatch) {
         }
         if (source.type === 'Artifact' && artifacts.has(source.guid) && result.stream) streams.add(result.stream.guid);
         if (source.type === 'Stream' && streams.has(source.guid) && result.binary) result.binary = '';
-        if (source.type === 'Browser' && source.method === 'crStopTracing') result.binary = '';
+        if (source.type === 'Browser' && source.method === 'stopTracing' && result.artifact) artifacts.add(result.artifact.guid);
         if (source.type === 'CDPSession' && source.method === 'send') {
           if (/^(Network\.(getCookies|getAllCookies)|Storage\.getCookies)$/u.test(source.cdp)) result.result = { cookies: [] };
           if (source.cdp === 'DOMStorage.getDOMStorageItems') result.result = { entries: [] };
@@ -44,6 +44,7 @@ export function projectProtocol(dispatch) {
       const type = message.method === '__create__' ? message.params?.type : dispatch._dispatcherByGuid.get(message.guid)?._type;
       if (type === 'CDPSession' && message.params?.method === 'Tracing.tracingComplete' && message.params.params?.stream) cdpStreams.add(message.params.params.stream);
       if (type === 'CDPSession' && message.method === 'event' && /^(Network|DOMStorage|IndexedDB|Storage)\./u.test(message.params?.method)) message.params.params = {};
+      if (type === 'CDPSession' && message.params?.method === 'Tracing.dataCollected') message.params.params = { value: [] };
       // Only header-bearing protocol sources are projected; page evaluation JSON stays ordinary.
       return ['Request', 'Response', 'APIRequestContext', 'CDPSession'].includes(type ?? source?.type) ? projectHeaders(message) : message;
     }
