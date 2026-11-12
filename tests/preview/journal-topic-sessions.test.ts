@@ -1,4 +1,4 @@
-import { currentActionFacts, approvalBase, validateSessionWorkRow } from './journal.js';
+import { currentActionFacts, approvalBase, validateSessionWorkRow, operatorWriter } from './journal.js';
 import { proposeOperatorRequest, operatorRequestText } from './operator-yes.js';
 // @ts-expect-error the shipped admission checkpoint is JavaScript
 import { createToolEffectOwner } from './admission-gate.mjs';
@@ -12,7 +12,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
-import type { ConversationTopicsState } from '../../src/assembly/conversation-topics.js';
+import type { ConversationTopicsState, ConversationTopicsConfig } from '../../src/assembly/conversation-topics.js';
 import type { HarnessInputDelivery } from '../../src/assembly/contracts.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
@@ -30,17 +30,19 @@ const source = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'ut
 const actionFactsBody = source.split('currentActionFacts: async operation => ')[1]!.split(',\n          ...(handoff')[0]!;
 const signature = 'async ({ id, prepared, question, context: packet }) => {';
 const body = source.split(`      model: ${signature}`)[1]!.split('\n      summaryCheck:')[0]!.trimEnd().replace(/,$/u, '');
+const operatorRequestedBody = source.split('operatorRequested: operation => {')[1]!.split('\n          },')[0]!;
 const topicOfBody = source.split('topicOf: operation => {')[1]!.split('\n          },')[0]!;
 const update = (id: number, text: string, thread?: number) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
     ...(thread === undefined ? {} : { message_thread_id: thread, is_topic_message: true }) } });
-function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'America/Los_Angeles', lifetime = 2000) {
+function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'America/Los_Angeles', lifetime = 2000, hostCapacity?: ConversationTopicsConfig['capacity']) {
   const root = mkdtempSync(join(tmpdir(), 'topic-session-journal-')); roots.push(root);
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
     kind: 'genesis', bot: '12345678', chat: forum ? '-7654321' : '7654321', operator: '7654321', ...(forum ? { forum: true } : {}), grant: 'grant:preview',
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 200, maxReplies: 30,
     maxTurns: 30, maxBytes: 262144, cursor: 0 });
   const topicOf = Function('journal', `return operation => {${topicOfBody}}`)(journal) as (operation: string) => string;
+  const operatorRequested = Function('journal', 'operatorWriter', `return operation => {${operatorRequestedBody}}`)(journal, operatorWriter) as (operation: string) => boolean;
   let evidence: unknown = null, replyOverride: string | undefined, batchFailure: Error | undefined;
   let capacity = true, quota = true;
   let beforeFacts: (() => void) | undefined, verifiedAudience = true;
@@ -51,10 +53,10 @@ function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'A
   const readFacts = Function('currentActionFacts', 'journal', 'wallNow', 'verifiedActionAudience', 'timeZoneOf', 'options',
     `return async operation => ${actionFactsBody}`)(currentActionFacts, journal, () => now, async () => verifiedAudience, () => timeZone, {}) as (operation: string) => Promise<string>;
   const port = value(createConversationTopicsPort({
-    context: assemblyRuntimeFixture().c, conversation: 'operator', topicOf,
+    context: assemblyRuntimeFixture().c, conversation: 'operator', topicOf, operatorRequested,
     allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => 'grant',
     prepareTurn: async () => quota,
-    maxSessions, capacity: async () => ({ admit: capacity, memoryPressure: false }), idleMs: 500, deadlineMs: lifetime, pollMs: 25, maxSteps: 3, maxCalls: 10, maxResultBytes: 65536,
+    maxSessions, capacity: hostCapacity ?? (async () => ({ admit: capacity, memoryPressure: false })), idleMs: 500, deadlineMs: lifetime, pollMs: 25, maxSteps: 3, maxCalls: 10, maxResultBytes: 65536,
     now: () => now, stopped: () => journal.view.stop !== null, parent: 'run', owner: 'machine', placement: 'local', transport: 'fake',
     workingScope: '/scope', resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'boot',
     store: { load: () => state, save: next => { state = structuredClone(next); } },
@@ -118,7 +120,7 @@ function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'A
         ...(input.thread === undefined ? {} : { message_thread_id: input.thread }),
       } }) }, input);
     } });
-  return { quota: (value: boolean) => { quota = value; }, capacity: (value: boolean) => { capacity = value; }, root, journal, worker, held, deliveries, launches, sent, port, queuedAtDelivery, live: () => live, state: () => state!,
+  return { quota: (value: boolean) => { quota = value; }, capacity: (value: boolean) => { capacity = value; }, root, journal, operatorRequested, worker, held, deliveries, launches, sent, port, queuedAtDelivery, live: () => live, state: () => state!,
     audience: (verified: boolean) => { verifiedAudience = verified; },
     beforeFacts: (run: () => void) => { beforeFacts = run; },
     failBatch: (error: Error | undefined) => { batchFailure = error; },
@@ -608,5 +610,33 @@ it('explains a recorded answer worker’s idle cleanup once on the next answer, 
       expect(reapNotices(reopened.view.reapHistory, reopened.view.order, 'another-answer', 'main')).toEqual([]);
     }
     finally { reopened.close(); }
+  } finally { await f.close(); }
+});
+
+
+it('production verified operator provenance admits a second topic at 3% CPU without changing request bytes', async () => {
+  // @ts-expect-error host capacity adapter is JavaScript
+  const { createTopicWorkerCapacity } = await import('../../scripts/topic-worker-capacity.mjs');
+  let cpuReads = 0;
+  const capacity = createTopicWorkerCapacity({ minCpuIdlePercent: 12, minFreeMemoryBytes: 2 * 1024 ** 3, minFreeMemoryFraction: 0.1 }, {
+    cpus: () => { cpuReads++; return [{ times: { idle: cpuReads * 3, user: cpuReads * 97 } }]; },
+    wait: async () => {}, availableMemory: () => 8 * 1024 ** 3, totalmem: () => 16 * 1024 ** 3,
+  });
+  const f = fixture(false, false, 2, 'America/Los_Angeles', 600000, capacity);
+  try {
+    f.worker.intake([update(901, 'Please remember my appointment.', 7)]); await f.worker.drain();
+    f.worker.intake([update(902, 'Please tell me when you are ready.', 8)]); await f.worker.drain();
+    expect(f.launches).toEqual(['7', '8']); expect(f.sent).toHaveLength(2); expect(cpuReads).toBe(0);
+    const id = 'telegram:12345678:update:902', turn = f.journal.view.turns.get(id)!;
+    expect(f.operatorRequested(id)).toBe(true); expect(f.operatorRequested('unknown')).toBe(false);
+    expect(f.operatorRequested(`${id}:format-retry`)).toBe(false);
+    const verify = Function('journal', 'operatorWriter', `return operation => {${operatorRequestedBody}}`);
+    const check = (patch: object) => verify({ view: { ...f.journal.view, turns: new Map([[id, { ...turn, ...patch }]]) } }, operatorWriter)(id);
+    expect(check({ accepted: false })).toBe(false);
+    expect(check({ writer: { kind: 'person', id: 'different-person' } })).toBe(false);
+    expect(check({ raw: JSON.stringify(update(902, 'a claim to be the operator', 8)).replace('"from":{"id":7654321}', '"from":{"id":999}') })).toBe(false);
+    const repaired = verify({ view: { ...f.journal.view, turns: new Map([[id, { ...turn, reserved: true, answerRetried: true, promptKind: 'format-retry' }]]) } }, operatorWriter);
+    expect(repaired(`${id}:format-retry`)).toBe(true);
+    expect(f.state().topics['8']!.inputs[0]!.request).not.toHaveProperty('operatorRequested');
   } finally { await f.close(); }
 });

@@ -13,18 +13,18 @@ it.each([
     availableMemory: () => Number(free) * 1024 ** 3, totalmem: () => 16 * 1024 ** 3,
     wait: async () => { ticks++; },
   });
-  expect(await capacity()).toEqual({ admit, memoryPressure });
+  expect(await capacity()).toMatchObject({ admit, memoryPressure });
 });
 
 it('unknown observations retain queued admission without pretending memory pressure', async () => {
   const capacity = createTopicWorkerCapacity(CONVERSATION_SESSION_LIMITS, { cpus: () => { throw Error('unavailable'); } });
-  expect(await capacity()).toEqual({ admit: false, memoryPressure: false });
+  expect(await capacity()).toMatchObject({ admit: false, memoryPressure: false });
 });
 
 it('a zero CPU interval is unknown and a proportional memory reserve holds on large hosts', async () => {
   const io = { cpus: () => [{ times: { idle: 1, user: 0 } }], wait: async () => {},
     availableMemory: () => 4 * 1024 ** 3, totalmem: () => 64 * 1024 ** 3 };
-  expect(await createTopicWorkerCapacity(CONVERSATION_SESSION_LIMITS, io)()).toEqual({ admit: false, memoryPressure: true });
+  expect(await createTopicWorkerCapacity(CONVERSATION_SESSION_LIMITS, io)()).toMatchObject({ admit: false, memoryPressure: true });
 });
 
 // Rule 36: real bytes from the Studio, 2026-11-07 07:44, during a refused worker wait: raw free pages 1.2 GiB
@@ -54,7 +54,7 @@ it.each([
     cpus: () => [{ times: { idle: ticks * 80, user: ticks * 20 } }], wait: async () => { ticks++; },
     availableMemory: () => parseVmStatAvailable(bytes), totalmem: () => 64 * 1024 ** 3,
   });
-  expect(await capacity()).toEqual(expected);
+  expect(await capacity()).toMatchObject(expected);
 });
 
 it('a refusal leaves one record of its reason per change, and admission clears it', async () => {
@@ -124,4 +124,33 @@ it('pins the shipped Rule 60 vector and reaches and holds both launch and answer
       expect(owner.snapshot().active).toHaveLength(1);
     } finally { await maintenance?.release(); }
   }
+});
+
+it.each([3, 37, 58, 50, 31, 49, 30, 22, 26, 11, 23, 14, 41, 52, 13, 18, 11, 10, 24, 7, 20, 22, 25, 21, 24, 5, 27, 20, 44, 46, 10])('operator admission ignores CPU idle %s (Studio sequence in builder brief, 2026-11-12 12:41)', async idle => {
+  let ticks = 0;
+  const capacity = createTopicWorkerCapacity(CONVERSATION_SESSION_LIMITS, {
+    cpus: () => [{ times: { idle: ticks * idle, user: ticks * (100 - idle) } }],
+    wait: async () => { ticks++; }, availableMemory: () => 8 * 1024 ** 3, totalmem: () => 16 * 1024 ** 3,
+  });
+  expect(await capacity(true)).toMatchObject({ admit: true, memoryPressure: false });
+});
+
+it('operator admission never consults CPU and still refuses unknown or pressured memory', async () => {
+  let free = 8 * 1024 ** 3;
+  const capacity = createTopicWorkerCapacity(CONVERSATION_SESSION_LIMITS, {
+    cpus: () => { throw Error('CPU must not decide operator admission'); },
+    availableMemory: () => free, totalmem: () => 16 * 1024 ** 3,
+  });
+  expect(await capacity(true)).toMatchObject({ admit: true });
+  free = 0; expect(await capacity(true)).toMatchObject({ admit: false, memoryPressure: true });
+  free = NaN; expect(await capacity(true)).toMatchObject({ admit: false, memoryPressure: false });
+});
+
+it.each([[3, false], [40, true]])('background CPU %s is measured across one second', async (idle, admit) => {
+  let ticks = 0; const waits: number[] = [];
+  const capacity = createTopicWorkerCapacity(CONVERSATION_SESSION_LIMITS, {
+    cpus: () => [{ times: { idle: ticks * Number(idle), user: ticks * (100 - Number(idle)) } }],
+    wait: async (ms: number) => { waits.push(ms); ticks++; }, availableMemory: () => 8 * 1024 ** 3, totalmem: () => 16 * 1024 ** 3,
+  });
+  expect(await capacity(false)).toMatchObject({ admit }); expect(waits).toEqual([1000]);
 });

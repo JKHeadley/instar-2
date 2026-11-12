@@ -2958,6 +2958,14 @@ async function main() {
         + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? config => createConversationTopicsPort({ ...config,
           maxSessions: sessionLimits.maxSessions, idleMs: sessionLimits.idleMs, topicConfig: topicConfiguration,
           capacity: createTopicWorkerCapacity(sessionLimits, undefined, line => process.stderr.write(`preview: ${line}\n`)),
+          operatorRequested: operation => {
+            const parent = /^telegram:[0-9]+:update:[0-9]+:format-retry$/u.test(operation)
+              ? journal.view.turns.get(operation.slice(0, -':format-retry'.length)) : undefined;
+            const turn = journal.view.turns.get(operation)
+              ?? (parent?.reserved && parent.answerRetried && parent.promptKind === 'format-retry' ? parent : undefined);
+            return Boolean(turn?.accepted && operatorWriter(journal.view, turn, true));
+          },
+          after: (ms, retry) => { const timer = setTimeout(retry, ms); timer.unref(); return () => clearTimeout(timer); },
           topicOf: operation => {
             // A repair inherits only its admitted parent's topic, never its execution identity.
             // The durable one-repair reservation is required; a suffix alone grants nothing.
