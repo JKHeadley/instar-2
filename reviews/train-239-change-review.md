@@ -46,7 +46,7 @@ No new product lines in this integration. Member size remains 190 changed produc
 
 Desk C is unused: no conflicts or left-out heads. Desk D is unused: missing marked affects changed code on Studio, not a remote host exemption. Always-sent allowance is the reviewed 23,619 bytes, default turn headroom 3,013 against unchanged 3,000 guard; member measured summary envelope 23,575. No guard or timeout changes by this train.
 
-Desk replay: source 013556713bd311551e9c198336a091b076a5593e produced generation sha256:efc1e6a7bc4ca4894bc28c7e3677bdf4bead3334bf5eea927ce52e0e7e6a3367 (309 entries, 123 rules, shape-only replay). Inventory and owner-reference rehash changed no pins; architecture passed with no R105 finding.
+Desk replay: final review-repair source 8acfa8aa7f737173559fd26efdef543abb03dcf3 produced generation sha256:7d52e4546160de46db415d3532814b7ced5b3a722fbb2554ee5bba8e17a01291 (309 entries, 123 rules, shape-only replay). Inventory and owner-reference rehash changed no pins; architecture passed with no R105 finding.
 
 simplestRobustRoute: One ordinary exact-head merge and the established desk chain. Reuse the reviewed implementation unchanged; add no runtime mechanism. Start is the specified live base, end is integrated committed bytes and truthful verification, limits are the five existing floors and the shared-dependency prohibition. Live phone proof and independent landing approval are not claimed here.
 80/20: Target changed files and direct consumers plus mandated context/register/provider checks; no full repository suite. Preserve failures as evidence and identify their cause.
