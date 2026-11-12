@@ -2,9 +2,10 @@
 // Carries 1.x db3ed6d3 ThreadlineBootstrap's persistent identity and always-on bootstrap.
 // Local encrypted spool replaces its HTTP relay for this slice: no new listener or service.
 import { createHash, createHmac, createPublicKey, randomBytes, verify } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, isAbsolute } from 'node:path';
 import { consumeResult } from '../src/index.js';
+import { bindBlockingSite } from '../src/register/governance.js';
 import { sealEnvelope } from '../src/rungraph/index.js';
 import { createThreadlineKeyCustody, createThreadlineReferenceAdapter, threadlineIdentityFromSeeds } from '../src/transport/index.js';
 import { readSetupRecord, publishSetupRecord } from './onboarding-state.mjs';
@@ -51,6 +52,8 @@ export function admitThreadline(runtime, tool, input, parent, config, decide, no
   } catch { return { admitted: false, disposition: 'refused', reason: 'Threadline needs a current owner-signed private share and exact durable operation registration (Rules 28/123; purpose durable cause)' }; }
 }
 export function createThreadlineRuntime({ root, custody, storageKey, now, stopped, held, append, recorded, records, replicate = async () => true, replicated = false }) {
+  bindBlockingSite(JSON.parse(readFileSync(new URL('./threadline-runtime.declarations.json', import.meta.url), 'utf8')),
+    'threadline-runtime.admitThreadline', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'recorded-governed-state', failDirection: 'closed' }]);
   const directory = join(root, 'threadline'), inbox = join(directory, 'inbox');
   mkdirSync(inbox, { recursive: true, mode: 0o700 });
   const identityPath = join(directory, 'identity.json');
