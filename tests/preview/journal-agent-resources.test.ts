@@ -8,6 +8,10 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, PER_RULE_PASS } from './successive-fixture.js';
+import { installFixtureClock } from './fixture-clock.js';
+
+// The launcher reads the wall clock against the fixture's fixed activation expiry (fixture-clock.ts).
+const FIXED_CLOCK_ENV = installFixtureClock();
 
 const TOKEN = 'ghp_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8';
 
@@ -66,7 +70,7 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
       endpoint.stdout.once('data', data => done(Number(String(data).trim()))); endpoint.once('error', fail);
     });
     const trial = world.state().read().trial;
-    const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+    const env = { ...process.env, ...FIXED_CLOCK_ENV, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: '',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` };

@@ -6,6 +6,10 @@ import { afterEach, expect, it } from 'vitest';
 import { HOST_OUTAGE_TEXT, openPreviewState } from '../preview/state.js';
 // @ts-expect-error Physical launchd watcher is JavaScript.
 import { watchOnce, supervise, superviseJournal } from '../../scripts/host-watch.mjs';
+import { installFixtureClock } from '../preview/fixture-clock.js';
+
+// The relaunched journal runner reads the wall clock against the fixture's fixed activation expiry (fixture-clock.ts).
+const FIXED_CLOCK_ENV = installFixtureClock();
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
@@ -147,7 +151,7 @@ it('relaunches a SIGSTOPped real journal runner, and a message sent afterwards i
   const saved = { ...process.env };
   try {
     const port = await new Promise<number>((done, fail) => { endpoint.stdout!.once('data', data => done(Number(String(data).trim()))); endpoint.once('error', fail); });
-    Object.assign(process.env, { INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+    Object.assign(process.env, { ...FIXED_CLOCK_ENV, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'offline-placeholder',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` });

@@ -6,10 +6,14 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, PER_RULE_PASS } from './successive-fixture.js';
 import { openPreviewJournal } from './journal.js';
+import { installFixtureClock } from './fixture-clock.js';
 
-// The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
-// failing doorway check (Rules 8, 56, 100) may ride an answer as its own line. The answer itself stays exact,
-// and nothing else may be appended.
+/** Added to every child's environment in this file; also shifts this file's own clock. */
+const FIXED_CLOCK_ENV = installFixtureClock();
+
+// The launcher reads the wall clock against the fixture's fixed activation expiry, so this file
+// runs on a shifted clock (fixture-clock.ts). A due credential reminder or a failing doorway check (Rules 8, 56, 100) may still
+// ride an answer as its own line. The answer itself stays exact, and nothing else may be appended.
 const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+; send "status" for detail\.)$/u;
 const answerOf = (text: string) => {
   const [answer, ...notices] = text.split('\n\n');
@@ -47,7 +51,7 @@ it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and
       endpoint.once('error', reject);
       endpoint.once('exit', code => reject(Error(`endpoint exited before listening: ${String(code)}`)));
     });
-    const env = { ...process.env,
+    const env = { ...process.env, ...FIXED_CLOCK_ENV,
       INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'offline-placeholder',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
@@ -124,7 +128,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
       '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','100000','--max-poll-seconds','1'];
-    child = spawn(process.execPath,args,{cwd:process.cwd(),stdio:['ignore','pipe','pipe'],env:{...process.env,
+    child = spawn(process.execPath,args,{cwd:process.cwd(),stdio:['ignore','pipe','pipe'],env:{...process.env, ...FIXED_CLOCK_ENV,
       INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
@@ -144,7 +148,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(readFileSync(log,'utf8').split('getUpdates').length-1).toBeLessThanOrEqual(pollsAtSignal+1);
     const status = spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
-      {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex')},
+      {cwd:process.cwd(),env:{...process.env, ...FIXED_CLOCK_ENV,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex')},
         encoding:'utf8',timeout:10000});
     expect(status.status).toBe(0);
     expect(JSON.parse(status.stdout).stop).toBeNull();
@@ -153,7 +157,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     writeFileSync(updates, JSON.stringify([{update_id:1,message:{chat:{id:Number(world.configuration.chatId),type:'private'},
       from:{id:Number(world.configuration.operatorSenderId)},text:'Please answer after restart.'}}]));
     const resumed = spawnSync(process.execPath,[...args.slice(0,-4),'--max-cycles','3','--max-poll-seconds','1'],
-      {cwd:process.cwd(),encoding:'utf8',timeout:10000,env:{...process.env,
+      {cwd:process.cwd(),encoding:'utf8',timeout:10000,env:{...process.env, ...FIXED_CLOCK_ENV,
         INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
         INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
         INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
@@ -163,7 +167,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(readFileSync(log,'utf8').split('sendMessage').length-1).toBe(1);
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
-      {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex')},
+      {cwd:process.cwd(),env:{...process.env, ...FIXED_CLOCK_ENV,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex')},
         encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:1,
           unknownCallBreakdown:{answers:0,summaries:0,reviews:0,jev:1,total:1},
           replyChecks:{unavailable:1},unknownSends:0,
@@ -180,7 +184,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(stop.status).toBe(0);
     expect(JSON.parse(readFileSync(join(root,'preview-stop.json'),'utf8')).reason).toBe('operator');
     const refused = spawnSync(process.execPath,[...args.slice(0,-4),'--max-cycles','1','--max-poll-seconds','1'],
-      {cwd:process.cwd(),encoding:'utf8',timeout:10000,env:{...process.env,
+      {cwd:process.cwd(),encoding:'utf8',timeout:10000,env:{...process.env, ...FIXED_CLOCK_ENV,
         INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
         INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
         INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
@@ -231,7 +235,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       endpoint.stdout.once('data', data => done(Number(String(data).trim()))); endpoint.once('error', fail);
     });
     const trial = world.state().read().trial;
-    const env = {...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+    const env = {...process.env, ...FIXED_CLOCK_ENV, INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`};
@@ -314,7 +318,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       endpoint.stdout.once('data', data => done(Number(String(data).trim()))); endpoint.once('error', fail);
     });
     const trial = world.state().read().trial;
-    const env = {...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+    const env = {...process.env, ...FIXED_CLOCK_ENV, INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY:'',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN:'12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT:`http://127.0.0.1:${port}`};
@@ -348,7 +352,7 @@ it('Rule 35: a test-endpoint composition refuses a production journal before tak
   const before = readFileSync(path);
   const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
     'tests/preview/journal-agent.mjs', 'run', '--root', root], { cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
-    env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+    env: { ...process.env, ...FIXED_CLOCK_ENV, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: 'http://127.0.0.1:9' } });
   expect(run.status).toBe(1);
@@ -364,7 +368,7 @@ it('Rules 2, 42: a launch refused under the writer lease records its scrubbed re
     bot: '1001', chat: '2002', operator: '2002', grant: 'grant:refusal', configurationDigest: 'sha256:recorded',
     expires: 9999999999999, maxCalls: 4, maxReplies: 4, maxTurns: 4, maxBytes: 32768, cursor: 0 });
   journal.close();
-  const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+  const env = { ...process.env, ...FIXED_CLOCK_ENV, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
     INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
     INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: 'http://127.0.0.1:9', INSTAR_CONVERSATION_OWNERS: join(world.directory, 'owners') };
   const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
