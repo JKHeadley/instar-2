@@ -12,7 +12,7 @@ import { PREVIEW_FIXED_PROMPT_BYTES, PREVIEW_LIVE_LIMITS, PREVIEW_MIN_SERVABLE_C
   PREVIEW_MIN_TURN_HEADROOM_BYTES, PREVIEW_REPLY_BOUND_BYTES, REPLY_REVIEW_FIXED_BYTES,
   concurrentWorkItem, createJournalWorker, declaredObligations, openPreviewJournal, replyReviewReserveFor,
   OBLIGATION_DECISION, OBLIGATION_DECISION_FLOOR, OBLIGATION_DECISION_TOOLS, previewCapabilities,
-  unservableContextReason } from './journal.js';
+  unservableContextReason, raiseJournalCaps, previewContextBytes, PREVIEW_MODEL_WINDOWS, CONTEXT_LIMIT_NOTICE, TOO_LONG_INPUT_NOTICE } from './journal.js';
 import { jevQuestions, replyReviewContext, replyReviewQuestion } from './reply-check.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { OFFLINE_STORAGE_KEY, offlineProfile, successiveWorld } from './successive-fixture.js';
@@ -32,7 +32,7 @@ const DESK_PATH = '/offline/desk-status.md';
 
 /** One fresh root, one ordinary operator turn, the real briefing from this checkout, reply review wired
  * and the concurrent-work row a live runner always sends. Returns what the provider would receive. */
-async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
+async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0, question = 'What is the state of the preview right now?') {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-default-floor-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '12345678',
@@ -77,7 +77,7 @@ async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
           Object.keys(questions ?? jevQuestions).map(id => [id, { type: 'noul', noul: 0.01 }])) }, latencyMs: 10 }),
         escalate: async () => ({ verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 10 }) } });
     worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
-      date: Math.floor(now / 1000), text: 'What is the state of the preview right now?' } }]);
+      date: Math.floor(now / 1000), text: question } }]);
     await worker.drain();
     await worker.summarizeIfNeeded(true);
     const turn = journal.view.order.at(-1)!;
@@ -93,7 +93,9 @@ async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
       journal.view.genesis.grant, now, 10_000_000)) + bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
     const deskText = answer === undefined ? '' : ((JSON.parse(answer.context) as
       { sources?: { id: string; text: string }[] }).sources ?? []).find(item => item.id === 'desk-status')?.text ?? '';
-    const result = { sent: turn.sent !== undefined, held: turn.held, notice: turn.noticeClass,
+    const result = { sent: turn.sent !== undefined, held: turn.held, notice: turn.noticeClass, reply: turn.intent, contextLimit: turn.contextLimit,
+      capabilityIntact: answer === undefined ? false : JSON.parse(answer.context).sources.some((source: {id: string; text: string}) =>
+        source.id === 'capability-note' && source.text === briefing.find(source => source.id === 'capability-note')!.text),
       literalCopyGuidance: answer?.prepared.includes(LITERAL_COPY_INSTRUCTIONS) ?? false,
       answerTotal: total(answer), summaryTotal: total(summary), reviewTotal,
       deskCut: deskText.includes('[cut for space'),
@@ -199,6 +201,7 @@ it('states the floor from the measured parts and refuses a limit below it on bot
   expect(squeezed.sent).toBe(true);
   expect(squeezed.packet?.obligationDecision).toBe(OBLIGATION_DECISION_FLOOR);
   expect(squeezed.keys).not.toContain('capabilities');
+  expect(squeezed.capabilityIntact).toBe(true);
 }, 60_000);
 
 it('refuses an unservable limit at the real launcher, at genesis and when caps are re-declared', () => {
@@ -230,7 +233,7 @@ export const createProductionTelegramIO = () => ({ invoke(input) {
     '--grant-reference', activation.trial, '--configuration-digest', activation.baseConfigurationDigest,
     '--expires-at', String(activation.expiresAt), '--tools', 'off', '--activation-record', activationPath,
     '--operator-records', join(world.directory, 'operator-records'),
-    '--login-profile', profilePath, '--model', world.model, '--max-cycles', '1', ...extra);
+    '--login-profile', profilePath, '--model', world.model, '--model-context-tokens', '1000000', '--max-cycles', '1', ...extra);
 
   const refused = run('--max-context-bytes', '4096');
   expect(refused.status, refused.stderr).not.toBe(0);
@@ -328,4 +331,104 @@ it('allows fixed-text growth up to the unchanged answer budget and detects cross
   expect(() => assertFixedParts(over)).toThrow();
   expect(over.packet?.obligationDecision).toBe(OBLIGATION_DECISION_FLOOR);
   expect(over.keys).not.toContain('capabilities');
+  expect(over.capabilityIntact).toBe(true);
+}, 60_000);
+
+it('derives each fresh default from recorded model windows with generous measured headroom', () => {
+  for (const [model, window] of Object.entries(PREVIEW_MODEL_WINDOWS)) {
+    const limit = previewContextBytes(model);
+    expect(limit).toBe(PREVIEW_FIXED_PROMPT_BYTES + Math.floor((window - 4096 - PREVIEW_FIXED_PROMPT_BYTES) / 4));
+    expect(limit - PREVIEW_FIXED_PROMPT_BYTES - replyReviewReserveFor(limit)).toBeGreaterThan(30_000);
+    expect(limit).toBeLessThan(window - 4096);
+  }
+  expect(previewContextBytes('new-model', 500_000)).toBeGreaterThan(previewContextBytes('new-model', 200_000));
+  expect(previewContextBytes('new-model', 500_000, PREVIEW_FIXED_PROMPT_BYTES + 1000)).toBeGreaterThan(previewContextBytes('new-model', 500_000));
+  expect(() => previewContextBytes('unknown-model')).toThrow('measured model context window');
+  expect(() => previewContextBytes('new-model', PREVIEW_FIXED_PROMPT_BYTES)).toThrow('headroom');
+});
+
+it('answers with train-242 fixed growth, and distinguishes fixed context failure from an oversized message', async () => {
+  // 5609a711f measured +134 complete-envelope bytes vs e3cb0f08. Include more than
+  // that growth in a source (JSON escaping may add bytes) and retain every capability.
+  const fresh = await firstTurn(PREVIEW_LIVE_LIMITS.contextBytes, true, 134);
+  expect(fresh.sent).toBe(true); expect(fresh.notice).toBeUndefined(); expect(fresh.capabilityIntact).toBe(true);
+  // Existing small journal: unchanged genesis limit, starts, saves intake, sends one truthful notice.
+  const old = await firstTurn(32768, true, 32768);
+  expect(old.sent).toBe(true); expect(old.contextLimit).toBe(true);
+  expect(old.reply).toContain(CONTEXT_LIMIT_NOTICE); expect(old.answerTotal).toBeNull();
+  const long = await firstTurn(PREVIEW_LIVE_LIMITS.contextBytes, false, 0, 'q'.repeat(PREVIEW_LIVE_LIMITS.contextBytes + 1));
+  expect(long.sent).toBe(true); expect(long.contextLimit).toBeUndefined(); expect(long.reply).toContain(TOO_LONG_INPUT_NOTICE);
+}, 60_000);
+
+it('binds shipped model windows to the captured provider metadata, including helper models', () => {
+  const observed = new Map<string, number>();
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) { value.forEach(walk); return; }
+    if (typeof value === 'string' && value.includes('contextWindow')) {
+      for (const line of value.split('\n')) { try { walk(JSON.parse(line)); } catch { /* non-JSON log line */ } }
+    } else if (value && typeof value === 'object') {
+      const row = value as Record<string, unknown>;
+      if (row.modelUsage && typeof row.modelUsage === 'object') {
+        for (const [model, usage] of Object.entries(row.modelUsage)) {
+          const meta = usage as { contextWindow: number; canonicalModel?: string };
+          observed.set(model, meta.contextWindow);
+          observed.set(model.replace(/-\d{8}$/u, ''), meta.contextWindow); // canonical alias of the captured dated model
+          if (meta.canonicalModel) observed.set(meta.canonicalModel, meta.contextWindow);
+        }
+      }
+      Object.values(row).forEach(walk);
+    }
+  };
+  for (const file of ['selfdesc-2026-10-03/call4-review-limits-new-guide.json',
+    'sched-tool-train-133-2026-10-22.json', 'summary-cap-2026-10-26.json'])
+    walk(JSON.parse(readFileSync(new URL(`./fixtures/${file}`, import.meta.url), 'utf8')));
+  for (const [model, window] of Object.entries(PREVIEW_MODEL_WINDOWS)) expect(observed.get(model), model).toBe(window);
+});
+
+it('replays a fixed-context notice, then retains the saved ordinary message after an authorized raise', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'context-recovery-'))), path = join(root, 'journal.encrypted');
+  let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
+    grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9_999_999_999_999,
+    maxCalls: 16, maxReplies: 16, maxTurns: 20, maxBytes: 32768, cursor: 0 });
+  const sent: string[] = [], packets: string[] = [];
+  const make = () => createJournalWorker(journal, { now: () => now, stopped: () => false,
+    sources: () => [{ id: 'capability-note', text: 'An installed capability. '.repeat(1600) }],
+    prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', journal.view.genesis.grant, now, journal.view.limits.maxBytes),
+    model: async input => { packets.push(input.context); return JSON.stringify({ reply: 'The saved message is present.', memory: [], dated: [] }); },
+    send: async request => { sent.push(request.text); return sent.length; }, checkOutbound: () => {} });
+  const update = (id: number, text: string) => ({ update_id: id, message: { chat: { id: 7654321, type: 'private' },
+    from: { id: 7654321 }, date: Math.floor(now / 1000), text } });
+  try {
+    let worker = make(); worker.intake([update(1, 'My project is Cedar Orchard.')]); await worker.drain();
+    expect(sent).toEqual([CONTEXT_LIMIT_NOTICE]); expect(packets).toHaveLength(0);
+    journal.close(); journal = openPreviewJournal(path, key);
+    expect(journal.view.limits.maxBytes).toBe(32768); expect(journal.view.order[0]!.contextLimit).toBe(true);
+    const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      'tests/preview/journal-agent.mjs', 'status', '--root', root], { encoding: 'utf8', timeout: 30_000,
+      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+    expect(status.status, status.stderr).toBe(0);
+    expect(JSON.parse(status.stdout).tooLong[0]).toMatchObject({ kind: 'context-allowance', delivery: 'Telegram API accepted' });
+    worker = make(); await worker.drain(); expect(sent).toHaveLength(1); // durable intent prevents duplicate notice
+    raiseJournalCaps(journal, { ...journal.view.limits, maxBytes: PREVIEW_LIVE_LIMITS.contextBytes,
+      authority: 'offline operator-authorized context raise', at: now });
+    worker.intake([update(2, 'What is my project?')]); await worker.drain();
+    expect(packets.at(-1)).toContain('My project is Cedar Orchard.');
+    expect(packets.at(-1)).not.toContain('shorter labelled parts');
+    expect(journal.view.genesis.maxBytes).toBe(32768);
+    expect(sent).toHaveLength(2); expect(journal.view.order[1]!.noticeClass).toBeUndefined();
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+}, 60_000);
+
+it('switches to the plain installation notice at the exact fixed-context boundary', async () => {
+  // Search measured live-envelope bytes rather than pinning a scaffolding estimate.
+  let low = 0, high = 32768;
+  while (high - low > 1) {
+    const growth = Math.floor((low + high) / 2);
+    if ((await firstTurn(32768, false, growth)).contextLimit) high = growth; else low = growth;
+  }
+  const fits = await firstTurn(32768, false, low), exceeds = await firstTurn(32768, false, high);
+  expect(high).toBe(low + 1);
+  expect(fits.contextLimit).toBeUndefined();
+  expect(exceeds.contextLimit).toBe(true); expect(exceeds.reply).toContain(CONTEXT_LIMIT_NOTICE);
+  expect(exceeds.reply).not.toContain('send a shorter');
 }, 60_000);

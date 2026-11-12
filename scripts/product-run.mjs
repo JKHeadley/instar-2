@@ -23,7 +23,7 @@ const pathRecord = (path, label, requireReadable = true) => {
   if (!text(path) || !isAbsolute(path)) refuse(`${label} needs an absolute record path`);
   if (requireReadable) read(path, label);
 };
-const defaults = Object.freeze({ 'max-calls': 16, 'max-replies': 16, 'max-turns': 20, 'max-context-bytes': 32768 });
+const defaults = Object.freeze({ 'max-calls': 16, 'max-replies': 16, 'max-turns': 20, 'max-context-bytes': undefined });
 const required = ['bot-id', 'bot-username', 'operator-sender-id', 'chat-id', 'forum', 'grant-reference',
   'configuration-digest', 'expires-at', 'operator-records', 'explicit-yes-installation', 'review-repository',
   'harness-user', 'conversation-session'];
@@ -96,7 +96,9 @@ export function buildRunArgv(directory) {
   add('conversation-session', o['conversation-session']);
   if (primary.sessionActivation) add('session-work-activation', primary.sessionActivation);
   add('effect-policy', policyPath);
-  for (const [name, value] of Object.entries(limits)) add(name, value);
+  // An omitted context option means replay the installed journal's own allowance.
+  for (const [name, value] of Object.entries(limits))
+    if (name !== 'max-context-bytes' || o[name] !== undefined) add(name, value);
   return argv;
 }
 

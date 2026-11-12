@@ -51,7 +51,7 @@ through its existing custody path. Diagnostics never print record values or caug
 | `--conversation-session` | Configuration option `on` or `off` |
 | `--session-work-activation` | First login's `sessionActivation`; required when conversation sessions are on |
 | `--effect-policy` | `<root>/effect-policy.json`, the standing trust `instar2 setup` records (Part Twelve); read as a bounded record at startup and every decision. Unavailable trust is diagnosed and refuses affected effects, including listed connector reads, while ordinary conversation remains reachable. Restoration takes effect through the same reader, so the installation's recorded grants, including a connected account's write and the owner GitHub read, govern a copy exactly as they govern the hand-maintained launcher |
-| `--max-calls`, `--max-replies`, `--max-turns`, `--max-context-bytes` | Optional positive integer configuration options; defaults 16, 16, 20, 32768, matching the captured launcher |
+| `--max-calls`, `--max-replies`, `--max-turns`, `--max-context-bytes` | Optional positive integer configuration options; defaults 16, 16, 20; an omitted context allowance uses the journal’s pinned value |
 | Login pool | Existing runner reads the whole `harness-logins.json`, prepares members and performs its existing admission; no explicit pool flag bypasses that path |
 
 The Node loader and runner entry come from this installed package, independent of the shell's

@@ -48,7 +48,7 @@ import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COV
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom,
   staleAgainst, updateDelivery, updatePacketItem } from './installation.js';
 import { currentActionFacts, bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, ModelNotStarted, createModelLaunchBoundary, capacityAlerts } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, replyCheckCauses, unavailableChecks, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, replyCheckCauses, unavailableChecks, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, previewContextBytes, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, sizeNotice, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, readSelfAccess, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
@@ -1076,9 +1076,9 @@ async function main() {
       holds: heldNotices(view.view, existsSync(stopPath) || view.view.stop !== null),
       tooLong: view.view.order.filter(t => t.noticeClass === 'too-long-input' || t.intent === TOO_LONG_REPLY_NOTICE)
         // Rule 42: delivery reads the one durable send-outcome lookup; a definite refusal stays refused, with its reason.
-        .map(t => { const holding = t.noticeClass === 'too-long-input' && t.intent !== TOO_LONG_INPUT_NOTICE ? 'holding reply ' : '';
+        .map(t => { const holding = t.noticeClass === 'too-long-input' && t.intent !== sizeNotice(t) ? 'holding reply ' : '';
           const settled = t.intent ? sendOutcomeOf(view.view, replyTarget(t), t.sent) : null;
-          return { update: t.update, kind: t.noticeClass === 'too-long-input' ? 'input' : 'reply',
+          return { update: t.update, kind: t.contextLimit ? 'context-allowance' : t.noticeClass === 'too-long-input' ? 'input' : 'reply',
             delivery: !settled ? 'pending' : `${holding}${settled.kind === 'accepted' ? 'Telegram API accepted'
               : settled.kind === 'refused' ? 'refused' : 'UNKNOWN'}`,
             ...(settled?.kind === 'refused' ? { refusal: settled.reason } : {}) }; }),
@@ -1726,9 +1726,12 @@ async function main() {
     const maxTurns = number(options['max-turns'] ?? '20', 'max-turns');
     // The default is the approved live bound itself, not a second number beside it: the measured fixed
     // parts already take most of it, so a lower default cannot serve a fresh root's first turn.
-    const maxBytes = number(options['max-context-bytes'] ?? String(PREVIEW_LIVE_LIMITS.contextBytes), 'max-context-bytes');
+    const defaultBytes = existsSync(journalPath) ? PREVIEW_LIVE_LIMITS.contextBytes
+      : previewContextBytes(options.model, options['model-context-tokens'] === undefined ? undefined
+        : number(options['model-context-tokens'], 'model-context-tokens'));
+    const maxBytes = number(options['max-context-bytes'] ?? String(defaultBytes), 'max-context-bytes');
     if (!existsSync(journalPath) && (maxCalls > PREVIEW_LIVE_LIMITS.calls || maxReplies > PREVIEW_LIVE_LIMITS.replies
-      || maxTurns > PREVIEW_LIVE_LIMITS.turns || maxBytes > PREVIEW_LIVE_LIMITS.contextBytes))
+      || maxTurns > PREVIEW_LIVE_LIMITS.turns || maxBytes > defaultBytes))
       throw Error('preview: live allowance outside approved bound');
     // Rule 15's declared bound has to be one the build can serve. A root created below the measured floor
     // answers at most its first turn and then holds every reply for size, with no summary or set-aside able
@@ -3386,7 +3389,7 @@ async function main() {
         now: wallNow, active: () => !workerStop.value && !existsSync(stopPath) && selectedActive() && !journal.view.stop,
         adapterEvidenceContract: contract,
         ...(journal.view.limits.maxBytes > doorway.policyFor(options.model, doorway.conversationFraming).maxPromptBytes
-          ? { raisedPromptBytes: journal.view.limits.maxBytes, promptAuthority: journal.view.capAuthority } : {}) }));
+          ? { raisedPromptBytes: journal.view.limits.maxBytes, promptAuthority: journal.view.capAuthority ?? journal.view.genesis.grant } : {}) }));
     }
   } catch (error) {
     if (!signalled) { startupFailure = error; throw error; }

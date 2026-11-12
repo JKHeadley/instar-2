@@ -88,7 +88,7 @@ it.each([['bounded', 0, false], ['oversized', 5000, false], ['forum', 0, true]])
       '--bot-id', world.configuration.botId, '--chat-id', chat, ...(forum ? ['--forum', 'true'] : []),
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
-      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
+      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model, '--model-context-tokens', '1000000',
       '--bot-username', world.configuration.botUsername, '--max-cycles', '2', '--max-poll-seconds', '1'],
       // The launch boots the runner and spawns one bounded transport child per Telegram call through the
       // resource owner's limit shim, so its wall time is process-start cost, not work. tests/preview/
@@ -167,7 +167,7 @@ export async function resolve(specifier,context,next) {
       'run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
-      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
+      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,'--model-context-tokens','1000000',
       '--bot-username',world.configuration.botUsername,'--max-cycles','100000','--max-poll-seconds','1'];
     child = spawn(process.execPath,args,{cwd:process.cwd(),stdio:['ignore','pipe','pipe'],env:{...process.env,
       INSTAR_TEST_IDLE_BOOT_DELAY_MS:signal==='SIGTERM'?'10500':'0',
@@ -290,7 +290,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       'tests/preview/journal-agent.mjs','run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
-      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
+      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,'--model-context-tokens','1000000',
       '--bot-username',world.configuration.botUsername,'--max-cycles','4','--max-poll-seconds','1'],
       {cwd:process.cwd(),timeout: CHILD_TIMEOUT,env});
     expect(run.status,run.stderr).toBe(0);
@@ -390,7 +390,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       'tests/preview/journal-agent.mjs','run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
-      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
+      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,'--model-context-tokens','1000000',
       '--bot-username',world.configuration.botUsername,'--max-cycles','3','--max-poll-seconds','1'],
       {cwd:process.cwd(),timeout: CHILD_TIMEOUT,env});
     expect(run.status,run.stderr).toBe(0);

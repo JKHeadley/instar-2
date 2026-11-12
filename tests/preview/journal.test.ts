@@ -7,7 +7,7 @@ import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE, UNKNOWN_SEND_NOTICE,
   SUMMARY_UNKNOWN_RECOVERY_MS, SUMMARY_MAX_PROMPT_BYTES, SUMMARY_TARGET_OUTPUT_TOKENS, summaryPromptBytes } from './journal-test-worker.js';
-import { INDEX_ATTEMPT_LIMIT, INDEX_BACKLOG_LIMIT, OBLIGATION_FLOOR_PACKET_BYTES as FLOOR_GUIDE, TOO_LONG_INPUT_NOTICE } from './journal.js';
+import { INDEX_ATTEMPT_LIMIT, INDEX_BACKLOG_LIMIT, OBLIGATION_FLOOR_PACKET_BYTES as FLOOR_GUIDE, CONTEXT_LIMIT_NOTICE } from './journal.js';
 // w3-floorduty (Rules 3, 93): under pressure the obligation guide now yields to its floor form instead of vanishing, so a
 // small synthetic limit carries those bytes too; every outcome below is otherwise unchanged.
 
@@ -701,7 +701,7 @@ it('notifies about context overflow with originals intact when no current summar
     worker.intake([update(1, 'never drop this original')]); await worker.drain();
     expect(calls).toBe(0);
     expect(journal.view.order[0]?.text).toBe('never drop this original');
-    expect(journal.view.order[0]?.intent).toBe(TOO_LONG_INPUT_NOTICE);
+    expect(journal.view.order[0]?.intent).toBe(CONTEXT_LIMIT_NOTICE);
     expect(journal.view.order[0]?.sent).toBe(1);
     journal.close();
   } finally { rmSync(root, {recursive:true,force:true}); }

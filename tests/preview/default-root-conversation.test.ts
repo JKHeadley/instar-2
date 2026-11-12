@@ -194,12 +194,11 @@ it('answers twenty short turns on a fresh root at the default context limit, wit
       expect(turn.keys, `turn ${String(turn.n)} ${required}`).toContain(required);
   }
   // Compaction and the rolling summary did their normal work, faithfully: the first fact is still carried.
-  expect(run.summaries.length).toBeGreaterThan(0);
-  expect(run.summaries.at(-1)).toContain(marker(1));
+  expect(run.summaries).toHaveLength(0); // These short turns now fit in full; no needless compaction.
   // Every summary step fit its own ceiling. That ceiling tracks the context limit (three quarters of it, at
   // least 24 KiB, at most 96 KiB); at the default it is the 24 KiB floor, the thinner of the two margins here.
-  expect(summaryPromptBytes(limit)).toBe(24 * 1024);
-  expect(run.summarySizes.length).toBeGreaterThan(0);
+  expect(summaryPromptBytes(limit)).toBe(96 * 1024);
+  expect(run.summarySizes).toHaveLength(0);
   for (const size of run.summarySizes) expect(size).toBeLessThanOrEqual(summaryPromptBytes(limit));
   // Nothing was deleted: the first message is still in the journal verbatim.
   expect(run.firstText).toBe(question(1));
@@ -329,9 +328,8 @@ function room2Shapes(): LiveShape {
       return { verdict: 'pass', ruleIds: [], reason: findings.map(item => `${item.rule}: ${item.reason}`).join('\n'), findings }; } };
 }
 
-it('keeps answering a default-size root through the live recorded shapes that silenced room two', async () => {
-  const limit = PREVIEW_LIVE_LIMITS.contextBytes;
-  expect(room2.maxBytes).toBe(limit);
+it.each([32768, PREVIEW_LIVE_LIMITS.contextBytes])('keeps answering at %i bytes through the recorded shapes that silenced room two', async limit => {
+  expect(room2.maxBytes).toBe(32768);
   expect(room2.turns.map(turn => turn.text)).toEqual(room2.turns.map((_, index) => gardenLog(index + 1)));
   const first = room2.turns[0]!.update;
   const run = await conversation(limit, Array.from({ length: 20 }, (_, index) => gardenLog(index + 1)), new Map(),
@@ -348,7 +346,8 @@ it('keeps answering a default-size root through the live recorded shapes that si
   const room = limit - replyReviewReserveFor(limit);
   expect(run.report[0]!.answerTotal).toBeLessThanOrEqual(room);
   const pressed = run.report.filter(turn => turn.setAside);
-  expect(pressed.length).toBeGreaterThan(0);
+  if (limit === room2.maxBytes) expect(pressed.length).toBeGreaterThan(0);
+  else expect(pressed).toHaveLength(0);
   for (const turn of pressed) expect(turn.answerTotal, `turn ${String(turn.n)}`).toBeLessThanOrEqual(room);
   expect(pressed.every(turn => turn.keys.includes('obligationDecision'))).toBe(true);
   for (const turn of run.report) expect(turn.answerTotal, `turn ${String(turn.n)}`).toBeLessThanOrEqual(limit);
@@ -378,8 +377,8 @@ const room1 = JSON.parse(readFileSync(new URL('./fixtures/floorduty-proofroom1-r
   'utf8')) as { maxBytes: number; turns: { update: number; text: string;
     live: { obligationDecision: boolean; historySetAside: boolean }; realModel: { output: string } }[] };
 
-it('keeps the declaration duty in every packet of a default-size root under byte pressure', async () => {
-  const limit = PREVIEW_LIVE_LIMITS.contextBytes;
+it('keeps the declaration duty in every packet of a legacy root under byte pressure', async () => {
+  const limit = room1.maxBytes;
   expect(room1.maxBytes).toBe(limit);
   // The recorded failure: every one of these live packets had set history aside and carried no obligation guide.
   expect(room1.turns.every(turn => !turn.live.obligationDecision && turn.live.historySetAside)).toBe(true);

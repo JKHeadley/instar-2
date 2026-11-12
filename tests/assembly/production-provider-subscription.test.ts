@@ -1,3 +1,4 @@
+import { PREVIEW_LIVE_LIMITS } from '../preview/journal.js';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -848,4 +849,18 @@ it('keeps scheduled work policy unchanged and requires the exact continuing-sess
   expect(() => codexConversation.validateActivation(codexScheduled, codexProfile, codexModel, 1000)).toThrow(/policy differs/u);
   expect(() => codexConversation.validateActivation({ ...codexGrant, acceptedResiduals: [] }, codexProfile, codexModel, 1000))
     .toThrow(/residual/u);
+});
+
+it('dispatches the fresh context allowance under its installation grant and still enforces the byte boundary', async () => {
+  const f = fixture({ conversation: true });
+  const limit = PREVIEW_LIVE_LIMITS.contextBytes;
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input, raisedPromptBytes: limit }).kind).toBe('Refused');
+  const route = value(createClaudeCodeSubscriptionRoute({ ...f.input, raisedPromptBytes: limit,
+    promptAuthority: f.input.activation.trial }));
+  const bytes = 'x'.repeat(limit - Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT));
+  expect((await route.invoke(bytes, f.bounds)).state).toBe('complete');
+  expect(f.commands().at(-1)?.stdin).toBe(bytes);
+  const dispatched = f.commands().length;
+  expect((await route.invoke(bytes + 'x', f.bounds)).state).toBe('uncertain');
+  expect(f.commands()).toHaveLength(dispatched);
 });

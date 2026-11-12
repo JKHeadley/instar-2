@@ -2457,7 +2457,7 @@ target root or a lineage already claimed by another import.
 
 ```sh
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-migrate.mjs export \
-  --old-root /ABSOLUTE/STOPPED_OLD_ROOT --export-file /ABSOLUTE/transfer.enc \
+  --old-root /ABSOLUTE/STOPPED_OLD_ROOT --export-file /ABSOLUTE/transfer.enc --model claude-sonnet-5 \
   --bot-id BOT_ID --chat-id PRIVATE_CHAT_ID --operator-sender-id OPERATOR_ID
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-migrate.mjs import \
   --export-file /ABSOLUTE/transfer.enc --new-root /ABSOLUTE/EMPTY_NEW_ROOT
@@ -2576,8 +2576,8 @@ When a turn still cannot be prepared after the forced summary, the reachability 
 earlier turns aside half at a time (the journal keeps them and recall reaches them). On its
 last rung, with every earlier turn set aside, the reply-review reserve yields too: the turn is
 answered, and a review that is then too large to build is recorded unavailable and the reply
-released. Only a turn that still cannot fit gets the size notice; none is held. A fresh root at
-the default 32768 bytes reaches that rung within a few short messages
+released. Only a turn that still cannot fit gets the size notice; none is held. A legacy root pinned at
+32768 bytes can reach that rung within a few short messages
 (`default-root-conversation.test.ts` replays room two's recorded shapes; `floor-last-rung.test.ts`).
 
 An UNKNOWN summary reservation remains charged and visible in `summaryPending`.
@@ -4598,3 +4598,26 @@ the last. Evidence a gate compares with the run's start therefore stays on the h
 (`tests/setup/host-clock.mjs`): model-provider proofs, the grounding ledger and boot receipts.
 Vitest stamps file windows on the shifted clock, so the process exit row records the shift and
 the gate moves each window back to the host clock before comparing.
+
+### Fresh context allowance and existing journals
+
+A fresh journal derives its context allowance from the selected model's recorded window and the measured
+fixed packet (`previewContextBytes` in `journal.ts`). Sonnet 5, Opus 4.8 and Opus 5.5 report 1,000,000 tokens
+in the captured provider results; Haiku 4.5 reports 200,000. Reserve 4,096 tokens for the answer and thinking,
+retain the 23,459-byte measured fixed packet, then allocate one quarter of the remaining window to variable
+input, conservatively treating each UTF-8 byte as a token. The resulting defaults are 266,570 and 66,570 bytes,
+within the provider doorway's existing 1 MiB ceiling. The remaining window accommodates harness/tool growth.
+The migration export also requires `--model` and derives the same bound.
+An unfamiliar model needs its measured window supplied as `--model-context-tokens`; this is installation
+configuration, not a model-authored override. The fixed packet's measurement remains guarded by
+`default-context-floor.test.ts`, and every capability-note line remains intact under byte pressure.
+
+An existing journal retains its pinned allowance, including 32,768 bytes. An omitted context option on
+`instar2 run` leaves that journal in charge; an explicit option must match its original or effective limit.
+If even an empty message cannot fit the required context, intake is saved and one plain notice explains
+that the installation needs an operator-authorized allowance increase, rather than blaming message length.
+The existing `raise-caps --max-context-bytes <bytes> --authority <recorded authority>` doorway records that
+increase without resetting usage or changing genesis. Its caller must hold the operator's standing or exact
+authorization; the agent does not manufacture that authority. Call, reply, turn, spend, stop and send-uniqueness
+checkpoints remain in force. Larger prompts can consume more subscription quota and latency; a byte ceiling
+is not a dollar price, and this subscription route reports charge UNKNOWN rather than inventing a bill.

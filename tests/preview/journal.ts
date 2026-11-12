@@ -80,9 +80,6 @@ import { encodeReply, fitsOneMessage, replyPartTarget, splitReply, wholeReplySen
 
 
 
-/** Genesis starts with these live limits; an operator-referenced journal frame
- * can later raise the finite counters without altering genesis or usage. */
-export const PREVIEW_LIVE_LIMITS = Object.freeze({ calls: 16, replies: 16, turns: 20, contextBytes: 32768 });
 /** Most original turns recalled beside a summary; fewer are used when the prompt bound needs it. */
 export const PREVIEW_RECALL_LIMIT = 5;
 /** Full original history grounds short conversations even when a summary exists. */
@@ -263,6 +260,27 @@ export const unservableContextReason = (maxBytes: number): string | null =>
       + ` ${String(PREVIEW_MIN_SERVABLE_CONTEXT_BYTES)}. The parts every answer carries (the system prompt, the`
       + ` standing instructions, the request envelope and the minimum packet) measure`
       + ` ${String(PREVIEW_FIXED_PROMPT_BYTES)} bytes, and the reply review needs its own room beside them.`;
+/** Recorded provider modelUsage.contextWindow, not a bytes-per-token estimate. Evidence:
+ * selfdesc-2026-10-03, sched-tool-train-133-2026-10-22 and summary-cap-2026-10-26 fixtures.
+ * Unknown models need their measured window at installation; an existing journal needs no lookup. */
+export const PREVIEW_MODEL_WINDOWS: Readonly<Record<string, number>> = Object.freeze({
+  'claude-sonnet-5': 1_000_000, 'claude-opus-4-8': 1_000_000, 'claude-opus-5-5': 1_000_000,
+  'claude-haiku-4-5': 200_000, 'claude-haiku-4-5-20251001': 200_000,
+});
+/** Rules 60/84/96: reserve the measured fixed packet, then one quarter of remaining
+ * window for variable input. Count each UTF-8 byte as a token conservatively; leave
+ * the other three quarters for harness/tool growth and output. No source is trimmed
+ * to obtain this default. Existing per-source bounds and the summary ladder remain. */
+export function previewContextBytes(model = 'claude-sonnet-5', windowTokens = PREVIEW_MODEL_WINDOWS[model],
+  fixedBytes = PREVIEW_FIXED_PROMPT_BYTES): number {
+  const output = SUBSCRIPTION_MAX_OUTPUT_TOKENS * 2; // answer plus the doorway's thinking allowance
+  if (!Number.isSafeInteger(fixedBytes) || fixedBytes < 0 || !Number.isSafeInteger(windowTokens)
+    || windowTokens! < fixedBytes + output + (PREVIEW_REPLY_BOUND_BYTES + REPLY_REVIEW_FIXED_BYTES + PREVIEW_MIN_TURN_HEADROOM_BYTES) * 4)
+    throw Error('preview: a measured model context window with ordinary-turn headroom is required (--model-context-tokens)');
+  return Math.min(MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, fixedBytes + Math.floor((windowTokens! - output - fixedBytes) / 4));
+}
+/** Genesis defaults; an operator-authorized cap frame can later raise them without resetting usage. */
+export const PREVIEW_LIVE_LIMITS = Object.freeze({ calls: 16, replies: 16, turns: 20, contextBytes: previewContextBytes() });
 /** Most journal-derived inventory entries offered with an operator memory question. */
 export const PREVIEW_INVENTORY_LIMIT = 20;
 /** The recorded reason of a pre-send step the bounded supervisor could not judge because its call budget is spent. */
@@ -368,6 +386,8 @@ export function unknownAnswerNotice(turn: NoticeTurn): string {
 /** The exact notice the train's earlier writer rendered for this turn, under its 800-character quote bound. */
 const plainUnknownAnswerNotice = (turn: NoticeTurn) => renderUnknownAnswerNotice(turn, PLAIN_UNKNOWN_ANSWER_NOTICE, 800);
 
+export const CONTEXT_LIMIT_NOTICE = 'Your message was saved. This installation’s context allowance is too small for its required instructions and capabilities. It needs an operator-authorized allowance increase; a shorter message will not fix this.';
+export const sizeNotice = (turn: { contextLimit?: true }) => turn.contextLimit ? CONTEXT_LIMIT_NOTICE : TOO_LONG_INPUT_NOTICE;
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
 export const TOO_LONG_REPLY_NOTICE = 'I produced an answer, but it was too long for one Telegram reply. I did not send part of it. Please ask for a shorter answer.';
 /** The one withholding floor on a reply's content (Rule 4): text SHAPED like a credential.
@@ -1262,7 +1282,7 @@ export type JournalRecord =
     at: number }
   | { kind: 'status-answer'; id: string; text: string; prompt: string; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; accountNeeded?: true; safetyCeiling?: 'deadline' | 'calls'; toolChecks?: number; usage?: ModelUsage; latencyMs?: number; at: number }
-  | { kind: 'notice'; id: string; noticeClass: 'unknown-answer' | 'too-long-input'; at: number }
+  | { kind: 'notice'; id: string; noticeClass: 'unknown-answer' | 'too-long-input'; contextLimit?: true; at: number }
   // Non-additive: skipping this reservation would lose spend and the no-repeat fence.
   | { kind: 'held-notice-review-reserve'; id: string; prompt: string; at: number }
   | { kind: 'held-notice-review'; id: string; result: ReplyCheckResult; at: number }
@@ -1537,7 +1557,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   toolRouted?: boolean;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
-  reserved: boolean; answerAccount?: true; accountNeeded?: true; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; safetyCeiling?: 'deadline' | 'calls'; toolChecks?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; acknowledgementMode?: 'reaction-or-text'; heldNoticeSent?: number; heldNoticeSentAt?: number; acknowledgementPath?: 'reaction' | 'text'; memoryPending?: true; memoryUnresolved?: true; memoryUndecided?: true; datedPending?: true;
+  reserved: boolean; answerAccount?: true; accountNeeded?: true; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; safetyCeiling?: 'deadline' | 'calls'; toolChecks?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; contextLimit?: true; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; acknowledgementMode?: 'reaction-or-text'; heldNoticeSent?: number; heldNoticeSentAt?: number; acknowledgementPath?: 'reaction' | 'text'; memoryPending?: true; memoryUnresolved?: true; memoryUndecided?: true; datedPending?: true;
   /** This turn's own answer decided what it withdrew: the keys it cancelled, or none. Rules 57, 93: a
    * recorded decision, including "withdraws none", settles the reminder question this turn opened. */
   reminderDecided?: true; askConflict?: string; lastNamedPerson?: string;
@@ -3156,7 +3176,7 @@ export function openQuestionCandidates(view: JournalView): OpenQuestion[] {
   for (const turn of view.order) {
     if (!turn.accepted || probeTurn(view, turn) || !(turn.wasHeld || turn.noticeClass && turn.intent
       || turn.answer === MODEL_FAILURE_REPLY && turn.intent)) continue;
-    if (operatorTurn(view, turn) && turn.noticeClass !== 'too-long-input') open.set(turn.id, { source: turn.id, quote: turn.text,
+    if (operatorTurn(view, turn) && (turn.noticeClass !== 'too-long-input' || turn.contextLimit)) open.set(turn.id, { source: turn.id, quote: turn.text,
       reason: turn.wasHeld ? 'held' : turn.noticeClass ? 'lost-answer' : 'definite-failure' });
   }
   for (const note of view.questions) open.set(note.source, note);
@@ -5072,7 +5092,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     turn.limitedSent = row.message; sentOperatorRequest(view, row.id, 'limited', row.message); return;
   }
   const replyCandidate = turn.answer ?? (turn.noticeClass === 'unknown-answer' ? unknownAnswerNotice(turn)
-    : turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE : undefined);
+    : turn.noticeClass === 'too-long-input' ? sizeNotice(turn) : undefined);
 
   if (row.kind === 'reply-review-after-send') {
     if (turn.intent === undefined || turn.afterSendReview || turn.jevReserved || turn.reviewReserved)
@@ -5324,7 +5344,10 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
         || turn.noticeDueAt === undefined || row.at < turn.noticeDueAt))
       || (row.noticeClass === 'too-long-input' && turn.reserved))
       throw Error('preview journal: notice order');
+    if (row.contextLimit !== undefined && (row.contextLimit !== true || row.noticeClass !== 'too-long-input'))
+      throw Error('preview journal: context limit notice differs');
     turn.noticeClass = row.noticeClass;
+    if (row.contextLimit) turn.contextLimit = true;
     operatorEvent(view, row.at, turn.update, turn.safetyCeiling ? 'safety limit notice prepared' : 'lost answer notice prepared');
 
   }
@@ -7204,7 +7227,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const preferenceCue = (turn: Turn) => fromOperator(turn)
     && /^(?:\s*(?:please\s+)?(?:always|never|stop|don['’]t|do not|no|use|give|make|keep|be|more|less)\b[^\n]*\b(?:answer|answers|reply|replies|respond|response|format|bullet|brief|concise|verbose|tone|style)\b|\s*(?:please\s+)?shorter\b|\s*(?:please\s+)?(?:more|less)\s+detail\b|\s*(?:i(?:['’]d| would)?\s+)?prefer\b|\s*(?:from now on|going forward)\b[^\n]*\b(?:answer|reply|respond|format|bullet|tone|style)\b|\s*(?:no|fewer|more)\s+bullet\b)/iu.test(turn.text);
   const pendingMemory = () => journal.view.order.find(turn => remembered(turn) && fromOperator(turn) && !turn.memoryUndecided
-    && turn.noticeClass !== 'too-long-input' && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes
+    && (turn.noticeClass !== 'too-long-input' || turn.contextLimit) && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes
     && (turn.editOf || memoryCue(turn) || preferenceCue(turn) || turn.memoryPending)
 
     && !journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id)
@@ -7228,7 +7251,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     || journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id));
   const correctionRequestBehind = () => journal.view.order.some(turn => explicitlySettled(turn)
     || remembered(turn) && fromOperator(turn)
-      && turn.noticeClass !== 'too-long-input' && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes
+      && (turn.noticeClass !== 'too-long-input' || turn.contextLimit) && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes
       && (turn.editOf || memoryCue(turn) || preferenceCue(turn) || turn.memoryPending));
   // A correction still being decided holds every proactive send until its judgment lands.
   const unresolvedReminderMemory = () => pendingMemory() !== undefined;
@@ -7606,7 +7629,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   ].includes(replyBody(item)?.replace(/^PREVIEW — /u, '') ?? '');
   const modelFailure = (item: Turn) => item.answer === MODEL_FAILURE_REPLY
     && (item.failureClass !== undefined || item.modelState === 'rejected');
-  const sizeRefused = (item: Turn) => item.noticeClass === 'too-long-input';
+  const sizeRefused = (item: Turn) => item.noticeClass === 'too-long-input' && !item.contextLimit;
   const holdingText = (item: Turn, text: string) => replyBody(item)?.replace(/^PREVIEW — /u, '') === text;
   const holdingReply = (item: Turn) => (holdingText(item, HOLDING_REPLY) || holdingText(item, CREDENTIAL_SHAPE_NOTICE))
     && item.replyChecks?.some(check => check.verdict === 'violation') === true;
@@ -7628,19 +7651,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const text = unsettledOutcome(item, whole?.outcome.kind === 'accepted');
     return whole && whole.outcome.kind !== 'accepted' ? text.replace('delivery UNKNOWN', partialReplyLabel(whole)) : text;
   };
-  const unsettledOutcome = (item: Turn, delivered: boolean) => item.safetyCeiling
+  const unsettledOutcome = (item: Turn, delivered: boolean) => item.contextLimit
+    ? `context allowance notice ${delivered ? 'Telegram API accepted' : item.intent ? 'delivery UNKNOWN' : 'pending'}; message saved`
+    : item.safetyCeiling
     ? `infrastructure ${item.safetyCeiling === 'deadline' ? 'time' : 'model-call'} limit halted work; `
       + (delivered ? 'notice Telegram API accepted; actions remain UNKNOWN'
         : item.intent ? 'notice delivery UNKNOWN; actions remain UNKNOWN' : 'notice pending; actions remain UNKNOWN')
     : delivered ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
-      : sizeRefused(item) ? item.intent?.replace(/^PREVIEW — /u, '') === TOO_LONG_INPUT_NOTICE ? 'too-long notice Telegram API accepted'
+      : sizeRefused(item) ? item.intent?.replace(/^PREVIEW — /u, '') === sizeNotice(item) ? 'too-long notice Telegram API accepted'
         : 'holding reply delivered in place of the too-long notice'
       : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN'
         : holdingReply(item) ? replyBody(item)?.replace(/^PREVIEW — /u, '') === CREDENTIAL_SHAPE_NOTICE ? 'answer withheld: credential-shaped text; notice delivered'
           : 'holding reply delivered after review violation'
           : modelFailure(item) ? `model failure notice delivered (${item.failureClass ?? 'rejected'})` : 'Telegram API accepted')
     : item.intent ? (lostNotice(item) ? 'loss notice delivery UNKNOWN; model UNKNOWN'
-      : sizeRefused(item) ? item.intent?.replace(/^PREVIEW — /u, '') === TOO_LONG_INPUT_NOTICE ? 'too-long notice delivery UNKNOWN'
+      : sizeRefused(item) ? item.intent?.replace(/^PREVIEW — /u, '') === sizeNotice(item) ? 'too-long notice delivery UNKNOWN'
         : 'holding reply delivery UNKNOWN in place of the too-long notice'
       : item.noticeClass ? 'holding reply delivery UNKNOWN; model UNKNOWN'
         : holdingReply(item) ? replyBody(item)?.replace(/^PREVIEW — /u, '') === CREDENTIAL_SHAPE_NOTICE ? 'answer withheld: credential-shaped text; notice delivery UNKNOWN'
@@ -9284,7 +9309,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if ('reason' in selected && (selected.measuredPromptOverflow
             || selected.reason === 'context overflow' && (journal.view.limits.maxBytes >= 4096
               || journal.view.limits.maxReplies > 1))) {
-            journal.append({ kind: 'notice', id: turn.id, noticeClass: 'too-long-input', at: ports.now() });
+            // Distinguish an oversized message from fixed context that even an empty message cannot fit.
+            const fixed = preparedWithFloor({ ...turn, text: '' });
+            journal.append({ kind: 'notice', id: turn.id, noticeClass: 'too-long-input',
+              ...('reason' in fixed ? { contextLimit: true as const } : {}), at: ports.now() });
           } else if ('reason' in selected) {
             const reason = journal.view.order.some(item => item.sent && item.update < turn.update)
               ? `summary unavailable: ${selected.reason}` : selected.reason;
@@ -10092,7 +10120,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // The memory retry owns its undecided state, not the operator's independent answer.
         // Live 46039931: replacing that answer also erased the loop quoted only in it.
         const memoryReplyFailed = turn.memoryPending && !turn.memoryUnresolved && !requestDecided;
-        let reply = turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE
+        let reply = turn.noticeClass === 'too-long-input' ? sizeNotice(turn)
           : turn.noticeClass === 'unknown-answer' ? unknownAnswerNotice(turn)
           : memoryReplyFailed && turn.memoryUndecided ? MEMORY_UNDECIDED_REPLY
           : memoryAcknowledgement(turn) ?? (memoryReplyFailed ? 'I reviewed your memory request.'

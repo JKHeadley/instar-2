@@ -51,7 +51,7 @@ it('reconstructs every launcher flag from root records and documented limits', (
     '--explicit-yes-installation', o['explicit-yes-installation'], '--review-repository', o['review-repository'],
     '--harness-user', '_instarharness', '--model', 'claude-opus-4-6', '--tools-activation', l.toolsActivation,
     '--conversation-session', 'on', '--session-work-activation', l.sessionActivation, '--effect-policy', join(root, 'effect-policy.json'),
-    '--max-calls', '16', '--max-replies', '16', '--max-turns', '20', '--max-context-bytes', '32768']);
+    '--max-calls', '16', '--max-replies', '16', '--max-turns', '20']);
 });
 it.each(['run-config.json', 'model-setting.json', 'harness-logins.json', 'activation.json', 'authority.json', 'profile.json',
   'tools.json', 'session.json', 'yes.json', 'journal.encrypted'])('refuses missing %s before launch', name => {
@@ -238,4 +238,12 @@ it('valid configuration reaches the real runner, which still refuses absent cust
   const result = spawnSync(process.execPath, ['bin/instar2.mjs', 'run', root], { encoding: 'utf8', timeout: 30000, env });
   expect(result.status).toBe(1); expect(result.stderr).toContain('preview refused to start or continue; details suppressed');
   expect(readFileSync(join(root, 'journal.encrypted'), 'utf8')).toBe('fixture-only: never opened by argv builder');
+});
+
+it('passes an explicit context allowance unchanged and otherwise leaves the pinned journal in charge', () => {
+  const { root, options } = fixture();
+  expect(buildRunArgv(root)).not.toContain('--max-context-bytes');
+  save(root, 'run-config.json', { version: 1, options: { ...options, 'max-context-bytes': 32768 } });
+  const args = buildRunArgv(root);
+  expect(args[args.indexOf('--max-context-bytes') + 1]).toBe('32768');
 });

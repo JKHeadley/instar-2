@@ -10,7 +10,7 @@ import { openPreviewJournal } from './journal.js';
 
 const hash = path => createHash('sha256').update(readFileSync(path)).digest('hex');
 const migrate = (args, key, extraEnv = {}) => spawnSync(process.execPath,
-  ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-migrate.mjs', ...args],
+  ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-migrate.mjs', ...args, ...(args[0] === 'export' ? ['--model', 'claude-sonnet-5'] : [])],
   { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex'), ...extraEnv },
     encoding: 'utf8', timeout: 30000 });
 // Rewrite only this offline fixture's sealed outbound facts; exercise historical rendering
