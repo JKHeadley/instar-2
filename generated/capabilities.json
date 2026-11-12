@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:3385f5eabc3fc044d479fa7e94d2542a380eccc015da720a316e2bbb18cc4b3d",
-  "commit": "60b0b2443ae1ae9d205cfadf45eac6e9aa47ab34",
+  "generation": "sha256:2e54fd8579c32c7148897a746110b3d1008ac58ffe73de4916e62a986fc7790c",
+  "commit": "8ac4d86680a3148e8ccca3e79589694521fffa95",
   "launchers": {
     "bin/instar2.mjs": [
       {
@@ -146,6 +146,14 @@
         "availability": "switched-off",
         "userFacing": true,
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+      },
+      {
+        "id": "threadline-default-exchange",
+        "status": "live",
+        "module": "scripts",
+        "availability": "available",
+        "userFacing": false,
+        "text": "sends and receives private peer data through the checkpoint, with owner-signed scope, custody and authenticated receipts; local routes only. See `docs/threadline-default.md`."
       }
     ],
     "bin/instar-production.mjs": [
@@ -292,6 +300,14 @@
         "availability": "switched-off",
         "userFacing": true,
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+      },
+      {
+        "id": "threadline-default-exchange",
+        "status": "live",
+        "module": "scripts",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "sends and receives private peer data through the checkpoint, with owner-signed scope, custody and authenticated receipts; local routes only. See `docs/threadline-default.md`."
       }
     ],
     "scripts/host-watch.mjs": [
@@ -438,6 +454,14 @@
         "availability": "switched-off",
         "userFacing": true,
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+      },
+      {
+        "id": "threadline-default-exchange",
+        "status": "live",
+        "module": "scripts",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "sends and receives private peer data through the checkpoint, with owner-signed scope, custody and authenticated receipts; local routes only. See `docs/threadline-default.md`."
       }
     ],
     "tests/preview/agent.mjs": [
@@ -584,6 +608,14 @@
         "availability": "switched-off",
         "userFacing": true,
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+      },
+      {
+        "id": "threadline-default-exchange",
+        "status": "live",
+        "module": "scripts",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "sends and receives private peer data through the checkpoint, with owner-signed scope, custody and authenticated receipts; local routes only. See `docs/threadline-default.md`."
       }
     ],
     "tests/preview/conversation-authority-server.mjs": [
@@ -730,6 +762,14 @@
         "availability": "not-loaded",
         "userFacing": true,
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+      },
+      {
+        "id": "threadline-default-exchange",
+        "status": "live",
+        "module": "scripts",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "sends and receives private peer data through the checkpoint, with owner-signed scope, custody and authenticated receipts; local routes only. See `docs/threadline-default.md`."
       }
     ],
     "tests/preview/journal-agent.mjs": [
@@ -876,6 +916,14 @@
         "availability": "switched-off",
         "userFacing": true,
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+      },
+      {
+        "id": "threadline-default-exchange",
+        "status": "live",
+        "module": "scripts",
+        "availability": "available",
+        "userFacing": false,
+        "text": "sends and receives private peer data through the checkpoint, with owner-signed scope, custody and authenticated receipts; local routes only. See `docs/threadline-default.md`."
       }
     ]
   }
