@@ -4,7 +4,7 @@ Subject base: 90448f1d79133f246efa1c454c8a624b1d992bac
 Review state: open
 Reviewed content: none
 Outcome: Include reviewed promise-recovery-notice-1111-p2 at 3a89791ec36b2b7a5a683a953b3da6b1d81f2c96 on the exact live base. Delivered promises with recoveryHeld work receive one durable conversation-grouped interruption notice; the promise remains open and unknown effects are never repeated.
-Affected rules: 4, 8, 26, 34, 36, 49, 52, 63, 68, 70, 74, 83, 87, 89, 90, 95, 101, 102, 111, 112, 113, 116, 123
+Affected rules: 4, 8, 26, 34, 36, 49, 52, 63, 68, 70, 74, 83, 87, 89, 90, 95, 101, 102, 109, 111, 112, 113, 116, 123
 Affected floors: secrets — content-free notice plus existing outbound checks; spend cap — no new model call, existing reply limits; stop — existing admission rechecks; no duplicate sends — durable intent consumes notice identity, UNKNOWN is never retried; durable intake — source promise and uncertain work remain in the journal.
 Operator questions: none
 Suggested tier: critical
@@ -28,7 +28,7 @@ Decision: T237-D | Apply desk D: disclose host-dependent checks without weakenin
 Decision: T237-CHAIN | Run the cint-L37 desk chain: repin, build, owner rehash, exact-SHA register replay. Source: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L37-PROGRESS.md, snapshot SHA256 81a0412343bb17cff152cea467990b7966115a25fe4c25b583ff8b58346ba963. No handwritten generated reconciliation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-237-build-report.md
 Decision: T237-WORKTREE | Use the supplied fresh train-237 worktree already at the exact mandated base; recreating or moving the branch is unnecessary and would violate the fixed-base instruction. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-237-build-report.md
 
-Decision: T237-R109 | The live-base checker detects a stale frozen digest in the member record (expected e89656df1a96, subject 57b15eeb73d4). Reopen that record with the existing review tool, explicitly voiding its stale round; preserve the exact member head and product bytes in ancestry. The train requires independent desk review. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-237-build-report.md
+Decision: T237-R109 | The live-base checker detects a stale frozen digest in the member record (expected e89656df1a96, subject 57b15eeb73d4). Reopen that record with the existing review tool, explicitly voiding its stale round, and bind its integration subject to the accepted live base 90448f1d79133f246efa1c454c8a624b1d992bac. Keep original base d3d563cd and reviewed head as provenance. This avoids attributing the separately approved live-base Rule 90 reconciliation to this notice-only member; preserve the exact member head and product bytes in ancestry. The train requires independent desk review. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-237-build-report.md
 
 Prompt finding: 105c1569b6bb | protocol-literal | Unchanged existing protocol/notice text, asserted by fixtures; this patch changes no model instruction — fixture-phrase tests/preview/journal.ts <- tests/preview/closing-notice-boundary.test.ts: "once stopped, this installation refuses renewal."
 Prompt finding: 4106b49fff07 | protocol-literal | Unchanged existing protocol/notice text, asserted by fixtures; this patch changes no model instruction — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"

@@ -1,6 +1,7 @@
 # Change review — Interrupted promises get one durable notice
 
-Subject base: d3d563cd1c2396a72bf08fc08c7a7740be419ca8
+Subject base: 90448f1d79133f246efa1c454c8a624b1d992bac
+Original unit subject: d3d563cd1c2396a72bf08fc08c7a7740be419ca8 at reviewed head 3a89791ec36b2b7a5a683a953b3da6b1d81f2c96; retained in git. The reopened integration round starts at the accepted live base, excluding its separately approved Rule 90 history reconciliation.
 Review state: open
 Reviewed content: none
 Outcome: Rows 01/03 notice-only repair: a delivered promise with uncertain recoveryHeld work emits one plain interruption notice on the next obligation cycle, grouped by conversation. The original promise stays open and visibly stalled; row 08 is unchanged.
