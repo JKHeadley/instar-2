@@ -333,7 +333,7 @@ export function selfStateBrief(view: JournalView, runs: RunLog, now: number, tim
     `${when(now)} (${timeZone}); today=${today}. Messages today/total: operator=${incoming.today}/${incoming.total}, replies accepted=${delivered.today}/${delivered.total}; today combined=${incoming.today + delivered.today}; edits=${edits}; refused=${refused}. Current reply not sent.`,
     `Remaining: model=${left(view.limits.maxCalls, view.calls)}; replies=${left(view.limits.maxReplies, view.replies)}; updates=${left(view.limits.maxTurns, view.order.length)}.`,
     view.capAuthority === null ? 'Caps not raised.' : `Caps raised: ${redact(view.capAuthority).text}; ${view.capRaisedAt ? when(view.capRaisedAt) : 'time unknown'}.`,
-    view.stop ? `Permanent stop latched: ${view.stop}.` : `Activation: ${credentialDisplayLabel({ kind: 'activation', identity: view.genesis.grant })}; ends ${when(view.expires)}. Nothing stops at that date; you don't need to do anything.`,
+    view.stop ? `Permanent stop latched: ${view.stop}.` : `Activation end ${when(view.expires)}; no stop/action.`,
     `Open: holds=${held} (today ${heldToday.count}); requests=${openRequests(view).length}; unknown calls=${unknownCalls}, sends=${unknownSends}; summaries pending=${summaryPending}; corrections=${corrections}.`,
     `Request sends today/total=${requestsToday}/${requestSends.length}; summaries=${view.summaries.length}; memory changes=${view.memory.length}. Details: read-only status.`,
     ...runLines(runs, now, format, current),

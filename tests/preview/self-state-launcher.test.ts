@@ -88,7 +88,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(s.launches[0].reason).toBe('cycle limit reached');
     let prompt = readFileSync(prompts, 'utf8').trim().split('\n').map(selfOf);
     expect(prompt[0]).toContain('That is the first recorded launch');
-    expect(prompt[0]).toContain('Activation: your activation; ends');
+    expect(prompt[0]).toContain('Activation end');
+    expect(prompt[0]).toContain('no stop/action.');
     const record = JSON.parse(readFileSync(join(root, 'credentials.json'), 'utf8')).records
       .find(item => item.kind === 'activation');
     expect(record.name).toBe('preview-activation');
@@ -96,7 +97,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(record.expiresAt).toBe(trial.expiresAt);
     // The activation line remains human-readable; the access inventory deliberately
     // carries bounded metadata so the agent knows which access it already holds.
-    const activationLine = prompt[0].split('\n').find(line => line.startsWith('Activation:'));
+    const activationLine = prompt[0].split('\n').find(line => line.startsWith('Activation end'));
     expect(activationLine).not.toContain(record.name);
     expect(activationLine).not.toContain(record.identity);
     const inventory = JSON.parse(prompt[0].match(/Credentials: (\[.*?\]); connectors:/u)[1]);

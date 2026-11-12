@@ -62,7 +62,7 @@ it.each([-CLOSING_NOTICE_LEAD_MS, 0, HOUR])('mentions once starting at end %i ms
     expect(dashboardSnapshot(f.journal.view, { now: f.now, zone: 'UTC', statusText, bot: null, stopped: false }).status.join('\n'))
       .toContain("Nothing stops at that date; you don't need to do anything.");
     for (const compact of [false, true]) expect(selfStateBrief(f.journal.view, { launches: [], unreadable: 0 }, f.now, 'UTC', undefined, false, compact))
-      .toContain("Nothing stops at that date; you don't need to do anything.");
+      .toContain(compact ? "no stop/action." : "Nothing stops at that date; you don't need to do anything.");
   } finally { f.close(); }
 });
 
