@@ -4,7 +4,7 @@
     "kind": "stores", "status": "live",
     "requiredFacts": {
       "growth": "unbounded", "holdsAgentMemory": "yes",
-      "machineScope": { "kind": "machine-local", "reason": "Durable no-replace records belong to the local installation's setup conversation; this installer does not replicate or establish peer authority." },
+      "machineScope": { "kind": "machine-local", "reason": "Durable no-replace records belong to the local installation setup. Threadline also uses this writer for public identity and encrypted staging: Encrypted local spool is staging only, capped at 1024 retained frames with no deletion. Authoritative sends, reads and accepted payloads are in the existing encrypted journal and follow its replication demand before frame dispatch or receipt release. Identity derives from the installation storage key and enters existing custody. Private routes are owner-signed machine-local filesystem paths; moving a route needs an updated signed binding, never a new identity or automatic resend. The runtime caps retained operation rows at 4096; capacity refusal preserves all accepted intake." },
       "agreesWith": []
     },
     "standards": [7, 32], "holds": []
