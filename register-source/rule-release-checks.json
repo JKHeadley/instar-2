@@ -1,0 +1,7 @@
+{
+  "117": {
+    "id": "R117-TWO-SESSION-A-D",
+    "evidenceLocation": "release-evidence/{commit}/rule-117-two-session-a-d.json",
+    "stage": "runtime"
+  }
+}
