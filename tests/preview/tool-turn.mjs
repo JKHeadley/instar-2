@@ -1,3 +1,4 @@
+import { readBrowserProfile } from './browser-profile.mjs';
 import { clearTurnMedia } from './media-understanding.mjs';
 // Runner side of a tool turn (Part Thirteen §9 in docs/17-harness-adapters, the preview tool rule): the conversation's
 // persistent workspace on its own fixed-size volume under the root's `workspaces` directory, the conversation's kept
@@ -274,6 +275,8 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
   clearTurnMedia(tmp); // An interrupted media turn must not reveal its file to the next turn.
   const stateDirectory = realpathSync(join(turn, 'state'));
   const privateDirectory = harness ? realpathSync(join(turn, TOOL_TURN_PRIVATE)) : stateDirectory;
+  if (mcp?.browserProfile && !mcp.servers.playwright?.args?.[0]?.endsWith('/browser-profile-client.mjs'))
+    throw Error('recorded browser profile requires the current session host connector; no fresh-profile fallback (Rules 18/100)');
   const servers = mcp ? Object.keys(mcp.servers) : [];
   const shellProfile = admission.confinedShell ? join(stateDirectory, 'shell.sb') : null;
   if (shellProfile) writeFileSync(shellProfile, shellSandboxProfile({ workspace, tmp }), { mode: 0o600 });
@@ -300,6 +303,8 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
 /** Prepare the same credential-free MCP launch records for a tool turn or continuing session.
  * Secret values never enter the file: the existing one-use socket launcher receives them. */
 export function prepareMcpLaunch({ mcp, privateDirectory, socket, harness = null, node = process.execPath, workspace }) {
+  if (mcp?.browserProfile && !mcp.servers.playwright?.args?.[0]?.endsWith('/browser-profile-client.mjs'))
+    throw Error('recorded browser profile requires the current session host connector; no fresh-profile fallback (Rules 18/100)');
   const servers = mcp ? Object.keys(mcp.servers) : [];
   let mcpTurn;
   if (servers.length) {
@@ -387,6 +392,7 @@ export function readRootMcp(root, read = path => readFileSync(path, 'utf8')) {
   try { text = read(join(root, TOOL_MCP_CONFIG)); } catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
   const data = JSON.parse(text), servers = data?.mcpServers;
   if (!servers || typeof servers !== 'object' || Array.isArray(servers)) throw Error('preview: root MCP configuration has no mcpServers object');
+  if (data.browserProfile !== undefined && !servers.playwright) throw Error('browser profile refused: configure the installation playwright connector first');
   const names = Object.keys(servers);
   if (!names.length) return null;
   if (!names.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name) && servers[name] && typeof servers[name].command === 'string'))
@@ -410,7 +416,7 @@ export function readRootMcp(root, read = path => readFileSync(path, 'utf8')) {
   const reads = data.reads ?? [];
   if (!Array.isArray(reads) || !reads.every(tool => typeof tool === 'string' && names.some(name => tool.startsWith(`mcp__${name}__`))))
     throw Error('preview: root MCP reads must name tools of the configured servers');
-  return { servers, reads, secrets, digest: `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}` };
+  return { servers, reads, secrets, browserProfile: readBrowserProfile(root, data.browserProfile), digest: `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}` };
 }
 
 /** Plan #507 (Rules 4, 95, 100): the runner's held secret values, every value once read kept for the runner's life.
@@ -466,13 +472,20 @@ export const heldSpan = (heldSecrets, extra = []) => {
  * `unavailable`, plan #507), and each SecretRef-bearing MCP server its resolved environment, once, to a launcher
  * presenting that server's name and nonce (Rule 100: the launch configuration holds no SecretRef value). Returns a
  * `close()` that stops serving and removes the socket's directory. */
-export async function serveTurnSocket(socket, { nonces = {}, values = {}, shared = false, check = () => 'unavailable', ownerRead = null } = {}) {
+export async function serveTurnSocket(socket, { nonces = {}, values = {}, shared = false, check = () => 'unavailable', ownerRead = null, browserRead = null } = {}) {
   const pending = new Map(Object.entries(values));
   const server = createServer({ allowHalfOpen: true }, link => {
     let text = '', over = false;
     link.setEncoding('utf8');
     link.on('data', chunk => { if (text.length + chunk.length > HELD_CHECK_MAX_BYTES * 2) over = true; else text = `${text}${chunk}`; });
     link.on('end', async () => {
+      if (text.startsWith('browser-read ')) {
+        let result = { status: 'refused', reason: 'browser-scope' };
+        try { const row = !over && text.length <= 8192 ? JSON.parse(text.slice(13)) : null;
+          if (browserRead && row && Object.keys(row).sort().join(',') === 'id,input') result = await browserRead(row.id, row.input);
+        } catch { /* Never return host errors or profile bytes. */ }
+        link.end(JSON.stringify(result)); return;
+      }
       if (text.startsWith('owner-read ')) {
         let result = { status: 'refused', reason: 'request-scope' };
         try {

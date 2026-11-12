@@ -52,7 +52,7 @@ export const HARNESS_LAUNCHER_SOURCE = join(HERE, 'harness-launch.mjs');
 export const HARNESS_SESSION_BRIDGE = join(HERE, 'harness-session.mjs');
 /** The admission hook and its whole import closure, and the MCP SecretRef launcher (plain Node, no imports outside node:):
  * the harness user reads them from a copy it cannot write. */
-export const HARNESS_HOOK_FILES = Object.freeze(['tool-admission-hook.mjs', 'tool-admission.mjs', 'effect-doorway.mjs', 'mcp-launch.mjs', 'owner-browser-contract.mjs', 'owner-browser-client.mjs', 'local-verify-mcp.mjs']);
+export const HARNESS_HOOK_FILES = Object.freeze(['tool-admission-hook.mjs', 'tool-admission.mjs', 'effect-doorway.mjs', 'mcp-launch.mjs', 'browser-profile-client.mjs', 'owner-browser-contract.mjs', 'owner-browser-client.mjs', 'local-verify-mcp.mjs']);
 /** Where a turn's runner socket lives (MCP credentials and the held-secret check, tool-turn.mjs serveTurnSocket). */
 export const HARNESS_SOCKETS = join(HARNESS_BASE, 'sock');
 

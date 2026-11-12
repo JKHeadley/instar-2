@@ -1,14 +1,16 @@
 // Continuing sessions reuse the per-call connector custody and launch preparation.
 // Machine-local, bounded by the session lifetime; root configuration is the recorded account scope.
+import { classifyEffect, decodeEffectPolicy } from './effect-doorway.mjs';
+import { createProfileBrowser } from './browser-profile.mjs';
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prepareMcpLaunch, serveTurnSocket } from './tool-turn.mjs';
+import { prepareMcpLaunch, serveTurnSocket, readRootMcp } from './tool-turn.mjs';
 import { grantAcl, harnessAcl, harnessSocketDirectory, harnessHookPath } from './harness-user.mjs';
 
 export async function prepareSessionConnectors({ mcp, privateDirectory, identity, workspace, resolveSecret,
-  check, ownerRead = null, socketDirectory = () => identity ? harnessSocketDirectory(identity.user) : realpathSync(mkdtempSync(join(tmpdir(), 'ism-'))) }) {
+  check, ownerRead = null, browserCall, holdBrowser, deadline, stopped, socketDirectory = () => identity ? harnessSocketDirectory(identity.user) : realpathSync(mkdtempSync(join(tmpdir(), 'ism-'))) }) {
   if (!mcp && !ownerRead) return { launch: () => undefined, close: async () => {} };
   const values = {};
   for (const [server, refs] of Object.entries(mcp?.secrets ?? {})) {
@@ -19,13 +21,21 @@ export async function prepareSessionConnectors({ mcp, privateDirectory, identity
       return [key, value];
     }));
   }
+  const profile = mcp?.browserProfile;
+  const browser = profile ? createProfileBrowser({ binding: () => readRootMcp(profile.installation)?.browserProfile,
+    hold: holdBrowser, check, call: browserCall, deadline, stopped }) : null;
   const socket = join(socketDirectory(), 's');
-  const close = await serveTurnSocket(socket, { shared: Boolean(identity), check, ownerRead });
-  return { close, launch() {
+  const close = await serveTurnSocket(socket, { shared: Boolean(identity), check, ownerRead, browserRead: browser?.request });
+  return { close: async () => { await browser?.close(); await close(); }, launch() {
     const client = identity ? join(dirname(harnessHookPath()), 'owner-browser-client.mjs')
       : fileURLToPath(new URL('./owner-browser-client.mjs', import.meta.url));
-    const configured = ownerRead ? { ...mcp, secrets: { ...mcp?.secrets, owner_github: {} }, servers: { ...mcp?.servers,
+    let configured = ownerRead ? { ...mcp, secrets: { ...mcp?.secrets, owner_github: {} }, servers: { ...mcp?.servers,
       owner_github: { command: process.execPath, args: [client, socket] } } } : mcp;
+    if (browser) {
+      const client = identity ? join(dirname(harnessHookPath()), 'browser-profile-client.mjs') : fileURLToPath(new URL('./browser-profile-client.mjs', import.meta.url));
+      configured = { ...configured, secrets: { ...configured.secrets, playwright: {} }, servers: { ...configured.servers,
+        playwright: { command: process.execPath, args: [client, socket] } } };
+    }
     const prepared = prepareMcpLaunch({ mcp: configured, privateDirectory, socket, workspace,
       harness: identity ? { hookScript: harnessHookPath() } : null });
     if (identity && prepared) grantAcl([prepared.config], [harnessAcl.readOnly(identity.user)]);
@@ -46,8 +56,16 @@ export function admitSessionConnector({ tool, input, config, mcp, enabled, now, 
   if (!tool.startsWith('mcp__')) return decide(tool, input, config, now);
   if (tool !== 'mcp__owner_github__observe' && (!mcp || !Object.keys(mcp.servers).some(name => tool.startsWith(`mcp__${name}__`))))
     return { admitted: false, reason: 'connector is outside the currently granted account set' };
-  const current = { ...config, mcpReads: mcp?.reads ?? [], operations: enabled ? [...config.operations, 'tool:mcp'] : config.operations.filter(operation => operation !== 'tool:mcp') };
-  const verdict = decide(tool, input, current, now);
+  const reads = mcp?.browserProfile ? mcp.reads.filter(tool => !tool.startsWith('mcp__playwright__') || ['browser_navigate', 'browser_snapshot', 'browser_wait_for', 'browser_tabs'].some(name => tool === `mcp__playwright__${name}`)) : mcp?.reads ?? [];
+  const current = { ...config, mcpReads: reads, operations: enabled ? [...config.operations, 'tool:mcp'] : config.operations.filter(operation => operation !== 'tool:mcp') };
+  const writing = mcp?.browserProfile && tool.startsWith('mcp__playwright__') && !reads.includes(tool);
+  if (writing) {
+    let grants = [];
+    try { grants = classifyEffect({ effect: 'tool:mcp', target: tool }, decodeEffectPolicy(config.effectPolicy), { now }).grants; } catch { /* unavailable grants refuse */ }
+    if (!grants.some(grant => grant.target === tool && grant.browserProfile === mcp.browserProfile.id && grant.approves.includes('scope')))
+      return { admitted: false, reason: 'signed-in writes require a current grant naming the tool and browserProfile (Rules 18/57)' };
+  }
+  const verdict = { ...decide(tool, input, current, now), ...(writing ? { consequential: true } : {}) };
   // The full input, policy and decision accompany the already durable parent authority and bounds.
   // The checkpoint checks held secrets before this record can be written.
   return { ...verdict, localCause: JSON.stringify({ tool, input, configuration: current,
