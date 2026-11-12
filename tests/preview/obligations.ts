@@ -3,7 +3,7 @@
  * rebuilds it exactly, and every item stays open until a recorded cause closes it. */
 import { dueState } from './dated-memory.js';
 import { commitmentOpen, commitmentWaitsOn, loopRevisitMs, loopRevisits, obligationCapacity, obligationSchedule, openBlockers,
-  openDirectives, openQuestionCandidates, openRequests, owedResultAuthority, probeTurn, wallEpoch, type JournalView, type Turn, type ObligationOutcome } from './journal.js';
+  owedResultMessagesInWindow, OWED_RESULT_MESSAGES_PER_HOUR, OWED_RESULT_PACE_HOLD, openDirectives, openQuestionCandidates, openRequests, owedResultAuthority, probeTurn, wallEpoch, type JournalView, type Turn, type ObligationOutcome } from './journal.js';
 
 /** Measured engineering defaults (Rule 46/64): accepted work older than this, or no forward
  * progress for this long while work waits, is reported as overdue on the pull surface. */
@@ -130,7 +130,10 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
   const deliveryHold = view.stop ?? (now >= view.expires ? 'trial expired'
     : view.replies >= view.limits.maxReplies ? 'reply allowance used'
       : view.calls >= view.limits.maxCalls ? 'model-call allowance used'
-        : view.order.find(turn => turn.requestedAction?.owed && turn.intent === undefined && turn.held)?.held ?? null);
+        : owedResultMessagesInWindow(view, now) >= OWED_RESULT_MESSAGES_PER_HOUR ? OWED_RESULT_PACE_HOLD
+          : view.order.find(turn => turn.requestedAction?.owed && turn.intent === undefined && turn.held)?.held ?? null);
+  const pacedParts = deliveryHold === OWED_RESULT_PACE_HOLD && view.order.some(turn => turn.requestedAction?.owed
+    && turn.sent !== undefined && turn.replyParts?.some(part => !part.started));
   return { open: loops.length, byKind, revisitDue: loops.filter(loop => loop.revisitDue && loop.kind === 'commitment').length,
     revisitMinutes: Math.round(loopRevisitMs(view) / 60_000),
     overdueCheckIns: loops.filter(loop => loop.defect === 'overdue-check-in').length,
@@ -157,7 +160,8 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
     state: recoveryUnknown ? 'stalled' : oldestAt === undefined ? 'idle' : now - oldestAt > PROGRESS_STALL_MS ? 'stalled' : 'progressing',
     inhibition: oldestAt !== undefined || recoveryUnknown || future.length || awaitingDelivery || view.stop
       ? inhibition : null,
-    deliveryInhibition: awaitingDelivery ? [
+    deliveryInhibition: awaitingDelivery || pacedParts ? [
+      ...(pacedParts ? [OWED_RESULT_PACE_HOLD] : []),
       ...(deliverable ? [`${deliverable} requested result${deliverable === 1 ? '' : 's'} awaiting delivery${deliveryHold ? `; ${deliveryHold}` : '; waiting for the next successful intake poll'}`] : []),
       ...(awaitingDelivery > deliverable ? [`no grant for unsolicited sends; ${awaitingDelivery - deliverable} finished ${awaitingDelivery - deliverable === 1 ? 'result waits' : 'results wait'} for your next message`] : []),
     ].join('; ') : null,

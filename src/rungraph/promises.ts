@@ -19,6 +19,8 @@ export interface CommitmentNote<Due> {
   owner?: 'agent'; waitsOn?: CommitmentWaitsOn; loop?: ReplyLoop['kind'];
   /** Source-bound request; a date or a promise alone grants no send. */
   deliveryRequest?: string;
+  /** Written only on new, source-verified operator message commitments; never inferred on replay. */
+  resultRequested?: 'source-message-v1';
 }
 export interface CommitmentClosure { id: number; source: string; quote: string }
 export interface PromiseStore<Due> {
