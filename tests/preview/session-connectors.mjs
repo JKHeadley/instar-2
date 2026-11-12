@@ -8,7 +8,7 @@ import { prepareMcpLaunch, serveTurnSocket } from './tool-turn.mjs';
 import { grantAcl, harnessAcl, harnessSocketDirectory, harnessHookPath } from './harness-user.mjs';
 
 export async function prepareSessionConnectors({ mcp, privateDirectory, identity, workspace, resolveSecret,
-  check, ownerRead = null, socketDirectory = () => identity ? harnessSocketDirectory(identity.user) : realpathSync(mkdtempSync(join(tmpdir(), 'ism-'))) }) {
+  check, ownerRead = null, threadline = null, socketDirectory = () => identity ? harnessSocketDirectory(identity.user) : realpathSync(mkdtempSync(join(tmpdir(), 'ism-'))) }) {
   if (!mcp && !ownerRead) return { launch: () => undefined, close: async () => {} };
   const values = {};
   for (const [server, refs] of Object.entries(mcp?.secrets ?? {})) {
@@ -20,7 +20,7 @@ export async function prepareSessionConnectors({ mcp, privateDirectory, identity
     }));
   }
   const socket = join(socketDirectory(), 's');
-  const close = await serveTurnSocket(socket, { shared: Boolean(identity), check, ownerRead });
+  const close = await serveTurnSocket(socket, { shared: Boolean(identity), check, ownerRead, threadline });
   return { close, launch() {
     const client = identity ? join(dirname(harnessHookPath()), 'owner-browser-client.mjs')
       : fileURLToPath(new URL('./owner-browser-client.mjs', import.meta.url));

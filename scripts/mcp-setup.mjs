@@ -10,7 +10,7 @@ import { assertAgentPaths } from './agent-paths.mjs';
 
 const LEGACY_BROWSER = { command: 'npx', args: ['-y', '@playwright/mcp@latest'] };
 // Relative to the harness workspace: owned, writable, and inside its bounded volume.
-export const DEFAULT_MCP = { mcpServers: { playwright: { command: 'npx',
+export const DEFAULT_MCP = { mcpServers: { threadline: { command: 'instar2-threadline', args: [] }, playwright: { command: 'npx',
   args: [...LEGACY_BROWSER.args, '--headless', '--user-data-dir', '.instar-browser-profile'] } },
   reads: ['navigate', 'snapshot', 'take_screenshot', 'wait_for', 'tabs', 'console_messages', 'network_requests']
     .map(name => `mcp__playwright__browser_${name}`) };

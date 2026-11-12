@@ -246,7 +246,7 @@ export const toolTurnSlug = (operation, attempt) => `${createHash('sha256').upda
  * slots, the harness the hook stops past them, and whether the hook confines the shell; `gate` is the host checkpoint's
  * address for this turn when the doorway's harness runs through it (w4-sessiondriver). */
 export function prepareToolTurn({ root, operation, attempt, operations, effectPolicy, irreversibleTerm, children = 0, mcp = null,
-  node = process.execPath, scratch = attachScratch, volume = null, authority = 'unrecorded', admission = CLAUDE_TOOL_ADMISSION, gate = null,
+  node = process.execPath, scratch = attachScratch, volume = null, authority = 'unrecorded', admission = CLAUDE_TOOL_ADMISSION, gate = null, threadlineGate = null,
   harness = null, grant = { volume: grantVolume, state: prepareHarnessState, socket: harnessSocketDirectory } }) {
   const base = join(realpathSync(root), TOOL_TURNS_DIRECTORY);
   mkdirSync(base, { recursive: true, mode: 0o700 });
@@ -286,7 +286,7 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
   // delegation becomes a child edge, network reads are admitted, consequential tools pass the effect owner.
   writeFileSync(join(stateDirectory, 'config.json'), JSON.stringify({ workspace, tmp, reads: [...SUBSCRIPTION_TOOL_RUNTIME_READS], maxCalls: admission.maxCalls, heldCheck: socket,
     maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...operations],
-    ...(shellProfile ? { shellProfile } : {}), ...(gate ? { gate, delegation: true, networkReads: true } : {}),
+    ...(shellProfile ? { shellProfile } : {}), ...(gate ? { gate, delegation: true, networkReads: true } : {}), ...(threadlineGate ? { threadlineGate } : {}),
     children: { max: children, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: mcp ? [...mcp.reads] : [], authority,
     ...(effectPolicy === undefined ? {} : { effectPolicy }), ...(irreversibleTerm === undefined ? {} : { irreversibleTerm }) }), { mode: 0o600 });
   const mcpTurn = prepareMcpLaunch({ mcp, privateDirectory, socket, harness, node, workspace });
@@ -314,6 +314,9 @@ export function prepareMcpLaunch({ mcp, privateDirectory, socket, harness = null
       // The worker cannot read the owner repository; use the existing immutable hook installation.
       if (harness && name === 'local_verify' && configured.args?.length === 1 && configured.args[0] === TOOL_LOCAL_VERIFY)
         configured = { ...configured, args: [join(dirname(harness.hookScript), 'local-verify-mcp.mjs')] };
+      if (name === 'threadline' && configured.command === 'instar2-threadline')
+        configured = { command: node, args: [harness ? join(dirname(harness.hookScript), 'threadline-client.mjs')
+          : fileURLToPath(new URL('./threadline-client.mjs', import.meta.url)), socket] };
       // MCP spawns do not inherit the shell's PATH repair. Include the installation's node/npx directory.
       let server = configured.command.includes('/') ? configured : { ...configured,
         env: { PATH: `${dirname(node)}:${process.env.PATH ?? '/usr/bin:/bin'}`, ...configured.env } };
@@ -466,13 +469,23 @@ export const heldSpan = (heldSecrets, extra = []) => {
  * `unavailable`, plan #507), and each SecretRef-bearing MCP server its resolved environment, once, to a launcher
  * presenting that server's name and nonce (Rule 100: the launch configuration holds no SecretRef value). Returns a
  * `close()` that stops serving and removes the socket's directory. */
-export async function serveTurnSocket(socket, { nonces = {}, values = {}, shared = false, check = () => 'unavailable', ownerRead = null } = {}) {
+export async function serveTurnSocket(socket, { nonces = {}, values = {}, shared = false, check = () => 'unavailable', ownerRead = null, threadline = null } = {}) {
   const pending = new Map(Object.entries(values));
   const server = createServer({ allowHalfOpen: true }, link => {
     let text = '', over = false;
     link.setEncoding('utf8');
     link.on('data', chunk => { if (text.length + chunk.length > HELD_CHECK_MAX_BYTES * 2) over = true; else text = `${text}${chunk}`; });
     link.on('end', async () => {
+      if (text.startsWith('threadline ')) {
+        let result = { status: 'refused', reason: 'request-scope' };
+        try {
+          if (!over && text.length <= 16384 && threadline) {
+            const row = JSON.parse(text.slice(11));
+            if (row && Object.keys(row).sort().join(',') === 'id,input,tool') result = await threadline(row.id, row.tool, row.input);
+          }
+        } catch { result = { status: 'uncertain', reason: 'host-outcome-unavailable; do not resend' }; }
+        link.end(JSON.stringify(result)); return;
+      }
       if (text.startsWith('owner-read ')) {
         let result = { status: 'refused', reason: 'request-scope' };
         try {
@@ -957,16 +970,16 @@ export async function runToolTurn(options) {
   try {
     // A harness with no model-call limit of its own runs only through the checkpoint: no checkpoint, no tool turn.
     if (admission.harness && !gate) throw Error('preview: this tool turn needs the host admission checkpoint');
-    if (admission.harness) claim = `tool-turn-${createHash('sha256').update(id, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
+    if (gate) claim = `tool-turn-${createHash('sha256').update(id, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
     turn = prepareToolTurn({ root, operation: id, attempt, operations, effectPolicy, irreversibleTerm, children, mcp, scratch,
-      volume: kept ? space : null, authority, admission, ...(claim ? { gate: gate.base(claim) } : {}),
+      volume: kept ? space : null, authority, admission, ...(claim ? admission.harness ? { gate: gate.base(claim) } : { threadlineGate: gate.base(claim) } : {}),
       ...(harness ? { harness: { user: harness.user, runner: harness.runner, hookScript: harness.hookScript,
         rootState: harnessRootState(root, harness.user) } } : {}) });
     if (claim) {
       // The turn's own edge: the parent its delegations hang from (its durable record is the journal's reserved row).
       const openedAt = now();
-      gate.open(claim, { framework: 'codex-cli', allowance: SUBSCRIPTION_TOOL_LIMITS.maxTurns, edge: { type: 'SessionWorkEdge', schemaVersion: 1,
-        id: `tool-turn:${id}:${attempt}`, parent: id, child: `tool-turn:${id}`, scope: turn.workspace, owner, authority: 'the reviewed tools activation',
+      gate.open(claim, { framework: admission.harness ? 'codex-cli' : 'claude-code', allowance: SUBSCRIPTION_TOOL_LIMITS.maxTurns, edge: { type: 'SessionWorkEdge', schemaVersion: 1,
+        id: `tool-turn:${id}:${attempt}`, parent: id, child: `tool-turn:${id}`, topic: String(journal.view.turns.get(id)?.thread ?? 'main'), scope: turn.workspace, owner, authority: 'the reviewed tools activation',
         budget: { steps: 1, deadline: openedAt + SUBSCRIPTION_TOOL_LIMITS.timeout, maxResultBytes: 16384, calls: SUBSCRIPTION_TOOL_LIMITS.maxTurns, tokens: null },
         exitTest: 'the turn returned one admitted answer', placement: `machine:${owner}`, transport: 'codex exec on this machine',
         resultDestination: `answer of ${id}`, openedAt } });
@@ -991,14 +1004,15 @@ export async function runToolTurn(options) {
     // shell's network checkpoint runs the same check; the turn's served MCP credentials are held with the runner's own.
     const servedValues = served.map(([secret]) => secret);
     const check = heldVerdict(heldSecrets, servedValues);
-    closeSecrets = await serveTurnSocket(turn.socket.path, { nonces: turn.mcp?.nonces ?? {}, values: mcpValues, shared: turn.socket.shared, check });
+    closeSecrets = await serveTurnSocket(turn.socket.path, { nonces: turn.mcp?.nonces ?? {}, values: mcpValues, shared: turn.socket.shared, check,
+      threadline: claim ? (call, tool, input) => gate.threadline(claim, call, tool, input) : null });
     // The shell's network checkpoint lives exactly as long as the turn: started here, stopped below whatever the outcome.
     // A confined shell reaches it through its own profile (the one network path it has); the harness's sandbox otherwise.
     const attached = await attachEgress(turn, egress, networkTools(), { check, span: () => heldSpan(heldSecrets, servedValues) });
     checkpoint = attached?.proxy ?? null;
     result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots,
       ...(turn.mcp ? { mcp: turn.mcp } : {}), ...(plan ? { session: { id: plan.id, resume: plan.resume } } : {}),
-      ...(attached && !admission.confinedShell ? { egress: attached.egress } : {}), ...(claim ? { gate: gate.base(claim) } : {}) }, notice);
+      ...(attached && !admission.confinedShell ? { egress: attached.egress } : {}), ...(claim && admission.harness ? { gate: gate.base(claim) } : {}) }, notice);
   } catch (error) { failure = error; }
   if (checkpoint) await checkpoint.close();
   if (claim) {

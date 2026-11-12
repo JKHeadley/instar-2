@@ -1,0 +1,32 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "threadline-runtime.createThreadlineRuntime",
+    "kind": "stores", "status": "live",
+    "requiredFacts": {
+      "growth": "deletes", "holdsAgentMemory": "no",
+      "machineScope": { "kind": "machine-local", "reason": "Encrypted filesystem staging is capped at 1024 frames on the owner-signed local route. Envelopes are removed only after accepted payloads are durable in the existing replicated journal; receipts only after authenticated custody proof is journaled. Lookup requests are reproducible from sender preparations and answered from current intake. Reclamation follows successful replication and ownership/stop checks. Authoritative sends, intake, reads and custody evidence remain in the existing journal through compaction and host replacement; no agent memory is deleted." },
+      "agreesWith": []
+    },
+    "standards": [7, 32, 46, 60, 113, 114], "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "threadline-default-exchange",
+    "kind": "features", "status": "live",
+    "requiredFacts": { "metrics": ["threadline:send", "threadline:receive", "threadline:read", "threadline:receipt", "mcp:threadline:threadline_status"] },
+    "profile": { "type": "Profile", "schemaVersion": 1, "consequence": "data", "reversibility": "irreversible", "reach": "world", "surface": "none", "repeats": { "kind": "no" } },
+    "standards": [28, 29, 44, 46, 60, 63, 89, 98, 100, 113, 114, 116, 118, 122, 123], "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "threadline-runtime.admitThreadline",
+    "kind": "blocking sites", "status": "live",
+    "requiredFacts": {
+      "authority": "block", "decidesAlone": "ruled-three", "decidesAloneBasis": "recorded-governed-state",
+      "criticality": "Exact owner signature, private topic share, peer identity, current role grant, full durable cause, known zero-cost operation, claim bounds, ownership, stop and held-secret checks. Peer statements cannot grant authority.",
+      "failDirection": "closed",
+      "preservesInput": "Existing hook trace retains requests; the encrypted journal retains admitted cause and peer payloads. Failed or unknown dispatch retains its stable preparation; no automatic resend. Recoverable staging is reclaimed after replication; accepted payloads and authenticated custody proofs stay in the encrypted journal.",
+      "inspectedBy": "PREVIEW-THREADLINE-DEFAULT-EXCHANGE"
+    },
+    "profile": { "type": "Profile", "schemaVersion": 1, "consequence": "data", "reversibility": "irreversible", "reach": "world", "surface": "none", "repeats": { "kind": "no" } },
+    "standards": [4, 28, 42, 66, 95, 98, 103, 123], "holds": []
+  }
+]

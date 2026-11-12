@@ -4,7 +4,7 @@
     "kind": "stores", "status": "live",
     "requiredFacts": {
       "growth": "unbounded", "holdsAgentMemory": "yes",
-      "machineScope": { "kind": "machine-local", "reason": "Durable no-replace records belong to the local installation's setup conversation; this installer does not replicate or establish peer authority." },
+      "machineScope": { "kind": "machine-local", "reason": "Durable no-replace records belong to the local installation setup. Threadline uses this writer for public identity and encrypted staging; staging reclamation is declared beside threadline-runtime.mjs. Identity derives from the installation storage key and enters existing custody. Private routes are owner-signed machine-local filesystem paths; moving a route needs an updated signed binding, never a new identity or automatic resend. Authoritative transport data stays in the existing encrypted journal and follows its replication demand." },
       "agreesWith": []
     },
     "standards": [7, 32], "holds": []

@@ -36,6 +36,8 @@ let raw = '';
 for await (const chunk of process.stdin) raw += chunk;
 let call = JSON.parse(raw);
 const config = JSON.parse(readFileSync(join(stateDirectory, 'config.json'), 'utf8'));
+// Only this host-owned connector needs the owner socket on an otherwise hook-admitted turn.
+if (String(call.tool_name).startsWith('mcp__threadline__') && config.threadlineGate) config.gate = config.threadlineGate;
 const record = (row, durable = false) => {
   const path = join(stateDirectory, 'admission.jsonl');
   appendFileSync(path, `${JSON.stringify(row)}\n`, { mode: 0o600 });
