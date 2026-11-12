@@ -54,7 +54,8 @@ export const profileRefused = reason => ({ status: 'refused', reason });
 export function createProfileBrowser({ binding, hold, check, call, deadline, stopped, now = Date.now }) {
   let operationStopped = () => false, operationDeadline = Infinity;
   let child, slot, closing, exited, busy = false, closed = false, sequence = 0, timer;
-  const pending = new Map();
+  const pending = new Map(), heldProfile = new Set();
+  let heldBytes = 0;
   const close = () => closing ??= (async () => {
     closed = true; clearInterval(timer);
     for (const resolve of pending.values()) resolve(profileRefused('browser-closed'));
@@ -79,7 +80,12 @@ export function createProfileBrowser({ binding, hold, check, call, deadline, sto
         if (Buffer.byteLength(line) > 65536) { void close(); return; }
         try {
           const row = JSON.parse(line);
-          if (row.effect) {
+          if (Array.isArray(row.held)) { for (const value of row.held) if (typeof value === 'string' && !heldProfile.has(value)) {
+            heldBytes += Buffer.byteLength(value);
+            if (heldBytes > 65536) { void close(); return; }
+            heldProfile.add(value);
+          } }
+          else if (row.effect) {
             let admitted = false;
             const adapter = Object.assign(() => new Promise((resolve, reject) => {
               admitted = true; pending.set(`effect:${row.effect}`, result => result.status === 'observed'
@@ -105,7 +111,10 @@ export function createProfileBrowser({ binding, hold, check, call, deadline, sto
     try { result = await rpc(input.name, input.arguments); } catch { await close(); return profileRefused('browser-unavailable'); }
     finally { operationStopped = () => false; operationDeadline = Infinity; }
     if (withdrawn() || JSON.stringify(binding()) !== JSON.stringify(bindingSnapshot)) return profileRefused('profile-withdrawn');
-    return check(JSON.stringify(result)) === 'clear' ? result : profileRefused('output-secret-check');
+    const { secretMaterialIn } = await import('./reply-check.js');
+    const { redact } = await import('../../src/recall/redact.js');
+    return check(JSON.stringify(result)) === 'clear' && !redact(JSON.stringify(result)).count
+      && !secretMaterialIn(JSON.stringify(result), [...heldProfile]) ? result : profileRefused('output-secret-check');
   }, { binding });
   return { close, async request(id, input) {
     if (closed || busy || stopped() || now() >= deadline) return profileRefused('closed-stopped-or-busy');
@@ -168,6 +177,8 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
       for (const page of scope.pages()) for (const frame of page.frames())
         if (allowed(frame.url())) strings(await frame.evaluate(() => Object.values(sessionStorage)).catch(() => []));
     }
+    // Host-private IPC inventory: additive custody in the parent, never a journal or model result.
+    process.stdout.write(`${JSON.stringify({ held: [...held] })}\n`);
   };
   const allowed = value => { try { if (JSON.stringify(readBrowserProfile(root, name)) !== JSON.stringify(initial)) return false; const url = new URL(value); return !url.username && !url.password && initial.origins.includes(url.origin.replace(/^ws/u, 'http')); } catch { return false; } };
   const execute = async (tool, input) => {

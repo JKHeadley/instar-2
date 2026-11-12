@@ -58,7 +58,10 @@ message was handed to the transport, not that the remote application accepted it
 
 Cookies, local/session storage and IndexedDB strings are inventoried across
 browser contexts and frames before and after tool execution. Credential checks
-run before output reaches the worker or its journal. Automatic MCP snapshot and
+run before output reaches the worker or its journal. The parent retains a bounded,
+additive inventory over host-private IPC and checks results independently, so code
+executing in the child cannot bypass the checkpoint by forging a protocol reply.
+The inventory never enters a model response or journal. Automatic MCP snapshot and
 console files are not published; console tools retain their in-memory messages
 and use the same checked output. The host child's stderr is not exposed. Existing
 claim lifetime, operation timeout, input/output bounds, ownership and stop checks
