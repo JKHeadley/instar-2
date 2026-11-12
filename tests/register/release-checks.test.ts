@@ -1,54 +1,49 @@
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { decodeDeclaration, requiredReleaseChecks } from '../../src/register/index.js';
+import { requiredReleaseChecks } from '../../src/register/index.js';
 import { bootstrapDeclarations } from '../../scripts/register-source.mjs';
-import { setup, value, detail } from './fixtures.js';
+import { setup } from './fixtures.js';
 
 const read = (path: string) => readFileSync(path, 'utf8');
-const declarations = (checks = read('register-source/rule-release-checks.json')) => {
+const declarations = () => {
   const paths = execFileSync('git', ['ls-files'], { encoding: 'utf8' }).trim().split('\n');
   const documents = Object.fromEntries(paths.filter(p => p.startsWith('docs/') && p.endsWith('.md')
     || /\.(declarations|parser)\.json$/.test(p)).map(p => [p, read(p)]));
-  documents['register-source/rule-release-checks.json'] = checks;
   return bootstrapDeclarations(documents, JSON.parse(read('register-source/bootstrap-shape.json')));
 };
 const requirement = { id: 'R117-TWO-SESSION-A-D', evidenceLocation: 'release-evidence/{commit}/rule-117-two-session-a-d.json', stage: 'runtime' };
 
-describe('release requirements from rule declarations', () => {
-  it('emits the real Rule 117 a-d obligation; omitting it cannot satisfy that expectation', () => {
+describe('release requirements from registered rules and committed metadata', () => {
+  const metadata = JSON.parse(read('register-source/rule-release-checks.json'));
+  it('emits Rule 117 a-d; omission fails the expected list; order is deterministic', () => {
     const s = setup(); const rules = declarations().filter(s => ['rules', 'terms'].includes(s.declaration.kind)).map(s => s.declaration);
-    const result = requiredReleaseChecks(s.build(rules));
+    const register = s.build(rules); const result = requiredReleaseChecks(register, metadata);
     expect(result).toEqual([{ rule: 117, ...requirement }]);
-    expect(requiredReleaseChecks(s.build([...rules].reverse()))).toEqual(result);
-    const omitted = rules.map(d => { const copy = structuredClone(d); delete copy.requiredFacts.requiredReleaseCheck; return copy; });
-    expect(requiredReleaseChecks(s.build(omitted))).toEqual([]);
-    expect(() => expect(requiredReleaseChecks(s.build(omitted))).toEqual(result)).toThrow();
+    expect(requiredReleaseChecks(s.build([...rules].reverse()), metadata)).toEqual(result);
+    expect(requiredReleaseChecks(register, {})).toEqual([]);
+    expect(() => expect(requiredReleaseChecks(register, {})).toEqual(result)).toThrow();
     expect(JSON.stringify(result)).not.toContain('passed');
-    expect(requiredReleaseChecks(s.build(declarations('{}').filter(s => ['rules', 'terms'].includes(s.declaration.kind)).map(s => s.declaration)))).toEqual([]);
-    expect(() => declarations('{"999": {}}')).toThrow('unknown rule 999');
+    expect(() => requiredReleaseChecks(register, { 999: requirement })).toThrow('unknown rule 999');
+    expect(requiredReleaseChecks(register, { 117: requirement, 2: { ...requirement, stage: 'build' } }).map(c => c.rule)).toEqual([2, 117]);
   });
-  it('keeps all 308 declarations unchanged except the governed Rule 117 addition', () => {
-    const sources = declarations(); const old = JSON.parse(execFileSync('git', ['show', 'd1823a36:generated/conversion.json'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }));
+  it('keeps all 308 pre-draft declarations unchanged and the approved shape intact', () => {
+    const sources = declarations();
     const baseline = JSON.parse(execFileSync('git', ['show', 'd1823a36:generated/register.json'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }));
     expect(sources).toHaveLength(308);
     expect(sources.map(s => s.declaration.id).sort()).toEqual(baseline.entries.map((e: { declaration: { id: string } }) => e.declaration.id).sort());
     for (const { declaration } of sources) {
-      const expected = baseline.entries.find((e: { declaration: { id: string } }) => e.declaration.id === declaration.id).declaration;
-      const actual = structuredClone(declaration); delete actual.requiredFacts.requiredReleaseCheck;
-      const { declaredBy: _site, ...prior } = expected;
-      expect(actual).toEqual(prior);
+      const { declaredBy: _site, ...prior } = baseline.entries.find((e: { declaration: { id: string } }) => e.declaration.id === declaration.id).declaration;
+      expect(declaration).toEqual(prior);
     }
-    expect(old.sources.some((s: { declaration: { id: string } }) => s.declaration.id === 'rule:117')).toBe(true);
+    expect(read('register-source/bootstrap-shape.json')).toBe(execFileSync('git', ['show', 'd1823a36:register-source/bootstrap-shape.json'], { encoding: 'utf8' }));
   });
   it.each([null, {}, { ...requirement, id: '' }, { ...requirement, evidenceLocation: '' },
-    { ...requirement, stage: 'unknown' }, { ...requirement, outcome: 'passed' }])('refuses malformed declaration %j at the register decoder', bad => {
-    const s = setup(); const result = decodeDeclaration(s.rule(117, { requiredReleaseCheck: bad }), s.context);
-    expect(detail(result)).toMatch(/expected|undeclared|closed list/);
-  });
-  it('accepts both stages and absent declarations without inventing a requirement', () => {
+    { ...requirement, stage: 'unknown' }, { ...requirement, outcome: 'passed' }])('refuses malformed requirement %j', bad => {
     const s = setup();
-    for (const stage of ['build', 'runtime']) expect(value(decodeDeclaration(s.rule(117, { requiredReleaseCheck: { ...requirement, stage } }), s.context))).toBeDefined();
-    expect(requiredReleaseChecks(s.build([s.rule(117)]))).toEqual([]);
+    expect(() => requiredReleaseChecks(s.build([s.rule(117)]), { 117: bad })).toThrow(/expected|undeclared|closed list/);
+  });
+  it.each([null, [], 'bad'])('refuses malformed metadata map %j', bad => {
+    const s = setup(); expect(() => requiredReleaseChecks(s.build([s.rule(117)]), bad)).toThrow('expected object');
   });
 });

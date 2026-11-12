@@ -116,8 +116,6 @@ export function bootstrapDeclarations(documents, shape) {
   const id = name => `term:${name.replaceAll(' ', '-')}`;
   const declaration = (id, kind, requiredFacts, extra = {}) => ({ type: 'Declaration', schemaVersion: 1, id, kind, status: 'live', requiredFacts, standards: [], holds: [], ...extra });
   for (const t of terms) sources.push({ path: 'docs/03-the-glossary.md', symbol: id(t.name), declaration: declaration(id(t.name), 'terms', { ...t, termRefs: [] }) });
-  const releaseChecks = JSON.parse(documents['register-source/rule-release-checks.json'] ?? '{}');
-  if (!releaseChecks || typeof releaseChecks !== 'object' || Array.isArray(releaseChecks)) throw new Error('rule release checks must be an object');
   const rules = documents['docs/01-the-rules.md']; let group = '';
   for (const line of rules.split('\n')) {
     if (line.startsWith('### ')) group = line;
@@ -129,11 +127,9 @@ export function bootstrapDeclarations(documents, shape) {
     const statementLower = statement.toLowerCase(); const termRefs = terms.filter(t => statementLower.includes(t.name)).map(t => id(t.name)).sort();
     const requiredFacts = { number, name, statement, held: group.includes('mind') ? 'mind' : group.includes('Free') ? 'shape' : 'script',
       parent: 'root', rootReason: 'Bootstrap source declares no structural parent; no parent inferred from prose.', termRefs, checkDescription: cells[3] };
-    if (Object.hasOwn(releaseChecks, String(number))) requiredFacts.requiredReleaseCheck = releaseChecks[number];
     sources.push({ path: 'docs/01-the-rules.md', symbol: `rule:${number}`, declaration: declaration(`rule:${number}`, 'rules', requiredFacts) });
   }
   const numbers = sources.filter(s => s.declaration.kind === 'rules').map(s => s.declaration.requiredFacts.number);
-  for (const key of Object.keys(releaseChecks)) if (!numbers.some(n => String(n) === key)) throw new Error('release check names unknown rule ' + key);
   if (!numbers.length || new Set(numbers).size !== numbers.length) throw new Error('empty or duplicate rule inventory');
   for (const [path, content] of Object.entries(documents)) if (isDeclarationSource(path)) {
     const declared = JSON.parse(content); if (!Array.isArray(declared)) throw new Error('declaration source must be an array');

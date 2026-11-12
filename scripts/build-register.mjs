@@ -196,7 +196,7 @@ export async function run(args, root = process.cwd()) {
   for (const path of trailingInputs(root, result.input.consumed))
     throw new Error(`P3-NF-01: source pin trails ${path}; commit source changes and regenerate`);
   const releaseRequirements = JSON.stringify({ commit, generation: result.generation.id, authority: 'requirements-only',
-    checks: requiredReleaseChecks(result.register) }, null, 2) + '\n';
+    checks: requiredReleaseChecks(result.register, JSON.parse(result.input.sources['register-source/rule-release-checks.json'] ?? '{}')) }, null, 2) + '\n';
   const files = { 'required-release-checks.json': releaseRequirements, 'register.json': result.outputs.register, 'rules.md': result.outputs.ruleBook, 'glossary.md': result.outputs.glossary,
     'capabilities.md': result.outputs.capabilities, 'capabilities.json': JSON.stringify(result.capabilities, null, 2) + '\n', 'coverage.md': result.outputs.coverage, 'shape.json': bytes(result.register.shape) + '\n',
     'fact-schemas.json': bytes(result.register.shape.factSchemas) + '\n', 'conversion.json': bytes(result.conversion) + '\n',

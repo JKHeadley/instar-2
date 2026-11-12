@@ -1123,22 +1123,6 @@
           "values": [],
           "reference": false,
           "terms": []
-        },
-        {
-          "name": "requiredReleaseCheck",
-          "format": "object",
-          "required": false,
-          "values": [],
-          "reference": false,
-          "terms": [],
-          "schema": {
-            "type": "object",
-            "fields": {
-              "id": { "type": "string" },
-              "evidenceLocation": { "type": "string" },
-              "stage": { "type": "string", "values": ["build", "runtime"] }
-            }
-          }
         }
       ],
       "profile": false,
