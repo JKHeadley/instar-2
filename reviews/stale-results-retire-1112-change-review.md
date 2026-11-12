@@ -30,7 +30,7 @@ Prompt finding: bac6ce7485d9 | protocol-literal | Existing unchanged guidance/pr
 Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged guidance/protocol, not a new meaning classifier — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 Deferral: tests/preview/held-result-delivery.test.ts:277 | not-a-deferral=Regression tests for the product delivery-deferral disposition; no builder work deferred.
 
-Subject (6 paths): tests/preview/README.md, tests/preview/fixtures/stale-results-1112.json, tests/preview/held-result-delivery.test.ts, tests/preview/journal.ts, tests/preview/obligations.ts, tests/preview/stale-results-retire.test.ts
+Subject (14 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/required-release-checks.json, generated/rules.md, generated/source.json, tests/preview/README.md, tests/preview/fixtures/stale-results-1112.json, tests/preview/held-result-delivery.test.ts, tests/preview/journal.ts, tests/preview/obligations.ts, tests/preview/stale-results-retire.test.ts
 
 Team posture: Retained results keep their verified source operator and forum topic. Ordinary reply disclosure and lookup are restricted by the existing operator audience; members and guests get no new access or sharing route. This preview installation remains its existing team-of-one operator chat, not a new team-wide archive.
 1.x comparison: Inherited required Step 0 research at actual JKHeadley/instar main db3ed6d3052cfcc24888b6c8bc86086abcfc2987: src/monitoring/CommitmentTracker.ts:1089,1179,2291,2345,2377 and src/monitoring/PromiseBeacon.ts; docs/specs/agent-owned-followthrough.md §4.5, auto-expiry-review-ledger.md, auto-expiry-holds-and-archive.md; histories 4018bf338, 1b4350998, e8576a096. Reuse retained closure reason and evidence gating, not broad inactivity or operator-wait expiry. ONEX-LESSONS.md was unavailable in the first builder's searched trees and local paths; no direct reading claimed. Existing 2.0 journal ownership, snapshots and send receipts already do the storage/serialization job.
@@ -38,6 +38,8 @@ Decision: stale-age | Five days since source, because the newest incident source
 Decision: stale-disposition | Use model-declared delivery deferral versus explicit result defect; ordinary generic reply-review removal cannot imply defective work. Keep requested-result delivery behavior unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stale-results-retire-1112-r2-build-report.md
 Decision: stale-retention | Append a retirement record, preserve old replay, keep result and reason, and bind the one aggregate sentence to an ordinary reply intent. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stale-results-retire-1112-r2-build-report.md
 Decision: stale-context | Remove retired commitments from openFor and active memory-list context so future model turns cannot mistake archived finished work for a live job. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stale-results-retire-1112-r2-build-report.md
+
+Decision: stale-register | Regenerate the existing register in replay mode from source commit ba30b74889212d65b6c65e8dd79a6bc99854da59; no declaration or pin is hand-edited. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stale-results-retire-1112-r2-build-report.md
 
 ## Closing block
 
