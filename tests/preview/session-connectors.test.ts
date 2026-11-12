@@ -4,12 +4,49 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error physical host boundary
-import { prepareSessionConnectors } from './session-connectors.mjs';
+import { prepareSessionConnectors, admitSessionConnector } from './session-connectors.mjs';
+// @ts-expect-error physical host boundary
+import { createToolEffectOwner } from './admission-gate.mjs';
+// @ts-expect-error physical host boundary
+import { admitToolCallEffect } from './tool-admission.mjs';
 // @ts-expect-error physical host boundary
 import { readRootMcp } from './tool-turn.mjs';
 // @ts-expect-error physical host boundary
 import { grantAcl, harnessAcl, HARNESS_TURNS, HARNESS_USER } from './harness-user.mjs';
 const roots: string[] = [];
+it('admits two granted reversible ArrowDown presses while refusing a duplicate consequential write', () => {
+  const key = 'mcp__playwright__browser_press_key', write = 'mcp__playwright__browser_click';
+  let grant = true, stop = false, costUsd = 0, sensitive = false;
+  const rows: { id: string; state: string }[] = [];
+  const owner = createToolEffectOwner({ append: (row: { id: string; state: string }) => rows.push(row),
+    prepared: (id: string) => rows.some(row => row.id === id && row.state === 'prepared'), stopped: () => stop, now: () => 10,
+    decide: (tool: string, input: unknown) => admitSessionConnector({ tool, input, enabled: true, now: 10,
+      mcp: { servers: { playwright: {} }, reads: [], browserProfile: { id: 'agent-browser' } },
+      config: { operations: [], effectPolicy: { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: sensitive ? [key] : [],
+        registered: [key, write].map(target => ({ effect: 'tool:mcp', target, consequence: 'data',
+          reversibility: target === key ? 'reversible' : 'irreversible', reach: 'agent', costUsd, source: 'operator:proof' })),
+        grants: grant ? [key, write].map(target => ({ id: target, effect: 'tool:mcp', target, browserProfile: 'agent-browser', browserOrigin: 'https://site.test',
+          approves: ['scope'], source: 'operator:proof', custodian: 'owner', recovery: 'withdraw', expiresAt: 100 })) : [] } },
+      decide: admitToolCallEffect }) });
+  const parent = { id: 'edge', child: 'claim' };
+  const press = (call: string) => owner.admit({ parent, tool: key, input: { key: 'ArrowDown' }, call });
+  const first = press('key-1'), second = press('key-2');
+  expect(first.admitted).toBe(true); expect(second.admitted).toBe(true);
+  expect(first.identity).not.toBe(second.identity);
+  expect(press('key-1')).toMatchObject({ admitted: false, reason: expect.stringContaining('already prepared') });
+  const send = (call: string) => owner.admit({ parent, tool: write, input: { selector: 'button' }, call });
+  expect(send('write-1').admitted).toBe(true);
+  expect(send('write-retry')).toMatchObject({ admitted: false, reason: expect.stringContaining('already prepared') });
+  const network = (call: string) => owner.admit({ parent, tool: key,
+    input: { key: 'ArrowDown', browserEffect: { method: 'POST', url: 'https://site.test/', bodyDigest: `sha256:${'0'.repeat(64)}` } }, call });
+  costUsd = 1; expect(network('over-cap').admitted).toBe(false); costUsd = 0;
+  sensitive = true; expect(network('sensitive').admitted).toBe(false); sensitive = false;
+  expect(network('network-1').admitted).toBe(true);
+  expect(network('network-retry')).toMatchObject({ admitted: false, reason: expect.stringContaining('already prepared') });
+  grant = false; expect(press('key-3').admitted).toBe(false);
+  grant = true; stop = true; expect(press('key-4').admitted).toBe(false);
+  expect(rows).toHaveLength(4);
+});
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 const run = (command: string, args: string[]) => new Promise<{ code: number | null; out: string }>((resolve, reject) => {
   const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });

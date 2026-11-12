@@ -2693,6 +2693,7 @@ async function main() {
       const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null || !active() || sessionAccountsChanged();
       const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
       gate = await createAdmissionGate({
+        profileBrowser: () => Boolean(readRootMcp(root)?.browserProfile),
         ownerBrowser: conversationSession ? createOwnerBrowser({ binding: () => readOwnerBrowserBinding(root),
           hold: bounds => hostResources.hold('maintenance', bounds), scrub: text => redact(text).text,
           held: heldVerdict(heldSecrets), now: wallNow }) : null,
@@ -2856,6 +2857,8 @@ async function main() {
               sessionConnectors.set(claim, await prepareSessionConnectors({ mcp,
                 privateDirectory: privateDirectory ?? state, identity, workspace: project,
                 resolveSecret: name => createSecretCustody(root, key(), wallNow).resolve(secretRef(name)),
+                browserCall: (id, tool, input, browser) => gate.observeOwner(claim, id, input, { tool, browser }),
+                holdBrowser: bounds => hostResources.hold('maintenance', bounds), deadline: edge.budget.deadline, stopped: binding.stopped,
                 check: heldVerdict(heldSecrets), ownerRead: conversationSession ? (id, input) => gate.observeOwner(claim, id, input) : null }));
             }
             gate.open(claim, { framework, allowance: edge.budget.calls, edge,

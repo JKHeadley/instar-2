@@ -1,0 +1,26 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.browser-network.confinedBrowser",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "deletes",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Rules 32/113: one browser host creates a temporary executable wrapper containing only the installed Chromium path and loopback proxy port. No credentials or agent memory. Close removes this temporary directory after browser exit; existing claim resource teardown owns the child process. This machine-local execution material is not replicated."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      60,
+      100,
+      113
+    ],
+    "holds": []
+  }
+]

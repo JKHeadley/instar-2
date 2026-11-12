@@ -1,0 +1,26 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.browser-code.runProfileCode",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "deletes",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Rules 32/113: one code call has a temporary runtime/library copy, materialized fixed-worker profile and empty slot. These contain no profile, credentials or agent memory. Finally removes the directory after the bounded code child is reaped. Authority, causes and observations remain in the existing claim/effect journal; this temporary execution material is not replicated."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      60,
+      100,
+      113
+    ],
+    "holds": []
+  }
+]

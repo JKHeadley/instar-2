@@ -17,6 +17,8 @@
 //
 // Credentials pass through in the child's own request headers and are neither read nor kept here. The server binds
 // 127.0.0.1 only and serves only paths under its random secret, so another local process cannot spend a claim.
+import { redact } from '../../src/recall/redact.js';
+import { profileRequest } from './browser-profile.mjs';
 import { OWNER_BROWSER_TOOL, ownerBrowserRequest, ownerBrowserRefused } from './owner-browser-contract.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import http from 'node:http';
@@ -73,7 +75,7 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
       try { verdict = decide(tool, input, parent); } catch (error) { return { admitted: false, reason: `effect owner: the effect doorway could not decide (${String(error?.message ?? error)}); refused` }; }
       const doorway = doorwayRecord(verdict);
       if (!verdict.admitted) return { admitted: false, reason: verdict.reason, doorway };
-      if (ownerCause !== undefined && (typeof verdict.localCause !== 'string' || tool !== OWNER_BROWSER_TOOL))
+      if (ownerCause !== undefined && (typeof verdict.localCause !== 'string' || tool !== OWNER_BROWSER_TOOL && !tool.startsWith('mcp__playwright__')))
         return { admitted: false, reason: 'owner read requires a complete local cause', doorway };
       if (stopped()) return { admitted: false, reason: 'effect owner: a stop is held', doorway };
       const payload = digest(canonical(input));
@@ -100,7 +102,7 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
  * can stand in for the provider; production uses the fixed upstreams over TLS. `held` is the runner's held-secret check
  * (tool-turn.mjs heldVerdict) for `kind: 'held'`; absent, every such check refuses.
  */
-export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', note = async () => null, ownerBrowser = null, upstreams = MODEL_UPSTREAMS, request = null }) {
+export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', note = async () => null, ownerBrowser = null, profileBrowser = () => false, upstreams = MODEL_UPSTREAMS, request = null }) {
   const secret = randomBytes(16).toString('hex');
   const claims = new Map();
   const reply = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -183,6 +185,10 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     if (call.kind === 'effect') {
       // The hook may admit only the thin client. Execution and durable preparation happen together below;
       // a hook post is never evidence that the owner read completed.
+      if (profileBrowser() && tool.startsWith('mcp__playwright__')) return profileRequest(tool.slice(17), call.tool_input) && !redact(JSON.stringify(call.tool_input)).count && held(JSON.stringify(call.tool_input)) === 'clear'
+        && effects.authorized({ parent: state.edge, tool, input: call.tool_input })
+        ? { decision: 'allow', reason: 'profile browser client allowed; host rechecks at execution' }
+        : { decision: 'deny', reason: `profile browser requires current tool:mcp scope grant naming target=${tool} and the selected browserProfile (Rules 18/57)` };
       if (tool === OWNER_BROWSER_TOOL) return ownerBrowser && ownerBrowserRequest(call.tool_input)
         && effects.authorized({ parent: state.edge, tool, input: call.tool_input })
         ? { decision: 'allow', reason: 'owner read client allowed; owner rechecks at execution' }
@@ -267,30 +273,32 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
   const port = server.address().port;
   return Object.freeze({
     /** Called only by the existing per-claim connector socket, never an arbitrary URL or script. */
-    async observeOwner(claim, call, input) {
+    async observeOwner(claim, call, input, supplied = null) {
+      const browser = supplied?.browser ?? ownerBrowser, tool = supplied?.tool ?? OWNER_BROWSER_TOOL;
+      const valid = supplied ? profileBrowser() && tool.startsWith('mcp__playwright__') && profileRequest(tool.slice(17), input) : ownerBrowserRequest(input);
       const state = claims.get(claim);
       const closed = () => !state || claims.get(claim) !== state || state.closed || stopped()
         || !Number.isSafeInteger(state.edge.budget?.deadline) || now() >= state.edge.budget.deadline;
       let cause;
-      const authorized = () => !closed() && effects.authorized({ parent: state.edge, tool: OWNER_BROWSER_TOOL, input, cause });
-      if (!ownerBrowserRequest(input) || typeof call !== 'string' || !/^[A-Za-z0-9._:-]{1,200}$/u.test(call) || !ownerBrowser || !authorized())
-        return ownerBrowserRefused('scope-grant-or-owner-unavailable');
+      const authorized = () => !closed() && effects.authorized({ parent: state.edge, tool, input, cause });
+      if (!valid || (supplied && (held(JSON.stringify(input)) !== 'clear' || redact(JSON.stringify(input)).count > 0)) || typeof call !== 'string' || !/^[A-Za-z0-9._:-]{1,200}$/u.test(call) || !browser || !authorized())
+        return ownerBrowserRefused(supplied ? `scope-grant-or-owner-unavailable: requires current tool:mcp scope grant naming target=${tool} and the selected browserProfile (Rules 18/57)` : 'scope-grant-or-owner-unavailable');
       if (state.effects.has(call)) return ownerBrowserRefused('identity-in-use');
       if (state.ownerReads.has(call)) return ownerBrowserRefused('already-prepared');
       if (state.ownerReads.size >= state.allowance) return ownerBrowserRefused('claim-read-budget');
       let bindingSnapshot;
-      try { bindingSnapshot = ownerBrowser.binding(); } catch { return { status: 'unavailable' }; }
+      try { bindingSnapshot = browser.binding(); } catch { return { status: 'unavailable' }; }
       // Set before any await. The effect owner's durable identity also survives a process restart.
       state.ownerReads.add(call);
       try { noteTool(state); } catch { return ownerBrowserRefused('preparation-refused'); }
-      const prepared = effects.admit({ parent: state.edge, tool: OWNER_BROWSER_TOOL, input, call, ownerCause: bindingSnapshot });
+      const prepared = effects.admit({ parent: state.edge, tool, input, call, ownerCause: bindingSnapshot });
       if (!prepared.admitted) return ownerBrowserRefused('preparation-refused');
       cause = prepared.localCause;
       state.toolPreparations++;
       state.effects.set(call, { ...prepared, ownerRead: true });
       try {
-        const result = await ownerBrowser({ input, stopped: () => !authorized(), deadline: state.edge.budget.deadline, bindingSnapshot });
-        if (!authorized() || canonical(ownerBrowser.binding()) !== canonical(bindingSnapshot)) return ownerBrowserRefused('withdrawn');
+        const result = await browser({ input, stopped: () => !authorized(), deadline: state.edge.budget.deadline, bindingSnapshot });
+        if (!authorized() || canonical(browser.binding()) !== canonical(bindingSnapshot)) return ownerBrowserRefused('withdrawn');
         if (held(JSON.stringify(result)) !== 'clear') return ownerBrowserRefused('output-secret-check');
         effects.observed({ parent: state.edge, ...prepared, resultBytes: Buffer.byteLength(JSON.stringify(result)) });
         state.effects.delete(call);
