@@ -801,7 +801,9 @@ it('replays the real c1 tool-worker checkpoint through startup/tick recovery, in
           ? { outcome: 'report', attempts: 1, report: { text: recorded.workResult.report } }
           : { outcome: 'uncertain', recoveryHeld: true, attempts: 1 });
       }
-      expect(again.work).toEqual([]); expect(again.sent).toEqual([]); expect(again.journal.view.calls).toBe(calls);
+      expect(again.work).toEqual([]); expect(again.journal.view.calls).toBe(calls);
+      expect(again.sent).toHaveLength(variant === 'complete' || variant === 'budget-exhausted' ? 0 : 1);
+      if (again.sent.length) expect(again.sent[0]).toContain('The work I promised was interrupted');
       again.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
@@ -918,7 +920,8 @@ it('reconciles a held step on its original host and permits new work only after 
     w.clock.now += LOOP_REVISIT_MS; await w.worker.workObligations(); await w.worker.workObligations();
     expect(w.work).toHaveLength(2);
     expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'report', attempts: 2 });
-    expect(w.sent).toHaveLength(1); // Only the original reply; no unsolicited recovery send.
+    expect(w.sent).toHaveLength(2); // Original promise and one honest interruption notice; no repeated result.
+    expect(w.sent[1]).toContain('The work I promised was interrupted');
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
