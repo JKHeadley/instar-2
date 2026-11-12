@@ -1,8 +1,8 @@
 # Change review — lost-worker resume at the session work entry point
 
 Subject base: 82a4c739a77d3f52291242c5bb89235ab3c768d4
-Review state: frozen
-Reviewed content: sha256:e14629b4f815cf7785ce061ad363dabf7f74b5480907f056c2b56131559ac380
+Review state: open
+Reviewed content: none
 Outcome: Carryover row 03 (lost-worker-resume) in lanes/carryover-1028.md, carried onto train-217. When a worker dies mid-task, a repeated request for the same work operation reads its durable record first: a proven result returns once with its exact bytes and no new worker; uncertain, foreign-owned, unclosed, duplicate-close and changed-result records stay held as uncertain and are never replayed; a proven no-child failure keeps its identity while the existing schedule may issue a distinct bounded step. Ported from commit 14aaecc7 (unit carryover-03-lost-worker-resume-1104) without change to source or tests. This is the run-boundary slice, not live proof of the whole worker-loss-to-delivered-result outcome; row 03 stays OPEN until the desk's live task shows it.
 Affected rules: 1, 2, 4, 26, 34, 37, 49, 60, 61, 63, 68, 70, 74, 101, 102, 111, 113, 114, 116
 Affected floors: secrets — no new input, output or credential surface; spend cap — reconciliation dispatches no model call and new work keeps its existing reservations; stop — checked before reconciliation, and the existing launch and poll checks remain; no duplicate sends — a recorded operation never re-enters dispatch, including one with uncertain effects; durable intake — the existing journal edges and result bytes stay intact and no new store is added.
