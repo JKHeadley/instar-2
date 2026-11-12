@@ -753,7 +753,8 @@ it('complete certificates settle 74 to the proven parent/child sum plus the star
     expect(journal.view.toolTurns).toMatchObject({ settledCalls: calls, certifiedReserved: 73 });
     expect(usageReconciliation(journal.view)).toMatchObject({ reservedCalls: 74, settledCalls: 73 - calls,
       chargedCalls: 1 + calls, heldUnknownToolCalls: 0 });
-    journal.close(); const replay = journalAt(root, 98);
+    journal.compact(); journal.close(); const replay = journalAt(root, 98);
+    replay.append({ ...row, at: 6 });
     expect(replay.view.calls).toBe(1 + calls); replay.close();
   }
 });
