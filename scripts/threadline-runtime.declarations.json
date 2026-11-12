@@ -1,5 +1,15 @@
 [
   {
+    "type": "Declaration", "schemaVersion": 1, "id": "threadline-runtime.recoverableSpool",
+    "kind": "stores", "status": "live",
+    "requiredFacts": {
+      "growth": "deletes", "holdsAgentMemory": "no",
+      "machineScope": { "kind": "machine-local", "reason": "Encrypted filesystem staging is capped at 1024 frames on the owner-signed local route. Envelopes are removed only after accepted payloads are durable in the existing replicated journal; receipts only after authenticated custody proof is journaled. Lookup requests are reproducible from sender preparations and answered from current intake. Reclamation follows successful replication and ownership/stop checks. Authoritative sends, intake, reads and custody evidence remain in the existing journal through compaction and host replacement; no agent memory is deleted." },
+      "agreesWith": []
+    },
+    "standards": [7, 32, 46, 60, 113, 114], "holds": []
+  },
+  {
     "type": "Declaration", "schemaVersion": 1, "id": "threadline-default-exchange",
     "kind": "features", "status": "live",
     "requiredFacts": { "metrics": ["threadline:send", "threadline:receive", "threadline:read", "threadline:receipt", "mcp:threadline:threadline_status"] },
