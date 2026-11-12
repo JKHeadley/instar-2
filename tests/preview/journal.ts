@@ -989,12 +989,37 @@ export const validLoopRevisitMs = (value: unknown): value is number => Number.is
 /** This root's revisit interval: the one its genesis recorded, else the default. Read from genesis only, so it
  * is identical after a restart, a snapshot reopen and on a second machine, and no later record can move it. */
 export const loopRevisitMs = (view: JournalView): number => view.genesis.loopRevisitMs ?? LOOP_REVISIT_MS;
+/** Five days since source: the Nov 12 incident's newest source was six days old; retry times rejuvenate it.
+ * Age retires delivery only after recorded completion, never infers that unfinished work is done. */
+export const FINISHED_RESULT_SOURCE_AGE_MS = 5 * 24 * 60 * 60_000;
+const RETIRED_RESULT_REASON = 'Undelivered finished result retired after five days since its source message; retained for lookup.';
+export const retiredResults = (view: JournalView, topic?: { thread: number | undefined }) =>
+  Object.entries(view.obligationWork).flatMap(([key, work]) => {
+    const note = view.commitments[Number(key.slice(11))], source = note && view.turns.get(note.source);
+    return key.startsWith('commitment:') && work.retired && source && verifiedOperatorTurn(view, source)
+      && (topic === undefined || view.genesis.forum !== true || source.thread === topic.thread)
+      ? [{ key, source: source.id, sourceAt: source.at, subject: note!.quote, text: work.report?.text ?? work.withheld?.text ?? '', ...work.retired }] : [];
+  });
+export const retiredResultSentence = (items: ReturnType<typeof retiredResults>) => {
+  const dates = items.map(item => new Date(item.sourceAt).toISOString().slice(0, 10)).sort();
+  return `${items.length} older finished items from ${dates[0]} to ${dates.at(-1)} were retired undelivered; ask and I will list them.`;
+};
+const retirementCandidates = (view: JournalView, now: number) => Object.entries(view.obligationWork).filter(([key, work]) => {
+  const id = Number(key.slice(11)), note = view.commitments[id], source = note && view.turns.get(note.source);
+  return key.startsWith('commitment:') && source && verifiedOperatorTurn(view, source) && commitmentOpen(view, id)
+    && now - source.at > FINISHED_RESULT_SOURCE_AGE_MS && work.inFlight === undefined && !work.waitsOn && !work.reworkRequired
+    // A legacy withheld objection is not resolved by a checklist from before its rejection.
+    && work.outcome === 'report' && !work.withheld
+    && !!work.report && !work.report.boundTo && !work.report.delivered
+    && !!work.completion?.length && work.completion.every(item => item.state === 'complete');
+}).map(([key]) => key);
 /** What one scheduled work step concluded. `uncertain` closes a start whose result was lost to a crash:
  * that slot is never repeated, and the next cadence slot is a new bounded attempt. */
 export type ObligationOutcome = 'report' | 'continue' | 'waiting' | 'still-blocked' | 'cleared' | 'failed' | 'uncertain';
 export interface ObligationWork { attempts: number; last: number; lastSlot: number; inFlight?: number;
   /** Worker-backed steps (delegated sessions or tool workers) need exact closure before another attempt. */
   session?: true; recoveryHeld?: true;
+  retired?: { at: number; reason: string; noticeBoundTo?: string }; reworkRequired?: true;
   outcome?: ObligationOutcome; completion?: readonly RunCompletionItem[]; note?: string; waitsOn?: 'operator' | 'external';
   /** Same-slot format repair is reserved once; counts survive journal replay and snapshots. */
   repairSlot?: number; formatFailures?: number; failedAttempts?: number; failureClass?: 'malformed';
@@ -1126,7 +1151,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 6;
+export const JOURNAL_GENERATION = 7;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1139,7 +1164,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['results-retired', 'signin-repair-version', 'send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'attribution-check', 'attribution-reserve', 'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1158,6 +1183,7 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refu
   'summary-reserve', 'summary-review-reserve', 'summary-uncertain', 'tool-turn', 'waiting']);
 
 export type JournalRecord =
+  | { kind: 'signin-repair-version'; at: number }
   | PhaseTiming
   // Non-additive: an older writer must not discard the no-repeat expectation.
   | { kind: 'media-claim'; id: string; digest: string; at: number }
@@ -1270,8 +1296,8 @@ export type JournalRecord =
     /** Other held messages in this conversation the one notice also answers; none gets a second push (P-14). */
     covers?: string[]; acknowledgement?: true; acknowledgementMode?: 'reaction-or-text'; workingProgress?: WorkingProgress; waitingProgress?: true; deliveryUnknown?: true; promiseRecovery?: true;
     /** limit-notice-1020: its own durable slot (`login-outage:<id>`). Non-additive: a reader that skipped it would repeat the notice. */
-    loginOutage?: { resetAt: number | null }; closing?: { end: number; zone: string }; provenance?: OutboundProvenance; at: number }
-  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; promiseRecovery?: true; loginOutage?: true; closing?: number; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
+    signinRepair?: { key: string; notices: ReplyNotice[] }; loginOutage?: { resetAt: number | null }; closing?: { end: number; zone: string }; provenance?: OutboundProvenance; at: number }
+  | { kind: 'held-notice-sent'; id: string; message: number; signinRepair?: string; deliveryUnknown?: true; promiseRecovery?: true; loginOutage?: true; closing?: number; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
 
   // Non-additive: reservations/checks below may follow a sent reply; an older writer must refuse.
   | { kind: 'reply-review-after-send'; id: string; at: number }
@@ -1316,6 +1342,7 @@ export type JournalRecord =
 
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   /** Rules 8, 22, 92, 99, 102: one scheduled piece of work on a due obligation, started at most once per slot. */
+  | { kind: 'results-retired'; keys: string[]; reason: string; at: number }
   | { kind: 'obligation-start'; obligation: string; slot: number; session?: true; repair?: true; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   /** Rules 60, 114: one delegated-session edge, or that same edge's settled close. The edge is
    * recorded before the child session exists and the close on every path out, so a delegation is
@@ -1338,6 +1365,7 @@ export type JournalRecord =
     /** Results explicitly rejected by the answering mind or removed by pre-send review,
      * each with its objection: the result returns to owned work for a correction (Rules 8, 22, 46). */
     withheldReports?: { key: string; objection: string }[];
+    resultDefects?: true; retiredNotice?: string[];
     /** Present when a pre-send review objected or could not decide; the reply was released anyway. */
     release?: ReplyRelease;
     /** Present when a mandatory floor kept the candidate back and this intent carries the holding notice. */
@@ -1547,6 +1575,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   promiseNotice?: { lead: string; text: string; at: number; sent?: number };
   /** limit-notice-1020: the one fixed notice that every reviewed login was out of capacity, on the turn host custody queued. */
   loginOutageNotice?: { text: string; at: number; resetAt: number | null; sent?: number };
+  signinRepairNotices?: { key: string; notices: ReplyNotice[]; text: string; at: number; sent?: number }[];
   closingNotices?: { end: number; text: string; at: number; sent?: number }[];
   heldNoticeReviewReserved?: true; heldNoticeReview?: ReplyCheckResult;
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
@@ -1596,7 +1625,8 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
 
 
 export interface TestCopySource { root: string; journal: string; bytes: number; frontier: string }
-export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
+export interface JournalView {
+  signinRepairVersion?: true; genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   /** Highest durable journal timestamp; a later wall-clock rollback cannot reorder frames. */
   clockFloor: number;
   /** Rule 2: the forward frames THIS build skipped, named rather than dropped in silence. It is a
@@ -2461,7 +2491,7 @@ export function loopRevisits(view: JournalView): Map<number, number> {
 /** A commitment is open until a recorded closure, an operator forgetting, or its source's removal ends it. */
 export function commitmentOpen(view: JournalView, id: number): boolean {
   const note = view.commitments[id], source = note && view.turns.get(note.source);
-  return !!note && !!source && !view.closed.has(id) && !probeTurn(view, source) && !view.memory.some(change => change.mode === 'forget'
+  return !!note && !!source && !view.obligationWork[`commitment:${id}`]?.retired && !view.closed.has(id) && !probeTurn(view, source) && !view.memory.some(change => change.mode === 'forget'
     && change.source === note.source && note.quote.includes(change.quote));
 }
 /** What an open commitment waits on now: a completed work step may have moved it onto the operator or an outside party. */
@@ -2605,7 +2635,7 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
   settleTokens(view, tokenKey, row.usage);
   // Each result is the current account: a dependency or note from an earlier result never outlives it. An uncertain
   // result is no account at all, so a waiting dependency (its need and what the operator sent since) is carried over.
-  const { inFlight: _done, waitsOn: _waits, note: _note, withheld, failureClass: _failure, recoveryHeld: _held, ...rest } = work;
+  const { inFlight: _done, waitsOn: _waits, note: _note, withheld, reworkRequired, failureClass: _failure, recoveryHeld: _held, ...rest } = work;
   const carried = row.outcome === 'uncertain' && work.waitsOn !== undefined;
   view.obligationWork[row.obligation] = { ...rest, last: row.at, outcome: row.outcome,
     ...(row.completion === undefined ? {} : { completion: completion! }),
@@ -2616,7 +2646,7 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
     // The withheld result and its objection stay the work's input until a step actually answers them: an attempt that
     // accounted for nothing (interrupted, or a provider failure or malformed answer) supplied no correction, so
     // consuming them there would drop both the rejected result and the objection from every later packet.
-    ...(noAccount(row.outcome) && withheld !== undefined ? { withheld } : {}),
+    ...(noAccount(row.outcome) && withheld !== undefined ? { withheld, ...(reworkRequired ? { reworkRequired } : {}) } : {}),
     turnsSeen: carried ? work.turnsSeen ?? view.order.length : view.order.length,
     ...(carried ? { waitsOn: work.waitsOn, ...(work.note === undefined ? {} : { note: work.note }) } : {}),
     ...(row.note === undefined ? {} : { note: row.note }), ...(row.waitsOn === undefined ? {} : { waitsOn: row.waitsOn }),
@@ -2825,7 +2855,7 @@ const REPORT_SELECTION_GUIDANCE = 'Judge pendingReports.items against current-ta
   + 'so decide every one exactly once. selectedReports:[key]: its claims remain supported and consistent now; the runner appends it verbatim, '
   + 'so do not also restate it. carriedReports:[{key,quote}]: your reply itself gives this result in your own words, and quote copies word for word the part of your reply that gives it; the runner appends only a short '
   + 'marker, so carry an item only when your reply alone tells the operator its result; one passage may give several. '
-  + 'An item your reply does not answer is selected or rejected, never carried. rejectedReports:[{key,objection}]: unverifiable or contradictory and your reply does not give the result, with a concise objection '
+  + 'deferredReports:[key]: unrelated to this request or merely not re-verified this turn; keep the finished result waiting without rework. rejectedReports:[{key,objection}]: the result itself is wrong or incomplete, with a concrete defect '
   + '(at most 1000 bytes), to return it to owned rework. An undecided report stays owed, not completed or delivered. '
   + 'Explain relevant uncertainty without repeating unsupported claims.';
 /** What the runner's line says for a result the agent gave in its own words. The agent's declaration decides delivery; these
@@ -2934,6 +2964,13 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
     // The durable intent binds each result to this reply so no other reply carries it; only its sent receipt settles it.
     for (const key of row.reports) view.obligationWork[key]!.report!.boundTo = turn.id;
   }
+  if (row.retiredNotice !== undefined) {
+    const pending = retiredResults(view, { thread: turn.thread }).filter(item => !item.noticeBoundTo);
+    if (!operatorWriter(view, turn, true) || turn.requestedAction || !row.retiredNotice.length
+      || !same(row.retiredNotice, pending.map(item => item.key)) || !row.text.includes(retiredResultSentence(pending)))
+      throw Error('preview journal: invalid retirement notice');
+    for (const key of row.retiredNotice) view.obligationWork[key]!.retired!.noticeBoundTo = turn.id;
+  }
   // Rules 8/46: an owed occurrence is consumed by its intent, even when review sends only a holding notice.
   // Return its omitted results to the existing rework transition, also when replaying older intents which
   // recorded the review but no withheldReports. A result present in the intent (including UNKNOWN sends)
@@ -2957,7 +2994,7 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
       throw Error('preview journal: invalid withheld report');
     for (const { key, objection } of withheldReports) {
       const { report, ...work } = view.obligationWork[key]!;
-      view.obligationWork[key] = { ...work, withheld: { text: report!.text, at: row.at, by: turn.id, objection } };
+      view.obligationWork[key] = { ...work, ...(row.resultDefects ? { reworkRequired: true as const } : {}), withheld: { text: report!.text, at: row.at, by: turn.id, objection } };
     }
   }
   if (row.blockerRechecks !== undefined) {
@@ -3451,6 +3488,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
     return notice?.lead === key ? { sent: notice.sent } : undefined; }
   if (kind === 'login-outage') { const notice = view.turns.get(key)?.loginOutageNotice;
     return notice ? { sent: notice.sent } : undefined; }
+  if (kind === 'signin-repair') { const notice = view.order.flatMap(turn => turn.signinRepairNotices ?? []).find(item => item.key === key);
+    return notice ? { sent: notice.sent } : undefined; }
   if (kind === 'closing-notice') { const notice = view.turns.get(rest.slice(1).join(':'))?.closingNotices?.find(item => item.end === Number(rest[0]));
     return notice ? { sent: notice.sent } : undefined; }
   if (kind === 'held-notice') { const turn = view.turns.get(key);
@@ -3560,6 +3599,7 @@ export function sendOutcomeCounts(view: JournalView) {
     for (const progress of turn.workingProgress ?? []) settle(`working-progress:${progress.ordinal}:${turn.id}`, progress.sent);
     if (turn.waitingProgress) settle(`waiting-progress:${turn.id}`, turn.waitingProgress.sent);
     if (turn.loginOutageNotice) settle(`login-outage:${turn.id}`, turn.loginOutageNotice.sent);
+    for (const notice of turn.signinRepairNotices ?? []) settle(`signin-repair:${notice.key}`, notice.sent);
     for (const notice of turn.closingNotices ?? []) settle(`closing-notice:${notice.end}:${turn.id}`, notice.sent);
     if (turn.heldNoticeIntent !== undefined) settle(`held-notice:${turn.id}`, turn.heldNoticeSent);
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
@@ -3605,6 +3645,7 @@ export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' |
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'limited-intent') return { target: `limited:${row.id}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'intent') return { target: `reply:${row.id}`, chat: row.chat, ...thread, body: row.body ?? row.text };
+  if (row.kind === 'held-notice-intent' && row.signinRepair) return { target: `signin-repair:${row.signinRepair.key}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'held-notice-intent') return { target: `${row.promiseRecovery ? 'promise-notice' : row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.loginOutage ? 'login-outage' : row.closing ? `closing-notice:${row.closing.end}` : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
   return { target: `requested-reminder:${String(row.batch)}`, chat: row.chat, ...thread, body: row.body };
 }
@@ -4090,6 +4131,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   // generic read (`'state' in row`, `'failureClass' in row`) can fold a newer build's frame into this
   // build's counts and silently move the projection digest the two builds compare.
   if (!KNOWN_FRAME_KINDS.has(row.kind)) { admitForwardFrame(view, row); return; }
+  if (row.kind === 'signin-repair-version') { view.signinRepairVersion = true; return; }
   if (row.kind === 'send-format-refused') {
     const prepared = replyFormatting(view, row.target), target = sendTarget(view, row.target);
     if (!prepared || prepared.refusal || !target || target.sent !== undefined
@@ -4452,6 +4494,13 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     view.summaryOverCap = view.summaryOverCap.filter(item => item.through !== row.through);
     view.lastPrompt = { kind: 'summary', through: row.through, prompt: row.prompt ?? null, memoryCount: view.memory.length,
       summaryCount: view.summaries.length, closedCount: view.closed.size }; return;
+  }
+  if (row.kind === 'results-retired') {
+    const eligible = retirementCandidates(view, row.at);
+    if (row.reason !== RETIRED_RESULT_REASON || !row.keys.length || new Set(row.keys).size !== row.keys.length
+      || row.keys.some(key => !eligible.includes(key))) throw Error('preview journal: invalid result retirement');
+    for (const key of row.keys) view.obligationWork[key]!.retired = { at: row.at, reason: row.reason };
+    return;
   }
   if (row.kind === 'obligation-start' || row.kind === 'obligation-result') { projectObligationWork(view, row); return; }
   if (row.kind === 'session-work') { projectSessionWork(view, row.record, admission); return; }
@@ -4866,6 +4915,29 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       || !Number.isSafeInteger(row.message) || row.message <= 0) throw Error('preview journal: promise notice receipt order');
     for (const item of view.order) if (item.promiseNotice?.lead === turn.id) item.promiseNotice.sent = row.message;
     return;
+  }
+  if (row.kind === 'held-notice-intent' && row.signinRepair) {
+    const { key, notices } = row.signinRepair;
+    const spent = new Set(view.order.flatMap(item => (item.signinRepairNotices ?? []).flatMap(note => note.notices.map(n => n.key))));
+    if (!view.signinRepairVersion || !turn.accepted || !operatorWriter(view, turn, true) || view.genesis.forum === true || !!view.groupCarry || view.stop !== null
+      || view.replies >= view.limits.maxReplies - 1 || !/^[a-f0-9]{64}$/u.test(key)
+      || !Array.isArray(notices) || notices.length < 1 || notices.length > 8
+      || key !== createHash('sha256').update(JSON.stringify(notices)).digest('hex')
+      || new Set(notices.map(n => n.key)).size !== notices.length
+      || notices.some(n => !n.key.startsWith('login-signin:') || n.key.length > 512 || typeof n.line !== 'string'
+        || n.line.length > 512 || spent.has(n.key)) || row.text !== notices.map(n => n.line).join('\n')
+      || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant
+      || row.closing || row.workingProgress || row.waitingProgress || row.deliveryUnknown || row.loginOutage
+      || row.promiseRecovery || row.acknowledgement || row.acknowledgementMode || row.covers
+      || !row.provenance || admission === 'new' && row.provenance.speaker !== 'infrastructure')
+      throw Error('preview journal: sign-in repair notice refused');
+    (turn.signinRepairNotices ??= []).push({ key, notices, text: row.text, at: row.at }); view.replies++; return;
+  }
+  if (row.kind === 'held-notice-sent' && row.signinRepair) {
+    const notice = turn.signinRepairNotices?.find(item => item.key === row.signinRepair);
+    if (!notice || notice.sent !== undefined || !Number.isSafeInteger(row.message) || row.message <= 0)
+      throw Error('preview journal: sign-in repair receipt order');
+    notice.sent = row.message; return;
   }
   if (row.kind === 'held-notice-intent' && row.closing) {
     if (!turn.accepted || !operatorWriter(view, turn, true) || row.closing.end !== view.expires
@@ -6243,6 +6315,7 @@ export interface PreviewPorts {
   /** Rules 8, 56, 100: due reminder lines (credential expiry stages, a failing doorway check), most urgent first. */
   /** Offered for the answer to turn `turn` (its own effect-doorway refusals ride first). */
   replyNotices?(turn?: string): readonly ReplyNotice[];
+  signinRepairNotices?(): readonly ReplyNotice[];
   /** Plan #442 (Rules 4, 86, 100): the secret values the runner holds (vault and host custody, the harness login, the
    * root's MCP credentials; plan #507: every value once read stays held) for the exact floor on every reply. Read in
    * memory only, never recorded or sent to a model. */
@@ -7090,7 +7163,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const openFor = (through: number, limit: number) => journal.view.commitments
     .map((note, id) => ({ id, note, turn: journal.view.turns.get(note.source),
       due: note.agentPromise?.due ? dueState(note.agentPromise.due, ports.now()) !== 'upcoming' : dueSoon(note.quote) }))
-    .filter(item => !journal.view.closed.has(item.id) && item.turn !== undefined && item.turn.update <= through
+    .filter(item => !journal.view.closed.has(item.id) && !journal.view.obligationWork[`commitment:${item.id}`]?.retired && item.turn !== undefined && item.turn.update <= through
       && !affectedNote(item.note))
     .sort((a, b) => Number(b.due && !!b.note.agentPromise) - Number(a.due && !!a.note.agentPromise)
       || Number(b.due) - Number(a.due) || Number(!!b.note.agentPromise) - Number(!!a.note.agentPromise)
@@ -7430,7 +7503,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         && (text.includes(change.quote) || change.quote.includes(text)));
     for (const [id, note] of journal.view.commitments.entries()) {
       const turn = journal.view.turns.get(note.source);
-      if (note.in === 'message' && turn && !journal.view.closed.has(id) && !retractedTurn(journal.view, note.source)
+      if (note.in === 'message' && turn && !journal.view.closed.has(id) && !journal.view.obligationWork[`commitment:${id}`]?.retired && !retractedTurn(journal.view, note.source)
         && !retired(note.source, note.quote)) add(note.source, note.quote, turn.update);
     }
     for (const item of [...journal.view.dated, ...pendingDated]) {
@@ -8054,7 +8127,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && (journal.view.genesis.forum !== true || operatorOnlyVerified), String(current ?? 'main'), zone);
     const reportCandidates = awayFor === undefined || !fromOperator(awayFor) || awayFor.requestedAction ? [] : pendingReports(journal.view, { thread: current }).map(item => ({
       ...item, subject: clean(redact(item.subject).text, true), text: clean(redact(item.text).text, true) }));
+    const retired = awayFor && fromOperator(awayFor) && !awayFor.requestedAction ? retiredResults(journal.view, { thread: current }) : [];
     const packet = JSON.stringify({ now,
+      ...(retired.length ? { retiredResults: { guidance: 'Retired undelivered, retained for lookup. List these results only if asked; never redo their work or claim delivery. Omitted results remain saved; use memory lookup by their source subject when needed. The runner adds any new retirement notice.',
+        items: retired.map(item => ({ ...item, subject: clean(redact(item.subject).text, true, item.source), text: clean(redact(item.text).text, true, item.source) })) } } : {}),
       ...(reportCandidates.length ? { pendingReports: { guidance: REPORT_SELECTION_GUIDANCE, items: reportCandidates } } : {}), ...(ports.workingActivity ? { progressReplies: {
       cadenceMinutes: [2, 5, 10], thereafterMinutes: 10, maxLines: WORKING_PROGRESS_CAP, silenceMinutes: 2, source: 'fresh advancing admitted work evidence',
       note: 'While your answer is in progress, the host may send a bounded liveness-only line after silence and fresh work evidence. It does not narrate tools or claim progress. Any outbound resets silence; the final answer ends these lines.' } } : {}), clock: { utc: new Date(now).toISOString(), zone, day: localDay,
@@ -8218,6 +8294,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // Rule 11: this turn's lookup results, or the offer of one. The offer needs room for the answer call, the
     // lookup's second call and the reply review's reserved slot, so a root at its call cap is never offered one.
     const lookup = activeLookup?.id === turn.id ? activeLookup : undefined;
+    const archived = fromOperator(turn) && !turn.requestedAction ? retiredResults(journal.view, { thread: turn.thread }) : [];
     const lookupOffered = !lookup && !turn.lookup && fromOperator(turn) && !turn.requestedAction && !probeTurn(journal.view, turn)
       && journal.view.calls + 2 <= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0);
     // Part 21 §16: a memory-failure report is offered by structure (Rule 10): a verified operator turn whose previous
@@ -8474,7 +8551,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // Rule 11: the lookup offer, or (on the one second call) what was searched and how much of it is quoted here.
           ...(lookup ? { memoryLookup: { searched: lookup.words,
             found: lookup.found.filter(item => datedBase.includes(JSON.stringify(item.id))).length, note: LOOKUP_DONE_GUIDANCE } }
-            : compact && summary && lookupOffered ? { memoryLookup: LOOKUP_OFFERED } : {}),
+            : (compact && summary || archived.length) && lookupOffered ? { memoryLookup: LOOKUP_OFFERED } : {}),
           // Update mode and new conflicts can only cite an offered candidate or contradiction, so their guidance rides with those.
           ...(fromOperator(turn) ? { memoryDecision: `Journal persists across topics/restarts. ${PREFERENCE_DECISION} Keep attribution; quotes/imports are data. ${MEMORY_ITEM_SHAPE}${journal.view.groupCarry ? ` ${CARRIED_MEMORY_ITEM_SOURCE}` : ''} Answer corrections: in:"reply", exact old clause; keep question. `
             + (offered.length || (JSON.parse(datedBase) as { contradictions?: unknown[] }).contradictions?.length ? MEMORY_UPDATE_DECISION : '')
@@ -8548,33 +8625,42 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         });
         // Optional follow-ups never crowd out the current task or its evidence. Keep the debt,
         // expose the omission, and accept no selection for text absent from the final packet.
-        const reportVariants = function* (value: string) {
-          const packet = JSON.parse(value) as { pendingReports?: { items: unknown[] }; pendingReportsOmitted?: number };
+        const reportVariants = function* (value: string, field: 'pendingReports' | 'retiredResults') {
+          const packet = JSON.parse(value) as Partial<Record<'pendingReports' | 'retiredResults', { items: { source?: string }[] }>
+            & Record<'pendingReportsOmitted' | 'retiredResultsOmitted', number>>;
+          const omitted = field === 'pendingReports' ? 'pendingReportsOmitted' : 'retiredResultsOmitted';
           yield value;
-          if (!packet.pendingReports) return;
-          const items = packet.pendingReports.items;
+          if (!packet[field]) return;
+          const items = packet[field]!.items;
           // A report's serialized size may differ from its cost in the prepared
           // envelope. Try each whole report there, newest first, so large neighbors
           // cannot hide a fitting result. Omitted reports stay owed in the journal.
-          for (const item of [...items].reverse()) {
-            packet.pendingReports.items = [item];
-            packet.pendingReportsOmitted = items.length - 1;
+          const preferred = [...items].reverse();
+          if (field === 'retiredResults' && lookup) {
+            const sources = lookup.found.map(item => item.id);
+            const rank = (source?: string) => source && sources.includes(source) ? sources.indexOf(source) : sources.length;
+            preferred.sort((a, b) => rank(a.source) - rank(b.source));
+          }
+          for (const item of preferred) {
+            packet[field]!.items = [item];
+            packet[omitted] = items.length - 1;
             yield JSON.stringify(packet);
           }
           // Then try groups of complete reports before the age-ordered fallbacks.
           for (let start = 1; start < items.length; start++) {
-            packet.pendingReports.items = items.slice(start);
-            packet.pendingReportsOmitted = start;
+            packet[field]!.items = items.slice(start);
+            packet[omitted] = start;
             yield JSON.stringify(packet);
           }
           for (let count = items.length - 1; count >= 0; count--) {
-            if (count) packet.pendingReports!.items = items.slice(0, count);
-            else delete packet.pendingReports;
-            packet.pendingReportsOmitted = items.length - count;
+            if (count) packet[field]!.items = items.slice(0, count);
+            else delete packet[field];
+            packet[omitted] = items.length - count;
             yield JSON.stringify(packet);
           }
         };
-        for (const variant of variants) for (const reports of reportVariants(variant)) for (const context of searchVariants(reports)) {
+        for (const variant of variants) for (const reports of reportVariants(variant, 'pendingReports'))
+          for (const retained of reportVariants(reports, 'retiredResults')) for (const context of searchVariants(retained)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
           try {
@@ -8880,6 +8966,29 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: turn.id, loginOutage: true, message: outcome.message, at: ports.now() }); }
     catch { /* the notice stays UNKNOWN; never repeated */ }
   };
+  const noticeSigninRepair = async () => {
+    if (halted() || journal.view.genesis.forum === true || journal.view.groupCarry || journal.view.replies >= journal.view.limits.maxReplies - 1) return;
+    // Private owner conversation only; never move account names into a team/group topic.
+    const lead = [...journal.view.order].reverse().find(turn => turn.accepted && fromOperator(turn));
+    if (!lead) return;
+    const spent = new Set(journal.view.order.flatMap(turn => (turn.signinRepairNotices ?? []).flatMap(n => n.notices.map(item => item.key))));
+    const notices = openReplyNotices(journal.view.order, ports.signinRepairNotices?.() ?? [], '').filter(n => !spent.has(n.key)).slice(0, 8);
+    if (!notices.length) return;
+    const text = notices.map(n => n.line).join('\n'), key = createHash('sha256').update(JSON.stringify(notices)).digest('hex');
+    ports.checkOutbound(text);
+    const chat = journal.view.genesis.chat, thread = lead.thread === undefined ? {} : { thread: lead.thread }, target = `signin-repair:${key}`;
+    const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
+    const current = () => !halted() && journal.view.genesis.forum !== true && !journal.view.groupCarry
+      && (spent.has(notices[0]!.key) || journal.view.replies < journal.view.limits.maxReplies - 1)
+      && (spent.has(notices[0]!.key) || notices.every(n => ports.signinRepairNotices?.().some(item => item.key === n.key && item.line === n.line)));
+    const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: lead.update, current }, () => {
+      if (!journal.view.signinRepairVersion) journal.append({ kind: 'signin-repair-version', at: ports.now() });
+      journal.append({ kind: 'held-notice-intent', id: lead.id, signinRepair: { key, notices }, text, chat, ...thread,
+        update: lead.update, grant: journal.view.genesis.grant, provenance, at: ports.now() });
+      notices.forEach(n => spent.add(n.key));
+    });
+    if (outcome.kind === 'accepted') journal.append({ kind: 'held-notice-sent', id: lead.id, signinRepair: key, message: outcome.message, at: ports.now() });
+  };
   /** The activation end is a reminder: the person is told once per end, from the lead window on, with a fixed text and no
    * model call. It goes where they last wrote. Its intent precedes dispatch, so a crash or an UNKNOWN never repeats it. */
   let closingInFlight: Promise<void> | undefined;
@@ -9089,6 +9198,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (working) throw Error('preview journal: second worker refused');
     working = true; workingSince = ports.now();
     try {
+      retireFinishedResults();
       // Rebuild every pending intake timer before serial answer work can await the first turn.
       for (const turn of journal.view.order) startAcknowledgement(turn);
       // One fresh read per pass decides which turns may proceed; the model and send ports still re-read their own.
@@ -9440,10 +9550,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const undecidedReports = (value: Record<string, unknown>, body: string) => {
             const named = (list: unknown) => Array.isArray(list) ? list as unknown[] : [];
             const decided = [...named(value.selectedReports), ...carriedProposals(value.carriedReports, replyProse(body)).map(item => item.key),
-              ...named(value.rejectedReports).map(item => (item as { key?: unknown } | null)?.key)];
+              ...named(value.deferredReports), ...named(value.rejectedReports).map(item => (item as { key?: unknown } | null)?.key)];
             const items = probeTurn(journal.view, turn) ? [] : (JSON.parse(context) as { pendingReports?: { items: { key: string }[] } }).pendingReports?.items ?? [];
             const missing = items.filter(item => decided.filter(key => key === item.key).length !== 1).map(item => item.key);
-            return missing.length ? `decide each of ${missing.join(', ')} exactly once in selectedReports, carriedReports (as {key,quote}, quote copied word for word from this reply) or rejectedReports` : undefined;
+            return missing.length ? `decide each of ${missing.join(', ')} exactly once in selectedReports, carriedReports (as {key,quote}, quote copied word for word from this reply) or deferredReports or rejectedReports` : undefined;
           };
           const declarationDefect = (given: Answer): string | undefined => {
             const text = typeof given === 'string' ? given : 'text' in given ? given.text : undefined;
@@ -9559,7 +9669,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const requested = answerText(answer) === undefined ? undefined : lookupWords(answerText(answer)!);
           if (requested !== undefined) {
             const words = requested.map(word => clean(redact(word).text, true)).filter(word => word.trim());
-            const through = Math.max(grounding.compactedThrough ?? -1, grounding.setAsideThrough ?? -1);
+            const through = Math.max(grounding.compactedThrough ?? -1, grounding.setAsideThrough ?? -1,
+              ...retiredResults(journal.view, { thread: turn.thread }).map(item => journal.view.turns.get(item.source)!.update));
             const offered = (JSON.parse(context) as { memoryLookup?: unknown }).memoryLookup === LOOKUP_OFFERED;
             let again: ReturnType<typeof preparedFor> | undefined, matched: Turn[] = [];
             if (offered && words.length && !turn.lookup && !halted()
@@ -9622,18 +9733,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const parsed = JSON.parse(output) as { reply?: unknown; correction?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown; cancelDeliveries?: unknown;
                 directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown; blockerRechecks?: unknown;
-                selectedReports?: unknown; carriedReports?: unknown; rejectedReports?: unknown; promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
+                selectedReports?: unknown; carriedReports?: unknown; rejectedReports?: unknown; deferredReports?: unknown; promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
               const replyValue = parsed?.reply;
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
                 separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string; decided = true;
-                if (Array.isArray(parsed.selectedReports)) selectedReports = parsed.selectedReports;
-                ownWordReports = carriedProposals(parsed.carriedReports, replyProse(text));
+                if (Array.isArray(parsed.selectedReports)) selectedReports = parsed.selectedReports.filter(key => !Array.isArray(parsed.deferredReports) || !parsed.deferredReports.includes(key));
+                ownWordReports = carriedProposals(parsed.carriedReports, replyProse(text)).filter(item => !Array.isArray(parsed.deferredReports) || !parsed.deferredReports.includes(item.key));
                 if (Array.isArray(parsed.rejectedReports) && parsed.rejectedReports.every(item => item
                   && typeof item.key === 'string' && boundedText(item.objection, 1, 1000))
                   && new Set(parsed.rejectedReports.map(item => item.key)).size === parsed.rejectedReports.length)
-                  rejectedReports = parsed.rejectedReports;
+                  rejectedReports = parsed.rejectedReports.filter(item => !Array.isArray(parsed.deferredReports) || !parsed.deferredReports.includes(item.key));
                 if (turn.grounding?.corrections.length && typeof parsed.correction === 'string'
                   && parsed.correction.trim() && parsed.correction.length <= MAX_ANSWER_BYTES) correction = parsed.correction.trim();
                 if (fromOperator(turn) && typeof parsed.lastNamedPerson === 'string'
@@ -10426,7 +10537,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const ownLines = carriedLines.map(item => item.line);
               // Rules 8, 22, 86: a runner result line is attached verbatim and settles only verbatim, so a named claim
               // inside it withholds that whole result, never a sentence of it. The result is left out of this reply and
-              // returns to owned work with the objection (withheldReports); the rest of the answer is judged as a
+              // stays pending on ordinary replies unless explicitly rejected; the rest of the answer is judged as a
               // remainder. Live pre-switch train-209 3ad4ec04, room two, update 6236928 (D1c): one cut sentence of an
               // appended cannot-do result left its next sentence for the remainder review to hold, and the whole reply,
               // with the owed answer it carried, became the holding notice.
@@ -10596,6 +10707,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const offer = heldBack || resultsOnly || reply === HOLDING_REPLY || turn.answer === undefined ? undefined : await operatorOffer(turn, ports.now());
         // What follows here (the request line and the disclosure) stays whole in the last message of a split reply.
         const answerEnd = reply.trimEnd().length;
+        const retirementNotice = !heldBack && !resultsOnly && reply !== HOLDING_REPLY && turn.answer !== undefined
+          && fromOperator(turn) && !turn.requestedAction && !probeTurn(journal.view, turn)
+          ? retiredResults(journal.view, { thread: turn.thread }).filter(item => !item.noticeBoundTo) : [];
+        if (retirementNotice.length) reply = `${reply.trimEnd()}\n\n${retiredResultSentence(retirementNotice)}`;
         if (offer) reply = `${reply.trimEnd()}\n\n${offer.text}`;
         // The approval-account exception: an answer that reports an approval taken under shared account access carries the
         // disclosure, once, however old the approval. Whether it reports it is the reply reviewer's judgment of meaning
@@ -10654,6 +10769,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // A holding notice omitted the attached reports too. Preserve them as owned repair work
           // instead of reattaching the same rejected text to every later answer (46040277-46040279).
           ...withheldReports(turn, reply, held?.reason ?? (held ? held.objections.join(', ') : objection)),
+          ...(retirementNotice.length ? { retiredNotice: retirementNotice.map(item => item.key) } : {}),
           ...(continuity && turn.grounding ? { continuity: { prePauseInbound: continuity.before.id,
             capture: createHash('sha256').update(continuity.before.raw).digest('hex'), summarizedThrough: frontier!.through,
             ...(frontier!.basis === 'set-aside' ? { basis: 'set-aside' as const } : {}),
@@ -10701,6 +10817,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       });
       await noticeFailedReplies();
       await noticeClosing();
+      await noticeSigninRepair();
       if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
       // held-notice rows still replay; no other held notice is ever pushed.
@@ -11279,21 +11396,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return { ...(loops?.length ? { loops } : {}), ...(blocker ? { blocker } : {}), ...(rechecks ? { blockerRechecks: rechecks } : {}),
       ...(reports?.length ? { reports } : {}), ...(carriedReports?.length ? { carriedReports } : {}) };
   };
-  /** Rules 8, 22, 46, 86: an attached result the review cut from the reply is not delivered and is not attached again
-   * unchanged (the same review would cut it again, on every reply, and the backlog would never drain). It returns to
-   * owned work with the objection, so the next step corrects it or records why it cannot be done. */
+  /** Ordinary reply review judges this delivery, not the stored work. Only an explicit result defect
+   * returns it to work; the separate requested-result delivery path retains its existing transition. */
   const withheldReports = (turn: Turn, reply: string, objection: string | undefined) => {
     const text = objection === undefined ? '' : clip(clean(redact(objection).text, true), 1000);
     // An objection to the agent's prose is not one to a stored result it gave in its own words: that result stays
     // waiting, unchanged, for the next reply to decide it again; it is neither delivered nor reworked.
-    const withheld = text ? turn.answerReports?.filter(key => key.startsWith('commitment:') && !turn.answerCarriedReports?.some(item => item.key === key)
+    const withheld = text && turn.requestedAction ? turn.answerReports?.filter(key => key.startsWith('commitment:') && !turn.answerCarriedReports?.some(item => item.key === key)
       && attachableReport(journal.view.obligationWork[key]) && !reply.includes(journal.view.obligationWork[key]!.report!.text))
       .map(key => ({ key, objection: text })) : undefined;
     const explicit = turn.answerRejectedReports?.filter(item => attachableReport(journal.view.obligationWork[item.key])
       && journal.view.obligationWork[item.key]?.report?.text === item.text && !reply.includes(item.text))
       .map(({ key, objection }) => ({ key, objection })) ?? [];
     const combined = [...withheld ?? [], ...explicit];
-    return combined.length ? { withheldReports: combined } : {};
+    return combined.length ? { withheldReports: combined, ...(!turn.requestedAction ? { resultDefects: true as const } : {}) } : {};
   };
   /** The latest scheduled work result on commitment `id`, for the answer packet (Rules 8, 64). */
   const workState = (id: number) => {
@@ -12550,11 +12666,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * step: durably reserved before the call (at most once per slot), inside the stop, expiry, allowance and measured
    * capacity fences. A result with an explicit source request goes through sendRequested; other results
    * wait for the operator's next reply. Returns whether a step ran. */
+  const retireFinishedResults = () => {
+    const at = ports.now(), keys = retirementCandidates(journal.view, at);
+    if (keys.length) journal.append({ kind: 'results-retired', keys, reason: RETIRED_RESULT_REASON, at });
+  };
   const workObligations = async (): Promise<boolean> => {
     if (working) throw Error('preview journal: second worker refused');
     working = true;
     try {
       gate();
+      retireFinishedResults();
       for (const item of obligationSchedule(journal.view)) {
         const work = journal.view.obligationWork[item.key], slot = work?.recoveryHeld ? work.lastSlot : work?.inFlight;
         // Rules 8/46/68: uncertainty holds execution, never observation. Retain the original

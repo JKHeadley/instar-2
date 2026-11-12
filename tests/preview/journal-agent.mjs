@@ -13,6 +13,8 @@ import { prepareSessionConnectors, conversationAccountActions, admitSessionConne
 import { createAudienceTimingObserver, recordPhaseTiming } from './phase-timing.js';
 import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice, reviewResultFailure } from './reply-check.js';
 import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin, observeInstalledSessionLogin } from './installed-harness-logins.mjs';
+import { installSigninRepair } from './installed-signin-repair.mjs';
+import { installedSigninRepairAdapter } from './signin-repair-physical.mjs';
 import { loadHarnessLogins, harnessLoginPoolStatus, createHarnessLoginPool, observeHarnessSessionLimit, observeHarnessSignIn, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
 import { appendGroupCarry } from './group-carry.js';
@@ -1515,7 +1517,7 @@ async function main() {
   }
   const versionCheck = createSubscriptionVersionCheck();
   let dueWake = null;
-  let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false, startupFailure = null;
+  let journal, worker, signinRepair = null, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false, startupFailure = null;
   let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null, installation = null, installUpdate = null;
   // Rule 15 / Eleven §5: the installed shape's evidence, set once the activation is validated at launch.
   let installationPolicy = { kind: 'refused', reason: 'the activation is not validated yet' }, registerAtLaunch = null;
@@ -2236,6 +2238,7 @@ async function main() {
       installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
       // limit-notice-1020: read when host custody queues a turn, so an outage of every reviewed login is told once.
       loginCapacity: () => loginPool?.outage() ?? null,
+      signinRepairNotices: () => (loginPool?.notices() ?? []).filter(item => item.key.startsWith('login-signin:')),
       // Rules 8, 56, 100: due credential reminder stages and a failing doorway check ride the next answer as one line.
       // An unreadable registry or map offers nothing here; status reports it (credentials.error, doorways.fresh).
       replyNotices: turn => {
@@ -2245,7 +2248,7 @@ async function main() {
         // Plan #473: an answer whose tool turn was refused for the harness identity says so under it.
         if (turn !== undefined && identityRefusal !== null && (journal.view.toolTurns?.identityRefused ?? []).includes(turn))
           notices.push({ key: `harness:${turn}`, line: harnessRefusedNotice(identityRefusal) });
-        notices.push(...(loginPool?.notices() ?? []));
+        notices.push(...(loginPool?.notices() ?? []).filter(item => !item.key.startsWith('login-signin:')));
         notices.push(...sessionLoginNotices([...sessionLoginObservations.values()], now));
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
         try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
@@ -2659,6 +2662,21 @@ async function main() {
         credential: entry => createHash('sha256').update(readHarnessLogin(entry.profile), 'utf8').digest('hex').slice(0, 16),
         previouslyLaunched: () => harnessPoolPreviouslyLaunched(runsPath, [loginConfiguration.identity, ...loginConfiguration.legacyIdentities]),
         validate: (entry, tools) => { const runtime = loginRuntimes.get(entry.index); runtime.check(tools); runtime.harness.current(); } });
+      signinRepair = installSigninRepair({ adapter: installedSigninRepairAdapter({ root }), pool: loginPool,
+        entries: loginConfiguration.entries, machine: 'local', owner: `launch:${ownerClaim.holder.machine}:${ownerClaim.holder.pid}:${ownerClaim.holder.since}`,
+        now: wallNow, stopped: mediaStopped, current: () => active() && loginConfiguration.current(),
+        eligible: entry => loginRuntimes.get(entry.index)?.live(false) === true,
+        hold: bounds => hostResources.hold('maintenance', bounds), journal, authority: activation.reference,
+        helper: target => {
+          for (const candidate of loginConfiguration.entries) {
+            if (candidate.index === target.index) continue;
+            try { const entry = loginPool.select(false, candidate.index, true, true);
+              if (!entry) continue;
+              loginRuntimes.get(entry.index).check(false); loginRuntimes.get(entry.index).harness.current(); return entry;
+            } catch { /* Missing authority/capacity is not proof that all logins are unhealthy. */ }
+          }
+          return 'unavailable';
+        }, recovered: entry => { loginRuntimes.get(entry.index).check(false); unavailable.delete(entry.index); } });
     }
     const effectPolicyPath = options['effect-policy'];
     if (effectPolicyPath !== undefined) {
@@ -3165,6 +3183,7 @@ async function main() {
     // the Telegram connection or on an inbound message. Requested result delivery uses the post-poll pass below.
     const workCycle = (requested = false, wake = false) => {
       if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
+      signinRepair?.tick();
       // Work observation shares this cycle but must run while the ordinary work lane is busy.
       if (!journal.readOnly) sentinels.observeWork();
       sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
@@ -3325,6 +3344,7 @@ async function main() {
 
     }
     dueWake.close();
+    await signinRepair?.close();
     // The bounded shutdown awaits (provider timeouts) are progress, not a hang.
     const tailBeat = setInterval(hostBeat, 5000);
     try {
@@ -3432,6 +3452,7 @@ async function main() {
     } finally {
       // A delegated session never outlives the launch that owns it.
       try { if (conversationSession) await sessionWork?.port.close(); else sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
+      await signinRepair?.close();
       if (gate) { gate.closeAll(); await gate.stop(); }
       for (const proxy of stepEgress.values()) await proxy.close();
       stepEgress.clear();

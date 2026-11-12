@@ -6,7 +6,7 @@ import { SOURCE_PINS, sourcePacket } from './briefing.js';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, summaryStoppedAt, SUMMARY_FORMAT, SUMMARY_OVER_CAP_REASON, type CallOutcome, type JournalRecord } from './journal.js';
+import { createJournalWorker, openPreviewJournal, summaryStoppedAt, retiredResults, SUMMARY_FORMAT, SUMMARY_OVER_CAP_REASON, type CallOutcome, type JournalRecord } from './journal.js';
 import { decisionWithinFloor } from './model-call-boundary.js';
 import { conclusionText, parseModelJson } from './model-json.js';
 import { JEV_MODEL, parseJevResponse, REPLY_RULES } from './reply-check.js';
@@ -117,7 +117,7 @@ function world(writer: Step[], forum = false, media = false) {
       elapsedMs: () => clock },
     send: async input => input.update, checkOutbound: () => {} });
   let open = true;
-  return { path, journal, worker, throughs, log, answerPackets,
+  return { path, journal, worker, throughs, log, answerPackets, advance: (ms: number) => { clock += ms; },
     intake: (id: number, text: string) => {
       const { text: _text, ...envelope } = update(id, text).message;
       const message = media ? { update_id: id, message: { ...envelope, caption: text,
@@ -225,5 +225,26 @@ it('proactively compacts the recorded room at idle pressure, retaining facts and
     expect(w.answerPackets.at(-1)).toMatch(/tomato/iu);
     expect(w.journal.view.order.at(-1)?.grounding?.summaryThrough).toBeGreaterThan(715672484);
     expect(w.journal.view.order.at(-1)?.sent).toBeDefined();
+  } finally { w.close(); }
+});
+
+it('recorded uncertain writers and undecided Jev still allow an aged completed result to retire and the room to answer', async () => {
+  const w = world([{ kind: 'over-cap', index: 0 }, { kind: 'complete', output: WRITER_484 }]);
+  try {
+    w.replayLiveRoom();
+    await w.worker.summarizeIfNeeded(true);
+    expect(w.log.slice(0, 4)).toEqual(['summary', 'summary', 'jev-faithfulness', 'review']);
+    const slot = fixture.rows.at(-1)!.at + 30 * 60_000;
+    w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, at: slot });
+    w.journal.append({ kind: 'obligation-result', obligation: 'commitment:0', slot, at: slot,
+      outcome: 'report', report: 'Synthetic completed result for the recorded gardening request.',
+      completion: [{ id: 'garden', work: 'Prepare the gardening result', state: 'complete', evidence: 'Synthetic completion neighbor.' }] });
+    w.advance(7 * 86400000);
+    await w.worker.drain();
+    expect(retiredResults(w.journal.view)).toHaveLength(1);
+    w.intake(715672501, 'Hello again.'); await w.worker.drain();
+    expect(w.journal.view.order.at(-1)?.sent).toBeDefined();
+    expect(w.answerPackets.at(-1)).toContain('Synthetic completed result');
+    expect(w.journal.view.order.at(-1)?.intent).toContain('1 older finished items');
   } finally { w.close(); }
 });

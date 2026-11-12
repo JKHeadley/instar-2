@@ -3,7 +3,7 @@
  * rebuilds it exactly, and every item stays open until a recorded cause closes it. */
 import { dueState } from './dated-memory.js';
 import { commitmentOpen, commitmentWaitsOn, loopRevisitMs, loopRevisits, obligationCapacity, obligationSchedule, openBlockers,
-  openDirectives, openQuestionCandidates, openRequests, owedResultAuthority, probeTurn, wallEpoch, type JournalView, type Turn, type ObligationOutcome } from './journal.js';
+  retiredResults, retiredResultSentence, openDirectives, openQuestionCandidates, openRequests, owedResultAuthority, probeTurn, wallEpoch, type JournalView, type Turn, type ObligationOutcome } from './journal.js';
 
 /** Measured engineering defaults (Rule 46/64): accepted work older than this, or no forward
  * progress for this long while work waits, is reported as overdue on the pull surface. */
@@ -139,7 +139,7 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
     undeclared: loops.filter(loop => loop.defect === 'undeclared-dependency').length, refusedCommitments: view.commitmentRefusals,
     unfinished: waiting.length, unansweredTurns: turns.length, dueWork: due.length,
     workInFlight, stalledWork, awaitingDelivery, scheduledWork: future.length,
-    withdrawnResults: Object.entries(view.obligationWork).filter(([key, work]) => work.report && !work.report.delivered
+    withdrawnResults: Object.entries(view.obligationWork).filter(([key, work]) => work.report && !work.report.delivered && !work.retired
       && key.startsWith('commitment:') && !commitmentOpen(view, Number(key.slice(11)))).length,
     deliveryUnknown: schedule.filter(item => item.deliveryUnknown).length, recoveryUnknown, waitingWork,
     // An open requested action is owned work until its answer is dispatched: its due time wakes the runner (Rule 68).
@@ -172,7 +172,9 @@ export function loopStatusLines(view: JournalView, now: number): string[] {
     .map(([kind, count]) => `${count} ${kind}${count === 1 ? '' : 's'}`);
   const remaining = Object.entries(view.obligationWork).flatMap(([key, work]) =>
     (work.completion ?? []).filter(item => item.state === 'open').map(item => ({ key, ...item })));
+  const retired = retiredResults(view);
   return [
+    ...(retired.length ? [retiredResultSentence(retired)] : []),
     ...(remaining.length ? [`Completion checklist: ${remaining.length} unfinished item(s) retained${view.stop ? '; execution halted' : ''}.`,
       ...remaining.slice(0, 3).map(item => `Unfinished: ${item.work}`)] : []),
     `Open loops: ${health.open}${kinds.length ? ` (${kinds.join(', ')})` : ''}; ${health.revisitDue} due to resurface with your next message.`,
