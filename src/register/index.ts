@@ -16,3 +16,5 @@ export { resolveTerms, verifyDerivedColumns } from '../terms/resolver.js';
 export type { TermResolution } from '../terms/resolver.js';
 export { decodeCheckRun, buildRuleGraph, checkGraphLoops, checkDeadlines, deadlineNotice, modelEntryFresh, semanticReviewSubject } from '../rulegraph/graph.js';
 export type { RuleGraph, CheckCatalog, DeadlineAttention } from '../rulegraph/graph.js';
+export { requiredReleaseChecks } from './release-checks.js';
+export type { RequiredReleaseCheck } from './release-checks.js';
