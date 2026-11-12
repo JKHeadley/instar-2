@@ -75,7 +75,7 @@ Rules: 34/37/70 retain red/base/green regression evidence; 74/102 record the nar
 
 Decision: T242-R1343-PIN | Align the dated-memory expectation with the existing compact summary; preserve production bytes, behavioral assertions, all four carries and the injected clock. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-242-repair-1343-build-report.md
 
-Verification: targeted final-head results and gate outputs are in the canonical Studio report copied by the desk from the M5 report. This fixture-only repair makes no new live or independent convergence claim.
+Verification: dated-memory 24/24, private reports 13/13, burn observation 18/18 and Threadline default 9/9 pass; build and typecheck pass. Register replay from 4bd8f06bbed35997bb4a5a96f327add331c56b48 changes only derived provenance and the fixture reference hash; capability text is identical. Final retry-suite and pushed-head gates are recorded in the canonical Studio report copied by the desk from the M5 report. This fixture-only repair makes no new live or independent convergence claim.
 
 ## Closing block
 
