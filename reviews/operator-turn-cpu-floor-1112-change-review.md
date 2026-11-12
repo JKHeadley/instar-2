@@ -24,7 +24,6 @@ Decision: operator-turn-cpu-floor-1112-priority | Use existing verified journal 
 Decision: operator-turn-cpu-floor-1112-floors | Keep memory and count floors; remove CPU refusal for operator turns and retain the existing background 12-percent default using the 1.x one-second observation interval. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/operator-turn-cpu-floor-1112-PROGRESS.md
 Decision: operator-turn-cpu-floor-1112-retry | Reuse each durable host drain with one disposable two-second retry timer, fenced against renewal/stop/authority/lifetime, and expose reason/age through existing pull status. Physical admission ceilings may delay the offered retry. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/operator-turn-cpu-floor-1112-PROGRESS.md
 
-simplestRobustRoute: This is the simplest robust route: parameterize the existing small sampler, derive priority from the journal's existing verified principal, and reuse the existing host queue, admission and status. A per-held-topic timer is necessary because a timer submitting the ordinary lane would remain blocked behind unrelated long work. No alternate queue, scheduler, authority, request schema or model judgment is added. Start guards remain durable intake, authority, memory and physical ceilings; end guards remain correlated outcomes and exact lease release; stop, calls and parent lifetime remain. No unattended production or live acceptance claim is made.
 
 ## 1.x FIRST and step 0
 
@@ -36,10 +35,12 @@ The original 2.0 engineering choice is f692c56aa07c750fee80863a375292b782263a65,
 
 Targeted changed tests and direct importers only, each file run separately with nice -n 10 and --maxWorkers 1. The added regression failed on the base (10 failures; operator low/unknown CPU and 100-ms sampling), then passed after the fix. Live Studio acceptance and native self-host certification are desk work; no deployment or live-load test is performed here.
 
-80/20: Existing custody, host drain, admission and status are reused; only changed tests, direct importers and mandated static/pinned checks run here.
-VERDICT: author submission; no independent production acceptance claim
 
 Independent second pass: review_path concurs with the revised implementation and side-effects review after repairs for mixed-principal queues, renewal fencing, lazy host reopening and safe retry continuation. Accepted minor residue: a revoked grant can leave the last capacity reason visible until ordinary maintenance refreshes state; the status explicitly qualifies retries by authorization. Test execution and live acceptance remain separate evidence.
 Measured change: 84 product lines added+removed across the sampler, coordinator and shipped runner; 99 including the assembly README. Test and review lines excluded from the product measure.
 
 Recovery boundary: CPU priority also follows an unfinished accepted operator input during existing lost-worker/context replacement. A second can-fail test returned uncertain before this repair and completes afterward with two worker launches and one delivery. Historical settled turns grant no priority. The retry timer remains restricted to queued inputs. review_path independently concurred with this expansion.
+
+simplestRobustRoute: This is the simplest robust route: parameterize the existing small sampler, derive priority from the journal's existing verified principal, and reuse the existing host queue, admission and status. A per-held-topic timer is necessary because a timer submitting the ordinary lane would remain blocked behind unrelated long work. No alternate queue, scheduler, authority, request schema or model judgment is added. Start guards remain durable intake, authority, memory and physical ceilings; end guards remain correlated outcomes and exact lease release; stop, calls and parent lifetime remain. No unattended production or live acceptance claim is made.
+80/20: Existing custody, host drain, admission and status are reused; only changed tests, direct importers and mandated static/pinned checks run here.
+VERDICT: author submission; no independent production acceptance claim
