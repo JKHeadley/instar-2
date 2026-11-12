@@ -105,6 +105,8 @@ async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 
+// train-242: a newly generated capability overflowed the summary budget and dropped tool constraints.
+// Keep every registered capability concise; this existing boundary must hold without raising its guard.
 it('keeps the always-sent prompt parts inside what the measured floor allows, with its reply review beside them', async () => {
   // Measured at the floor, not at the default: there the room is exactly the fixed parts, so the ladder is
   // forced to the shape that is ALWAYS present -- desk report at its cut bound, obligation guide intact --
