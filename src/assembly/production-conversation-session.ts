@@ -644,7 +644,15 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         evidence: state.edge.id, resultBytes: null, closedAt: config.now(), calls: used, reserved: config.maxCalls });
       // An edge the journal refused at the cap (reservation never confirmed) has no durable edge to close there; the
       // port's own record still carries the close. A second journal close for the same edge would be refused (row 16).
-      if (state.reserved) config.append(result);
+      // desk hot fix 2026-11-12 (live crash loop on the operator's seat): when the journal holds no open edge for this
+      // conversation (it was closed or never recorded there), its refusal of the close row is the answer, not a fault:
+      // the port's own record still carries the close. Any other journal refusal still throws.
+      if (state.reserved) {
+        try { config.append(result); }
+        catch (error) {
+          if (!(error instanceof Error) || !error.message.includes('session work close for an unknown or already closed edge')) throw error;
+        }
+      }
       persist({ close: result }); return result;
     };
     const maintain = async () => {
