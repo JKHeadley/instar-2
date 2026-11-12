@@ -35,7 +35,7 @@ it('observes real writer reservations and model-call rows: low, burst, restart, 
     call(); await worker().observeBurn();
     expect(burnObservation(journal.view, now).active).toBe(false); expect(sent).toEqual([]);
     for (let n = 0; n < 14; n++) call();
-    const w = worker(); await Promise.all([w.observeBurn(), w.observeBurn()]);
+    const w = worker(); await Promise.all([w.minimal(), w.observeBurn()]);
     expect(burnObservation(journal.view, now)).toMatchObject({ callsPerHour: 180, minutesToShed: 20, active: true, episode: 1 });
     expect(sent).toHaveLength(1); expect(sent[0]).toContain('180 reserved attempts/hour');
     const snapshot = dashboardSnapshot(journal.view, { now, zone: 'UTC', statusText: statusReply(journal.view, now, 'UTC'), bot: null, stopped: false });
