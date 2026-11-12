@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: expose a real default Threadline connector and complete a local peer message/reply through the normal checkpoint, with host-held identity, private signed scope and authenticated custody receipts.
 Affected rules: 1, 2, 4, 7, 18, 28, 29, 30, 32, 34, 36, 42, 44, 46, 49, 60, 63, 66, 74, 89, 95, 98, 100, 101, 102, 103, 111, 113, 114, 116, 118, 122, 123
-Affected floors: secrets stay in existing custody and both directions use the held-secret check; spend is zero for transport and existing claim/model caps remain; stop/owner/grant are rechecked at dispatch after replication; durable request identities prevent duplicate sends; accepted payloads are retained in the encrypted journal before receipts.
+Affected floors: secrets stay in existing custody and both directions use the held-secret check; spend is zero for transport and existing claim/model caps remain; stop/owner/grant are rechecked at dispatch after replication; durable request identities prevent duplicate sends; durable intake retains accepted payloads in the encrypted journal before receipts.
 Operator questions: no constitutional wording change. A real peer enrollment requires the installation owner's signed private share and exact local-durability acceptance; this change does not fabricate either for a live installation.
 Suggested tier: significant
 Declared tier: significant
@@ -15,11 +15,19 @@ Undo and recovery: revert the source commit and remove the launch entry through 
 Multi-machine posture: ownership and complete journal replication are checked before frame/receipt release; stable identity follows the installation storage key. Send/receive/read recovery is journal-owned and survives compaction. Local spool paths are deliberately machine-local routes; changing machines needs an owner-signed route update. No automatic weakening when a replica is missing. Actual two-machine execution is a Studio proof, not inferred from a fake replica callback.
 Team posture: each peer/conversation/topic is an explicit owner-signed share. There is no wildcard membership expansion; peers gain no human or approval standing. Unknown and private-unshared targets refuse. The generic role/effect policy remains independently required and can narrow access. Team-of-one enrollment has the same behavior.
 Layer below: existing Threadline crypto and receipt adapter, journal append/compaction/replication, effect preparation identity, per-claim admission socket, harness hook installation, default MCP merge and release migration. The census's native connector gap remains separate; this is not full legacy relay/discovery parity.
-Bug class: missing default connector wiring
-Bug evidence: census B at 7cd1b7955cdd6879c0c866b4c5edabca10da2203; new end-to-end test previously had no installed executable or owner handler.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/threadline-default.test.ts; census B at 7cd1b7955cdd6879c0c866b4c5edabca10da2203; new end-to-end test previously had no installed executable or owner handler.
 Hook bypass: none
 Convergence: none
 Prompt review: new tool descriptions label peer text as data, never instructions or approval. Real recorded shapes replay through the MCP transport and encrypted journal; no existing model parser or semantic judgment is replaced.
+Prompt finding: 105c1569b6bb | protocol-literal | Existing activation-expiry notice states the actual closed renewal boundary and its test asserts that notice; this change only adds a journal recovery accessor.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing obligation instructions prohibit inventing attempted work and use capability evidence; the test verifies that standing boundary, not a task answer. The wording is unchanged.
+Prompt finding: 7ef11b68103f | protocol-literal | Existing expiry notice explains the installed activation rule; its boundary test checks the exact notice. No trigger or outcome wording was added here.
+Prompt finding: 849db3a6296a | protocol-literal | Existing deterministic empty-memory status reports the empty store, with a test of that state; the new transport accessor changes no memory answer.
+Prompt finding: 85544c20941f | protocol-literal | Existing model-outage notice and its matching recognizer describe retained intake. The session test checks this fixed status, not a model-directed conclusion; unchanged here.
+Prompt finding: 9f0106c66027 | protocol-literal | Existing unknown-answer notice honestly reports an unknown stop reason and retained work; the test verifies that fixed notice. No model answer has been inserted.
+Prompt finding: bac6ce7485d9 | protocol-literal | Same existing deterministic interrupted-answer notice, asserted by its stop test; untouched by the journal transport-record accessor.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing recall instructions require source labels and uncertainty on absent evidence across questions. The rate test checks this general grounding instruction; no fixture-specific answer or trigger was introduced.
 
 1.x comparison: actual JKHeadley/instar main db3ed6d3052cfcc24888b6c8bc86086abcfc2987 verified with git ls-remote; searched src/, docs/specs/ and history. Behavior carried from server.ts:21745–21815 (always-on identity/bootstrap), ThreadlineBootstrap.ts:993–1093 (per-agent MCP exposure, no shared Codex rewrite) and threadline-mcp-local-http.md:76–110 (launch coverage and honest outcomes). History inspected: a3b7a0b09, 5a5c9bb5a, b7ff3831f, f0144bd51, 555235afa. No legacy lines copied verbatim: 2.0's crypto/receipt core is reused unchanged, with new owner-side glue because the legacy server owns incompatible authority/storage. Local filesystem relay, signed private binding and client are new adaptations. Discovery, legacy internet relay, synchronous waitForReply and automatic peer responder scheduling are outside this smallest local tool-invoked exchange. ONEX-LESSONS was not found in the named local trees; the brief provided no remote snapshot URLs, and no remote read is claimed.
 
