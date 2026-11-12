@@ -15,7 +15,7 @@
 //     A record answers only for text it wrote: a Deferral/Skip line an earlier record in its own
 //     range wrote (git blame), or a prompt finding present at its base or validly dispositioned by
 //     such an earlier record, is not demanded again; findings in files the current change touches are.
-//     CHANGE_REVIEW_BASE overrides the remote-reachability boundary for own commits.
+//     CHANGE_REVIEW_BASE supplies the unit Subject base or actual target for own commits; unknown refuses.
 //
 // Authoring:
 //   draft --base <sha> [--title T]  print a record skeleton for the working tree's change
@@ -39,6 +39,7 @@
 //   redo <entry> <evidence>               record that an entry never carried useful signal
 //   landing [--records DIR]               the landing gate for HEAD; with the desk's record
 //                                         directory it consumes candidate/review/gate.json
+import { changeCommits } from './change-scope.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
@@ -236,14 +237,10 @@ export function governedVersionErrors(entry) {
   return errors;
 }
 
-// Remote tips containing HEAD belong to this change (including a pushed or detached tip),
-// not its base. An explicit base takes precedence for callers with a known boundary.
+// The caller's unit target is shared with register scope; an unknown boundary throws
+// rather than treating potentially own prompt findings as inherited debt (Rule 95).
 function changeScope() {
-  const base = process.env.CHANGE_REVIEW_BASE;
-  const excluded = base !== undefined ? [git('rev-parse', '--verify', `${base}^{commit}`)]
-    : lines(git('for-each-ref', '--format=%(objectname)', 'refs/remotes'))
-      .filter(tip => !isAncestor('HEAD', tip));
-  const commits = git('rev-list', 'HEAD', '--not', ...new Set(excluded));
+  const commits = changeCommits(process.cwd(), process.env.CHANGE_REVIEW_BASE);
   if (!commits) return new Set();
   const paths = execFileSync('git', ['diff-tree', '--stdin', '--root', '-m', '-r', '--no-commit-id',
     '--name-only', '--no-renames', '--diff-filter=AM', '-z'],
