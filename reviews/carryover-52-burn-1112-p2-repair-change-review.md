@@ -38,3 +38,5 @@ Team posture: Same operator-private allowance summary and authenticated dashboar
 simplestRobustRoute: This is the simplest robust route: enumerate current and prior burn intents using the existing outcome reader. The small prior list prevents loss when the latest notice is replaced. Existing journal capacity and reply cap bound writes; no competing delivery service or authority. Start, stop and end-of-episode guards stay unchanged. No unattended installed-path completion claim.
 80/20: Five product lines plus focused real-writer regression assertions. Portable targeted tests and cheap gates only; combined installed acceptance and wider row-52 work remain as recorded by the independent review.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+
+Decision: burn-summary-register | Replay generated register from tested source c2ebba1f1; prescribed owner rehash and inventory chain changed zero pins. Generated files publish the current source hashes mechanically. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-52-burn-1112-p2-repair-041116-PROGRESS.md
