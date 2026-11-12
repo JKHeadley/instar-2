@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:f35250e39aeed9e735557836bee95031a5fc06790f23896017db8ba8cc907352",
-  "commit": "9767a5b8d1d3ede12c6548fac36d96fe9e96f565",
+  "generation": "sha256:54351ffdef7fe9df70d7276fbd4398fde32b0016c1ad02be37654426ec0fd79f",
+  "commit": "ec992f15f7889fd59a56164ee77a994b538f705c",
   "launchers": {
     "bin/instar2.mjs": [
       {
@@ -9,7 +9,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "bounded Telegram files; refused messages kept."
       },
       {
         "id": "harness-doorway-parity",
@@ -17,7 +17,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each harness and model doorway to certified code; the rest are unproven."
+        "text": "binds harness/model doors to certified code; others unproven."
       },
       {
         "id": "installed-update-verification",
@@ -25,7 +25,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "updates itself; a failure keeps the current release."
+        "text": "self-updates; failure keeps current release."
       },
       {
         "id": "intake-slice",
@@ -33,7 +33,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures every inbound message before work; uncertain ones are kept."
+        "text": "captures inbound before work; keeps uncertain messages."
       },
       {
         "id": "preview-conversation",
@@ -41,7 +41,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers operator chat/topics; encrypted media intake with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -49,7 +49,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -57,7 +57,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions, works promises; sends explicitly requested results, else waits for next message."
       },
       {
         "id": "preview-private-reports",
@@ -65,7 +65,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
+        "text": "7-day operator-only pages: {reply:Markdown,privateViewTitle:1–256-char title}; dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -73,7 +73,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -81,7 +81,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "journal answers \"status\"/\"how are you doing\"; no model."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -89,7 +89,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "may mention a saved date due within 48h once in next reply."
       },
       {
         "id": "preview.attribution-check",
@@ -97,7 +97,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": false,
-        "text": "with --attribution, checks quotes credited in notes."
+        "text": "--attribution checks note quote credits."
       },
       {
         "id": "preview.coherence-check",
@@ -105,7 +105,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "checks replies against remembered turns; no model call."
+        "text": "checks replies against remembered turns, no model."
       },
       {
         "id": "preview.rolling-summary",
@@ -113,7 +113,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked summary of earlier turns."
+        "text": "faithfulness-checked summaries of earlier turns."
       },
       {
         "id": "register-tooling",
@@ -121,7 +121,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rules, glossary and this briefing from declarations."
+        "text": "declarations build register, rules, glossary and briefing."
       },
       {
         "id": "rungraph-core",
@@ -161,7 +161,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts."
+        "text": "local peer data: owner-signed private scope, custody, checkpoints, signed receipts."
       }
     ],
     "bin/instar-production.mjs": [
@@ -171,7 +171,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "bounded Telegram files; refused messages kept."
       },
       {
         "id": "harness-doorway-parity",
@@ -179,7 +179,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each harness and model doorway to certified code; the rest are unproven."
+        "text": "binds harness/model doors to certified code; others unproven."
       },
       {
         "id": "installed-update-verification",
@@ -187,7 +187,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "updates itself; a failure keeps the current release."
+        "text": "self-updates; failure keeps current release."
       },
       {
         "id": "intake-slice",
@@ -195,7 +195,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures every inbound message before work; uncertain ones are kept."
+        "text": "captures inbound before work; keeps uncertain messages."
       },
       {
         "id": "preview-conversation",
@@ -203,7 +203,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers operator chat/topics; encrypted media intake with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -211,7 +211,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -219,7 +219,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions, works promises; sends explicitly requested results, else waits for next message."
       },
       {
         "id": "preview-private-reports",
@@ -227,7 +227,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
+        "text": "7-day operator-only pages: {reply:Markdown,privateViewTitle:1–256-char title}; dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -235,7 +235,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -243,7 +243,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "journal answers \"status\"/\"how are you doing\"; no model."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -251,7 +251,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "may mention a saved date due within 48h once in next reply."
       },
       {
         "id": "preview.attribution-check",
@@ -259,7 +259,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "with --attribution, checks quotes credited in notes."
+        "text": "--attribution checks note quote credits."
       },
       {
         "id": "preview.coherence-check",
@@ -267,7 +267,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks replies against remembered turns; no model call."
+        "text": "checks replies against remembered turns, no model."
       },
       {
         "id": "preview.rolling-summary",
@@ -275,7 +275,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked summary of earlier turns."
+        "text": "faithfulness-checked summaries of earlier turns."
       },
       {
         "id": "register-tooling",
@@ -283,7 +283,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rules, glossary and this briefing from declarations."
+        "text": "declarations build register, rules, glossary and briefing."
       },
       {
         "id": "rungraph-core",
@@ -323,7 +323,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts."
+        "text": "local peer data: owner-signed private scope, custody, checkpoints, signed receipts."
       }
     ],
     "scripts/host-watch.mjs": [
@@ -333,7 +333,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "bounded Telegram files; refused messages kept."
       },
       {
         "id": "harness-doorway-parity",
@@ -341,7 +341,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each harness and model doorway to certified code; the rest are unproven."
+        "text": "binds harness/model doors to certified code; others unproven."
       },
       {
         "id": "installed-update-verification",
@@ -349,7 +349,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "updates itself; a failure keeps the current release."
+        "text": "self-updates; failure keeps current release."
       },
       {
         "id": "intake-slice",
@@ -357,7 +357,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures every inbound message before work; uncertain ones are kept."
+        "text": "captures inbound before work; keeps uncertain messages."
       },
       {
         "id": "preview-conversation",
@@ -365,7 +365,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers operator chat/topics; encrypted media intake with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -373,7 +373,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -381,7 +381,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions, works promises; sends explicitly requested results, else waits for next message."
       },
       {
         "id": "preview-private-reports",
@@ -389,7 +389,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
+        "text": "7-day operator-only pages: {reply:Markdown,privateViewTitle:1–256-char title}; dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -397,7 +397,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -405,7 +405,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "journal answers \"status\"/\"how are you doing\"; no model."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -413,7 +413,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "may mention a saved date due within 48h once in next reply."
       },
       {
         "id": "preview.attribution-check",
@@ -421,7 +421,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "with --attribution, checks quotes credited in notes."
+        "text": "--attribution checks note quote credits."
       },
       {
         "id": "preview.coherence-check",
@@ -429,7 +429,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks replies against remembered turns; no model call."
+        "text": "checks replies against remembered turns, no model."
       },
       {
         "id": "preview.rolling-summary",
@@ -437,7 +437,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked summary of earlier turns."
+        "text": "faithfulness-checked summaries of earlier turns."
       },
       {
         "id": "register-tooling",
@@ -445,7 +445,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rules, glossary and this briefing from declarations."
+        "text": "declarations build register, rules, glossary and briefing."
       },
       {
         "id": "rungraph-core",
@@ -485,7 +485,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts."
+        "text": "local peer data: owner-signed private scope, custody, checkpoints, signed receipts."
       }
     ],
     "tests/preview/agent.mjs": [
@@ -495,7 +495,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "bounded Telegram files; refused messages kept."
       },
       {
         "id": "harness-doorway-parity",
@@ -503,7 +503,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each harness and model doorway to certified code; the rest are unproven."
+        "text": "binds harness/model doors to certified code; others unproven."
       },
       {
         "id": "installed-update-verification",
@@ -511,7 +511,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "updates itself; a failure keeps the current release."
+        "text": "self-updates; failure keeps current release."
       },
       {
         "id": "intake-slice",
@@ -519,7 +519,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures every inbound message before work; uncertain ones are kept."
+        "text": "captures inbound before work; keeps uncertain messages."
       },
       {
         "id": "preview-conversation",
@@ -527,7 +527,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers operator chat/topics; encrypted media intake with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -535,7 +535,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -543,7 +543,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions, works promises; sends explicitly requested results, else waits for next message."
       },
       {
         "id": "preview-private-reports",
@@ -551,7 +551,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
+        "text": "7-day operator-only pages: {reply:Markdown,privateViewTitle:1–256-char title}; dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -559,7 +559,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -567,7 +567,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "journal answers \"status\"/\"how are you doing\"; no model."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -575,7 +575,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "may mention a saved date due within 48h once in next reply."
       },
       {
         "id": "preview.attribution-check",
@@ -583,7 +583,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "with --attribution, checks quotes credited in notes."
+        "text": "--attribution checks note quote credits."
       },
       {
         "id": "preview.coherence-check",
@@ -591,7 +591,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks replies against remembered turns; no model call."
+        "text": "checks replies against remembered turns, no model."
       },
       {
         "id": "preview.rolling-summary",
@@ -599,7 +599,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked summary of earlier turns."
+        "text": "faithfulness-checked summaries of earlier turns."
       },
       {
         "id": "register-tooling",
@@ -607,7 +607,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rules, glossary and this briefing from declarations."
+        "text": "declarations build register, rules, glossary and briefing."
       },
       {
         "id": "rungraph-core",
@@ -647,7 +647,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts."
+        "text": "local peer data: owner-signed private scope, custody, checkpoints, signed receipts."
       }
     ],
     "tests/preview/conversation-authority-server.mjs": [
@@ -657,7 +657,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "bounded Telegram files; refused messages kept."
       },
       {
         "id": "harness-doorway-parity",
@@ -665,7 +665,7 @@
         "module": "src/assembly",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "binds each harness and model doorway to certified code; the rest are unproven."
+        "text": "binds harness/model doors to certified code; others unproven."
       },
       {
         "id": "installed-update-verification",
@@ -673,7 +673,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "updates itself; a failure keeps the current release."
+        "text": "self-updates; failure keeps current release."
       },
       {
         "id": "intake-slice",
@@ -681,7 +681,7 @@
         "module": "src/intake",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "captures every inbound message before work; uncertain ones are kept."
+        "text": "captures inbound before work; keeps uncertain messages."
       },
       {
         "id": "preview-conversation",
@@ -689,7 +689,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers operator chat/topics; encrypted media intake with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -697,7 +697,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -705,7 +705,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions, works promises; sends explicitly requested results, else waits for next message."
       },
       {
         "id": "preview-private-reports",
@@ -713,7 +713,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
+        "text": "7-day operator-only pages: {reply:Markdown,privateViewTitle:1–256-char title}; dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -721,7 +721,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -729,7 +729,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "journal answers \"status\"/\"how are you doing\"; no model."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -737,7 +737,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "may mention a saved date due within 48h once in next reply."
       },
       {
         "id": "preview.attribution-check",
@@ -745,7 +745,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "with --attribution, checks quotes credited in notes."
+        "text": "--attribution checks note quote credits."
       },
       {
         "id": "preview.coherence-check",
@@ -753,7 +753,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks replies against remembered turns; no model call."
+        "text": "checks replies against remembered turns, no model."
       },
       {
         "id": "preview.rolling-summary",
@@ -761,7 +761,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked summary of earlier turns."
+        "text": "faithfulness-checked summaries of earlier turns."
       },
       {
         "id": "register-tooling",
@@ -769,7 +769,7 @@
         "module": "src/register",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "generates the register, rules, glossary and this briefing from declarations."
+        "text": "declarations build register, rules, glossary and briefing."
       },
       {
         "id": "rungraph-core",
@@ -809,7 +809,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts."
+        "text": "local peer data: owner-signed private scope, custody, checkpoints, signed receipts."
       }
     ],
     "tests/preview/journal-agent.mjs": [
@@ -819,7 +819,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "bounded Telegram files; refused messages kept."
       },
       {
         "id": "harness-doorway-parity",
@@ -827,7 +827,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each harness and model doorway to certified code; the rest are unproven."
+        "text": "binds harness/model doors to certified code; others unproven."
       },
       {
         "id": "installed-update-verification",
@@ -835,7 +835,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "updates itself; a failure keeps the current release."
+        "text": "self-updates; failure keeps current release."
       },
       {
         "id": "intake-slice",
@@ -843,7 +843,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures every inbound message before work; uncertain ones are kept."
+        "text": "captures inbound before work; keeps uncertain messages."
       },
       {
         "id": "preview-conversation",
@@ -851,7 +851,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers operator chat/topics; encrypted media intake with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -859,7 +859,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -867,7 +867,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions, works promises; sends explicitly requested results, else waits for next message."
       },
       {
         "id": "preview-private-reports",
@@ -875,7 +875,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
+        "text": "7-day operator-only pages: {reply:Markdown,privateViewTitle:1–256-char title}; dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -883,7 +883,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -891,7 +891,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "journal answers \"status\"/\"how are you doing\"; no model."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -899,7 +899,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "may mention a saved date due within 48h once in next reply."
       },
       {
         "id": "preview.attribution-check",
@@ -907,7 +907,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "with --attribution, checks quotes credited in notes."
+        "text": "--attribution checks note quote credits."
       },
       {
         "id": "preview.coherence-check",
@@ -915,7 +915,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "checks replies against remembered turns; no model call."
+        "text": "checks replies against remembered turns, no model."
       },
       {
         "id": "preview.rolling-summary",
@@ -923,7 +923,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked summary of earlier turns."
+        "text": "faithfulness-checked summaries of earlier turns."
       },
       {
         "id": "register-tooling",
@@ -931,7 +931,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rules, glossary and this briefing from declarations."
+        "text": "declarations build register, rules, glossary and briefing."
       },
       {
         "id": "rungraph-core",
@@ -971,7 +971,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts."
+        "text": "local peer data: owner-signed private scope, custody, checkpoints, signed receipts."
       }
     ]
   }
