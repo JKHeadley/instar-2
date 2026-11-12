@@ -34,11 +34,11 @@ Prompt finding: e8708c7fea24 | protocol-literal | Unchanged protocol/fixed notic
 
 Subject: tests/preview/burn-observation.ts, tests/preview/journal.ts, tests/preview/burn-observation.test.ts, tests/preview/journal-agent.test.ts, tests/preview/operator-approvals.test.ts, register-source/owner-references/preview.json and seven generated register projections.
 
+Validation: All supplied failing cases passed unchanged, including native-harness-contract and all three specified two-machine scenarios. Observer controls passed 18/18; journal-agent passed 25/25; operator-approvals passed 8/8. Typecheck, build and architecture passed. Exact-source register replay uses bf4a07cfe14cb2ed1cf209ef54904559c84d1dc2. Final cheap-gate outputs and publication evidence are in the repair PROGRESS record.
+Deferral: generated/register.json:1 | not-a-deferral=mechanical replay preserves existing descriptions; no new deferral
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the existing bounded buckets, one observation timestamp, durable episodes and dispatch checkpoint. A full-window prerequisite prevents extrapolated startup bursts from interrupting; an idle-gap reset prevents an old burst from blessing a new one. Reply-room rechecks prevent a warning consuming capacity owed to accepted intake. Product changes total fewer than 30 lines. Added test coverage proves boundary, restart, historical replay and late-intake behavior; no new infrastructure.
 80/20: Target the supplied failures and observer controls, then typecheck and cheap gates. Preserve original failing assertions; update only the two earlier member tests that had been changed to demand startup warnings. The pipeline owns the full suite and independent acceptance.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Validation: All supplied failing cases passed unchanged, including native-harness-contract and all three specified two-machine scenarios. Observer controls passed 18/18; journal-agent passed 25/25; operator-approvals passed 8/8. Typecheck, build and architecture passed. Exact-source register replay uses bf4a07cfe14cb2ed1cf209ef54904559c84d1dc2. Final cheap-gate outputs and publication evidence are in the repair PROGRESS record.
-Deferral: generated/register.json:1 | not-a-deferral=mechanical replay preserves existing descriptions; no new deferral
