@@ -42,6 +42,11 @@ an OS-confined child of the existing resource-owned browser process. The child
 cannot read profile/host files, write enforcement code, open sockets or spawn
 processes. It reaches the browser through the pinned Playwright protocol; the
 custodian checks credential-bearing responses before delivering them to code.
+Text, base64, binary buffers and protocol frames are decoded for inspection by
+the same output check; inspection bytes never enter the journal. Opaque binary
+uses the call's consequential grant, or passes the existing effect admission
+before an ordinary tool may release it. A credential match still refuses with
+`output-secret-check`, regardless of the grant.
 Server-side `fetch` uses a bounded host transport that checks URL, headers and
 body before dispatch. Replacing the worker's JavaScript globals cannot replace
 these checks or the kernel boundary. Host process/file/listener control stays

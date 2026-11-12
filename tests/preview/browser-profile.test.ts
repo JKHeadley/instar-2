@@ -132,11 +132,11 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   const sockets = new wsServer({ server });
   sockets.on('connection', (socket: { on: (name: string, fn: () => void) => void; send: (text: string) => void }) => socket.on('message', () => { socketMessages++; socket.send('WebSocket works'); }));
   cleanup.push(() => { for (const socket of sockets.clients) socket.terminate(); sockets.close(); });
-  let stopped = false, grant = false;
+  let stopped = false, grant = false, binaryGrant = false;
   const rows: { id: string; state?: string; cause?: string }[] = [], pids: number[] = [];
   const target = 'mcp__playwright__browser_click', keyTarget = 'mcp__playwright__browser_press_key';
   const codeTarget = 'mcp__playwright__browser_run_code_unsafe';
-  const grantedTools = [target, keyTarget, codeTarget, 'mcp__playwright__browser_tabs', 'mcp__playwright__browser_navigate'];
+  const grantedTools = [target, keyTarget, codeTarget, 'mcp__playwright__browser_tabs', 'mcp__playwright__browser_navigate', 'mcp__playwright__browser_evaluate'];
   const expiresAt = Date.now() + 90000;
   const policy = () => ({ type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [],
     registered: grantedTools.filter(tool => grant || tool !== 'mcp__playwright__browser_navigate').map(tool => ({ effect: 'tool:mcp', target: tool, consequence: 'data',
@@ -144,7 +144,8 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
     grants: grant ? grantedTools.map(tool => ({ id: tool, browserProfile: row.id, effect: 'tool:mcp', target: tool, approves: ['scope'], source: 'operator:proof', custodian: 'owner', recovery: 'withdraw', expiresAt })) : [] });
   const append = (record: { id: string; state?: string; cause?: string }) => { rows.push(record); };
   const effects = createToolEffectOwner({ append, stopped: () => stopped, now: Date.now, prepared: (id: string) => rows.some(row => row.id === id),
-    decide: (tool: string, input: unknown) => admitSessionConnector({ tool, input, config: { operations: [], effectPolicy: policy() },
+    decide: (tool: string, input: unknown) => admitSessionConnector({ tool, input, config: { operations: [], effectPolicy:
+      (input as {browserEffect?: {method: string}})?.browserEffect?.method === 'BINARY' && !binaryGrant ? { ...policy(), grants: [] } : policy() },
       mcp: readRootMcp(root), enabled: true, now: Date.now(), decide: admitToolCallEffect }) });
   const gate = await createAdmissionGate({ append, effects, stopped: () => stopped, now: Date.now, held: (text: string) => text.includes(secret) ? 'held' : 'clear', profileBrowser: () => Boolean(readRootMcp(root)?.browserProfile) });
   cleanup.push(() => gate.stop());
@@ -200,12 +201,19 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   expect(preparedAtWrite).toBe(true); expect(observedBeforeWrite).toBe(false);
   expect(await worker.call('browser_click', { target: 'button' })).toMatchObject({ status: 'refused' }); expect(writes).toBe(1);
   expect(rows.filter(row => row.state === 'prepared' && row.cause?.includes('bodyDigest'))).toHaveLength(1);
+  // The ordinary call's grant cannot silently cover an opaque output: recheck the consequential envelope.
+  const binaryOutput = { function: "() => ({binary: 'AP8B'})" };
+  expect(await worker.call('browser_evaluate', binaryOutput)).toMatchObject({status: 'refused', reason: 'network-effect-or-scope'});
+  binaryGrant = true;
+  expect(await worker.call('browser_evaluate', binaryOutput)).toMatchObject({status: 'observed'});
+  expect(rows.some(row => row.state === 'prepared' && row.cause?.includes('BINARY'))).toBe(true);
   expect(await worker.call('browser_tabs', { action: 'new', url: `${origin}/framed` })).toMatchObject({ status: 'observed', text: expect.stringContaining('Frame parent') });
   expect(await worker.call('browser_snapshot', {})).toMatchObject({ status: 'observed' });
   const frame = await worker.rpc('tools/call', { name: 'browser_snapshot', arguments: {} });
   expect(JSON.stringify(frame)).toContain('Embedded frame works');
   expect(JSON.stringify(await worker.rpc('tools/call', { name: 'browser_tabs', arguments: { action: 'list' } }))).toContain('1:');
-  expect(await worker.call('browser_navigate', { url: `${origin}/ws` })).toMatchObject({ status: 'observed', text: expect.stringContaining('WebSocket works') });
+  expect(await worker.call('browser_navigate', { url: `${origin}/ws` })).toMatchObject({ status: 'observed' });
+  expect(await worker.call('browser_wait_for', { text: 'WebSocket works' })).toMatchObject({ status: 'observed', text: expect.stringContaining('WebSocket works') });
   expect(socketMessages).toBe(1);
   for (const isolatedContext of ['separate', 'second-isolated', 'third-isolated']) {
     const tab = await worker.call('browser_tabs', { action: 'new', isolatedContext, url: origin });

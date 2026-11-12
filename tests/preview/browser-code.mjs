@@ -10,6 +10,44 @@ import https from 'node:https';
 import { createInterface } from 'node:readline';
 import { inprocess, server } from 'playwright-core/lib/coreBundle';
 
+// Decode only for the existing custody check; inspection bytes never enter the result or journal.
+export function inspectProfileOutput(value, clear) {
+  let safe = clear(JSON.stringify(value)), opaque = false;
+  const bytes = buffer => {
+    // Still check readable spans when the surrounding binary is not valid text.
+    safe = clear(buffer.toString('utf8')) && clear(buffer.toString('utf16le')) && safe;
+    try { new TextDecoder('utf-8', { fatal: true }).decode(buffer); }
+    catch { opaque = true; }
+    if (buffer.some(byte => byte < 9 || (byte > 13 && byte < 32))) opaque = true;
+  };
+  const visit = (item, binary = false, depth = 0) => {
+    if (depth > 16) { opaque = true; return; }
+    if (Buffer.isBuffer(item) || ArrayBuffer.isView(item)) return bytes(Buffer.from(item.buffer, item.byteOffset, item.byteLength));
+    if (item instanceof ArrayBuffer) return bytes(Buffer.from(item));
+    if (typeof item === 'string') {
+      safe = clear(item) && safe;
+      if (!item) return;
+      if (/^[A-Za-z0-9+/_-]+={0,2}$/u.test(item) && Buffer.from(item, 'base64url').toString('base64url') === item.replace(/=+$/u, '').replaceAll('+', '-').replaceAll('/', '_')) {
+        const buffer = Buffer.from(item, 'base64url');
+        if (binary) bytes(buffer);
+        else safe = clear(buffer.toString('utf8')) && clear(buffer.toString('utf16le')) && safe;
+        visit(buffer.toString('utf8'), false, depth + 1);
+      } else if (binary) opaque = true;
+      if (/^\s*[\[{"]/u.test(item)) { try { visit(JSON.parse(item), false, depth + 1); } catch { /* Ordinary text, checked above. */ } }
+      for (const token of item.match(/[A-Za-z0-9+/_-]{16,}={0,2}/gu) ?? []) if (token !== item) visit(token, false, depth + 1);
+      const result = item.match(/^### Result\n([\s\S]*?)(?:\n### |$)/u)?.[1];
+      if (result !== undefined) visit(result, false, depth + 1);
+    } else if (item && typeof item === 'object') {
+      if (item.type === 'Buffer' && Array.isArray(item.data)) return bytes(Buffer.from(item.data));
+      for (const [key, child] of Object.entries(item)) visit(child,
+        ['binary', 'base64'].includes(key) || (key === 'b' && typeof item.k === 'string')
+        || (key === 'data' && ['image', 'audio'].includes(item.type)) || (key === 'body' && item.base64Encoded === true), depth + 1);
+    }
+  };
+  visit(value);
+  return { safe, opaque };
+}
+
 export async function runProfileCode({ context, page, code, clear, allowed, protect, capture, refused }) {
   if (typeof code !== 'string' || !clear(code)) { refused('output-secret-check'); return { isError: true, content: [] }; }
   const root = mkdtempSync(join(tmpdir(), 'instar-browser-code-'));
@@ -50,7 +88,8 @@ export async function runProfileCode({ context, page, code, clear, allowed, prot
         if (closed || controller.signal.aborted) return;
         await protect(); if (message.id) await capture();
         // Before a cookie/storage/header crosses into code, outside its process and after refreshing custody.
-        if (!clear(JSON.stringify(message))) { fail('output-secret-check'); return; }
+        // Opaque protocol bytes remain covered by this call's existing whole-operation grant.
+        if (!inspectProfileOutput(message, clear).safe) { fail('output-secret-check'); return; }
         write({ protocol: message });
       }).catch(() => fail('browser-code-unavailable'));
     };
@@ -68,7 +107,7 @@ export async function runProfileCode({ context, page, code, clear, allowed, prot
         if (++requests > 256 || ++active > 32) { fail('browser-code-request-bound'); return; }
         try {
           const message = JSON.parse(line);
-          if (!clear(line)) { fail('output-secret-check'); return; }
+          if (!inspectProfileOutput(message, clear).safe) { fail('output-secret-check'); return; }
           if (message.result) { resolve(message.result); return; }
           if (message.fetch) {
             const request = message.request;
@@ -84,7 +123,7 @@ export async function runProfileCode({ context, page, code, clear, allowed, prot
               else write({ fetch: message.fetch, error: 'Network request failed' });
               return;
             }
-            if (!clear(Buffer.from(response.body, 'base64').toString('utf8')) || !clear(JSON.stringify(response.headers))) {
+            if (!inspectProfileOutput({ ...response, base64Encoded: true }, clear).safe) {
               fail('output-secret-check'); return;
             }
             write({ fetch: message.fetch, response });

@@ -7,7 +7,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { tools as playwrightTools } from 'playwright-core/lib/coreBundle';
 import { program } from 'playwright-core/lib/utilsBundle';
-import { runProfileCode } from './browser-code.mjs';
+import { runProfileCode, inspectProfileOutput } from './browser-code.mjs';
 export function readBrowserProfile(root, name) {
   if (name === undefined) return null;
   const refuse = () => { throw Error('browser profile refused: record an existing agent-owned profile for this installation (Rules 18/100)'); };
@@ -114,8 +114,8 @@ export function createProfileBrowser({ binding, hold, check, call, deadline, sto
     if (withdrawn() || JSON.stringify(binding()) !== JSON.stringify(bindingSnapshot)) return profileRefused('profile-withdrawn');
     const { secretMaterialIn } = await import('./reply-check.js');
     const { redact } = await import('../../src/recall/redact.js');
-    return check(JSON.stringify(result)) === 'clear' && !redact(JSON.stringify(result)).count
-      && !secretMaterialIn(JSON.stringify(result), [...heldProfile]) ? result : profileRefused('output-secret-check');
+    return inspectProfileOutput(result, text => check(text) === 'clear' && !redact(text).count
+      && !secretMaterialIn(text, [...heldProfile])).safe ? result : profileRefused('output-secret-check');
   }, { binding });
   return { close, async request(id, input) {
     if (closed || busy || stopped() || now() >= deadline) return profileRefused('closed-stopped-or-busy');
@@ -284,7 +284,17 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
       const result = { status: output.isError ? 'refused' : 'observed', content: output.content,
         text: page && allowed(page.url()) ? await page.locator('body').ariaSnapshot() : '' };
       await capture();
-      return outputHeld || redact(JSON.stringify(result)).count || secretMaterialIn(JSON.stringify(result), [...held]) ? profileRefused('output-secret-check') : result;
+      const inspection = inspectProfileOutput(result, text => !redact(text).count && !secretMaterialIn(text, [...held]));
+      if (outputHeld || !inspection.safe) return profileRefused('output-secret-check');
+      if (inspection.opaque && !profileConsequential(tool, input)) {
+        // Reuse the existing host-only effect envelope: unknown binary needs the recorded per-call grant.
+        const id = `binary:${++effectSequence}`;
+        const admitted = await prepareRequest({ method: 'BINARY', url: initial.origins[0], headers: {},
+          postData: createHash('sha256').update(JSON.stringify(result)).digest('hex') }, id);
+        if (admitted) finished(id, 'observed');
+        else return profileRefused('network-effect-or-scope');
+      }
+      return result;
     } finally { action = null; }
   };
   const lines = createInterface({ input: process.stdin });
