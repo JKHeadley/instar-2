@@ -44,3 +44,5 @@ VERDICT: author submission; this record asserts no independent verdict — the r
 Team posture: Allowance belongs to the operator; no new member/guest permission. Forum chat status withholds it. Notice admission verifies operator-only audience and the host rechecks; no new topic. Operator dashboard retains its passkey/PIN gate.
 
 Independent review: burn_review inspected the implementation twice. First pass found shed-boundary resets, stale dispatch text, missing-history zero and group disclosure. Those were repaired; the second pass accepted the non-additive rollback route provided snapshot limits and numeric availability are explicit, now recorded. No independent desk approval is claimed.
+
+Decision: burn-register | Replay register from tested source 2a26069a7; downloaded desk chain/owner rehash changed zero pins. Seven generated register projections are the only publication changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-52-burn-1112-p2-PROGRESS.md
