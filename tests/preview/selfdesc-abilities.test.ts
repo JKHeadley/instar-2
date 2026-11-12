@@ -69,16 +69,30 @@ const currentChannelNote = (text: string) => compactRecordedNote(text.replace(re
   // the original notes; they do not certify private reports (covered by private-view.test.ts).
   .replace('- keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.',
     '- keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.\n'
-    + '- owner-only pages (7d): {reply:Markdown,privateViewTitle:title (1–256 chars)}; host adds link/phone-unavailable.')
+    + '- operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable.')
   // train-242: preserve captured bytes; translate only the declared compact summaries and local Threadline addition.
   .replace('saves inbound Telegram files under bounded admission; refusals keep their message.',
-    'saves Telegram files with bounded admission; keeps refused messages.')
+    'saves Telegram files under bounded admission; refusals retain the message.')
   .replace('answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.',
-    'answers operator chat/topics; encrypts inbound media with text descriptions.')
+    'answers operator chat/topics; intake encrypts photos, audio and files with text descriptions.')
   .replace('keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.',
-    'keeps instructions, works promises; sends requested results, else holds for next message.')
+    'keeps instructions, works promises; sends explicitly requested results, else holds them for the next message.')
   .replace('- generates the register, rules, glossary and this briefing from declarations.',
-    '- generates the register, rules, glossary and this briefing from declarations.\n- local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts.');
+    '- generates the register, rules, glossary and this briefing from declarations.\n- local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts.')
+  // Repair: exact declared summary edits only; historical evidence remains byte-for-byte unchanged.
+  .replace("operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable.", "operator-only pages (7d): {reply:Markdown,privateViewTitle:title(1–256)}; dashboard link or phone-unavailable.")
+  .replace("saves Telegram files under bounded admission; refusals retain the message.", "bounded Telegram files; refused messages kept.")
+  .replace("answers operator chat/topics; intake encrypts photos, audio and files with text descriptions.", "answers operator chat/topics; encrypted media intake with text descriptions.")
+  .replace("a saved date within 48 hours can get one short mention in the next reply.", "may mention a saved date within 48h once next reply.")
+  .replace("keeps instructions, works promises; sends explicitly requested results, else holds them for the next message.", "keeps instructions, works promises; sends explicitly requested results, else waits for next message.")
+  .replace("keeps a faithfulness-checked summary of earlier turns.", "summarizes earlier turns; checks faithfulness.")
+  .replace("with --attribution, checks quotes credited in notes.", "--attribution checks note quote credits.")
+  .replace("checks replies against remembered turns; no model call.", "checks replies against remembered turns, no model.")
+  .replace("local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts.", "private local peers: owner-signed scope, custody, checkpoints, signed receipts.")
+  .replace("updates itself; a failure keeps the current release.", "self-updates; failure keeps current release.")
+  .replace("captures every inbound message before work; uncertain ones are kept.", "captures inbound before work; keeps uncertain messages.")
+  .replace("generates the register, rules, glossary and this briefing from declarations.", "declarations build register, rules, glossary and briefing.")
+  .replace("binds each harness and model doorway to certified code; the rest are unproven.", "binds harness/model doors to certified code; others unproven.");
 
 const renderedNote = (text: string) => currentChannelNote(text).replace(`- ${toolsBriefing(0)}`, CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
   .replace(` ${SIGN_OFF}`, '');
@@ -127,7 +141,7 @@ it('translates only the exact retired inventory entry and retains unrelated capa
   expect(renderedNote(capture.note.replace('changes nothing.', 'changes everything.'))).not.toBe(current);
   expect(renderedNote(capture.note.replace('faithfulness-checked', 'unchecked'))).not.toBe(current);
   expect(renderedNote(capture.note.replace('keeps standing instructions', 'ignores standing instructions'))).not.toBe(current);
-  expect(renderedNote(capture.note)).not.toBe(current.replace('owner-only pages', 'public pages'));
+  expect(renderedNote(capture.note)).not.toBe(current.replace('operator-only pages', 'public pages'));
   expect(capture.note).toContain(retiredStepCheck);
 });
 

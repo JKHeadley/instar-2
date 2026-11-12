@@ -228,15 +228,16 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     expect(new Set(completed.map(turn => turn.sent)).size).toBe(completed.length);
     const failed = journal.view.order.filter(turn => turn.modelState !== 'complete');
     if (['pool', 'installed', 'imported', 'missing', 'renamed', 'copied', 'lost-build'].includes(mode)) {
-      // A proven effect-free quota rejection retries the same intake before any send.
-      expect(failed).toEqual([]);
-      expect(completed.map(turn => turn.update)).toEqual([1, 2, 3]);
+      // Only the captured zero-usage quota failure retries; its same turn answers once on B.
+      expect(failed).toHaveLength(0); expect(completed.map(turn => turn.update)).toEqual([1, 2, 3]);
       expect(completed[0].capacityLogins).toEqual(['serving-a', 'serving-b']);
+      expect(journal.view.failureClasses.get('capacity')).toBe(1);
+      expect(journal.view.modelCalls.byJudgment.answer).toBe(4);
       expect(journal.view.modelCalls.last.filter(call => call.id === completed[0].id && call.judgment === 'answer')
         .map(call => call.outcome)).toEqual(['rejected', 'complete']);
       expect(completed[0].raw).toContain('Please say hello.');
-      expect(journal.view.modelCalls.byJudgment.answer).toBe(4); // Failed attempt plus three completed answers.
-      expect(sends.filter(row => row.text.includes('second approved login answered'))).toHaveLength(3);
+      expect(rows.filter(row => row.account === 'serving-a')).toHaveLength(1);
+      expect(sends).toHaveLength(3);
     } else if (refusedToken) {
       // The refused call is settled as the one ordinary failure line; it is never retried. Later turns run on B.
       expect(failed).toHaveLength(1); expect(failed[0].update).toBe(1); expect(failed[0].failureClass).toBe('rejected');

@@ -1,5 +1,4 @@
 // @ts-nocheck -- executes the shipped JavaScript composition with disposable roots.
-import { admitThreadline } from '../../scripts/threadline-runtime.mjs';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -8,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { readRootMcp } from './tool-turn.mjs';
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
 import { prepareSessionConnectors, admitSessionConnector } from './session-connectors.mjs';
+import { admitThreadline } from '../../scripts/threadline-runtime.mjs';
 import { admitToolCall, admitToolCallEffect } from './tool-admission.mjs';
 import { subscriptionConversationPolicy, subscriptionInvocationPolicy } from '../../src/assembly/production-provider.js';
 import { sessionConnectorArgs } from '../../src/assembly/production-session-driver.js';
