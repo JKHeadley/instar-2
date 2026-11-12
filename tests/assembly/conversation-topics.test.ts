@@ -15,6 +15,8 @@ import { nestedSessionWorkEdge, nestedSessionWorkClose } from '../../src/assembl
 import { createAdmissionGate } from '../preview/admission-gate.mjs';
 // @ts-expect-error the production encrypted custody store is JavaScript
 import { createConversationHostStore } from '../../scripts/conversation-host-store.mjs';
+// @ts-expect-error the shipped host capacity sampler is JavaScript
+import { createTopicWorkerCapacity } from '../../scripts/topic-worker-capacity.mjs';
 const renewalRoots: string[] = [];
 afterEach(() => { for (const root of renewalRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const digest = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
@@ -1013,3 +1015,35 @@ it('a settled operator turn cannot lend CPU priority to later background work', 
   expect(checked).toEqual([true, false]); expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
   await f.port.close();
 });
+
+// M1: real sampler failure must not strand the only verified operator worker.
+it.each(['nan', 'throw'] as const)('unavailable memory %s preserves the first operator worker only', async failure => {
+  const f = fixture(8, 6, 16, 600000);
+  const capacity = createTopicWorkerCapacity({ minFreeMemoryBytes: 100, minFreeMemoryFraction: 0.1, minCpuIdlePercent: 12 }, {
+    availableMemory: () => { if (failure === 'throw') throw Error('unavailable'); return NaN; },
+    totalmem: () => 1000, cpus: () => [], wait: async () => {},
+  });
+  Object.assign(f.config, { operatorRequested: () => true, capacity });
+  expect(await f.port.run(f.request('7:first'))).toMatchObject({ state: 'complete' });
+  expect(f.launches).toHaveLength(1); expect(f.counts().live).toBe(1);
+  expect(await f.port.run(f.request('8:additional'))).toMatchObject({ state: 'queued' });
+  expect(f.launches).toHaveLength(1); expect(f.counts().live).toBe(1);
+  await f.port.close(); expect(f.counts().live).toBe(0);
+});
+
+it.each(['background', 'pressure', 'lease', 'revoked', 'stopped'] as const)(
+  'first-worker unknown-memory escape retains %s boundary', async boundary => {
+    const f = fixture(8, 6, boundary === 'lease' ? 0 : 16, 600000);
+    Object.assign(f.config, { operatorRequested: () => boundary !== 'background',
+      capacity: createTopicWorkerCapacity({ minFreeMemoryBytes: 100, minFreeMemoryFraction: 0.1, minCpuIdlePercent: 12 }, {
+        availableMemory: () => boundary === 'pressure' ? 50 : NaN,
+        totalmem: () => 1000, cpus: () => [], wait: async () => {},
+      }) });
+    if (boundary === 'revoked') f.revoke();
+    if (boundary === 'stopped') f.stop();
+    if (boundary === 'revoked' || boundary === 'stopped')
+      await expect(f.port.run(f.request('7:first'))).rejects.toThrow('conversation unavailable');
+    else expect(await f.port.run(f.request('7:first'))).toMatchObject({ state: 'queued' });
+    expect(f.launches).toHaveLength(0); expect(f.counts().live).toBe(0);
+    await f.port.close();
+  });

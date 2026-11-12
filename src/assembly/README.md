@@ -216,14 +216,16 @@ The activation policy declares an eight-worker safety ceiling and four-hour work
 and idle lifetimes. `--topic-worker-ceiling 1..8` can lower the installation ceiling;
 raising it requires a new policy disposition. The runner, coordinator and physical
 driver consume the same limit. A prior activation with the old policy digest refuses
-until the matching activation is installed. Every new worker requires available memory
-of at least 2 GiB and 10 percent of physical RAM through `scripts/topic-worker-capacity.mjs`
+until the matching activation is installed. Measured available memory must be
+at least 2 GiB and 10 percent of physical RAM through `scripts/topic-worker-capacity.mjs`
 (macOS: free, inactive and purgeable pages from `vm_stat`, never `os.freemem()`).
 Verified operator turns ignore CPU readings; background admission retains the 12-percent
 idle default, measured across one second. The runner verifies accepted journal provenance,
 including authorized format retries, without changing stored request bytes. Requested
 obligation work already uses its separate existing route without this CPU condition.
-Unknown memory retains queued work, including for the first worker. Held workers retry
+Unknown memory retains queued background and additional-worker work. When no topic worker
+is live, a verified operator turn can use its granted physical lease despite unavailable
+memory telemetry (Rules 15/95); measured pressure and all physical ceilings still hold. Held workers retry
 through the existing host drain after two seconds independently of the ordinary work lane;
 stop, authority and parent lifetime still fence each retry. Status reports reason and age.
 The serialized resource admission samples after the topic slot wait and physical lease

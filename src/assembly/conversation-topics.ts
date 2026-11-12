@@ -164,7 +164,8 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
             if (!lease) { hold(topic, 'resource lease unavailable'); return null; }
             // Physical admission can wait too. Measure after its final retry,
             // before this lease becomes a worker. Resident turns keep their context.
-            // Memory remains a floor even for the first worker; only verified work ignores CPU.
+            // Measured memory pressure remains a floor; unavailable telemetry must not
+            // strand the only verified operator worker (Rules 15/95).
             if (config.capacity) {
               let admitted = false;
               try {
@@ -172,7 +173,8 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
                   && config.operatorRequested?.(row.request.operation) === true) ?? false;
                 let room = await config.capacity(operatorRequested);
                 if (room.memoryPressure && await reclaim()) room = await config.capacity(operatorRequested);
-                admitted = room.admit;
+                admitted = room.admit || (operatorRequested && active.size === 0
+                  && !room.memoryPressure && room.reason === 'unknown measurement');
                 if (!admitted) hold(topic, room.reason ?? (room.memoryPressure ? 'available memory below reserve' : 'host capacity unavailable'));
               } finally {
                 if (!admitted) ensure(await lease.release(), 'unlaunched resource release unconfirmed');
