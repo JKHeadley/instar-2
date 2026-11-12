@@ -86,12 +86,12 @@ it('persists close when the journal refuses an already-closed edge but propagate
       : 'journal disk unavailable');
     const append = f.config.append;
     let attempts = 0;
-    f.config.append = row => {
+    Object.assign(f.config, { append: (row: Parameters<typeof append>[0]) => {
       if (row.type === 'SessionWorkEdgeClose' && row.id.includes(':host-close:')) {
         attempts++; throw failure;
       }
       append(row);
-    };
+    } });
     if (alreadyClosed) {
       const result = await f.port.close();
       expect(result).toMatchObject({ type: 'SessionWorkEdgeClose', state: 'complete' });
