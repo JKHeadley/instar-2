@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { burnObservation } from './burn-observation.ts';
 import { createProductUpdater } from '../../scripts/update-product.mjs';
 import { observeUpdateBound } from '../../scripts/update-runner.mjs';
 import { initializeUpdateRuntime } from '../../scripts/update.mjs';
@@ -992,6 +993,7 @@ async function main() {
       channelSources: Object.fromEntries(['telegram', 'slack'].map(source => [source, {
         ...(view.view.channelSources.get(source) ?? { offset: 0, scanned: 0, imported: 0, skipped: 0 }),
         error: view.view.channelSourceErrors.get(source) ?? null }])),
+      burn: burnObservation(view.view, now),
       calls: view.view.calls, replies: view.view.replies, limits: view.view.limits,
       tokens: view.view.tokenTotals,
       tokenTotal: Object.values(view.view.tokenTotals).reduce((total, kind) => ({
@@ -2469,6 +2471,8 @@ async function main() {
           return { kind: 'refused', reason: 'stopped during audience check' };
         if (current && !current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
         observeSendPhase?.('audienceAdmittedAt');
+        if (target?.startsWith('burn:') && g.forum && !await verifiedActionAudience())
+          return { kind: 'refused', reason: 'allowance notice requires operator-only audience' };
         admit?.(); // Durable intent only after disclosure; replication below includes it.
         if (shared) {
           // replicated(1): the journal through this send's signed intent is on the other machine, and the one
