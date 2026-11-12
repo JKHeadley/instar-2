@@ -35,6 +35,8 @@ Diagnosis: Base journal.ts:12689-12701 replaces the completed work account with 
 Measurement: Product diff is tests/preview/journal.ts only: 22 additions + 11 deletions = 33 changed product lines, below 150. Test and review lines are reported separately in the handoff.
 Validation: Failing-first train-240 run: 3 failed, 15 passed; failures are the absent second formatting call. Focused repair tests and surrounding obligation/parser/diagnostic tests pass. Final head checks and exact counts are in the Studio handoff report; no live-provider or deployed Telegram proof is claimed from this host.
 
+Register publication: Eight generated projections were replayed mechanically from source commit a09cef94e9d1a3fdd9aa8bc373d614c1c0c599f2; generation sha256:be87936ee0d0835274b64b07bf4b83ad5f93890b478886a51a44d0e218f8097a. No constitutional wording, changelog numbering, owner pin or conformance declaration was edited. Architecture passes with the already-certified Node 24.14.1.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the existing formatting packet, validation, model port, counted obligation-start and result/send path. A single optional retry marker enforces one additional no-result attempt across replay; a distinct id keeps tools/sessions excluded. No new queue, scheduler, heuristic parser, prompt or login recovery is added. Start guards are a completed malformed work account, retained output, stop and capacity; end guard is the existing field validator; limit guard is two total formatting calls, with sustained failure held and no automatic work repeat. No unattended real-provider completion claim is made.
