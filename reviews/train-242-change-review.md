@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: include the exact reviewed quota-retry and Threadline heads on the live train-237 base. An effect-free typed quota rejection can continue the same accepted turn on another admitted login; default local Threadline exchange retains authenticated custody and drains accepted intake across recovery.
 Affected rules: 4, 7, 18, 28, 29, 30, 32, 34, 36, 37, 41, 42, 44, 46, 49, 55, 58, 60, 61, 63, 66, 69, 74, 75, 89, 90, 95, 98, 100, 101, 102, 109, 111, 112, 113, 114, 116, 118, 122, 123
-Affected floors: secrets remain host-held and outbound checked; spend reservations and distinct-login/five-attempt brakes remain; stop and ownership are rechecked; uncertain sends are never repeated; intake and causal records remain durable before dispatch or custody acknowledgement.
+Affected floors: secrets remain host-held and outbound checked; spend reservations and distinct-login/five-attempt brakes remain; stop and ownership are rechecked; no duplicate sends — uncertain sends are never repeated; durable intake and causal records remain durable before dispatch or custody acknowledgement.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
@@ -43,8 +43,10 @@ Prompt finding: e8708c7fea24 | protocol-literal | Unchanged existing protocol/no
 
 Deferral: generated/register.json:1 | not-a-deferral=mechanical replay retains existing descriptions and commitments; adds no deferral
 
+Verification: member, connector, transport and tool-turn batches pass; production-provider-subscription passes 119 tests. The initial floor failure and metadata findings remain recorded in the Studio report; the unchanged floor now passes after README summary compaction. Final pinned/check results and exact packet measurements are recorded in that report.
+
 ## Closing block
 
-simplestRobustRoute: this is the simplest robust route: two ordinary exact-head merges, existing desk regeneration, targeted member and direct-consumer checks, and the existing combined release gate. No new train runtime machinery. Start guards are exact reviewed/live ancestry; end is pushed source with named verification. Existing resource, ownership, private scope, stop and durable effect guards remain. Real recorded-shape and MCP tests are evidence for integration, not a claim of unattended live acceptance.
+simplestRobustRoute: this is the simplest robust route: two ordinary exact-head merges, existing desk regeneration, targeted member and direct-consumer checks, and the existing combined release gate. The only train product repair is seven concise README capability lines and retained Details; no new runtime machinery. Start guards are exact reviewed/live ancestry; end is pushed source with named verification. Existing resource, ownership, private scope, stop and durable effect guards remain. Real recorded-shape and MCP tests are evidence for integration, not a claim of unattended live acceptance.
 80/20: test changed files, direct wiring/semantic/lifecycle consumers and mandatory register/floor/pinned gates; no whole journal or repository sweep. Independent desk review and live acceptance remain required.
 VERDICT: author submission for independent desk gate
