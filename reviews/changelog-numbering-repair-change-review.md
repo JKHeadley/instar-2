@@ -104,7 +104,7 @@ The accepted design's citation inventory still applies: reviews/rule72-scope-110
 
 ## Verification
 
-Targeted foreground commands and final results are recorded in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule90-main-reconcile-1111-PROGRESS.md. This record asserts no independent review or operator approval.
+The 42 change-review Git tests pass, including the real frozen histories. Changelog validation (four files), architecture, the read-only merge-history guard and main ancestry pass. Register replay rebuilt 123 rules from the merged bodies. Targeted foreground commands and final results are recorded in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule90-main-reconcile-1111-PROGRESS.md. This record asserts no independent review or operator approval.
 
 ## Closing block
 
