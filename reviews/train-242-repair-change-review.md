@@ -63,6 +63,20 @@ Incoming evidence: the named remote report returned HTTP 401 and was not retried
 
 Register publication: regenerated from merged source 53a2833ed0de33f1d99ab380c8bedfbfc98a7389. Both repair histories and all four carried feature ancestors are retained. Final pushed-head commands and results are recorded in the Studio PROGRESS report.
 
+## Pipeline repair — final dated-memory fixture pin
+
+Step 0: On 2026-11-12 the complete dated-memory file passes 24/24 on origin/train-240 e3cb0f08d3a74d70c9e059edbd64fc457492bfff and fails exactly the source-briefing wording assertion (23/24) on 741015e61c2588b4cc65ce4b01a716be95088f0b. Packet preparation succeeds and the generated note contains the capability. This is a stale fixture pin following briefing-headroom compaction, not a current byte-budget refusal or wall-clock effect; the test injects September 26. Initial feature pressure was Threadline by default (3be96ed48); combined private-report inventory led to ec992f15f/a94f24bb6, which changed this sentence without its test pin. Burn-rate notice and same-turn login retry do not account for the mismatch.
+
+Change: update one test expectation to the already-shipped upcoming-date summary. No product wording, context cap, runtime code or fixture clock changes; all four features remain. Existing tests still prove the 48-hour edges, omission eligibility, restart/UNKNOWN uniqueness and reviewed revision behavior. No feature cut and no new model-facing change; inherited recorded-shape evidence above remains applicable.
+
+1.x comparison for this repair: inherit the db3ed6d3052cfcc24888b6c8bc86086abcfc2987 four-feature comparison above and its ONEX-LESSONS sections 3–6. Also fetched actual JKHeadley/instar main 72dfe3a52b8cfe7a2ebed131b7acfc332f4c02f0, searched src/ and docs/specs/ for upcoming dates and context/token budgets, inspected src/memory/WorkingMemoryAssembler.ts and docs/specs/ASSEMBLER-CONTEXT-ENDPOINT-SPEC.md plus context-budget-layered-summaries.md; history 5129779c3, 511aca183, 61816bbaf. Its bounded ranked context fits the preservation principle but is not this generated-briefing assertion; no new 1.x code is needed. Reuse all four existing carried adaptations unchanged. The brief forbids Studio fetches; no local ONEX-LESSONS copy was found in the inspected trees.
+
+Rules: 34/37/70 retain red/base/green regression evidence; 74/102 record the narrow decision; 78/84 assert delivered generated awareness; 101 plain commits with hooks checked; 111 inspect README, generated note and source packet below the test; 112 retain train history; 113/123 unchanged machine ownership and private audience; 116 one fixture line through existing tests, no added mechanism. All five safety floors remain unchanged.
+
+Decision: T242-R1343-PIN | Align the dated-memory expectation with the existing compact summary; preserve production bytes, behavioral assertions, all four carries and the injected clock. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-242-repair-1343-build-report.md
+
+Verification: targeted final-head results and gate outputs are in the canonical Studio report copied by the desk from the M5 report. This fixture-only repair makes no new live or independent convergence claim.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: adopt the concurrently published briefing-only repair, restored live text, fixture dependencies and roster; retain stronger test assertions without adding runtime machinery. Guards remain exact standing, grounding, finite byte/spend/stop limits and durable unique delivery. No deployed or independent acceptance claim.
