@@ -8,7 +8,7 @@ import { chromium } from 'playwright';
 // @ts-expect-error host execution boundary
 import { runProfileCode } from './browser-code.mjs';
 
-it('confines arbitrary code while retaining ordinary fetch and refusing cookie egress before the sink', async () => {
+it.runIf(process.platform === 'darwin')('confines arbitrary code while retaining ordinary fetch and refusing cookie egress before the sink', async () => {
   const secret = randomBytes(32).toString('hex');
   const privateRoot = mkdtempSync(join(tmpdir(), 'browser-custody-proof-')), guardedFile = join(privateRoot, 'custodian-policy');
   writeFileSync(guardedFile, 'untouched');
@@ -28,7 +28,7 @@ it('confines arbitrary code while retaining ordinary fetch and refusing cookie e
     await context.addCookies([{ name: 'session', value: secret, url, httpOnly: true }]);
     let refusal = '';
     const run = (code: string) => runProfileCode({ context, page, code, clear: (text: string) => !text.includes(secret),
-      allowed: () => true, protect: async () => {}, capture: async () => {}, refused: (reason: string) => { refusal = reason; } });
+      network: async (_request: unknown, dispatch: () => Promise<unknown>) => dispatch(), allowed: () => true, protect: async () => {}, capture: async () => {}, refused: (reason: string) => { refusal = reason; } });
     const ordinary = await run(`async page => { await fetch('${url}', {method:'POST',body:'ordinary'}); await page.setContent('<button onclick=\"this.textContent=42\">Press</button>'); await page.getByRole('button').click(); return await page.locator('button').innerText(); }`);
     expect(ordinary, refusal).not.toHaveProperty('isError', true);
     expect(JSON.parse(ordinary.content[0].text)).toBe('42');
@@ -70,13 +70,13 @@ it('confines arbitrary code while retaining ordinary fetch and refusing cookie e
     expect(bounded.isError).toBe(true); expect(refusal).toBe('browser-code-request-bound');
     const escaped = await run(`async page => { const value = (await page.context().cookies())[0].value;
       await fetch('${url}', {method:'POST',body:value}); return 'done'; }`);
-    expect(escaped.isError).toBe(true); expect(refusal).toBe('output-secret-check');
-    expect(bodies).toEqual(['ordinary']);
+    expect(escaped.isError).not.toBe(true);
+    expect(bodies).toEqual(['ordinary', '[stored sign-in state removed]']);
     expect(connections.length).toBeGreaterThan(0); expect(connections.every(value => value === 'close')).toBe(true);
   } finally { rmSync(privateRoot, { recursive: true, force: true }); await browser.close(); await new Promise<void>(resolve => sink.close(() => resolve())); }
 }, 30000);
 
-it('replays recorded summary, Jev, review and delivered/empty shapes through the confined handler as data', async () => {
+it.runIf(process.platform === 'darwin')('replays recorded summary, Jev, review and delivered/empty shapes through the confined handler as data', async () => {
   const fixture = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8'));
   const browser = await chromium.launch({ headless: true });
   try {

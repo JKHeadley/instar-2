@@ -46,9 +46,11 @@ export const UNAVAILABLE_EFFECT_POLICY = 'PreviewEffectPolicyUnavailable';
 const text = (value, max = 256) => typeof value === 'string' && value.length > 0 && value.length <= max;
 const strings = (value, max = 64) => Array.isArray(value) && value.length <= max && value.every(item => text(item));
 const level = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
-const requestScope = (entry) => entry.request === undefined || (entry.effect === 'tool:network-write'
+const requestScope = (entry) => (entry.browserOrigin === undefined || (() => {
+  try { const url = new URL(entry.browserOrigin); return entry.effect === 'tool:mcp' && ['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol) && url.origin === entry.browserOrigin; } catch { return false; }
+})()) && (entry.request === undefined || (entry.effect === 'tool:network-write'
   && entry.request && Object.keys(entry.request).length === 2 && /^[A-Z]+$/u.test(entry.request.method)
-  && text(entry.request.path, 2048) && entry.request.path.startsWith('/'));
+  && text(entry.request.path, 2048) && entry.request.path.startsWith('/')));
 const effectId = value => text(value, 64) && /^[a-z]+:[a-z0-9:-]+$/u.test(value);
 
 /** Decodes an operator effect policy (the file `--effect-policy` names). Closed: an unknown field, a grant without its

@@ -1,3 +1,4 @@
+import { projectProtocol, projectHeaders, guardProfileRequest } from './browser-sources.mjs';
 // Rules 1/4/57/100: arbitrary server code never runs in the profile custodian.
 // The fixed-worker kernel profile protects the host; Playwright's pinned protocol retains its client API.
 import { constants, copyFileSync, cpSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -48,11 +49,11 @@ export function inspectProfileOutput(value, clear) {
   return { safe, opaque };
 }
 
-export async function runProfileCode({ context, page, code, clear, allowed, protect, capture, refused }) {
+export async function runProfileCode({ context, page, code, clear, allowed, protect, capture, refused, network = async () => { throw Error('network-effect-or-scope'); } }) {
   if (typeof code !== 'string' || !clear(code)) { refused('output-secret-check'); return { isError: true, content: [] }; }
   const root = mkdtempSync(join(tmpdir(), 'instar-browser-code-'));
   let child, timeout, scope, closed = false, total = 0, sent = 0, requests = 0, active = 0, outgoing = Promise.resolve(), complete = () => {};
-  const controller = new AbortController();
+  const controller = new AbortController(), transports = new Map();
   try {
     // Reuse confinedRelease's runtime pin and the shipped fixed-worker profile without importing unrelated self-host owners.
     const directory = realpathSync(root), location = join(directory, 'release');
@@ -71,7 +72,7 @@ export async function runProfileCode({ context, page, code, clear, allowed, prot
     cpSync(dirname(createRequire(import.meta.url).resolve('playwright-core/package.json')), join(release.release, 'node_modules', 'playwright-core'), { recursive: true });
     const worker = join(release.release, 'bin', 'browser-code-worker.mjs');
     writeFileSync(worker, readFileSync(new URL('./browser-code-worker.mjs', import.meta.url)));
-    const dispatch = new server.DispatcherConnection();
+    const dispatch = new server.DispatcherConnection(), projection = projectProtocol(dispatch);
     const implementation = inprocess.playwright._connection.toImpl(context.browser());
     scope = new server.RootDispatcher(dispatch, async parent => new server.PlaywrightDispatcher(parent, implementation.attribution.playwright,
       { preLaunchedBrowser: implementation, sharedBrowser: true, denyLaunch: true }));
@@ -89,6 +90,7 @@ export async function runProfileCode({ context, page, code, clear, allowed, prot
         await protect(); if (message.id) await capture();
         // Before a cookie/storage/header crosses into code, outside its process and after refreshing custody.
         // Opaque protocol bytes remain covered by this call's existing whole-operation grant.
+        message = projection.response(message);
         if (!inspectProfileOutput(message, clear).safe) { fail('output-secret-check'); return; }
         write({ protocol: message });
       }).catch(() => fail('browser-code-unavailable'));
@@ -117,7 +119,7 @@ export async function runProfileCode({ context, page, code, clear, allowed, prot
             await capture();
             if (!clear(line) || !clear(body.toString('utf8'))) { fail('output-secret-check'); return; }
             let response;
-            try { response = await requestNetwork(request, body, controller.signal, clear); }
+            try { response = await requestNetwork(request, body, controller.signal, clear, network); }
             catch (error) {
               if (error.message === 'credential egress') fail('output-secret-check');
               else write({ fetch: message.fetch, error: 'Network request failed' });
@@ -135,15 +137,22 @@ export async function runProfileCode({ context, page, code, clear, allowed, prot
             if ((type === 'LocalUtils' && !['globToRegex', 'asLocatorDescription'].includes(p.method)) || type === 'Electron' || type === 'Android' || type === 'BrowserType'
               || ['startServer', 'stopServer', 'newContextForReuse', 'disconnectFromReusedContext', 'setNetworkInterceptionPatterns', 'setWebSocketInterceptionPatterns'].includes(p.method)
               || (type === 'CDPSession' && p.method === 'send' && /^(Fetch\.|Target\.|Network\.setRequestInterception$)/u.test(p.params.method))
-              || (type === 'APIRequestContext' && p.method === 'fetch' && !allowed(p.params.url))) {
+              ) {
               refused('browser-code-host-custody');
               write({ protocol: { id: p.id, error: { error: { name: 'Error', message: 'Host custody checkpoint refused' } } } }); return;
             }
             // Browser protocol cannot read or write host paths supplied by arbitrary code.
             const hasPath = value => value && typeof value === 'object' && Object.entries(value).some(([key, item]) =>
-              /(?:[Pp]aths?|[Dd]ir(?:ectory)?|[Ff]iles?)$/u.test(key) || hasPath(item));
+              /(?:[Pp]aths?|[Dd]ir(?:ectory)?|[Ff]iles?)$/u.test(key) || key === 'proxy' || hasPath(item));
             if (hasPath(p.params)) { fail('browser-code-host-path'); return; }
-            await dispatch.dispatch(p);
+            if (type === 'Browser' && p.method === 'newContext') p.params.serviceWorkers = 'block';
+            if (!projection.request(p, target)) { fail('browser-code-protocol-id'); return; }
+            if (type === 'APIRequestContext' && !transports.has(target._object)) {
+              transports.set(target._object, guardProfileRequest(target._object, network));
+            }
+            if (type === 'CDPSession' && p.method === 'send' && p.params.method === 'Network.loadNetworkResource') {
+              await network({ method: 'GET', url: p.params.params.url, headers: {}, postData: '' }, () => dispatch.dispatch(p));
+            } else await dispatch.dispatch(p);
             await protect();
           }
         } catch { fail('browser-code-unavailable'); } finally { active--; }
@@ -159,16 +168,17 @@ export async function runProfileCode({ context, page, code, clear, allowed, prot
       await exited; clearTimeout(force);
     }
     if (scope) { await scope.stopPendingOperations(Error('Code operation ended')).catch(() => {}); scope._dispose(); }
+    for (const restore of transports.values()) restore();
     rmSync(root, { recursive: true, force: true });
   }
 }
 
 // Same bounded Node HTTP transport as the existing egress proxy, without credentials or ambient proxy configuration.
-async function requestNetwork(request, body, signal, clear, redirects = 0) {
+export async function requestNetwork(request, body, signal, clear, network, redirects = 0) {
   const url = new URL(request.url);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw Error('network scope');
   if (!clear(request.url) || !clear(JSON.stringify(request.headers))) throw Error('credential egress');
-  const response = await new Promise((resolve, reject) => {
+  const response = await network({ method: request.method, url: url.href, headers: Object.fromEntries(request.headers), postData: body.toString('base64') }, () => new Promise((resolve, reject) => {
     const transport = url.protocol === 'https:' ? https : http;
     const out = transport.request(url, { method: request.method, headers: Object.fromEntries(request.headers), signal, agent: false }, answer => {
       const parts = []; let bytes = 0;
@@ -177,14 +187,14 @@ async function requestNetwork(request, body, signal, clear, redirects = 0) {
       answer.on('end', () => resolve({ status: answer.statusCode, statusText: answer.statusMessage, headers: Object.entries(answer.headers).flatMap(([key, value]) => (Array.isArray(value) ? value : [value]).map(item => [key, item])), body: Buffer.concat(parts).toString('base64') }));
     });
     out.on('error', reject); out.end(body);
-  });
+  }));
   const location = response.headers.find(([name]) => name === 'location')?.[1];
   if ([301, 302, 303, 307, 308].includes(response.status) && location && request.redirect !== 'manual') {
     if (request.redirect === 'error' || redirects >= 10) throw Error('redirect refused');
     const destination = new URL(location, url), get = response.status === 303 || ([301, 302].includes(response.status) && request.method === 'POST');
     const headers = request.headers.filter(([name]) => !(get && ['content-type', 'content-length'].includes(name))
       && !(destination.origin !== url.origin && ['authorization', 'cookie', 'proxy-authorization', 'host'].includes(name)));
-    return requestNetwork({ ...request, url: destination.href, headers, method: get ? 'GET' : request.method }, get ? Buffer.alloc(0) : body, signal, clear, redirects + 1);
+    return requestNetwork({ ...request, url: destination.href, headers, method: get ? 'GET' : request.method }, get ? Buffer.alloc(0) : body, signal, clear, network, redirects + 1);
   }
-  return { ...response, url: url.href, redirected: redirects > 0 };
+  return { ...response, headers: response.headers.map(([name, value]) => [name, projectHeaders({ [name]: value })[name]]), url: url.href, redirected: redirects > 0 };
 }

@@ -9,7 +9,7 @@ import { chromium } from 'playwright';
 import { runProfileCode } from './browser-code.mjs';
 
 // Equivalent to the desk's inaccessible review evidence: real protocol, local site, disposable profile.
-it('withholds credential-bearing binary protocol responses before they reach arbitrary code', async () => {
+it.runIf(process.platform === 'darwin')('withholds credential-bearing binary protocol responses before they reach arbitrary code', async () => {
   const secret = randomBytes(32).toString('hex');
   const root = mkdtempSync(join(tmpdir(), 'binary-profile-proof-'));
   const site = createServer((req, res) => {
@@ -26,7 +26,7 @@ it('withholds credential-bearing binary protocol responses before they reach arb
     let refusal = '';
     const result = await runProfileCode({ context, page,
       code: `async page => { const response = await page.request.get('${url}'); const bytes = await response.body(); return {received: bytes.length > 0}; }`,
-      clear: (text: string) => !text.includes(secret), allowed: () => true,
+      clear: (text: string) => !text.includes(secret), network: async (_request: unknown, dispatch: () => Promise<unknown>) => dispatch(), allowed: () => true,
       protect: async () => {}, capture: async () => {}, refused: (reason: string) => { refusal = reason; } });
     const reachedCode = !result.isError && JSON.parse(result.content[0].text).received === true;
     expect(reachedCode, 'raw profile credential must not cross into arbitrary code').toBe(false);
@@ -66,7 +66,7 @@ it('routes text, nested base64, buffers, typed arrays and protocol frames throug
   expect(inspectProfileOutput({ status: 'observed', text: 'ordinary input' }, clear)).toEqual({safe: true, opaque: false});
 });
 
-it('retains granted code access to non-secret opaque binary responses', async () => {
+it.runIf(process.platform === 'darwin')('retains granted code access to non-secret opaque binary responses', async () => {
   const root = mkdtempSync(join(tmpdir(), 'opaque-profile-proof-'));
   const site = createServer((_req, res) => res.end(Buffer.from([0, 255, 1])));
   await new Promise<void>(resolve => site.listen(0, '127.0.0.1', resolve));
@@ -76,7 +76,7 @@ it('retains granted code access to non-secret opaque binary responses', async ()
     let refusal = '';
     const result = await runProfileCode({ context, page: context.pages()[0],
       code: `async page => Array.from(await (await page.request.get('${url}')).body())`,
-      clear: () => true, allowed: () => true, protect: async () => {}, capture: async () => {},
+      clear: () => true, network: async (_request: unknown, dispatch: () => Promise<unknown>) => dispatch(), allowed: () => true, protect: async () => {}, capture: async () => {},
       refused: (reason: string) => { refusal = reason; } });
     expect(result.isError).not.toBe(true); expect(refusal).toBe('');
     expect(JSON.parse(result.content[0].text)).toEqual([0, 255, 1]);

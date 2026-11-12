@@ -25,7 +25,7 @@ it('admits two granted reversible ArrowDown presses while refusing a duplicate c
       config: { operations: [], effectPolicy: { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: sensitive ? [key] : [],
         registered: [key, write].map(target => ({ effect: 'tool:mcp', target, consequence: 'data',
           reversibility: target === key ? 'reversible' : 'irreversible', reach: 'agent', costUsd, source: 'operator:proof' })),
-        grants: grant ? [key, write].map(target => ({ id: target, effect: 'tool:mcp', target, browserProfile: 'agent-browser',
+        grants: grant ? [key, write].map(target => ({ id: target, effect: 'tool:mcp', target, browserProfile: 'agent-browser', browserOrigin: 'https://site.test',
           approves: ['scope'], source: 'operator:proof', custodian: 'owner', recovery: 'withdraw', expiresAt: 100 })) : [] } },
       decide: admitToolCallEffect }) });
   const parent = { id: 'edge', child: 'claim' };

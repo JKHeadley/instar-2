@@ -1,3 +1,5 @@
+import { browserNetwork, confinedBrowser } from './browser-network.mjs';
+import { profileExport, PROFILE_MARKER } from './browser-sources.mjs';
 // Named 1.x profile resolution, adapted to 2.0 host custody (Rules 18/32/57/100/113).
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -43,7 +45,7 @@ export function profileRequest(name, input) {
   if (input?.browserEffect) {
     const { browserEffect, ...operation } = input;
     return profileRequest(name, operation) && Object.keys(browserEffect).sort().join(',') === 'bodyDigest,method,url'
-      && /^[A-Z]{1,16}$/u.test(browserEffect.method) && !['GET', 'HEAD'].includes(browserEffect.method)
+      && /^[A-Z]{1,16}$/u.test(browserEffect.method)
       && typeof browserEffect.url === 'string' && browserEffect.url.length <= 2048
       && /^sha256:[a-f0-9]{64}$/u.test(browserEffect.bodyDigest);
   }
@@ -55,8 +57,7 @@ export const profileRefused = reason => ({ status: 'refused', reason });
 export function createProfileBrowser({ binding, hold, check, call, deadline, stopped, now = Date.now }) {
   let operationStopped = () => false, operationDeadline = Infinity;
   let child, slot, closing, exited, busy = false, closed = false, sequence = 0, timer;
-  const pending = new Map(), heldProfile = new Set();
-  let heldBytes = 0;
+  const pending = new Map();
   const close = () => closing ??= (async () => {
     closed = true; clearInterval(timer);
     for (const resolve of pending.values()) resolve(profileRefused('browser-closed'));
@@ -78,15 +79,10 @@ export function createProfileBrowser({ binding, hold, check, call, deadline, sto
       timer = setInterval(() => { if (closed || stopped() || operationStopped() || now() >= Math.min(deadline, operationDeadline)) void close(); }, 50);
       await slot.attach({ pid: child.pid, cwd: row.userDataDir });
       createInterface({ input: child.stdout }).on('line', line => {
-        if (Buffer.byteLength(line) > 65536) { void close(); return; }
+        if (Buffer.byteLength(line) > 1024 * 1024) { void close(); return; }
         try {
           const row = JSON.parse(line);
-          if (Array.isArray(row.held)) { for (const value of row.held) if (typeof value === 'string' && !heldProfile.has(value)) {
-            heldBytes += Buffer.byteLength(value);
-            if (heldBytes > 65536) { void close(); return; }
-            heldProfile.add(value);
-          } }
-          else if (row.effect) {
+          if (row.effect) {
             let admitted = false;
             const adapter = Object.assign(() => new Promise((resolve, reject) => {
               admitted = true; pending.set(`effect:${row.effect}`, result => result.status === 'observed'
@@ -112,10 +108,8 @@ export function createProfileBrowser({ binding, hold, check, call, deadline, sto
     try { result = await rpc(input.name, input.arguments); } catch { await close(); return profileRefused('browser-unavailable'); }
     finally { operationStopped = () => false; operationDeadline = Infinity; }
     if (withdrawn() || JSON.stringify(binding()) !== JSON.stringify(bindingSnapshot)) return profileRefused('profile-withdrawn');
-    const { secretMaterialIn } = await import('./reply-check.js');
     const { redact } = await import('../../src/recall/redact.js');
-    return inspectProfileOutput(result, text => check(text) === 'clear' && !redact(text).count
-      && !secretMaterialIn(text, [...heldProfile])).safe ? result : profileRefused('output-secret-check');
+    return inspectProfileOutput(result, text => check(text) === 'clear' && !redact(text).count).safe ? result : profileRefused('output-secret-check');
   }, { binding });
   return { close, async request(id, input) {
     if (closed || busy || stopped() || now() >= deadline) return profileRefused('closed-stopped-or-busy');
@@ -137,11 +131,10 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
   const { chromium } = await import('playwright');
   const { register } = await import('node:module');
   register('../../scripts/slice-ts-loader.mjs', import.meta.url);
-  const { secretMaterialIn } = await import('./reply-check.js');
   const { redact } = await import('../../src/recall/redact.js');
   const { METHOD_OVERRIDES } = await import('./tool-admission.mjs');
   const root = process.argv[3], name = process.argv[4], initial = readBrowserProfile(root, name);
-  let context, backend, action, refusal, outputHeld, protectCode, active = false, effectSequence = 0;
+  let transport, launcher, context, backend, action, refusal, outputHeld, protectCode, active = false, codeUsed = false, effectSequence = 0;
   const effects = new Map(), networkEffects = new Map(), completions = new Map();
   const finished = (requestId, status) => {
     for (const effect of networkEffects.get(requestId) ?? []) {
@@ -154,13 +147,9 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
   const prepareRequest = (request, networkId) => {
     const headers = Object.fromEntries(Object.entries(request.headers).map(([key, value]) => [key.toLowerCase(), value]));
     const methods = [request.method, ...METHOD_OVERRIDES.flatMap(key => String(headers[key] ?? '').split(',').map(value => value.trim().toUpperCase()).filter(Boolean))];
-    if (secretMaterialIn(JSON.stringify({ url: request.url, body: request.postData ?? request.postDataEntries,
-      headers: Object.fromEntries(Object.entries(headers).filter(([name]) => !['cookie', 'authorization'].includes(name))) }), [...held])) {
-      refusal = 'output-secret-check'; return Promise.resolve(false);
-    }
-    const method = methods.find(value => !['GET', 'HEAD'].includes(value));
-    if (!method) return Promise.resolve(true);
+    const method = methods.find(value => !['GET', 'HEAD'].includes(value)) ?? request.method;
     if (!action) return Promise.resolve(false);
+    if (['GET', 'HEAD'].includes(method) && allowed(request.url) && (!codeUsed || (action.tool === 'browser_navigate' && request.url === new URL(action.input.url).href))) return Promise.resolve(true);
     const body = request.postData ?? (request.postDataEntries ? JSON.stringify(request.postDataEntries) : request.hasPostData ? null : '');
     if (body === null || !networkId) return Promise.resolve(false);
     const effect = ++effectSequence, input = { ...action.input, browserEffect: { method, url: request.url,
@@ -172,26 +161,23 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
       process.stdout.write(`${JSON.stringify({ effect, tool: action.tool, input })}\n`);
     });
   };
-  const held = new Set();
-  const capture = async () => {
-    for (const scope of context.browser().contexts()) {
-      const state = await scope.storageState({ indexedDB: true });
-      const strings = value => { if (typeof value === 'string') held.add(value); else if (value && typeof value === 'object') Object.values(value).forEach(strings); };
-      for (const cookie of state.cookies) held.add(cookie.value);
-      for (const origin of state.origins) { for (const item of origin.localStorage) held.add(item.value); for (const db of origin.indexedDB ?? []) for (const store of db.stores) for (const record of store.records) strings(record.value); }
-      for (const page of scope.pages()) for (const frame of page.frames())
-        if (allowed(frame.url())) strings(await frame.evaluate(() => Object.values(sessionStorage)).catch(() => []));
-    }
-    // Host-private IPC inventory: additive custody in the parent, never a journal or model result.
-    process.stdout.write(`${JSON.stringify({ held: [...held] })}\n`);
-  };
   const allowed = value => { try { if (JSON.stringify(readBrowserProfile(root, name)) !== JSON.stringify(initial)) return false; const url = new URL(value); return !url.username && !url.password && initial.origins.includes(url.origin.replace(/^ws/u, 'http')); } catch { return false; } };
   const execute = async (tool, input) => {
     if (!profileRequest(tool, input) || JSON.stringify(readBrowserProfile(root, name)) !== JSON.stringify(initial)) return profileRefused('profile-or-tool-scope');
     if (tool === 'browser_navigate' && !allowed(input.url)) return profileRefused('site-scope');
     if (!context) {
+      if (process.platform !== 'darwin') return profileRefused('browser-network-confinement-unavailable');
       const catalog = await profileCatalog(root);
-      context = await chromium.launchPersistentContext(initial.userDataDir, { ...catalog.config.browser.contextOptions, headless: true, serviceWorkers: 'block' });
+      transport = await browserNetwork(async (request, dispatch) => {
+        const id = `transport:${++effectSequence}`;
+        if (!await prepareRequest(request, id)) throw Error('network-effect-or-scope');
+        try { const result = await dispatch(); finished(id, 'observed'); return result; }
+        catch (error) { finished(id, 'unavailable'); throw error; }
+      });
+      launcher = confinedBrowser(chromium.executablePath(), transport.port);
+      context = await chromium.launchPersistentContext(initial.userDataDir, { ...catalog.config.browser.contextOptions,
+        executablePath: launcher.executablePath, headless: true, serviceWorkers: 'block',
+        proxy: { server: `http://127.0.0.1:${transport.port}`, bypass: '<-loopback>' } }).catch(async error => { await transport.close(); launcher.close(); throw error; });
       context.setDefaultTimeout(5000); context.setDefaultNavigationTimeout(10000);
       const protectors = new WeakMap();
       const install = async scope => {
@@ -204,8 +190,9 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
             network.on('Network.loadingFailed', event => finished(event.requestId, 'unavailable'));
             await network.send('Network.enable');
             network.on('Fetch.requestPaused', async event => {
-              const admit = allowed(event.request.url) && await prepareRequest(event.request, event.networkId);
-              if (!admit) refusal = 'network-effect-or-scope';
+              const requesting = action;
+              const admit = await prepareRequest(event.request, event.networkId);
+              if (!admit && requesting === action) refusal = 'network-effect-or-scope';
               await network.send(admit ? 'Fetch.continueRequest' : 'Fetch.failRequest', { requestId: event.requestId, ...(admit ? {} : { errorReason: 'BlockedByClient' }) }).catch(() => {});
             });
             await network.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
@@ -218,18 +205,19 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
         scope.on('requestfinished', request => finished(request._guid, 'observed'));
         scope.on('requestfailed', request => finished(request._guid, 'unavailable'));
         await scope.route('**/*', async route => {
-          const request = route.request(); let frame;
+          const request = route.request(), requesting = action; let frame;
           try { frame = request.frame(); } catch { /* First popup request precedes its CDP target. */ }
-          let admit = allowed(request.url());
+          let admit = true;
           if (frame) { await protect(frame.page()); if (frame.parentFrame()) await protect(frame); }
           else if (admit) admit = await prepareRequest({ method: 'UNINTERCEPTED', url: request.url(),
             headers: await request.allHeaders(), postData: request.postData() ?? '' }, request._guid);
-          if (!admit) refusal = 'network-effect-or-scope';
+          if (!admit && requesting === action) refusal = 'network-effect-or-scope';
           return admit ? route.continue() : route.abort();
         });
-        await scope.routeWebSocket('**/*', socket => {
-          if (!allowed(socket.url())) { refusal = 'site-scope'; return socket.close(); }
-          const originAction = action, server = socket.connectToServer();
+        await scope.routeWebSocket('**/*', async socket => {
+          const originAction = action, id = `ws-open:${++effectSequence}`;
+          if (!await prepareRequest({ method: 'WS', url: socket.url(), headers: {}, postData: '' }, id)) { refusal = 'network-effect-or-scope'; return socket.close(); }
+          const server = socket.connectToServer(); finished(id, 'observed');
           socket.onMessage(async message => {
             const previous = action; action = originAction;
             const id = `ws:${++effectSequence}`, admitted = prepareRequest({ method: 'WS', url: socket.url(), headers: {}, postData: String(message) }, id);
@@ -255,7 +243,7 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
       const isolated = backend._context._createIsolatedContext.bind(backend._context);
       backend._context._createIsolatedContext = async name => { const scope = await isolated(name); await install(scope); return scope; };
       backend._context.redactSecrets = text => {
-        if (!redact(text).count && !secretMaterialIn(text, [...held])) return text;
+        if (!redact(text).count) return text;
         outputHeld = true; return '[withheld by credential checkpoint]';
       };
       // Console tools retain in-memory messages; automatic raw diagnostic logs never cross custody.
@@ -265,7 +253,7 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
         Object.defineProperty(tab, '_consoleLog', { get: () => log, set: value => { log = value; log.stop(); } });
       };
     }
-    await capture();
+    codeUsed ||= ['browser_run_code_unsafe', 'browser_evaluate', 'browser_webmcp_call'].includes(tool);
     action = { tool, input, completions: [] }; refusal = null; outputHeld = false;
     try {
       let output;
@@ -274,17 +262,30 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
         await tab.waitForCompletion(async () => {
           output = await runProfileCode({ context, page: tab.page,
             code: input.filename ? readFileSync(await backend._context.workspaceFile(input.filename, initial.userDataDir), 'utf8') : input.code,
-            clear: text => !redact(text).count && !secretMaterialIn(text, [...held]), allowed, protect: protectCode, capture,
+            clear: text => !redact(text).count, allowed, protect: protectCode, capture: async () => {},
+            network: async (request, dispatch) => {
+              const id = `code:${++effectSequence}`;
+              if (!await prepareRequest(request, id)) throw Error('network-effect-or-scope');
+              try { const result = await dispatch(); finished(id, 'observed'); return result; }
+              catch (error) { finished(id, 'unavailable'); throw error; }
+            },
             refused: reason => { refusal = reason; } });
         });
+      } else if (profileExport(tool)) {
+        const stop = { browser_stop_recording: 'stopRecording', browser_stop_tracing: 'stopTracing', browser_stop_video: 'stopVideoRecording' }[tool];
+        if (stop) await backend._context[stop]();
+        output = { content: [{ type: 'text', text: PROFILE_MARKER }] };
       } else output = await backend.callTool(tool, input);
       await Promise.all(action.completions);
-      if (refusal) return profileRefused(refusal);
+      if (refusal) {
+        const page = backend._context.currentTab()?.page;
+        if (page) { const session = await page.context().newCDPSession(page); try { await session.send('Page.stopLoading'); } finally { await session.detach(); } }
+        return profileRefused(refusal);
+      }
       const page = backend._context.currentTab()?.page;
       const result = { status: output.isError ? 'refused' : 'observed', content: output.content,
         text: page && allowed(page.url()) ? await page.locator('body').ariaSnapshot() : '' };
-      await capture();
-      const inspection = inspectProfileOutput(result, text => !redact(text).count && !secretMaterialIn(text, [...held]));
+      const inspection = inspectProfileOutput(result, text => !redact(text).count);
       if (outputHeld || !inspection.safe) return profileRefused('output-secret-check');
       if (inspection.opaque && !profileConsequential(tool, input)) {
         // Reuse the existing host-only effect envelope: unknown binary needs the recorded per-call grant.
@@ -308,6 +309,6 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
     try { row = JSON.parse(line); result = await execute(row.name, row.input); } catch { result = profileRefused('browser-unavailable'); }
     process.stdout.write(`${JSON.stringify({ id: row?.id, result })}\n`); active = false;
   });
-  const close = async () => { await context?.close().catch(() => {}); process.exit(0); };
+  const close = async () => { await context?.close().catch(() => {}); await transport?.close(); launcher?.close(); process.exit(0); };
   lines.on('close', close); process.on('SIGTERM', close);
 }

@@ -56,7 +56,11 @@ export function admitSessionConnector({ tool, input, config, mcp, enabled, now, 
   if (!tool.startsWith('mcp__')) return decide(tool, input, config, now);
   if (tool !== 'mcp__owner_github__observe' && (!mcp || !Object.keys(mcp.servers).some(name => tool.startsWith(`mcp__${name}__`))))
     return { admitted: false, reason: 'connector is outside the currently granted account set' };
-  const networkEffect = mcp?.browserProfile && tool.startsWith('mcp__playwright__') && input?.browserEffect;
+  const envelope = mcp?.browserProfile && tool.startsWith('mcp__playwright__') && input?.browserEffect;
+  // A socket for an ordinary navigation still records its preparation, under the profile's recorded origin grant.
+  const ordinaryConnection = envelope?.method === 'CONNECT' && tool === 'mcp__playwright__browser_navigate'
+    && mcp.browserProfile.origins?.includes(envelope.url.replace(/^ws/u, 'http'));
+  const networkEffect = envelope && !ordinaryConnection ? envelope : null;
   const consequential = mcp?.browserProfile && tool.startsWith('mcp__playwright__') && profileConsequential(tool.slice(17), input);
   const reads = mcp?.browserProfile ? mcp.reads.filter(read => (!(networkEffect || consequential) || read !== tool) && (!read.startsWith('mcp__playwright__') || profileRead(read.slice(17)))) : mcp?.reads ?? [];
   const current = { ...config, mcpReads: reads, operations: enabled ? [...config.operations, 'tool:mcp'] : config.operations.filter(operation => operation !== 'tool:mcp') };
@@ -66,6 +70,13 @@ export function admitSessionConnector({ tool, input, config, mcp, enabled, now, 
     try { grants = classifyEffect({ effect: 'tool:mcp', target: tool }, decodeEffectPolicy(config.effectPolicy), { now }).grants; } catch { /* unavailable grants refuse */ }
     if (!grants.some(grant => grant.target === tool && grant.browserProfile === mcp.browserProfile.id && grant.approves.includes('scope')))
       return { admitted: false, reason: `signed-in effects require a current tool:mcp scope grant naming target=${tool} and browserProfile=${mcp.browserProfile.id} (Rules 18/57)` };
+  }
+  if (networkEffect) {
+    let destination;
+    try { const url = new URL(networkEffect.url); if (!['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol) || url.username || url.password) throw Error(); destination = url.origin; } catch { return { admitted: false, reason: 'invalid browser destination' }; }
+    const grants = classifyEffect({ effect: 'tool:mcp', target: tool }, decodeEffectPolicy(config.effectPolicy), { now }).grants;
+    if (!grants.some(grant => grant.target === tool && grant.browserProfile === mcp.browserProfile.id && grant.browserOrigin === destination && grant.approves.includes('scope')))
+      return { admitted: false, reason: `browser request needs a scope grant for browserOrigin=${destination} (Rules 18/57)` };
   }
   // Only the host browser emits this envelope, at the actual HTTP write boundary.
   // UI reversibility cannot make an external request reversible. Retain all other

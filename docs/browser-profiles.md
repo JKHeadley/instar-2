@@ -37,48 +37,55 @@ non-GET/HEAD traffic receives a separate durable consequential identity containi
 the tool input, method, URL and body digest; uncertain writes cannot be repeated.
 Workers cannot supply this host-owned request envelope.
 
-`browser_run_code_unsafe` retains the pinned handler and Playwright client API in
-an OS-confined child of the existing resource-owned browser process. The child
-cannot read profile/host files, write enforcement code, open sockets or spawn
-processes. It reaches the browser through the pinned Playwright protocol; the
-custodian checks credential-bearing responses before delivering them to code.
-Text, base64, binary buffers and protocol frames are decoded for inspection by
-the same output check; inspection bytes never enter the journal. Opaque binary
-uses the call's consequential grant, or passes the existing effect admission
-before an ordinary tool may release it. A credential match still refuses with
-`output-secret-check`, regardless of the grant.
-Server-side `fetch` uses a bounded host transport that checks URL, headers and
-body before dispatch. Replacing the worker's JavaScript globals cannot replace
-these checks or the kernel boundary. Host process/file/listener control stays
-behind the custody checkpoint; ordinary page APIs and permitted fetch remain.
-Each code call remains consequential under its existing whole-operation grant,
-without an additional prompt. Filename operations, isolated-context creation and
-binary/file transfer tools retain that classification. A scope grant never
-waives the credential checkpoint. The fixed-worker macOS profile is required;
-an unavailable confinement mechanism refuses without an unconfined fallback.
+`browser_run_code_unsafe` retains the pinned handler and client API in the existing
+OS-confined worker. Each call needs its existing tool/profile grant. Browser and
+host-fetch requests additionally name `browserOrigin` on that grant: an exact
+HTTP(S) or WS(S) origin including the port. An execution grant alone is not a
+network grant. The existing doorway records preparation before dispatch and
+retains the exact-effect duplicate protection, expiry, spend and stop checks.
+Ordinary navigation to a recorded profile origin remains ordinary; its transport
+connection still has a recorded preparation under that profile-origin grant.
 
-Every page and frame uses context routing and Chromium request interception.
-Named isolated contexts receive the same installation before their pages open.
-New tabs await the checkpoint before navigation starts.
-The pinned backend's first popup request has no frame/CDP target yet: that exact
-request is instead admitted as an `UNINTERCEPTED` consequential operation before
-dispatch. WebSocket origins are checked and each outgoing message passes the
-same effect owner with a body digest; receiving messages remains ordinary.
-HTTP observations follow network completion. WebSocket observations mean a
-message was handed to the transport, not that the remote application accepted it.
+The browser process uses a deny-network macOS sandbox with one allowed loopback
+proxy. The proxy checks each destination before DNS or connection establishment,
+including opaque CONNECT transports. This closes routes such as WebRTC which
+Chromium's HTTP interception does not report. The proxy uses the existing egress
+resource bounds. The profile host requires this native confinement and refuses
+when it is unavailable; there is no unconfined fallback. Browser requests also
+retain their page/frame HTTP and WebSocket checkpoints. The code tool's host fetch
+and Playwright API requests pass the doorway for every redirect and retry. New
+contexts keep service workers blocked. Code cannot replace custody interception,
+introduce a proxy, launch a host process, or supply host file paths.
 
-Cookies, local/session storage and IndexedDB strings are inventoried across
-browser contexts and frames before and after tool execution and before code receives a protocol response. Credential checks
-run before output reaches the worker or its journal. The parent retains a bounded,
-additive inventory over host-private IPC and checks results independently, so code
-executing in the confined code child cannot bypass the checkpoint by forging a protocol reply.
-The inventory never enters a model response or journal. Automatic MCP snapshot and
-console files are not published; console tools retain their in-memory messages
-and use the same checked output. The host child's stderr is not exposed. Existing
-claim lifetime, operation timeout, input/output bounds, ownership and stop checks
-still apply. The host continues to use the pinned Chromium runtime and the
-existing service-worker-blocked launch profile; this unit proves tab, frame,
-WebSocket and configured-tool restoration, not unrestricted browser networking.
+Export protection follows sources, not stored strings. Cookie getters return
+metadata with values replaced by `[stored sign-in state removed]`; storage-state
+exports remove their stored origins. HAR/trace artifacts expose empty streams and
+no raw entries. Video artifacts receive the same stream projection. Request and
+response header fields remove cookie/authorization values, API fetch logs return
+a marker, and CDP cookie/storage getters and credential-bearing network events
+are projected before they cross into code. Protocol request identities cannot be
+reused to overwrite the source attribution. The pinned MCP export tools return a
+marker in their content field before any raw export file is released; recorder
+stop calls still stop their underlying recorder. The complete catalog and schemas
+remain available. Other protocol results remain under the code call's existing
+consequential grant and the installation-held-secret checker.
+
+The explicit MCP export sources are `browser_cookie_list`, `browser_cookie_get`,
+`browser_storage_state`, local/session-storage list/get, `browser_network_request`,
+`browser_stop_recording`, `browser_stop_tracing`, and `browser_stop_video`. Protocol
+sources include BrowserContext/APIRequestContext cookies/storageState, API fetchLog,
+Request/Response headers, Tracing harExport/tracingStopChunk, their Artifact/Stream
+results, Page video artifacts, Browser crStopTracing, and CDP Network/Storage cookie
+getters, DOMStorage getDOMStorageItems, IndexedDB requestData and trace IO streams.
+
+Ordinary page text is not compared with a profile's cookie or storage inventory.
+There is no such inventory or 64 KB inventory shutdown. The installation's known
+held-secret and credential-pattern checks remain; decoding still covers binary
+responses. Host IPC output is bounded at one MiB. Automatic snapshot/console logs
+remain private or disabled. After code has run, background requests cannot inherit
+an ordinary-read exemption; only the explicitly requested own-origin navigation
+keeps that exemption. A refused navigation is stopped before the next tool begins.
+No browser result establishes live-account, member/guest or channel acceptance.
 
 This state is deliberately machine-local (Rules 31/32/63/113). A different serving
 machine cannot use this directory or silently start a fresh replacement. Its own
