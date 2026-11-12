@@ -52,7 +52,7 @@ it('preserves operator servers, read scopes, metadata and a customised default',
   const p = root(), prior = { mcpServers: { playwright: { command: 'custom' }, mine: { command: 'mine' } }, reads: ['mcp__mine__read'], note: 'kept' };
   writeFileSync(join(p, 'mcp.json'), JSON.stringify(prior));
   installMcp(p);
-  expect(JSON.parse(bytes(p))).toEqual(prior);
+  expect(JSON.parse(bytes(p))).toEqual({ ...prior, mcpServers: { ...prior.mcpServers, threadline: DEFAULT_MCP.mcpServers.threadline } });
 });
 it('stores opaque secret env values in real encrypted custody before publishing only references', () => {
   const p = root(), custody = createSecretCustody(p, new Uint8Array(32).fill(7), () => 1);
@@ -239,7 +239,8 @@ it('migration refresh preserves revoked, explicitly selected and unknown narrowe
     expect(verifyMcpDefaults(p)).toBe(true);
     const before = bytes(p);
     for (const migration of migrations) await migration.run(p);
-    expect(bytes(p)).toBe(before);
+    if (Object.keys(config.mcpServers).length === 0 || 'threadline' in config.mcpServers) expect(bytes(p)).toBe(before);
+    else expect(JSON.parse(bytes(p))).toEqual({ ...config, mcpServers: { ...config.mcpServers, threadline: DEFAULT_MCP.mcpServers.threadline } });
   }
 });
 it('recognizes the known default despite reordered JSON keys', async () => {

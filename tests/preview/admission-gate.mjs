@@ -17,6 +17,7 @@
 //
 // Credentials pass through in the child's own request headers and are neither read nor kept here. The server binds
 // 127.0.0.1 only and serves only paths under its random secret, so another local process cannot spend a claim.
+import { threadlineRequest } from '../../scripts/threadline-runtime.mjs';
 import { OWNER_BROWSER_TOOL, ownerBrowserRequest, ownerBrowserRefused } from './owner-browser-contract.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import http from 'node:http';
@@ -100,7 +101,7 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
  * can stand in for the provider; production uses the fixed upstreams over TLS. `held` is the runner's held-secret check
  * (tool-turn.mjs heldVerdict) for `kind: 'held'`; absent, every such check refuses.
  */
-export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', note = async () => null, ownerBrowser = null, upstreams = MODEL_UPSTREAMS, request = null }) {
+export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', note = async () => null, ownerBrowser = null, threadline = null, upstreams = MODEL_UPSTREAMS, request = null }) {
   const secret = randomBytes(16).toString('hex');
   const claims = new Map();
   const reply = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -183,6 +184,10 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     if (call.kind === 'effect') {
       // The hook may admit only the thin client. Execution and durable preparation happen together below;
       // a hook post is never evidence that the owner read completed.
+      if (tool.startsWith('mcp__threadline__')) return threadline && threadlineRequest(tool.slice(17), call.tool_input)
+        && effects.authorized({ parent: state.edge, tool, input: call.tool_input })
+        ? { decision: 'allow', reason: 'Threadline client allowed; checkpoint rechecks before dispatch' }
+        : { decision: 'deny', reason: 'Threadline scope or current grant unavailable' };
       if (tool === OWNER_BROWSER_TOOL) return ownerBrowser && ownerBrowserRequest(call.tool_input)
         && effects.authorized({ parent: state.edge, tool, input: call.tool_input })
         ? { decision: 'allow', reason: 'owner read client allowed; owner rechecks at execution' }
@@ -266,6 +271,26 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const port = server.address().port;
   return Object.freeze({
+    async threadline(claim, call, tool, input) {
+      const state = claims.get(claim), name = `mcp__threadline__${tool}`;
+      const active = () => state && !state.closed && !stopped() && now() < state.edge.budget.deadline;
+      if (!threadline || !active() || !threadlineRequest(tool, input) || !/^[A-Za-z0-9._:-]{1,200}$/u.test(call)
+        || held(JSON.stringify(input)) !== 'clear' || !effects.authorized({ parent: state.edge, tool: name, input }))
+        return { status: 'refused', reason: 'claim-scope-stop-or-secret-check' };
+      if (state.ownerReads.size >= state.allowance || state.ownerReads.has(call)) return { status: 'refused', reason: 'claim-tool-bound' };
+      state.ownerReads.add(call);
+      try { noteTool(state); } catch { return { status: 'refused', reason: 'preparation-unavailable' }; }
+      const prepared = effects.admit({ parent: state.edge, tool: name, input, call });
+      if (!prepared.admitted) return { status: 'refused', reason: prepared.reason };
+      state.effects.set(call, { ...prepared, ownerRead: true }); state.toolPreparations++;
+      try {
+        const result = await threadline.exchange(tool, input, state.edge, () => active()
+          && effects.authorized({ parent: state.edge, tool: name, input, cause: prepared.localCause }));
+        if (!active() || held(JSON.stringify(result)) !== 'clear') return { status: 'uncertain', reason: 'closed-or-secret-check' };
+        effects.observed({ parent: state.edge, ...prepared, resultBytes: Buffer.byteLength(JSON.stringify(result)) });
+        state.effects.delete(call); return result;
+      } catch { return { status: 'uncertain', reason: 'host-outcome-unavailable; do not resend' }; }
+    },
     /** Called only by the existing per-claim connector socket, never an arbitrary URL or script. */
     async observeOwner(claim, call, input) {
       const state = claims.get(claim);

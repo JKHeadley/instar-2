@@ -5955,6 +5955,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         detail: 'collected recorded output after verified worker closure' };
     };
     return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, get retainedRows() { return retained.length; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter, sessionWorkRecords, obligationCheckpoint,
+      threadlineRecords: () => recoveryRecords(row => row.kind === 'session-work').flatMap(row =>
+        row.kind === 'session-work' && row.record.type === 'SessionWorkEffect' && row.record.operation.startsWith('threadline:') ? [row.record] : []),
       close: () => { if (!closed) { closed = true; closeSync(fd); } } };
   } catch (error) { if (!closed) closeSync(fd); throw error; }
 }

@@ -1,0 +1,32 @@
+[
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "threadline-default-exchange",
+    "kind": "features", "status": "live",
+    "requiredFacts": { "metrics": ["threadline:send", "threadline:receive", "threadline:read", "mcp:threadline:threadline_status"] },
+    "profile": { "type": "Profile", "schemaVersion": 1, "consequence": "data", "reversibility": "irreversible", "reach": "world", "surface": "none", "repeats": { "kind": "no" } },
+    "standards": [28, 29, 44, 46, 60, 63, 89, 98, 100, 113, 114, 116, 118, 122, 123], "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "threadline-runtime.createThreadlineRuntime",
+    "kind": "stores", "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded", "holdsAgentMemory": "yes",
+      "machineScope": { "kind": "machine-local", "reason": "Encrypted local spool is staging only, capped at 1024 retained frames with no deletion. Authoritative sends, reads and accepted payloads are in the existing encrypted journal and follow its replication demand before frame dispatch or receipt release. Identity derives from the installation storage key and enters existing custody. Private routes are owner-signed machine-local filesystem paths; moving a route needs an updated signed binding, never a new identity or automatic resend. The runtime caps retained operation rows at 4096; capacity refusal preserves all accepted intake." },
+      "agreesWith": []
+    },
+    "standards": [7, 32, 46, 60, 63, 100, 113, 123], "holds": []
+  },
+  {
+    "type": "Declaration", "schemaVersion": 1, "id": "threadline-runtime.admitThreadline",
+    "kind": "blocking sites", "status": "live",
+    "requiredFacts": {
+      "authority": "block", "decidesAlone": "ruled-three", "decidesAloneBasis": "recorded-governed-state",
+      "criticality": "Exact owner signature, private topic share, peer identity, current role grant, full durable cause, known zero-cost operation, claim bounds, ownership, stop and held-secret checks. Peer statements cannot grant authority.",
+      "failDirection": "closed",
+      "preservesInput": "Existing hook trace retains requests; the encrypted journal retains admitted cause and peer payloads. Failed or unknown dispatch retains its stable preparation and encrypted staging; no automatic resend or deletion.",
+      "inspectedBy": "THREADLINE-DEFAULT-EXCHANGE"
+    },
+    "profile": { "type": "Profile", "schemaVersion": 1, "consequence": "data", "reversibility": "irreversible", "reach": "world", "surface": "none", "repeats": { "kind": "no" } },
+    "standards": [4, 28, 42, 66, 95, 98, 103, 123], "holds": []
+  }
+]

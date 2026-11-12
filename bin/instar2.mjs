@@ -22,6 +22,15 @@ if (command === 'prepare-login') {
       : 'Login preparation refused. Check the installation and supply only provider and account; details suppressed.'}\n`);
     process.exitCode = 1;
   }
+} else if (command === 'threadline-bind') {
+  try {
+    if (extra.length || process.stdin.isTTY) throw Error('one signed owner record required');
+    register('../scripts/slice-ts-loader.mjs', import.meta.url);
+    const { installThreadlineBinding } = await import('../scripts/threadline-setup.mjs');
+    let input = ''; for await (const chunk of process.stdin) { input += chunk; if (input.length > 65536) throw Error('record too large'); }
+    installThreadlineBinding(root, JSON.parse(input), Date.now());
+    process.stdout.write('Owner-signed Threadline share installed. The live checkpoint rechecks it on every call.\n');
+  } catch { process.stderr.write('Threadline enrollment refused; no unverified share admitted.\n'); process.exitCode = 1; }
 } else if (command === 'mcp-add') {
   try {
     if (extra.length || process.stdin.isTTY) throw Error('pipe one server configuration through stdin');

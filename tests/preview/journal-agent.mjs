@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createThreadlineRuntime, admitThreadline } from '../../scripts/threadline-runtime.mjs';
 import { createProductUpdater } from '../../scripts/update-product.mjs';
 import { observeUpdateBound } from '../../scripts/update-runner.mjs';
 import { initializeUpdateRuntime } from '../../scripts/update.mjs';
@@ -2689,20 +2690,25 @@ async function main() {
     // becomes a durable child edge first, and each consequential tool passes the effect owner, which decides it by the
     // effect doorway's four tests under the installation's current effect policy (read at each decision, so a policy
     // withdrawn or unreadable mid-step refuses), exactly as an unchecked tool turn's hook does.
-    if (sessionSetup !== null || doorway.toolTurn?.harness) {
+    if (sessionSetup !== null || doorway.toolTurn) {
       const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null || !active() || sessionAccountsChanged();
       const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
-      gate = await createAdmissionGate({
+      let threadline = null;
+      try { threadline = createThreadlineRuntime({ root, custody, storageKey: key(), records: () => journal.threadlineRecords(),
+        replicated: shared !== null, replicate: () => shared === null || peerHolds(), now: wallNow, stopped: gateStopped,
+        held: heldVerdict(heldSecrets), append: appendWork, recorded: id => (journal.view.toolEffects ?? []).includes(id) }); }
+      catch { process.stderr.write('Threadline custody or intake unavailable; connector refused, ordinary conversation continues.\n'); }
+      gate = await createAdmissionGate({ threadline,
         ownerBrowser: conversationSession ? createOwnerBrowser({ binding: () => readOwnerBrowserBinding(root),
           hold: bounds => hostResources.hold('maintenance', bounds), scrub: text => redact(text).text,
           held: heldVerdict(heldSecrets), now: wallNow }) : null,
         append: appendWork, stopped: gateStopped, now: wallNow, held: heldVerdict(heldSecrets),
         note: (call, text) => worker.attributionOfNote(call, text),
-        effects: createToolEffectOwner({ decide: (tool, input, parent) => conversationSession && sessionConnectors.has(parent.child)
+        effects: createToolEffectOwner({ decide: (tool, input, parent) => admitThreadline(threadline, tool, input, parent, admissionConfig(), admitToolCallEffect, wallNow()) ?? (conversationSession && sessionConnectors.has(parent.child)
           ? admitSessionConnector({ tool, input, config: admissionConfig(), mcp: readRootMcp(root), enabled: accountActions,
             now: wallNow(), decide: admitToolCallEffect })
           : admitToolCallEffect(tool, input, { ...admissionConfig(),
-            ...(sessionConnectors.has(parent.child) ? { mcpReads: readRootMcp(root)?.reads ?? [] } : {}) }, wallNow()),
+            ...(sessionConnectors.has(parent.child) ? { mcpReads: readRootMcp(root)?.reads ?? [] } : {}) }, wallNow())),
           append: appendWork, stopped: gateStopped, now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
     }
     if (sessionSetup !== null) {
@@ -2856,7 +2862,7 @@ async function main() {
               sessionConnectors.set(claim, await prepareSessionConnectors({ mcp,
                 privateDirectory: privateDirectory ?? state, identity, workspace: project,
                 resolveSecret: name => createSecretCustody(root, key(), wallNow).resolve(secretRef(name)),
-                check: heldVerdict(heldSecrets), ownerRead: conversationSession ? (id, input) => gate.observeOwner(claim, id, input) : null }));
+                check: heldVerdict(heldSecrets), threadline: (id, tool, input) => gate.threadline(claim, id, tool, input), ownerRead: conversationSession ? (id, input) => gate.observeOwner(claim, id, input) : null }));
             }
             gate.open(claim, { framework, allowance: edge.budget.calls, edge,
               ...(conversationSession ? { reserveCall: ordinal => sessionWork.port.reserveCall(claim, ordinal),

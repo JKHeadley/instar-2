@@ -26,3 +26,16 @@ migrations.push({ id: 'mcp-defaults-verified-1104', run: migrations[0].run, asyn
   const { verifyMcpDefaults } = await import('./mcp-setup.mjs');
   return verifyMcpDefaults(root);
 } });
+
+// Carry 1.x boot registration to existing roots without granting a peer or changing a recorded revocation.
+migrations.push({ id: 'threadline-bootstrap-1112', async run(root) {
+  const { register } = await import('node:module'); register('./slice-ts-loader.mjs', import.meta.url);
+  await migrations[0].run(root);
+  const { readSetupRecord } = await import('./onboarding-state.mjs');
+  const { join } = await import('node:path');
+  const current = readSetupRecord(join(root, 'mcp.json'));
+  if (current && Object.keys(current.mcpServers ?? {}).length > 0 && !current.mcpServers.threadline) {
+    const { installMcp } = await import('./mcp-setup.mjs');
+    installMcp(root, { mcpServers: { threadline: { command: 'instar2-threadline', args: [] } }, reads: [] });
+  }
+} });
