@@ -64,7 +64,12 @@ const currentChannelNote = (text: string) => compactRecordedNote(text.replace(re
   .replace('keeps a faithfulness-checked rolling summary of earlier turns.',
     'keeps a faithfulness-checked summary of earlier turns.')
   .replace('generates the register, rule book, glossary and this briefing from declarations.',
-    'generates the register, rules, glossary and this briefing from declarations.');
+    'generates the register, rules, glossary and this briefing from declarations.')
+  // train-239 adds only this declared inventory line. Historical K11 judgments still bind
+  // the original notes; they do not certify private reports (covered by private-view.test.ts).
+  .replace('- keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.',
+    '- keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.\n'
+    + '- operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable.');
 const renderedNote = (text: string) => currentChannelNote(text).replace(`- ${toolsBriefing(0)}`, CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
   .replace(` ${SIGN_OFF}`, '');
 const currentNote = (text: string) => renderedNote(text
@@ -111,6 +116,8 @@ it('translates only the exact retired inventory entry and retains unrelated capa
   // Changed retirement wording and drift in a retained capability must still fail equality.
   expect(renderedNote(capture.note.replace('changes nothing.', 'changes everything.'))).not.toBe(current);
   expect(renderedNote(capture.note.replace('faithfulness-checked', 'unchecked'))).not.toBe(current);
+  expect(renderedNote(capture.note.replace('keeps standing instructions', 'ignores standing instructions'))).not.toBe(current);
+  expect(renderedNote(capture.note)).not.toBe(current.replace('operator-only pages', 'public pages'));
   expect(capture.note).toContain(retiredStepCheck);
 });
 
