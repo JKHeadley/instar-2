@@ -20,6 +20,14 @@ Bug evidence: reproducer=tests/preview/owed-delivery.test.ts; restart=tests/prev
 Hook bypass: none; core.hooksPath unset, common hooks directory inspected and contains sample hooks only.
 Convergence: none
 Prompt review: Reply-sentence prompt and parsing stay unchanged. The work packet now carries the verified message request through its existing field. Replayed real recorded shapes through the new writer/worker path: summary writer 715672480, uncertain summary 715672483, undecided Jev 715672482, unsure Jev 969389570, reply review 969389923, delivered reply 715672479 and empty reply 715672550, from retrospective-duty-followup-train-1-2026-10-08.json; completed obligation output for update 6232091 from obligation-step-outputs-live-2026-10-04.json; held/pass/unknown/restart reply review from credlabel-proofroom-T-2026-10-03.json. These are captured-byte and recorded-shape build replays, not a new live deployment or acceptance claim.
+Prompt finding: 105c1569b6bb | protocol-literal | Unchanged fixed emergency-stop renewal disclosure; the fixture asserts the existing protocol, not a semantic trigger.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged grounding instruction against inventing tool attempts; the fixture checks delivered guidance rather than prescribing a verdict.
+Prompt finding: 7ef11b68103f | protocol-literal | Unchanged activation-expiry disclosure, quoted by the closing-notice fixture; no new meaning classifier.
+Prompt finding: 85544c20941f | protocol-literal | Unchanged infrastructure outage sentence preserving durable intake; not a fixture-specific model judgment.
+Prompt finding: 9f0106c66027 | protocol-literal | Unchanged stopped-work uncertainty disclosure; the fixture verifies saved-input reporting rather than prompting an expected verdict.
+Prompt finding: bac6ce7485d9 | protocol-literal | Unchanged stopped-work notice, not an intent classifier or a new model instruction.
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged sourceLabel provenance instruction; the regression checks source attribution guidance.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed empty-memory inventory response; no fixture phrase is used as a gate.
 Decision: DPR-FORWARD | Stamp only newly recorded verified message commitments; never reinterpret old rows or source links as delivery authority. Existing roots send nothing merely from upgrade. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/deliver-promised-results-1112-p2-PROGRESS.md
 Decision: DPR-BOUNDS | Reuse durable intents and part starts for a four-message pass budget and twelve-message rolling-hour budget, including uncertain sends; retain five-result topic aggregation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/deliver-promised-results-1112-p2-PROGRESS.md
 
