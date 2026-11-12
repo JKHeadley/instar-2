@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, OBLIGATION_FLOOR_PACKET_BYTES, openPreviewJournal, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { createJournalWorker, OBLIGATION_FLOOR_PACKET_BYTES, openPreviewJournal, CONTEXT_LIMIT_NOTICE, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { replyReviewContext } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
@@ -146,7 +146,8 @@ it('retains Telegram split parts as distinct updates and answers or explains eac
     expect(journal.view.cursor).toBe(3);
     expect(sent).toHaveLength(2);
     expect(sent[0]).toContain('I can read this part.');
-    expect(sent[1] === TOO_LONG_INPUT_NOTICE || sent[1]?.includes('I can read this part.')).toBe(true);
+    expect(sent[1]).toBe(CONTEXT_LIMIT_NOTICE);
+    expect(journal.view.order[1]?.contextLimit).toBe(true);
     journal.close();
     const replay = openPreviewJournal(join(dir, 'journal.encrypted'), key);
     const resumed = createJournalWorker(replay, { now: () => 1001, stopped: () => false,
@@ -155,6 +156,7 @@ it('retains Telegram split parts as distinct updates and answers or explains eac
     resumed.intake([update(1, first), update(2, second)]);
     await resumed.drain();
     expect(replay.view.order).toHaveLength(2);
+    expect(replay.view.order[1]).toMatchObject({ contextLimit: true, text: second });
     expect(replay.view.replies).toBe(2);
     replay.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -170,7 +172,7 @@ it('distinguishes a measured complete-envelope overflow from a temporary prepara
       model: async () => { calls++; return 'should never run'; }, send: async () => 7, checkOutbound: () => {} });
     worker.intake([update(1, 'x'.repeat(1800))]); await worker.drain();
     expect(calls).toBe(0);
-    expect(journal.view.order[0]?.intent).toBe(TOO_LONG_INPUT_NOTICE);
+    expect(journal.view.order[0]).toMatchObject({ intent: CONTEXT_LIMIT_NOTICE, contextLimit: true });
     expect(journal.view.order[0]?.text).toBe('x'.repeat(1800));
     journal.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }

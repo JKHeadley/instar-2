@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, replyReviewReserveFor, TOO_LONG_INPUT_NOTICE } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, replyReviewReserveFor, CONTEXT_LIMIT_NOTICE } from './journal-test-worker.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 
 /** The reachability floor's last rung (preparedWithFloor): every earlier turn is set aside and what is left is
@@ -43,7 +43,8 @@ async function oneTurn(preparedBytes: number | 'overflow') {
     worker.intake([update(1, 'Garden log 1: watered bed 1. No reply needed beyond ok.')]);
     await worker.drain();
     const turn = journal.view.order[0]!;
-    const result = { sent: turn.sent, held: turn.held, notice: turn.noticeClass, intent: turn.intent, answered: [...answered] };
+    const result = { sent: turn.sent, held: turn.held, notice: turn.noticeClass, contextLimit: turn.contextLimit,
+      intent: turn.intent, answered: [...answered] };
     journal.close();
     return result;
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -59,11 +60,12 @@ it('answers a turn whose prompt fits the limit but not the review reserve beside
   expect(turn.sent).toBeDefined();
 });
 
-it('sends the size notice, never a silent hold, when even the last rung cannot fit', async () => {
+it('sends the context allowance notice when even empty input cannot fit the last rung', async () => {
   const turn = await oneTurn('overflow');
   expect(turn.held).toBeUndefined();
   expect(turn.notice).toBe('too-long-input');
-  expect(turn.intent).toBe(TOO_LONG_INPUT_NOTICE);
+  expect(turn.intent).toBe(CONTEXT_LIMIT_NOTICE);
+  expect(turn.contextLimit).toBe(true);
   expect(turn.answered).toEqual([]);
   expect(turn.sent).toBeDefined();
 });
