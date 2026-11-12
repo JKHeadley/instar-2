@@ -676,3 +676,39 @@ it('a Codex tool turn runs only through the admission checkpoint: no checkpoint 
   state = { calls: 8, refused: true, closed: false, openDelegations: [] };
   await expect(runToolTurn(base(journalAt(dir(), 50), dir(), async () => 'answer'))).rejects.toThrow(/reserved allowance was refused/u);
 });
+
+
+it('live-burn diagnosis: distinct scheduled tool calls each retain 74 while completed reports prevent replay', async () => {
+  const { createJournalWorker, LOOP_REVISIT_MS, pendingUnknownCalls } = await import('./journal-test-worker.js');
+  const root = dir(), journal = journalAt(root, 1000); let now = 1000, launches = 0;
+  const reply = 'I will finish the first task. I will finish the second task. I will finish the third task.';
+  const ids: string[] = [];
+  const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {},
+    toolRoute: id => id.startsWith('obligation:'),
+    model: async ({ id }) => {
+      if (!id.startsWith('obligation:')) return JSON.stringify({ reply, memory: [], openLoops: reply.split('. ').map(quote => ({
+        kind: 'promise', quote, waitsOn: 'nothing' })) });
+      ids.push(id);
+      return (await runToolTurn({ journal, root, id, prepared: '{}', promptLimit: 32768, deniedRoots: [root],
+        operations: SINGLE_MACHINE_PROFILE.operations, now: () => now, redactText: (text: string) => text,
+        scratch: plainScratch, detach: keepDetached, unmount: keepDetached,
+        fallback: async () => { throw Error('unexpected fallback'); },
+        invoke: async () => { launches++; now += 48000; return { state: 'complete',
+          text: JSON.stringify({ outcome: 'report', report: 'Task completed.' }),
+          usage: { inputTokens: 100, outputTokens: 10, inputComplete: true, charge: null } }; } })).result;
+    }, send: async () => 1 });
+  worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'Finish these three tasks.' } }]);
+  await worker.drain(); now += LOOP_REVISIT_MS;
+  const baseline = journal.view.calls, unknown = pendingUnknownCalls(journal.view).length;
+  for (let step = 1; step <= 3; step++) {
+    expect(await worker.workObligations()).toBe(true);
+    expect(journal.view.calls).toBe(baseline + 74 * step);
+    expect(launches).toBe(step);
+    expect(pendingUnknownCalls(journal.view)).toHaveLength(unknown);
+  }
+  expect(new Set(ids).size).toBe(3);
+  expect(Object.values(journal.view.obligationWork).every(work => work.outcome === 'report')).toBe(true);
+  expect(await worker.workObligations()).toBe(false);
+  expect(journal.view.order).toHaveLength(1);
+  journal.close();
+});
