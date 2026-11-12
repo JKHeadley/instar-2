@@ -6,8 +6,28 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 // @ts-expect-error browser host transport
 import { browserNetwork, confinedBrowser } from './browser-network.mjs';
+
+it.runIf(process.platform === 'darwin')('the native policy permits proxy TCP but denies other TCP and outbound Unix sockets', async () => {
+  const proxy = net.createServer(socket => socket.end()), sink = net.createServer(socket => socket.end());
+  const root = mkdtempSync('/tmp/browser-ipc-'), socketPath = join(root, 'sink');
+  const unix = net.createServer(socket => socket.end());
+  await Promise.all([new Promise<void>(resolve => proxy.listen(0, '127.0.0.1', resolve)),
+    new Promise<void>(resolve => sink.listen(0, '127.0.0.1', resolve)), new Promise<void>(resolve => unix.listen(socketPath, resolve))]);
+  const launcher = confinedBrowser(process.execPath, (proxy.address() as net.AddressInfo).port);
+  try {
+    const script = `const net=require('net'); const probe=options=>new Promise(resolve=>{const s=net.connect(options); s.on('connect',()=>{s.destroy();resolve(true)}); s.on('error',()=>resolve(false));});
+      Promise.all(${JSON.stringify([{host:'127.0.0.1',port:(proxy.address() as net.AddressInfo).port}, {host:'127.0.0.1',port:(sink.address() as net.AddressInfo).port}, {path:socketPath}])}.map(probe)).then(r=>console.log(JSON.stringify(r)));`;
+    const result = await promisify(execFile)(launcher.executablePath, ['-e', script], {timeout:10000});
+    expect(JSON.parse(result.stdout)).toEqual([true, false, false]);
+  } finally {
+    launcher.close(); await Promise.all([proxy, sink, unix].map(server => new Promise<void>(resolve => server.close(() => resolve()))));
+    rmSync(root, {recursive:true,force:true});
+  }
+});
 
 it('the browser proxy requires destination admission before HTTP or CONNECT reaches a local receiver', async () => {
   let hits = 0, granted = false;

@@ -112,7 +112,7 @@ it.runIf(process.platform === 'darwin')('real worker CLI reads the named signed-
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => server.close(() => resolve())));
   const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`, row = enroll(root, origin);
-  const seed = await chromium.launchPersistentContext(row.userDataDir, { headless: true });
+  const seed = await chromium.launchPersistentContext(row.userDataDir, { headless: true, executablePath: chromium.executablePath() });
   cleanup.push(() => seed.close());
   await seed.addCookies([{ name: 'session', value: secret, url: origin, httpOnly: true, expires: Math.floor(await seed.pages()[0]!.evaluate(() => Date.now()) / 1000) + 3600 }]);
   await seed.pages()[0]!.goto(origin);
@@ -124,7 +124,7 @@ it.runIf(process.platform === 'darwin')('real worker CLI reads the named signed-
   }), indexedSecret);
   expect((await seed.cookies()).some(cookie => cookie.value === secret)).toBe(true);
   await seed.close();
-  const persisted = await chromium.launchPersistentContext(row.userDataDir, { headless: true });
+  const persisted = await chromium.launchPersistentContext(row.userDataDir, { headless: true, executablePath: chromium.executablePath() });
   cleanup.push(() => persisted.close());
   expect((await persisted.cookies()).some(cookie => cookie.value === secret), 'throwaway seed persists').toBe(true);
   await persisted.close();
@@ -141,7 +141,8 @@ it.runIf(process.platform === 'darwin')('real worker CLI reads the named signed-
   const policy = () => ({ type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [],
     registered: grantedTools.filter(tool => grant || tool !== 'mcp__playwright__browser_navigate').map(tool => ({ effect: 'tool:mcp', target: tool, consequence: 'data',
       reversibility: 'reversible', reach: 'agent', costUsd: 0, source: 'operator:proof' })),
-    grants: grant ? grantedTools.flatMap(tool => [origin, origin.replace('127.0.0.1', 'localhost'), origin.replace('http:', 'ws:'), escape].map(browserOrigin => ({ id: `${tool}-${browserOrigin}`, browserOrigin, browserProfile: row.id, effect: 'tool:mcp', target: tool, approves: ['scope'], source: 'operator:proof', custodian: 'owner', recovery: 'withdraw', expiresAt }))) : [] });
+    // Chromium tunnels even plain WebSockets through CONNECT; the proxy names that transport with https.
+    grants: grant ? grantedTools.flatMap(tool => [origin, origin.replace('127.0.0.1', 'localhost'), origin.replace('http:', 'ws:'), origin.replace('http:', 'https:'), escape].map(browserOrigin => ({ id: `${tool}-${browserOrigin}`, browserOrigin, browserProfile: row.id, effect: 'tool:mcp', target: tool, approves: ['scope'], source: 'operator:proof', custodian: 'owner', recovery: 'withdraw', expiresAt }))) : [] });
   const append = (record: { id: string; state?: string; cause?: string }) => { rows.push(record); };
   const effects = createToolEffectOwner({ append, stopped: () => stopped, now: Date.now, prepared: (id: string) => rows.some(row => row.id === id),
     decide: (tool: string, input: unknown) => admitSessionConnector({ tool, input, config: { operations: [], effectPolicy:

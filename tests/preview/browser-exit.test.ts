@@ -78,9 +78,12 @@ it.runIf(process.platform === 'darwin')('A: a stored httpOnly cookie must not re
 
 // Drives the real host child (browser-profile.mjs --host) against a throwaway enrolled profile.
 // With parent: true it goes through createProfileBrowser (the parent custody side) with a pass-through effect owner.
-async function hostNavigate(extra: (context: import('playwright').BrowserContext, origin: string, expires: number) => Promise<void>, parent = false) {
+async function hostNavigate(extra: (context: import('playwright').BrowserContext, origin: string, expires: number) => Promise<void>, parent = false, code?: string) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'claude-desk-short-')));
-  const site = createServer((req, res) => { res.setHeader('Content-Type', 'text/html');
+  let hits = 0, effects = 0, connections = 0;
+  const site = createServer((req, res) => {
+    if (req.url === '/favicon.ico') { res.writeHead(204); res.end(); return; }
+    hits++; res.setHeader('Content-Type', 'text/html');
     res.end(req.headers.cookie?.includes('session=') ? '<h1>Signed-in workspace</h1><p>You have 1 new message. Theme is dark.</p>' : '<h1>LOGIN</h1>'); });
   await new Promise<void>(resolve => site.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${(site.address() as {port: number}).port}`;
@@ -89,13 +92,14 @@ async function hostNavigate(extra: (context: import('playwright').BrowserContext
   mkdirSync(row.userDataDir, { recursive: true, mode: 0o700 });
   writeFileSync(join(root, 'browser-profiles.json'), JSON.stringify({ installation: root, profiles: [row] }));
   writeFileSync(join(root, 'mcp.json'), JSON.stringify({ ...DEFAULT_MCP, browserProfile: row.id }));
-  const seed = await chromium.launchPersistentContext(row.userDataDir, { headless: true });
+  const seed = await chromium.launchPersistentContext(row.userDataDir, { headless: true, executablePath: chromium.executablePath() });
   const expires = Math.floor(await seed.pages()[0]!.evaluate(() => Date.now()) / 1000) + 3600; // the browser's own clock, as the unit's test does
   await seed.addCookies([{ name: 'session', value: randomBytes(32).toString('hex'), url: origin, httpOnly: true, expires }]);
   await seed.pages()[0]!.goto(origin);
   await extra(seed, origin, expires);
   await seed.pages()[0]!.goto(origin);
   await seed.close();
+  hits = 0;
   if (parent) {
     const binding = () => readBrowserProfile(root, row.id);
     const browser = createProfileBrowser({ binding, check: () => 'clear', deadline: Date.now() + 40000, stopped: () => false,
@@ -111,12 +115,41 @@ async function hostNavigate(extra: (context: import('playwright').BrowserContext
   const answer = new Promise<{ status: string; reason?: string; text?: string }>((resolve, reject) => {
     const timer = setTimeout(() => reject(Error('host timeout')), 40000);
     createInterface({ input: child.stdout! }).on('line', line => { const message = JSON.parse(line);
-      if (message.effect) child.stdin!.write(`${JSON.stringify({ effect: message.effect, admitted: false })}\n`);
-      if (message.id === 1) { clearTimeout(timer); resolve(message.result); } });
+      if (message.effect) {
+        const admitted = message.tool === 'browser_navigate' && message.input?.browserEffect?.method === 'CONNECT'
+          && message.input.browserEffect.url === origin;
+        if (admitted) connections++; else effects++;
+        child.stdin!.write(`${JSON.stringify({ effect: message.effect, admitted })}\n`);
+      }
+      if (message.id === 1 && code) {
+        if (message.result.status !== 'observed') { clearTimeout(timer); reject(Error(`navigation: ${message.result.reason}`)); return; }
+        child.stdin!.write(`${JSON.stringify({ id: 2, name: 'browser_run_code_unsafe', input: { code } })}\n`);
+      } else if (message.id === (code ? 2 : 1)) { clearTimeout(timer); resolve(message.result); } });
   });
   child.stdin!.write(`${JSON.stringify({ id: 1, name: 'browser_navigate', input: { url: origin } })}\n`);
-  return answer;
+  const result = await answer;
+  expect(hits, 'one signed-in document served after seeding').toBe(1);
+  expect.soft(connections, 'only expected own-origin navigation transport admitted').toBeGreaterThan(0);
+  if (code) expect.soft(effects, 'code exit reached admission').toBeGreaterThan(0);
+  else {
+    expect(effects, 'ordinary navigation needs no additional effect grant').toBe(0);
+    expect(result.text).toContain('Signed-in workspace');
+    expect(result.text).toContain('You have 1 new message. Theme is dark.');
+  }
+  return result;
 }
+
+it.runIf(process.platform === 'darwin').each(['fetch', 'page'])('own-origin reading does not authorize %s to an ungranted sink', async transport => {
+  let hits = 0;
+  const sink = createServer((_req, res) => { hits++; res.end('sink'); });
+  await new Promise<void>(resolve => sink.listen(0, '127.0.0.1', resolve));
+  cleanup.push(() => new Promise<void>(resolve => sink.close(() => resolve())));
+  const url = `http://127.0.0.1:${(sink.address() as {port: number}).port}/sink`;
+  const request = `fetch('${url}', {method:'POST', body:'encoded-disposable-value'})`;
+  const result = await hostNavigate(async () => {}, false,
+    `async page => { await ${transport === 'fetch' ? request : `page.evaluate(() => ${request})`}; }`);
+  expect.soft(result.status).toBe('refused'); expect(hits).toBe(0);
+}, 60000);
 
 it.runIf(process.platform === 'darwin')('B control: a signed-in profile holding only its long session cookie reads its own page', async () => {
   const result = await hostNavigate(async () => {});

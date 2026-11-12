@@ -58,7 +58,8 @@ export function admitSessionConnector({ tool, input, config, mcp, enabled, now, 
     return { admitted: false, reason: 'connector is outside the currently granted account set' };
   const envelope = mcp?.browserProfile && tool.startsWith('mcp__playwright__') && input?.browserEffect;
   // A socket for an ordinary navigation still records its preparation, under the profile's recorded origin grant.
-  const ordinaryConnection = envelope?.method === 'CONNECT' && tool === 'mcp__playwright__browser_navigate'
+  const ordinaryConnection = envelope?.method === 'CONNECT' && (tool === 'mcp__playwright__browser_navigate'
+    || (tool === 'mcp__playwright__browser_tabs' && input.action === 'new'))
     && mcp.browserProfile.origins?.includes(envelope.url.replace(/^ws/u, 'http'));
   const networkEffect = envelope && !ordinaryConnection ? envelope : null;
   const consequential = mcp?.browserProfile && tool.startsWith('mcp__playwright__') && profileConsequential(tool.slice(17), input);

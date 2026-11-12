@@ -64,7 +64,8 @@ export function confinedBrowser(executable, port) {
   if (process.platform !== 'darwin') throw Error('browser network confinement unavailable');
   const root = mkdtempSync(join(tmpdir(), 'instar-browser-network-')), wrapper = join(root, 'chromium');
   const quote = text => `'${text.replaceAll("'", "'\\''")}'`;
-  const policy = `(version 1)(allow default)(deny network*)(allow network-outbound (remote ip "127.0.0.1:${port}"))`;
+  // Chromium needs local singleton IPC; this permits no IP listener or outbound Unix connection.
+  const policy = `(version 1)(allow default)(deny network*)(allow network-bind network-inbound (local unix-socket))(allow network-outbound (remote tcp "localhost:${port}"))`;
   writeFileSync(wrapper, `#!/bin/sh\nexec /usr/bin/sandbox-exec -p ${quote(policy)} ${quote(executable)} "$@"\n`, {mode:0o700});
   return { executablePath: wrapper, close: () => rmSync(root, {recursive:true,force:true}) };
 }

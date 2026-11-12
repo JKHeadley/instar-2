@@ -189,13 +189,6 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
             network.on('Network.loadingFinished', event => finished(event.requestId, 'observed'));
             network.on('Network.loadingFailed', event => finished(event.requestId, 'unavailable'));
             await network.send('Network.enable');
-            network.on('Fetch.requestPaused', async event => {
-              const requesting = action;
-              const admit = await prepareRequest(event.request, event.networkId);
-              if (!admit && requesting === action) refusal = 'network-effect-or-scope';
-              await network.send(admit ? 'Fetch.continueRequest' : 'Fetch.failRequest', { requestId: event.requestId, ...(admit ? {} : { errorReason: 'BlockedByClient' }) }).catch(() => {});
-            });
-            await network.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
           })());
           return attached.get(page);
         };
@@ -207,9 +200,9 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
         await scope.route('**/*', async route => {
           const request = route.request(), requesting = action; let frame;
           try { frame = request.frame(); } catch { /* First popup request precedes its CDP target. */ }
-          let admit = true;
           if (frame) { await protect(frame.page()); if (frame.parentFrame()) await protect(frame); }
-          else if (admit) admit = await prepareRequest({ method: 'UNINTERCEPTED', url: request.url(),
+          // Context routing covers cross-process frames before their first request; page CDP attachment can race it.
+          const admit = await prepareRequest({ method: request.method(), url: request.url(),
             headers: await request.allHeaders(), postData: request.postData() ?? '' }, request._guid);
           if (!admit && requesting === action) refusal = 'network-effect-or-scope';
           return admit ? route.continue() : route.abort();
