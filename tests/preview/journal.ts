@@ -811,7 +811,7 @@ const conflictQuestion = (item: Pick<MemoryConflict, 'first' | 'second'>) =>
 const conflictKey = (item: Pick<MemoryConflict, 'first' | 'second'>) =>
   JSON.stringify([item.first, item.second].map(part => [part.source, part.quote]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
 export type ModelFailureClass = 'rejected' | 'malformed' | 'empty' | 'capacity';
-type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true };
+type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true; modelCalls?: number };
 export type CallKind = 'answer' | 'summary' | 'replyCheck';
 export type TokenTotals = Record<CallKind, { calls: number; inputTokens: number; outputTokens: number; unknownCalls: number }>;
 type TokenReservation = { kind: CallKind; input: number; output: number; observedInput: boolean; observedOutput: boolean };
@@ -1413,12 +1413,14 @@ export type JournalRecord =
   | { kind: 'cap-report'; reason: 'calls' | 'replies' | 'turns' | 'bytes'; limit: number; level?: 'near'; at: number }
   | { kind: 'legacy-call'; at: number }
   /** A tool turn (Part Thirteen §9, docs/17-harness-adapters): its whole liability (`calls` model attempts beyond the answer's own
-   * reservation) is reserved before dispatch and retained; a short allowance answers without tools; the
+   * reservation) is reserved before dispatch and retained until explicitly settled; a short allowance answers without tools; the
    * trace records each tool call, its admission and its result after the turn. */
-  | { kind: 'tool-turn'; phase: 'reserved'; id: string; attempt: number; calls: number; delegation?: ToolDelegation;
+  | { kind: 'tool-turn'; phase: 'reserved'; id: string; attempt: number; calls: number; settlementVersion?: 1; delegation?: ToolDelegation;
       mcp?: { servers: string[]; reads: number; digest: string }; workspace?: ToolWorkspaceRow; at: number }
   | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size' | 'mcp credential unavailable' | 'harness identity unavailable'; at: number }
+  | { kind: 'tool-turn'; phase: 'settled'; id: string; attempt: number; calls: number; at: number }
   | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
+      terminal?: ToolTerminal; retirement?: { closed: boolean; openDelegations: number; children: number; cleanup: boolean };
       edges?: ToolChildEdge[]; egress?: ToolEgressRequest[]; egressRequests?: number; egressLimited?: string; workspaceBytes: number | null;
       session?: ToolSessionRow; volume?: ToolVolumeRow; harness?: ToolHarnessRow; at: number }
   | { kind: 'legacy-reply'; at: number }
@@ -3888,7 +3890,12 @@ export const TOOL_ATTEMPTS_PARTIAL_MEANING = 'The first tool calls this reply\'s
   + 'later calls are not shown. A refused call is not an attempt at an avenue. A tool result the reply reports may come from an omitted '
   + 'call, so its absence here does not show that the call or result did not happen.';
 const attemptExcerpt = (text: string) => text.length > TOOL_ATTEMPT_EXCERPT_CHARS ? `${text.slice(0, TOOL_ATTEMPT_EXCERPT_CHARS)}…` : text;
-export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number;
+export interface ToolTerminal { state: string; usage?: ModelUsage }
+/** Forward-only reservation certificates; old rows never acquire one by reinterpretation. */
+export interface ToolSettlement { reserved: number; proven?: number; settled?: number }
+export interface ToolTurnStats { releasedCalls?: number; settledCalls?: number; certifiedReserved?: number;
+  settlements?: Record<string, ToolSettlement>;
+  invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number;
   /** Turns answered without tools because an MCP server's SecretRef could not be opened from custody. */
   refusedCredential?: number;
   /** Plan #473: turns answered without tools because the separate harness user was not ready, and the latest such
@@ -3933,19 +3940,32 @@ export interface ToolChildEdge { child: string; agent: string | null; parent: st
   /** The subagent that started this one (null or absent: the turn itself); the edge's reservation is always `parent`'s. */
   parentAgent?: string | null; authority: string;
   budget: { modelTurns: number; toolCalls: string }; exitTest: string; placement: string; transport: string;
+  terminal?: ToolTerminal; retired?: boolean;
   resultDestination: string; cancellation: string; state: 'returned' | 'cancelled' | 'unknown'; result: string | null }
-/** Rules 60, 75 and MF4: a tool turn reserves its whole model-attempt liability before dispatch, and the
- * reservation is never released (the subscription charge is unknown). A trace closes exactly one open turn. */
+/** Rules 60, 75 and MF4: a tool turn reserves its whole model-attempt liability before dispatch;
+ * only an explicit complete certificate settles unused call capacity. A trace closes exactly one open turn. */
 function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 'tool-turn' }>): void {
   const stats = view.toolTurns ?? { invocations: 0, reservedCalls: 0, refusedCap: 0, toolCalls: 0, toolRefusals: 0, inconsistent: 0, open: [] };
   if (!boundedText(row.id, 1, 256)) throw Error('preview journal: tool turn id');
   const key = row.phase === 'refused' ? '' : `${row.id}#${String(row.attempt)}`;
   // The latest attempt's route is the turn's current capability; an earlier trace stays as history (Rules 78, 84).
   const routed = view.turns.get(row.id);
-  if (routed && row.phase !== 'trace') routed.toolRouted = row.phase === 'reserved';
+  if (routed && (row.phase === 'reserved' || row.phase === 'refused')) routed.toolRouted = row.phase === 'reserved';
+  if (row.phase === 'settled') {
+    const entry = stats.settlements?.[key];
+    if (!entry || entry.proven === undefined || row.calls !== entry.proven) throw Error('preview journal: incomplete settlement certificate');
+    if (entry.settled !== undefined) return;
+    const released = Math.max(0, entry.reserved - row.calls);
+    view.calls -= released;
+    if (routed) routed.unusedToolCalls = Math.max(0, (routed.unusedToolCalls ?? 0) - released);
+    view.toolTurns = { ...stats, releasedCalls: (stats.releasedCalls ?? 0) + released,
+      settledCalls: (stats.settledCalls ?? 0) + row.calls, certifiedReserved: (stats.certifiedReserved ?? 0) + entry.reserved,
+      settlements: { ...stats.settlements, [key]: { ...entry, settled: row.calls } } };
+    return;
+  }
   if (row.phase === 'reserved') {
     if (!Number.isSafeInteger(row.attempt) || row.attempt < 0 || !Number.isSafeInteger(row.calls) || row.calls < 0
-      || view.calls + row.calls > view.limits.maxCalls || stats.open.includes(key)) throw Error('preview journal: tool turn reservation or cap');
+      || view.calls + row.calls > view.limits.maxCalls || stats.open.includes(key) || stats.settlements?.[key]) throw Error('preview journal: tool turn reservation or cap');
     // The reservation covers the delegated children's whole budget: an edge can never spend past it.
     const d = row.delegation;
     if (d !== undefined && (!Number.isSafeInteger(d.children) || d.children < 0 || !Number.isSafeInteger(d.turnsEach) || d.turnsEach < 1
@@ -3956,7 +3976,9 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
       throw Error('preview journal: tool turn workspace');
     view.calls += row.calls;
     if (routed) routed.unusedToolCalls = (routed.unusedToolCalls ?? 0) + row.calls;
-    view.toolTurns = { ...stats, invocations: stats.invocations + 1, reservedCalls: stats.reservedCalls + row.calls, open: [...stats.open, key],
+    view.toolTurns = { ...stats,
+      ...(row.settlementVersion === 1 ? { settlements: { ...stats.settlements, [key]: { reserved: row.calls } } } : {}),
+      invocations: stats.invocations + 1, reservedCalls: stats.reservedCalls + row.calls, open: [...stats.open, key],
       ...(w?.kept === false ? { overflow: (stats.overflow ?? 0) + 1 } : {}),
       ...(w?.kept === true && !(stats.workspaces ?? []).includes(w.key) ? { workspaces: [...(stats.workspaces ?? []), w.key] } : {}) };
     return;
@@ -3984,6 +4006,24 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     || !(row.egressRequests === undefined || (Number.isSafeInteger(row.egressRequests) && row.egressRequests >= egress.length))
     || !(row.egressLimited === undefined || boundedText(row.egressLimited, 1, 256)))
     throw Error('preview journal: tool turn egress');
+  const settlement = stats.settlements?.[key], retirement = row.retirement;
+  const countCalls = (terminal?: ToolTerminal): number | null => {
+    const u = terminal?.usage;
+    return terminal?.state === 'complete' && u?.inputComplete === true && Number.isSafeInteger(u.inputTokens)
+      && u.inputTokens! >= 0 && Number.isSafeInteger(u.outputTokens) && u.outputTokens! >= 0
+      && Number.isSafeInteger(u.modelCalls) && u.modelCalls! > 0 ? u.modelCalls! : null;
+  };
+  const parentCalls = countCalls(row.terminal), childCalls = edges.map(edge => countCalls(edge.terminal));
+  if (settlement && row.consistent && retirement?.closed === true && retirement.cleanup === true
+    && retirement.openDelegations === 0 && retirement.children === edges.length
+    && new Set(edges.map(edge => edge.child)).size === edges.length && parentCalls !== null
+    && edges.every((edge, i) => edge.state === 'returned' && edge.retired === true && childCalls[i] !== null)
+    && row.calls.every(call => call.decision !== 'allow' || call.result !== null)) {
+    const proven = parentCalls + childCalls.reduce<number>((sum, calls) => sum + calls!, 0);
+    // Evidence above the reserved bound is not permission to lower anything.
+    if (Number.isSafeInteger(proven) && proven <= settlement.reserved)
+      stats.settlements = { ...stats.settlements, [key]: { ...settlement, proven } };
+  }
   const admitted = row.calls.filter(call => call.decision === 'allow').length;
   const turn = view.turns.get(row.id);
   if (turn) {

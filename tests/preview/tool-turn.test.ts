@@ -9,8 +9,9 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { openPreviewJournal } from './journal.js';
+import { openPreviewJournal, obligationCapacity, type JournalRecord } from './journal.js';
 import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { usageReconciliation } from './doorway-map.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { nestedSessionWorkEdge, type SessionWorkEdge } from '../../src/assembly/production-session-work.js';
 import { capabilityBriefing, capabilitySentence, CAPABILITY_SENTENCE_LABEL, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
@@ -238,7 +239,8 @@ it('tells the agent and the operator exactly which tools exist and where outward
       + 'MCP servers, in this conversation\'s private workspace (kept between turns, 128 MB); shell sandboxed, its network through the '
       + 'turn\'s checkpoint (reads of public hosts admitted, writes sent to the effect doorway); web reads only; '
       + 'subagents may delegate within the turn\'s budget; consequential effects go through the effect doorway.',
-    'Tool turns: 2 run (14 model attempts reserved for them), 5 tool calls admitted, 2 refused, 1 turns answered without tools because the call allowance was short.']);
+    'Tool turns: 2 run (14 model attempts reserved for them), 5 tool calls admitted, 2 refused, 1 turns answered without tools because the call allowance was short.',
+    'Tool call capacity: 14 reserved, 0 settled unused, 0 proven calls, 14 still held as unknown.']);
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, open: ['x#3'] } }, true)[1]).toContain('1 without a recorded trace yet');
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, children: { started: 3, returned: 1, cancelled: 1, unknown: 1 } } }, true)[1])
     .toContain('3 subagents started (1 returned, 1 cancelled, 1 unknown)');
@@ -248,7 +250,7 @@ it('tells the agent and the operator exactly which tools exist and where outward
       + 'an interrupted turn, 0 at its size or turn bound); 1 ended at a stop, withdrawal or failed turn.');
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, overflow: 2 } }, true)[2])
     .toBe('Workspaces: this root keeps 4; 2 turns of further conversations ran in a fresh one-turn workspace without a kept session.');
-  expect(toolStatusLines(view, true)).toHaveLength(2);
+  expect(toolStatusLines(view, true)).toHaveLength(3);
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, network: { admitted: 4, refused: 2 } } }, true)[1])
     .toContain('4 shell network reads admitted and 2 refused at the checkpoint');
   expect(toolStatusLines(view, false)).toEqual([]);
@@ -675,4 +677,132 @@ it('a Codex tool turn runs only through the admission checkpoint: no checkpoint 
   // A model call refused at the allowance: the answer is refused.
   state = { calls: 8, refused: true, closed: false, openDelegations: [] };
   await expect(runToolTurn(base(journalAt(dir(), 50), dir(), async () => 'answer'))).rejects.toThrow(/reserved allowance was refused/u);
+});
+
+
+it('live-burn diagnosis: distinct scheduled tool calls each retain 74 while completed reports prevent replay', async () => {
+  const { createJournalWorker, LOOP_REVISIT_MS, pendingUnknownCalls } = await import('./journal-test-worker.js');
+  const root = dir(), journal = journalAt(root, 1000); let now = 1000, launches = 0;
+  const reply = 'I will finish the first task. I will finish the second task. I will finish the third task.';
+  const ids: string[] = [];
+  const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {},
+    toolRoute: id => id.startsWith('obligation:'),
+    model: async ({ id }) => {
+      if (!id.startsWith('obligation:')) return JSON.stringify({ reply, memory: [], openLoops: reply.split('. ').map(quote => ({
+        kind: 'promise', quote, waitsOn: 'nothing' })) });
+      ids.push(id);
+      return (await runToolTurn({ journal, root, id, prepared: '{}', promptLimit: 32768, deniedRoots: [root],
+        operations: SINGLE_MACHINE_PROFILE.operations, now: () => now, redactText: (text: string) => text,
+        scratch: plainScratch, detach: keepDetached, unmount: keepDetached,
+        fallback: async () => { throw Error('unexpected fallback'); },
+        invoke: async () => { launches++; now += 48000; return { state: 'complete',
+          text: JSON.stringify({ outcome: 'report', report: 'Task completed.' }),
+          usage: { inputTokens: 100, outputTokens: 10, inputComplete: true, charge: null } }; } })).result;
+    }, send: async () => 1 });
+  worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'Finish these three tasks.' } }]);
+  await worker.drain(); now += LOOP_REVISIT_MS;
+  const baseline = journal.view.calls, unknown = pendingUnknownCalls(journal.view).length;
+  for (let step = 1; step <= 3; step++) {
+    expect(await worker.workObligations()).toBe(true);
+    expect(journal.view.calls).toBe(baseline + 74 * step);
+    expect(launches).toBe(step);
+    expect(pendingUnknownCalls(journal.view)).toHaveLength(unknown);
+  }
+  expect(new Set(ids).size).toBe(3);
+  expect(Object.values(journal.view.obligationWork).every(work => work.outcome === 'report')).toBe(true);
+  expect(await worker.workObligations()).toBe(false);
+  expect(journal.view.order).toHaveLength(1);
+  journal.close();
+});
+
+
+// The 11-12 diagnosis uses complete physical outcomes but lacks call-count evidence.
+// New evidence is attached to the same shapes; every counter still comes from the real writer.
+const terminal = (calls: number | undefined = 1) => ({ state: 'complete', usage: {
+  inputTokens: 100, outputTokens: 10, inputComplete: true as const, charge: null, modelCalls: calls } });
+type Trace = Extract<JournalRecord, { kind: 'tool-turn'; phase: 'trace' }>;
+const certificate = (id: string): Trace => ({ kind: 'tool-turn', phase: 'trace', id, attempt: 0, at: 3,
+  consistent: true, calls: [], workspaceBytes: 0, terminal: terminal(),
+  retirement: { closed: true, openDelegations: 0, children: 0, cleanup: true }, edges: [] });
+const child = (id: string, n: number) => ({ child: `child-${n}`, agent: `agent-${n}`, parent: `${id}#0`,
+  authority: 'activation', budget: { modelTurns: 8, toolCalls: 'shared' }, exitTest: 'return', placement: 'local',
+  transport: 'harness', resultDestination: 'parent', cancellation: 'owned tree', state: 'returned' as const,
+  result: 'done', terminal: terminal(n), retired: true });
+function settlementJournal(legacy = false) {
+  const root = dir(), journal = journalAt(root, 98), id = 'obligation:recorded:0';
+  journal.append({ kind: 'legacy-call', at: 1 }); // the separately charged obligation-start call
+  journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: 73,
+    ...(legacy ? {} : { settlementVersion: 1 as const }), at: 2 });
+  return { root, journal, id };
+}
+it('complete certificates settle 74 to the proven parent/child sum plus the start call, idempotently across replay', () => {
+  for (const children of [0, 2]) {
+    const { root, journal, id } = settlementJournal(), trace = certificate(id);
+    trace.edges = Array.from({ length: children }, (_, n) => child(id, n + 1));
+    trace.retirement!.children = children;
+    journal.append(trace);
+    expect(journal.view.calls).toBe(74); // evidence alone never refunds
+    expect(obligationCapacity(journal.view)).toBe(false); // above 75% of 98
+    expect(toolTurnFits(journal.view, 64)).toBe(false);
+    const calls = 1 + (children ? 3 : 0), row = { kind: 'tool-turn' as const, phase: 'settled' as const, id, attempt: 0, calls, at: 4 };
+    journal.append(row); journal.append({ ...row, at: 5 });
+    expect(journal.view.calls).toBe(1 + calls);
+    expect(obligationCapacity(journal.view)).toBe(true);
+    expect(toolTurnFits(journal.view, 64)).toBe(true);
+    expect(toolStatusLines(journal.view, true).join(' ')).toContain(`${73 - calls} settled unused`);
+    expect(journal.view.toolTurns).toMatchObject({ settledCalls: calls, certifiedReserved: 73 });
+    expect(usageReconciliation(journal.view)).toMatchObject({ reservedCalls: 74, settledCalls: 73 - calls,
+      chargedCalls: 1 + calls, heldUnknownToolCalls: 0 });
+    journal.compact(); journal.close(); const replay = journalAt(root, 98);
+    replay.append({ ...row, at: 6 });
+    expect(replay.view.calls).toBe(1 + calls); replay.close();
+  }
+});
+for (const fault of ['missing-count', 'child-usage', 'child-retirement', 'uncertain', 'interrupted', 'recovery-held',
+  'open-child', 'admission-open', 'cleanup', 'truncated', 'above-bound', 'duplicate-child', 'legacy'] as const)
+it(`retains all 74 on ${fault}; a settlement without complete evidence is refused`, () => {
+  const { root, journal, id } = settlementJournal(fault === 'legacy'), trace = certificate(id);
+  if (fault === 'missing-count') delete trace.terminal!.usage!.modelCalls;
+  if (fault === 'child-usage' || fault === 'child-retirement') {
+    trace.edges = [child(id, 1)]; trace.retirement!.children = 1;
+    if (fault === 'child-usage') delete trace.edges[0]!.terminal!.usage;
+    else trace.edges[0]!.retired = false;
+  }
+  if (['uncertain', 'interrupted', 'recovery-held'].includes(fault)) trace.terminal!.state = fault;
+  if (fault === 'open-child') trace.retirement!.openDelegations = 1;
+  if (fault === 'admission-open') trace.retirement!.closed = false;
+  if (fault === 'cleanup') trace.retirement!.cleanup = false;
+  if (fault === 'truncated') trace.consistent = false;
+  if (fault === 'above-bound') trace.terminal!.usage!.modelCalls = 74;
+  if (fault === 'duplicate-child') { trace.edges = [child(id, 1), child(id, 1)]; trace.retirement!.children = 2; }
+  journal.append(trace);
+  expect(() => journal.append({ kind: 'tool-turn', phase: 'settled', id, attempt: 0,
+    calls: fault === 'child-retirement' || fault === 'child-usage' ? 2 : 1, at: 4 })).toThrow(/certificate/u);
+  expect(journal.view.calls).toBe(74);
+  journal.close(); const replay = journalAt(root, 98); expect(replay.view.calls).toBe(74); replay.close();
+});
+it('the shipped tool-turn writer records terminal/retirement evidence and emits settlement only after verified cleanup', async () => {
+  for (const cleanup of ['verified', 'unresolved'] as const) {
+    const root = dir(), journal = journalAt(root, 1000), id = 'telegram:12345678:update:1';
+    const { createJournalWorker } = await import('./journal-test-worker.js');
+    const worker = createJournalWorker(journal, { now: () => 2, stopped: () => false, checkOutbound: () => {},
+      model: async () => { throw Error('not dispatched'); }, send: async () => 1 });
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'Work.' } }]);
+    journal.append({ kind: 'reserve', id, prompt: '{}', at: 2 });
+    const gate = { base: () => 'http://127.0.0.1:1/checkpoint', open: () => {},
+      close: () => ({ closed: true, refused: false, children: 0, openDelegations: [], uncertainEffects: 0 }) };
+    await runToolTurn({ journal, root, id, prepared: '{}', promptLimit: 32768, deniedRoots: [root],
+      operations: SINGLE_MACHINE_PROFILE.operations, now: () => 2, redactText: (s: string) => s, gate,
+      scratch: plainScratch, detach: keepDetached, unmount: keepDetached,
+      fallback: () => { throw Error('fallback'); }, invoke: async () => {
+        journal.append({ kind: 'call-outcome', id, role: 'model', at: 2, outcome: {
+          exitCode: 0, localLimit: null, elapsedMs: 48000, type: 'result', subtype: 'success', isError: false,
+          outputTokens: 10, promptBytes: 2, resources: { enforcement: { cpuPerProcess: 'hard', handlesPerProcess: 'hard',
+            processGrowth: 'sampled', treeHandles: 'sampled', memory: 'sampled', treeCpu: 'sampled' },
+            peakMemoryBytes: 1, peakProcesses: 1, treeCpuMilliseconds: 1, census: 'complete', leakedDescendants: 0, cleanup, allocation: { set: `allocation:sha256:${'a'.repeat(64)}`, state: 'returned' } } } });
+        return terminal();
+      } });
+    expect(journal.view.calls).toBe(cleanup === 'verified' ? 2 : 74);
+    journal.close();
+  }
 });

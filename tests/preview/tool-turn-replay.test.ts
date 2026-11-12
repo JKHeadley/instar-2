@@ -118,6 +118,7 @@ it('replays the five live tool turns: hook decisions, trace pairing, and the rec
     expect(frame.num_turns).toBeGreaterThan(1);
     const observed = await route.invoke(SUBSCRIPTION_TOOLS_FRAMING, record.raw);
     expect([name, observed.state, answerOf(observed.bytes)]).toEqual([name, 'complete', record.answer]);
+    expect(observed.usage.modelCalls).toBe(frame.num_turns);
   }
   expect(live('task').answer).toMatch(/\b11\b/u);
   expect(live('stop').stopToSettledMs).toBeLessThan(3000);
@@ -161,5 +162,15 @@ it.each(journalShapes)('preserves recorded $kind ($id) through physical resource
   for (const framing of [SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_CONVERSATION_FRAMING] as const) {
     const observed = await route.invoke(framing, frameFor(row.raw));
     expect(observed).toMatchObject({ state: 'complete', bytes: row.raw });
+  }
+});
+
+
+it('retains unknown call counts when a harness result omits or malforms num_turns', async () => {
+  const route = routeFixture(), frame = JSON.parse(live('task').raw!);
+  for (const count of [undefined, null, 0, -1, 1.5, '1', Number.MAX_SAFE_INTEGER + 1]) {
+    const observed = await route.invoke(SUBSCRIPTION_TOOLS_FRAMING, JSON.stringify({ ...frame, num_turns: count }));
+    expect(observed.state).toBe('complete');
+    expect(observed.usage.modelCalls).toBeUndefined();
   }
 });

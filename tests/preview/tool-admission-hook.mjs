@@ -84,7 +84,15 @@ if (mode === 'post') {
     process.exit(0);
   }
   const agent = SUBAGENT_TOOLS.includes(call.tool_name) && typeof call.tool_response?.agentId === 'string' ? { agent: call.tool_response.agentId } : {};
-  record({ phase: 'post', id: call.tool_use_id, tool: call.tool_name, result: clip(call.tool_response), ...agent });
+  const response = call.tool_response, usage = response?.usage;
+  const measured = value => Number.isSafeInteger(value) && value >= 0;
+  const terminal = SUBAGENT_TOOLS.includes(call.tool_name) ? { state: response?.status,
+    usage: { inputTokens: [usage?.input_tokens, usage?.cache_creation_input_tokens, usage?.cache_read_input_tokens].every(measured)
+      ? usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens : null,
+    outputTokens: measured(usage?.output_tokens) ? usage.output_tokens : null, inputComplete: true, charge: null,
+    ...(measured(response?.num_turns) && response.num_turns > 0 ? { modelCalls: response.num_turns } : {}) } } : null;
+  record({ phase: 'post', id: call.tool_use_id, tool: call.tool_name, result: clip(response), ...agent,
+    ...(terminal ? { terminal: { ...terminal, state: terminal.state === 'completed' ? 'complete' : 'uncertain' } } : {}) });
   // On a checkpointed route the checkpoint settles the delegation's edge or the effect's record. A report that cannot be
   // made leaves the edge open, and the parent settles it as uncertain when it closes.
   const kind = gatedKind() ?? (DELEGATION_WAIT_TOOLS.includes(String(call.tool_name)) ? 'wait' : null);
@@ -195,7 +203,7 @@ else if (decision.decision === 'gate') {
   // Ordinary work keeps its local scope decision (and its confined-shell rewrite), and runs only while the step's claim
   // is open and no stop is held: the checkpoint is the live authority for both.
   let live;
-  try { live = await ask({ phase: 'pre', kind: 'tool', tool_name: call.tool_name, tool_use_id: call.tool_use_id }); }
+  try { live = await ask({ phase: 'pre', kind: decision.kind === 'subagent' ? 'delegation' : 'tool', tool_name: call.tool_name, tool_use_id: call.tool_use_id }); }
   catch (error) { live = { decision: 'deny', reason: `admission checkpoint unreachable: ${error?.message ?? error}` }; }
   if (live.decision !== 'allow') decision = { decision: 'deny', reason: live.reason, kind: 'stop' };
 }

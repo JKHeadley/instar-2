@@ -913,3 +913,47 @@ it.each(['stop', 'grant'] as const)('never renews an elapsed lifetime across the
   expect(f.state().allowanceEpoch).toBeUndefined();
   expect(f.delivered).toHaveLength(1);
 });
+
+
+it('live-burn diagnosis: flapping topic capacity with an open claim and pending obligation does not charge refused launches', async () => {
+  const f = fixture(16, 9000, 16, 600000, true);
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'live-burn-')); renewalRoots.push(root);
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(64), {
+    kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
+    configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 10000, maxReplies: 30,
+    maxTurns: 30, maxBytes: 32768, cursor: 0 });
+  const { createJournalWorker, obligationSchedule } = await import('../preview/journal-test-worker.js');
+  const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    model: async () => JSON.stringify({ reply: 'I will finish the work.', memory: [],
+      openLoops: [{ kind: 'promise', quote: 'I will finish the work.', waitsOn: 'nothing' }] }), send: async () => 1 });
+  worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'Finish the work.' } }]);
+  await worker.drain();
+  expect(obligationSchedule(journal.view)).toHaveLength(1);
+  expect(obligationSchedule(journal.view)[0]!.slot).toBeGreaterThan(1000);
+  const append = f.config.append; let room = true, samples = 0;
+  Object.assign(f.config, { append: (record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkCall) => {
+    journal.append({ kind: 'session-work', record, at: 1000 }); append(record);
+  }, capacity: async () => { samples++; return { admit: room, memoryPressure: false }; } });
+  await f.port.run(f.request('9:resident'));
+  expect(f.state().topics['9']!.claim).not.toBeNull();
+  const before = journal.view.calls;
+  try {
+    for (const topic of ['7', '8', '10']) {
+      room = false;
+      expect(await f.port.run(f.request(`${topic}:pending`))).toMatchObject({ state: 'queued' });
+      const refusedBaseline = journal.view.calls, deliveries = f.delivered.length;
+      for (let cycle = 0; cycle < 10; cycle++) {
+        f.advance(1000); await f.port.maintain();
+        expect(journal.view.calls).toBe(refusedBaseline);
+        expect(f.delivered).toHaveLength(deliveries);
+        expect(f.counts().live).toBe(deliveries);
+      }
+      room = true; await f.port.maintain();
+      expect(journal.view.calls).toBe(refusedBaseline + 1);
+      expect(await f.port.collect(`${topic}:pending`)).toMatchObject({ outcome: { state: 'complete' } });
+    }
+    expect(samples).toBeGreaterThan(30);
+    expect(journal.view.calls).toBe(before + 3);
+    expect(obligationSchedule(journal.view)).toHaveLength(1);
+  } finally { await f.port.close(); journal.close(); }
+});
