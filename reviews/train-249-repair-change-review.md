@@ -9,14 +9,14 @@ Affected floors: secrets — existing vault key only in diagnostic child memory;
 Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
-Tier rationale: Desk instrumentation repair only; this commit records evidence and custody without product code changes.
+Tier rationale: Desk instrumentation repair with a product-journal regression; no product behavior changes.
 Side effects: Marker probes can wait the full existing 420-second budget through notices; generic sends keep their prior acknowledgement filter. No product behavior or review judgment changes.
 Undo and recovery: Restore the four exact desk backups listed below together; no journal rollback or effect replay. Reverting this review alone does not revert desk scripts.
 Multi-machine posture: Studio-local probe instrumentation; existing owned journal and replication remain unchanged.
 Team posture: Existing test bot/topic/browser lock and audiences unchanged; no new visibility or grant.
 Layer below: Read the room-one sender wait, groupmain marker wait, forum helper verdict, answer-check marker/journal gate, and read-only preserved journal call outcomes.
-Bug class: none
-Bug evidence: none
+Bug class: integration
+Bug evidence: reproducer=tests/preview/activation-reminder-once.test.ts
 Hook bypass: none
 Convergence: none
 Prompt review: No model-facing change. Captured reminder text is offline test evidence, not a new judgment or prompt. The existing exact-marker proof gate remains unchanged.
@@ -26,7 +26,7 @@ Decision: train-249-repair-1 | Repair the probe wait: the notice ended observati
 
 Evidence: preview-deploy.log 2026-11-12 13:46:51 and 13:47:29; preserved forum-answer-copy-20261112-134548. Message 2965 is only a reminder after probe 2964. Update 367056462 produced model output, completed review, then its revision was interrupted by the probe's SIGTERM. The sender stopped waiting after 14 seconds despite its 420-second budget. Read-only status and inspect were used; no runner ran against the copy.
 
-Verification: nine offline forum-helper tests pass, including exact recorded reminder text, later matching answer, wrong marker/topic, empty and acknowledgement negatives, and ordinary answer positive. Sender node syntax and shell bash syntax checks pass; tsc --noEmit passes. The automatic pipeline owns the fresh live proof and full suite. No new live-answer success is claimed.
+Verification: the journal regression holds a model call with an injected promise, proves the reminder is delivered while the answer stays pending, then releases real recorded model output and proves exactly one answer. Nine offline forum-helper tests pass, including exact recorded reminder text, later matching answer, wrong marker/topic, empty and acknowledgement negatives, and ordinary answer positive. Sender node syntax and shell bash syntax checks pass; tsc --noEmit passes. The missing inherited work-repair-uncertain-1112-build-report.md was materialized from its existing original PROGRESS report, exactly as that handoff requests. The automatic pipeline owns the fresh live proof and full suite. No new live-answer success is claimed.
 
 Desk artifact custody (not committed, per charter):
 - /Users/dabombstudio/.instar/agents/echo/.instar/lanes/forumroom-send.mjs | sha256 dcec205ab57563a6f215bf4dfcc2d45da0658e805f493b663268a14cd066ae60 | backup /Users/dabombstudio/.instar/agents/echo/.instar/lanes/forumroom-send.mjs.bak-train-249-repair

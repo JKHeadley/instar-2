@@ -13,7 +13,7 @@ const roots: string[] = [];
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/conversation-session-userwalk-2026-10-13.json', import.meta.url), 'utf8')).records[0];
 const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')).otherShapes;
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture(at: number, legacy?: ReplyNotice) {
+function fixture(at: number, legacy?: ReplyNotice, model: () => Promise<string> = async () => recorded.output) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'activation-once-'))); roots.push(root);
   const path = join(root, 'journal.encrypted');
   let now = at, next = 1;
@@ -26,12 +26,13 @@ function fixture(at: number, legacy?: ReplyNotice) {
     renewal: { standing: 'none', smallestHumanAction: 'approve a renewed activation record' } });
   const sent: string[] = [];
   const makeWorker = () => createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'UTC',
-    prepareModel: input => input.context, model: async () => recorded.output, checkOutbound: () => {},
+    prepareModel: input => input.context, model, checkOutbound: () => {},
     replyNotices: () => legacy ? [legacy] : credentialNotices(dueCredentialReminders(custody.records(), now), now),
     send: async input => { sent.push(input.text); return sent.length; } });
   let worker = makeWorker();
   return { sent, custody, get journal() { return journal; }, get now() { return now; },
     advance: (at: number) => { now = at; },
+    minimal: () => worker.minimal(),
     say: async () => {
       worker.intake([{ update_id: next++, message: { message_id: next, chat: { id: 7654321, type: 'private' },
         from: { id: 7654321 }, text: JSON.parse(recorded.output).dated[0].quote, date: Math.floor(now / 1000) } }]);
@@ -106,4 +107,26 @@ it('replays every recorded shape with old notice metadata and offers no activati
       expect(prior.intent).toContain(row.raw);
     }
   } finally { f.close(); }
+});
+
+it('a delivered activation notice leaves the slow answer pending until that answer is delivered', async () => {
+  // Live update 367056462: notice 2965 arrived before reply revision completed.
+  // Hold the model explicitly so CPU load and wall-clock timing cannot choose the result.
+  let started!: () => void, release!: (output: string) => void;
+  const began = new Promise<void>(resolve => { started = resolve; });
+  const output = new Promise<string>(resolve => { release = resolve; });
+  const f = fixture(end, undefined, async () => { started(); return output; });
+  const draining = f.say();
+  try {
+    await began;
+    await f.minimal(); // The runner polls this path while the ordinary model is still working.
+    expect(f.sent).toEqual([closingNoticeText(end)]);
+    expect(f.journal.view.order[0]!.closingNotices?.[0]?.sent).toBeDefined();
+    expect(f.journal.view.order[0]!.sent).toBeUndefined();
+    release(recorded.output);
+    await draining;
+    expect(f.journal.view.order[0]!.sent).toBeDefined();
+    expect(f.sent.filter(text => text.includes(JSON.parse(recorded.output).reply))).toHaveLength(1);
+    expect(f.sent.filter(text => text.startsWith('Reminder:'))).toHaveLength(1);
+  } finally { release(recorded.output); await draining; f.close(); }
 });
