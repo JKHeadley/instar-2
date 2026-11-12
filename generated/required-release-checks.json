@@ -1,0 +1,13 @@
+{
+  "commit": "25b06e67a21d18a454d3f9188538c4ca99343fda",
+  "generation": "sha256:1b08efe472f03df65f2898baed292c34592a06b7d7aa6e6732734288034f132a",
+  "authority": "requirements-only",
+  "checks": [
+    {
+      "rule": 117,
+      "id": "R117-TWO-SESSION-A-D",
+      "evidenceLocation": "release-evidence/{commit}/rule-117-two-session-a-d.json",
+      "stage": "runtime"
+    }
+  ]
+}
