@@ -1,3 +1,4 @@
+import { recordBurnCalls, burnObservation, burnStatus, type BurnState } from './burn-observation.js';
 import { createPromiseStore, recordCommitments, closeCommitment, recordReplyLoop, schedulePromise, promiseRetryDelay as workRetryDelay, COMMITMENT_WAITS_ON } from '../../src/rungraph/promises.js';
 import type { CommitmentNote as CoreCommitmentNote, CommitmentClosure, CommitmentWaitsOn, ReplyLoop } from '../../src/rungraph/promises.js';
 export { COMMITMENT_WAITS_ON, OBLIGATION_FORMAT_RETRIES, OBLIGATION_FORMAT_RETRY_MS } from '../../src/rungraph/promises.js';
@@ -1126,7 +1127,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 6;
+export const JOURNAL_GENERATION = 7;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1139,7 +1140,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['burn', 'send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'attribution-check', 'attribution-reserve', 'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1407,6 +1408,7 @@ export type JournalRecord =
       /** The exact pending UNKNOWN calls this authorized raise writes off (see checkCaps). */
       writeOff?: string[] }
   | { kind: 'expiry'; genesisHash: string; expires: number; activation: string; authority: string; at: number }
+  | { kind: 'burn'; action: 'open' | 'close' | 'intent' | 'sent'; episode: number; at: number; text?: string; message?: number; provenance?: OutboundProvenance }
   | { kind: 'cap-report'; reason: 'calls' | 'replies' | 'turns' | 'bytes'; limit: number; level?: 'near'; at: number }
   | { kind: 'legacy-call'; at: number }
   /** A tool turn (Part Thirteen §9, docs/17-harness-adapters): its whole liability (`calls` model attempts beyond the answer's own
@@ -1599,6 +1601,7 @@ export interface TestCopySource { root: string; journal: string; bytes: number; 
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   /** Highest durable journal timestamp; a later wall-clock rollback cannot reorder frames. */
   clockFloor: number;
+  burn?: BurnState;
   /** Rule 2: the forward frames THIS build skipped, named rather than dropped in silence. It is a
    * per-reader observation of the bytes, not durable state, so it is left out of the snapshot and out of
    * the projection digest — the build that projects these frames records nothing here. While it is
@@ -3292,6 +3295,7 @@ export function reportJournalCap(journal: ReturnType<typeof openPreviewJournal>,
     : cap.reason === 'calls' ? 'model attempt cap reached'
       : cap.reason === 'replies' ? 'reply cap reached' : 'context byte cap reached';
 }
+const burnNoticeText = (view: JournalView, at: number) => `Infrastructure allowance warning. ${burnStatus(view, at)} You can ask me to pause optional work. Existing limits are unchanged.`;
 function capReportAllowed(view: JournalView, row: Extract<JournalRecord, { kind: 'cap-report' }>): boolean {
   const used = row.reason === 'calls' ? view.calls : row.reason === 'replies' ? view.replies : 0;
   const limit = row.reason === 'calls' ? view.limits.maxCalls : row.reason === 'replies' ? view.limits.maxReplies : 0;
@@ -3439,6 +3443,7 @@ function validLaunchResources(r: LaunchResources): boolean {
 /** The one outbound intent a send outcome settles, with its receipt if any. */
 function sendTarget(view: JournalView, target: string): { sent: number | undefined } | undefined {
   const [kind, ...rest] = target.split(':'), key = rest.join(':');
+  if (kind === 'burn') return view.burn?.notice?.episode === Number(key) ? { sent: view.burn.notice.sent } : undefined;
   if (kind === 'reply') { const turn = view.turns.get(key);
     return turn?.intent !== undefined && turn.groupedInto === undefined ? { sent: turn.sent } : undefined; }
   if (kind === 'working-progress') { const progress = view.turns.get(rest.slice(1).join(':'))?.workingProgress?.[Number(rest[0])];
@@ -3565,6 +3570,8 @@ export function sendOutcomeCounts(view: JournalView) {
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
   }
   for (const [key, batch] of view.reminders) settle(reminderTarget(view, key, batch), batch.sent);
+  for (const notice of view.burn?.priorNotices ?? []) settle(`burn:${notice.episode}`, notice.sent);
+  if (view.burn?.notice) settle(`burn:${view.burn.notice.episode}`, view.burn.notice.sent);
   return { accepted, refused: refusedItems, unknown, speakers: { ...view.speakers },
     lastRefusal: view.sendOutcomes.filter(item => item.outcome === 'refused').at(-1) ?? null,
     unknownReasons, lastUnknown: view.sendOutcomes.filter(item => item.outcome === 'unknown').at(-1) ?? null };
@@ -4067,7 +4074,9 @@ function admitForwardFrame(view: JournalView, row: JournalRecord): void {
   view.forwardFrames.push({ kind: row.kind, generation, at: 'at' in row ? row.at : 0 });
 }
 function project(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {
+  const beforeCalls = view.calls;
   projectRow(view, row, system, admission);
+  if ('at' in row) recordBurnCalls(view, row.at, view.calls - beforeCalls);
   // Update only after validation. UNKNOWN intents count too: absence of a receipt is not silence proof.
   const intent = row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'limited-intent'
     || row.kind === 'operator-result-intent' || row.kind === 'requested-reminder-intent' || row.kind === 'reminder-intent'
@@ -4200,6 +4209,29 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     view.sendOutcomes.push({ target: row.target, outcome: row.outcome, reason: row.reason, at: row.at }); return;
   }
   if (row.kind === 'tool-turn') { projectToolTurn(view, row); return; }
+  if (row.kind === 'burn') {
+    const b = view.burn ??= { buckets: [], episode: 0, active: false };
+    const observation = burnObservation(view, row.at);
+    if (!Number.isSafeInteger(row.episode) || !Number.isSafeInteger(row.at) || row.at < 0) throw Error('preview: burn shape');
+    if (row.action === 'open') {
+      if (b.active || row.episode !== b.episode + 1 || !observation.active) throw Error('preview: burn open');
+      b.episode = row.episode; b.active = true;
+    } else if (row.action === 'close') {
+      if (!b.active || row.episode !== b.episode || observation.active) throw Error('preview: burn close');
+      b.active = false;
+    } else if (row.action === 'intent') {
+      if (!b.active || row.episode !== b.episode || b.notice?.episode === row.episode || !observation.active
+        || view.stop || view.replies >= view.limits.maxReplies - 1
+        || row.text !== burnNoticeText(view, row.at)) throw Error('preview: burn intent');
+      if (b.notice) (b.priorNotices ??= []).push({ episode: b.notice.episode, ...(b.notice.sent === undefined ? {} : { sent: b.notice.sent }) });
+      b.notice = { episode: row.episode, text: row.text }; view.replies++; view.speakers.infrastructure++;
+    } else if (row.action === 'sent') {
+      if (b.notice?.episode !== row.episode || b.notice.sent !== undefined || !Number.isSafeInteger(row.message) || row.message! <= 0)
+        throw Error('preview: burn receipt');
+      b.notice.sent = row.message!;
+    } else throw Error('preview: burn action');
+    return;
+  }
   if (row.kind === 'model-call') {
     checkModelCall(row);
     const counts = view.modelCalls;
@@ -5789,6 +5821,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const row: JournalRecord = view && 'at' in incoming && incoming.at < view.clockFloor
         ? { ...incoming, at: view.clockFloor } : incoming;
       if (readOnly || closed) throw Error('preview journal: reader cannot append');
+      if (row.kind === 'burn' && row.action === 'intent' && !verifyOutbound(row.provenance,
+        { target: `burn:${row.episode}`, chat: view!.genesis.chat, body: row.text! })) throw Error('preview: burn provenance');
       if (row.kind === 'caps') checkCaps(view!, row, 'new');
       if (row.kind === 'expiry') checkExpiry(view!, row, 'new');
       if (row.kind === 'channel-source-cursor') checkChannelSourceCursor(view!, row);
@@ -8860,6 +8894,26 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** limit-notice-1020 (Rules 2, 42, 87): host custody queued this turn. When every reviewed login is out of
    * capacity, tell the operator once per outage with a fixed infrastructure notice (no model call). Its intent
    * precedes dispatch, so a crash or an UNKNOWN never repeats it; the kept turns are answered when capacity returns. */
+  let burnInFlight: Promise<void> | undefined;
+  const observeBurn = () => burnInFlight ??= sendBurnNotice().finally(() => { burnInFlight = undefined; });
+  const sendBurnNotice = async () => {
+    const now = ports.now(), observation = burnObservation(journal.view, now);
+    if (halted()) return;
+    if (observation.active !== (journal.view.burn?.active ?? false)) journal.append({ kind: 'burn',
+      action: observation.active ? 'open' : 'close', episode: observation.episode + Number(observation.active), at: now });
+    const b = journal.view.burn;
+    if (!b?.active || b.notice?.episode === b.episode || journal.view.replies >= journal.view.limits.maxReplies - 1) return;
+    if (journal.view.genesis.forum && !await original.groupDisclosure?.()) return;
+    const episode = b.episode, text = burnNoticeText(journal.view, now), chat = journal.view.genesis.chat, target = `burn:${episode}`;
+    ports.checkOutbound(text);
+    const provenance = journal.signOutbound('infrastructure', { target, chat, body: text });
+    const current = () => !halted() && journal.view.burn?.episode === episode
+      && burnObservation(journal.view, ports.now()).active && burnNoticeText(journal.view, ports.now()) === text;
+    const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, update: 0, current }, () => {
+      journal.append({ kind: 'burn', action: 'intent', episode, text, provenance, at: now });
+    });
+    if (outcome.kind === 'accepted') journal.append({ kind: 'burn', action: 'sent', episode, message: outcome.message, at: ports.now() });
+  };
   const noticeLoginOutage = async (turn: Turn) => {
     const now = ports.now();
     if (!ports.loginCapacity || halted() || !fromOperator(turn) || !turn.reserved || turn.intent !== undefined
@@ -12728,8 +12782,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // concurrent drain send the same stop confirmation. It never waits on an ordinary model, so the warning is not delayed.
     await answerLimited();
     await noticeClosing();
+    await observeBurn();
     await pollReviewRequests(); await issueRetractRequest(); };
-  return { attributionOfNote, intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
+  return { attributionOfNote, intake, drain, observeBurn, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };

@@ -1,3 +1,4 @@
+import { burnStatus } from './burn-observation.js';
 /** Fixed operator pull reply, projected only from the preview's durable journal. */
 import { redact } from '../../src/recall/redact.js';
 import { dueState, localParts } from './dated-memory.js';
@@ -71,6 +72,7 @@ export function statusReply(view: JournalView, now: number, zone: string, extra:
     // duties left uninspected) reaches the pull reply itself, in the brief form; the full line stays in the status record.
     retrospectiveStatusBrief(view),
     ...extra,
+    view.genesis.forum ? 'Call rate: available on the operator dashboard.' : burnStatus(view, now),
     `Spend allowance: ${view.calls}/${view.limits.maxCalls} subscription attempts; ${view.jevChecks}/${view.limits.maxReplies} Jev checks. Dollar spend/cap: not recorded in this journal. Replies: ${view.replies}/${view.limits.maxReplies} used.`,
     `Replies sent as your own words repeated back, without the second check: ${operatorEchoSent(view)}.`,
   ].join('\n');

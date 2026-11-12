@@ -4598,3 +4598,9 @@ the last. Evidence a gate compares with the run's start therefore stays on the h
 (`tests/setup/host-clock.mjs`): model-provider proofs, the grounding ledger and boot receipts.
 Vitest stamps file windows on the shifted clock, so the process exit row records the shift and
 the gate moves each window back to the host clock before comparing.
+
+### Allowance rate observation
+
+The existing poll/minimal cycle observes five minutes of reserved model attempts in bounded second buckets. Status and the operator dashboard allowance page show attempts/hour and projected minutes to the call cap and the existing 75% scheduled-work shed. These are projections at the recent rate, not prices or proof that reserved attempts executed. UNKNOWN reservations remain counted. A projected call cap within 30 minutes opens an episode; a normal rate closes it. The existing signed incident doorway sends one infrastructure notice per episode, charging the reply allowance and retaining UNKNOWN sends without retry across restart. The observation changes no throttle, cap, kill or intake behavior.
+
+Episode state follows the durable journal and its existing owner/replication path. Dashboard access remains operator-authenticated; chat notices require the bound installation's verified operator-only audience. Group status withholds the rate; the operator-authenticated dashboard retains it. No group sharing grant is invented. Old compact snapshots without rate buckets warm up as new reservations arrive. Generation 7 burn frames are deliberately non-additive because notice intents charge replies: an older reader refuses raw burn frames; a compact snapshot may remain readable but an old writer cannot maintain burn state. Any rollback must retain this reader, never skip the charge or erase history.
