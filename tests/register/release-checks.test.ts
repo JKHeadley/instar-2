@@ -27,17 +27,32 @@ describe('release requirements from registered rules and committed metadata', ()
     expect(() => requiredReleaseChecks(register, { 999: requirement })).toThrow('unknown rule 999');
     expect(requiredReleaseChecks(register, { 117: requirement, 2: { ...requirement, stage: 'build' } }).map(c => c.rule)).toEqual([2, 117]);
   });
-  it('preserves 308 pre-draft payloads apart from independently renewed native certification', () => {
+  it('preserves pre-draft payloads with exact reviewed carry additions and native certification', () => {
     const sources = declarations();
     const baseline = JSON.parse(execFileSync('git', ['show', 'd1823a36:generated/register.json'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }));
-    expect(sources).toHaveLength(308);
-    expect(sources.map(s => s.declaration.id).sort()).toEqual(baseline.entries.map((e: { declaration: { id: string } }) => e.declaration.id).sort());
+    // The release-metadata change adds no governing payload. These later carries do;
+    // compare their complete declarations to the reviewed input commits, not a count alone.
+    const at = (commit: string, path: string) => JSON.parse(execFileSync('git', ['show', `${commit}:${path}`], { encoding: 'utf8' }));
+    const threadline = '5f0aac8621bce4ebbf730ddfc37ab0930acf3abd';
+    const carried = [
+      ...at(threadline, 'scripts/threadline-runtime.declarations.json'),
+      ...at(threadline, 'scripts/onboarding-state.declarations.json'),
+      ...at('37c274481225dc712afa8c4fad387615841c9257', 'tests/preview/journal.declarations.json')
+        .filter((d: { id: string }) => d.id === 'preview-private-reports'),
+    ];
+    const expected = new Map(baseline.entries.map((e: { declaration: { id: string } }) => [e.declaration.id, e.declaration]));
+    for (const declaration of carried) expected.set(declaration.id, declaration);
+    expect(baseline.entries).toHaveLength(308);
+    expect([...expected.keys()].filter(id => !baseline.entries.some((e: { declaration: { id: string } }) => e.declaration.id === id)).sort())
+      .toEqual(['preview-private-reports', 'threadline-default-exchange', 'threadline-runtime.admitThreadline', 'threadline-runtime.createThreadlineRuntime']);
+    expect(sources).toHaveLength(312);
+    expect(sources.map(s => s.declaration.id).sort()).toEqual([...expected.keys()].sort());
     for (const { declaration } of sources) {
-      const { declaredBy: _site, ...prior } = baseline.entries.find((e: { declaration: { id: string } }) => e.declaration.id === declaration.id).declaration;
+      const { declaredBy: _site, ...prior } = expected.get(declaration.id) as typeof declaration & { declaredBy?: unknown };
       // The native contract and architecture check verify this derived certificate.
       if (declaration.id === 'harness-doorway-parity') {
         const prefix = 'harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.conformance=';
-        prior.requiredFacts.metrics = prior.requiredFacts.metrics.map((m: string) => m.startsWith(prefix)
+        prior.requiredFacts.metrics = (prior.requiredFacts.metrics as string[]).map((m: string) => m.startsWith(prefix)
           ? (declaration.requiredFacts.metrics as string[]).find(v => v.startsWith(prefix)) : m);
       }
       expect(declaration).toEqual(prior);

@@ -53,6 +53,12 @@ Merge evidence: live merge 167c3966e, private-report merge 44903317b, burn merge
 
 Size: the large inherited diff is the four already-reviewed complete features plus live register tooling. Integration adds no runtime mechanism; additive conflict resolutions retain existing feature code. Review and generated replay account for the integration record.
 
+Combined validation: all eight feature/context/inventory files pass, 89/89. The sixteen-file consumer batch passed 372 tests with one opt-in capture skipped; its sole failure was release-checks.test.ts demanding 308 declarations. The batch legitimately adds four and changes the reviewed onboarding-store scope. The repair retains the original 308-entry baseline and bootstrap shape, overlays only exact declarations read from the two reviewed train commits, asserts all four new IDs and 312 total entries, then compares every full payload. No broad exclusion or rewritten baseline. Focused repair tests pass 11/11. Source behavior is unchanged; required final-head results are in the report.
+
+Decision: batch-release-pin | Update the release-metadata preservation test for the exact reviewed carry declarations; preserve every historical payload and bootstrap-shape assertion apart from the existing independently checked native certificate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-242-carries-batch-1112-PROGRESS.md
+
+Release-test repair comparison: inherits register-shape-publish-1112 and required-checks-from-register-1112-p2 at actual 1.x main db3ed6d3052cfcc24888b6c8bc86086abcfc2987: src/core/StandardsRegistryParser.ts, StandardsEnforcementAuditor.ts, docs/specs/CARTOGRAPHER-CONFORMANCE-AUDIT.md, histories 05d490cbf/ab26b7ca3/330b8ed7/576a390d. Deterministic declaration coverage remains distinct from executed evidence; the typed register preservation assertion is 2.0's existing mechanism. No source transplant is appropriate for this test-only integration repair.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merges, additive source resolution and existing generator replay. No new runtime machinery. Start guards are exact train/live input SHAs; end guards are preserved ancestry, pushed committed bytes and passing required targeted checks. Existing authority, caps, stop, durable intake and no-duplicate floors remain. Pipeline owns independent acceptance and the live switch; this record claims no unattended deployment.
