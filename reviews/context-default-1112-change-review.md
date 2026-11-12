@@ -92,3 +92,5 @@ Reported test results support implementation acceptance, not readiness or live c
 checks remain the author’s responsibility. The requested subject-list correction is included above.
 
 The preview fixture artifact pin was recomputed with the existing canonical hash function after all 25 journal-agent launcher tests passed; register output is replay-generated from the committed source. No native conformance certificate or governed changelog number is edited.
+
+Register reproduction: replay from source ec3632ea81ec29a9feb842fd580582b9b7419820 produced generation sha256:580b24d6954f7ee76e7027fd7f67b330fb5b9b136a7946a62a0ccb1fa98a3ddc, committed in a77442ab9. Eight generated files changed mechanically; they add no product mechanism.
