@@ -18,3 +18,21 @@ both worker loss and runner restart deliver one final result without another use
 message; uncertain effects never replay; stop, caps, ownership and durable intake
 hold. Recheck at the next carryover rows 01/03 desk review. No autonomous-resume
 completion is claimed by the notice unit.
+
+Prerequisite investigation `promise-retirement-receipt-1112` found that the existing
+resource-owner return is not an all-descendant retirement witness. Its private-area
+join can miss a child that detaches, changes directory and is adopted by an older
+subreaper. `tests/preview/promise-retirement-boundary.test.ts` reproduces a
+`verified: true` cleanup and returned Six allocation while that child remains in
+the complete injected census. This test records the boundary, not safe retirement.
+A draft receipt reader reproduced a false positive and was removed before commit.
+
+The prerequisite remains unimplemented. Bind an existing independently verified
+confinement/termination witness to the exact claim, incarnation and allocation
+before enabling a positive retirement receipt. Missing witness, old data and
+uncertain membership must remain unknown. No resume or retry is authorized by
+this investigation. The next receipt unit needs a revised scope/estimate for that
+witness connection; the prior 50–70-line estimate covered persistence but not this
+missing proof. Scheduled and ordinary-tool resume estimates remain provisional
+until that boundary exists; neither route may treat the current cleanup label as
+permission to repeat work.
