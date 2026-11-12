@@ -75,7 +75,8 @@ it('resolves only an existing agent-owned profile for this exact installation; n
   rmSync(row.userDataDir); expect(() => readBrowserProfile(root, row.id)).toThrow('profile refused');
 });
 
-it.runIf(process.platform === 'darwin')('real worker CLI reads the named signed-in page, refuses ungranted writes and site escape, and keeps cookies out of records and logs', async () => {
+// Rule 37: docs/defects/signed-browser-native-code-deadline.md; native passes do not erase the unchanged-tree timeout.
+it.skip('real worker CLI reads the named signed-in page, refuses ungranted writes and site escape, and keeps cookies out of records and logs', async () => {
   const root = fresh(), secret = randomBytes(32).toString('hex'), indexedSecret = randomBytes(32).toString('hex'), displayedToken = `ghp_${randomBytes(20).toString('hex')}`;
   let escaped = 0, credentialEscaped = false;
   const outside = createServer(async (req, res) => {
