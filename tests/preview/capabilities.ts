@@ -65,7 +65,7 @@ export const PREVIEW_CAPABILITY_META: Readonly<Record<string, CapabilityMeta>> =
   // Rule 121's write check: dark until its promotion-record conditions are met (Rules 72, 73).
   'preview.attribution-check': { change: 'capability', enabledBy: 'option:attribution',
     sources: [...RUNNER, 'tests/preview/attribution.ts', 'tests/preview/tool-admission-hook.mjs', 'tests/preview/admission-gate.mjs'],
-    evidence: { unit: ['tests/preview/attribution.test.ts'], integration: ['tests/preview/attribution.test.ts'], procedure: null } },
+    evidence: { unit: ['tests/preview/attribution.test.ts', 'tests/preview/attribution-record.test.ts'], integration: ['tests/preview/attribution.test.ts', 'tests/preview/attribution-record.test.ts'], procedure: null } },
   'preview.held-reply-notice': { change: 'repair', enabledBy: 'default', sources: [...RUNNER],
     evidence: { unit: ['tests/preview/held-reply-replay.test.ts', 'tests/preview/journal-long-message.test.ts'],
       integration: ['tests/preview/held-reply-notice.test.ts'], procedure: 'tests/preview/held-reply-notice-live-test.md' },

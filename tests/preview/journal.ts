@@ -1521,6 +1521,7 @@ function workingProgressAt(view: JournalView, turn: Turn, bounded = true, rateWa
     + (ordinal === 0 ? 0 : ordinal === 1 ? 180_000 : ordinal === 2 ? 300_000 : 600_000));
 }
 export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: { at: number; sent?: number }; id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
+  intentSpeaker?: Speaker;
   contextRecovery?: string;
   media?: MediaCustodyResult;
   /** Expected causal prefix, retained before the first media request. */
@@ -5504,6 +5505,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       throw Error('preview journal: reply parts refused');
     if (row.formatting !== undefined) turn.formatting = structuredClone(row.formatting);
     turn.intent = row.text; turn.intentAt = row.at; turn.intentBody = row.body ?? row.text; view.replies++;
+    if (row.provenance) turn.intentSpeaker = row.provenance.speaker;
     if (row.parts !== undefined) turn.replyParts = row.parts.map(part => ({ ...part }));
     if (row.correctionDeferred) {
       turn.correctionDeferred = true;
@@ -6295,7 +6297,7 @@ export interface PreviewPorts {
     /** Plan #389: the desk's current retraction proposal, read from the root by the host (propose-retract), or none. */
     retractProposal?(): RetractProposal | undefined };
   /** Rule 121. Absent: no attribution check runs and nothing changes. `judge` is the one recorded model call. */
-  attribution?: { mode: AttributionMode; judge(prepared: { id: string; packet: string; deadlineAt: number }): Promise<{ value: string | null; usage?: ModelUsage }> };
+  attribution?: { mode: AttributionMode; notes?: false; recordReplies?: true; judge(prepared: { id: string; packet: string; deadlineAt: number }): Promise<{ value: string | null; usage?: ModelUsage }> };
   /** Continuing conversations send first; model review is a durable signal for the next turn. */
   replyReviewTiming?: 'before-send' | 'after-send';
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
@@ -7113,10 +7115,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** Rule 121 at write time: the agent's own note, checked once per exact text before the file changes. Null clears it; a
    * string refuses with the way through. Record mode never refuses. Anything but a refusal clears: a note the judge could
    * not read is counted, not lost, and a crash after the reservation leaves it unchecked, never a replayed call. */
-  const attributionOfNote = async (call: string, text: string): Promise<string | null> => {
-    const port = ports.attribution, id = `note:${call}`, digest = attributionDigest(text);
-    if (!port) return null;
-    const refused = (result: AttributionResult) => port.mode === 'enforce' && result.verdict === 'refuse' ? attributionReason(result) : null;
+  // 979a1282 attributionStep, shared with the landed note slice. Send observations never return a refusal.
+  const attributionOf = async (id: string, text: string, surface: 'write' | 'send', conversation?: { from: string; text: string }[]): Promise<string | null> => {
+    const port = ports.attribution, digest = attributionDigest(text);
+    if (!port || (surface === 'write' ? port.notes === false : !port.recordReplies)) return null;
+    const mode = surface === 'send' ? 'record' : port.mode;
+    const refused = (result: AttributionResult) => mode === 'enforce' && result.verdict === 'refuse' ? attributionReason(result) : null;
     const prior = journal.view.attribution?.find(row => row.id === id && row.digest === digest);
     if (prior) return refused(prior);
     // Sources are looked up only inside the bound one call reads, so a long note never scans the journal per marker.
@@ -7125,27 +7129,33 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (!facts.length && !worthJudging(text, names)) return null;
     const started = ports.now();
     const record = (result: AttributionResult, usage?: ModelUsage) => {
-      journal.append({ kind: 'attribution-check', id, digest, surface: 'write', mode: port.mode, verdict: result.verdict, findings: result.findings,
+      if (surface === 'send' && result.spans) result.spans = result.spans.map(span => ({ ...span, sourceFound: facts.some(fact => fact.ref === span.ref && fact.record !== null) }));
+      journal.append({ kind: 'attribution-check', id, digest, surface, mode, verdict: result.verdict, findings: result.findings,
         claims: result.claims, ...(result.spans?.length ? { spans: result.spans } : {}), ...(result.cause === undefined ? {} : { cause: result.cause }), latencyMs: Math.max(0, ports.now() - started),
         ...(usage ? { usage } : {}), at: ports.now() });
       return refused(result);
     };
-    // A failed exact fact needs no reading: nothing a model says can put the words in the record.
-    if (facts.some(fact => fact.refusal)) return record(decideAttribution(text, 'write', facts, []));
+    // Notes retain their exact refusal; send records still need the reader to name the credit and person.
+    if (surface === 'write' && facts.some(fact => fact.refusal)) return record(decideAttribution(text, surface, facts, []));
     // Owed: 1.x chunking. Until then a note longer than one check is recorded unchecked, never judged on a part.
     if (text.length > ATTRIBUTION_TEXT_MAX) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'text longer than one check' });
     if (halted() || journal.view.calls >= journal.view.limits.maxCalls) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'call cap' });
     gate();
-    journal.append({ kind: 'attribution-reserve', id, digest, surface: 'write', maxInputTokens: journal.view.limits.maxBytes,
+    journal.append({ kind: 'attribution-reserve', id, digest, surface, maxInputTokens: journal.view.limits.maxBytes,
       maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
     try {
-      const answer = await port.judge({ id: `${id}:attribution-check`, deadlineAt: ports.now() + ATTRIBUTION_BUDGET_MS, packet: attributionPacket({ text, surface: 'write', facts }) });
+      const answer = await port.judge({ id: `${id}:attribution-check`, deadlineAt: ports.now() + ATTRIBUTION_BUDGET_MS,
+        packet: attributionPacket({ text, surface, facts, ...(conversation ? { conversation } : {}) }) });
       if (answer.value === null) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'no answer' }, answer.usage);
-      return record(decideAttribution(text, 'write', facts, parseAttributionAnswer(answer.value)), answer.usage);
+      return record(decideAttribution(text, surface, facts, parseAttributionAnswer(answer.value)), answer.usage);
     } catch (error) {
       return record({ verdict: 'unchecked', findings: [], claims: 0, cause: error instanceof SyntaxError ? 'unreadable answer' : 'judge failed' });
     }
   };
+  const attributionOfNote = (call: string, text: string) => attributionOf(`note:${call}`, text, 'write');
+  const attributionOfReply = (turn: Turn) => attributionOf(turn.id, sentText(turn)!, 'send',
+    journal.view.order.filter(item => remembered(item) && item.update <= turn.update && !item.requestedAction).slice(-12)
+      .map(item => ({ from: fromOperator(item) ? operatorName(journal.view) ?? 'the operator' : 'another Telegram user', text: item.text.slice(0, 1200) })));
   // Conservative identity for an exact restatement. A different value keeps a
   // different key; semantic near-matches remain separate for the model to judge.
   const commitmentKey = (note: Pick<CommitmentNote, 'in' | 'quote'>) => JSON.stringify([note.in,
@@ -9004,7 +9014,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const reviewReplies = (): Promise<void> => {
     if (replyReviewJob) return replyReviewJob;
     replyReviewJob = (async () => {
-      for (const turn of journal.view.order) await reviewAfterSend(turn);
+      for (const turn of journal.view.order) {
+        await reviewAfterSend(turn);
+        if (ports.attribution?.recordReplies && !turn.groupedInto && turn.intentSpeaker === 'agent'
+          && wholeReplyReceipt(journal.view, turn) && turn.intent !== undefined)
+          await attributionOfReply(turn);
+      }
     })().finally(() => { replyReviewJob = null; });
     return replyReviewJob;
   };
