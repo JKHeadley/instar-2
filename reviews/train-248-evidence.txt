@@ -1,0 +1,9 @@
+Train-248 integration decisions, reported for Studio review.
+
+train-248-M1: Merge exact reviewed 67e2a782a0ab5398a380d690a8c5fce4ca73005d; member report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/signed-in-browsing-exit-1112-r2-PROGRESS.md, snapshot SHA256 9393e96cf3861ae071b13beacb4803e505b6eddf79e034b179ce9442fece10cb. Preserve full member behavior.
+train-248-A: All product sources merge cleanly. Keep base publication only for source merge, then regenerate all generated outputs with the existing tool. No handwritten generated merge or changelog conflict.
+train-248-B: Use the supplied clean separate train-248 worktree created at exact live base e3cb0f08d3a74d70c9e059edbd64fc457492bfff; no branch move or main merge. Preserve live base ancestry; member recorded base train-236.
+train-248-C: No genuine product conflict and no member omitted.
+train-248-D: Keep native guards and timeouts unchanged; classify host-dependent outcomes honestly. Native self-host certificate renewal belongs to Studio.
+train-248-CHAIN: Run cint-L37 repin/build/owner-rehash/replay from exact committed merged source. Both repin and owner rehash updated zero. Read authenticated chain snapshot SHA256 81a0412343bb17cff152cea467990b7966115a25fe4c25b583ff8b58346ba963.
+train-248-SCOPE: Snapshot records a later desk rejection of the mandated head for eager optional-runtime imports and repair at 74ef53b1f. Do not merge an explicitly excluded newer head or duplicate its repair. Fresh npm ci installs declared runtime; passing installed-runtime checks do not resolve missing-runtime startup. Desk must resolve this known release limitation.
