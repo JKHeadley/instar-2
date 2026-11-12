@@ -2,6 +2,44 @@
   {
     "type": "Declaration",
     "schemaVersion": 1,
+    "id": "preview-private-reports",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "preview.replies.sent",
+        "preview.replies.unknown"
+      ],
+      "gate": {
+        "test": "PREVIEW-PRIVATE-REPORTS",
+        "deadline": 1795478400000
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      28,
+      34,
+      60,
+      79,
+      84,
+      106,
+      123
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
     "id": "preview-conversation",
     "kind": "features",
     "status": "dark",

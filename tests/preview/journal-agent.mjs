@@ -1,3 +1,4 @@
+import { getPrivateView } from './private-view.js';
 #!/usr/bin/env node
 import { createProductUpdater } from '../../scripts/update-product.mjs';
 import { observeUpdateBound } from '../../scripts/update-runner.mjs';
@@ -2168,6 +2169,11 @@ async function main() {
       } catch { /* the page reads its copy's age */ }
     };
     const readOnlyServer = readOnly && serveReadOnly(createReadOnlyDashboard({ checkPin: readOnly.checkPin,
+      privateView: id => {
+        const report = getPrivateView(journal.view, id, journal.view.genesis.operator, wallNow());
+        return report && !redact(`${report.title}\n${report.markdown}`).count
+          && !secretMaterialIn(`${report.title}\n${report.markdown}`, heldSecretValues()) ? report : null;
+      },
       state: () => dashboardText === null ? { kind: 'missing' } : snapshotState(dashboardText, wallNow()) }),
     `${readOnly.listen.host}:${String(readOnly.listen.port)}`);
     if (readOnlyServer) {
@@ -2260,6 +2266,10 @@ async function main() {
         current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
       statusLines: statusPullLines,
       checkOutbound: text => { if (redact(text).count || secretMaterialIn(text, heldSecretValues())) throw Error('preview: outbound secret refused'); },
+      privateDashboardAddress: () => {
+        const where = readOnlyServer?.listening && readOnlyServer.address();
+        return where && readOnly.listen.host !== '127.0.0.1' ? `${readOnly.listen.host}:${where.port}` : null;
+      },
       heldSecrets: heldSecretValues,
       secrets: custody,
       media: mediaCustody,

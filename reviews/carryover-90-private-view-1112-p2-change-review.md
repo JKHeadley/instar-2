@@ -1,0 +1,48 @@
+# Private reports through the existing dashboard session
+
+Subject base: 42807267ed1e69a0b1238579a39ada8231b1649d
+Review state: open
+Reviewed content: none
+Outcome: The answering agent can save this operator's own private-conversation reply as a bounded, seven-day Markdown report. The durable reply includes the report link when the existing dashboard listens on its configured private address; loopback-only operation states that the page exists but cannot yet open from the phone.
+Affected rules: 7, 28, 32, 33, 34, 36, 43, 47, 49, 57, 60, 62, 63, 74, 78, 79, 80, 81, 84, 89, 101, 102, 106, 111, 113, 116, 120, 122, 123; Purpose least revelation and durable cause.
+Affected floors: Secrets are checked on the page title/body before intent and again at HTTP lookup. Spend, stop, durable intake and send uniqueness retain their existing worker and journal gates. No new effect dispatcher or credential is introduced.
+Operator questions: none; the desk authorized option 1 of C90-SIZE-STOP, up to 300 measured changed product lines, and owns private dashboard installation and phone proof.
+Suggested tier: significant
+Declared tier: significant
+Tier rationale: A user-facing private-content surface and model output contract, on existing authentication and durable send machinery.
+Side effects: Adds marked 17.0.5 (the 1.x GFM renderer), optional answer/intent fields, generated capability awareness, and a report-only return path after PIN sign-in. Existing answers without the explicit field create no reports. Report content is also delivered in the ordinary reply so existing promise/fulfillment and disclosure handling stays intact.
+Undo and recovery: Revert the feature commit and regenerate the register; no existing field or store format is replaced. Old readers ignore the optional report fields, retain the original intent and send fence, and stop serving the new route. Restart reconstructs reports from encrypted journal records and invalidates dashboard sessions as before.
+Multi-machine posture: The report is part of the owning conversation's existing durable intent, with source turn/update and operator/chat binding. The existing journal store declaration (preview.journal.openPreviewJournal) applies: local durable operation with one machine; lease-holder working journal replicated and acknowledged before send with an enrolled peer. No independent file store, remote fetch or new routing authority. The URL identifies the current holder's dashboard; unavailable/nonholder/missing content refuses rather than inventing a reachable page.
+Team posture: Explicit team-of-one exception for this first slice: creation requires the verified operator's private conversation, viewing requires that operator's existing dashboard PIN session. A group, member or guest receives no report ownership or shared access. Sharing requires the owner's signed team record and separately authenticated roles; this slice cannot widen access.
+Layer below: Inspected the live-runner dashboard wiring, readOnlyDashboardOf/checkListen private address restriction, PIN verifier/session map, encrypted journal replay and compaction, operatorWriter/verifiedOperatorTurn source binding, final reply review/secret checks, signed intent and send-claim restart behavior; compared the actual 1.x renderer/routes/middleware. The desk supplied one loopback-only live listener; a reachable phone address is not assumed.
+Bug class: none
+Bug evidence: Feature carryover with worker/HTTP positive and negative tests, durable restart and recorded-shape replay; not a claim of installed phone acceptance.
+Hook bypass: none
+Convergence: none
+Prompt review: The new privateViewTitle field requests a page of the current complete reply. It does not infer user intent from keywords or specify a judge's verdict. Existing recorded summary/uncertain/Jev/review/empty reply outputs do not create pages; an explicit creation envelope around a genuine delivered reply exercises the new path. Independent Astra judgment remains the desk's acceptance step.
+Decision: C90-SLICE | Implement the desk-authorized complete slice using final reviewed reply text, the existing durable intent and PIN session; no second body/store/dispatcher. Measured product size and check outputs are in the report. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-90-private-view-1112-p2-build-report.md
+Decision: C90-PHONE | Derive the link only from the actual listening socket and configured private address; loopback, disabled or failed listeners give a plain unavailable statement. PIN sign-in returns only to an exact dashboard report path. Desk binds the existing listener and proves phone access. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-90-private-view-1112-p2-build-report.md
+
+## 1.x FIRST: carried behavior and adaptations
+
+Fetched actual JKHeadley/instar main at `db3ed6d3052cfcc24888b6c8bc86086abcfc2987` and searched its `src/`, `docs/specs/` and history. This inherits the detailed research in `carryover-90-private-view-1112-change-review.md`, with the source checked again before implementation.
+
+- `src/publishing/PrivateViewer.ts:64-86,106-114,213-328`: title/Markdown/time create/get records, marked GFM rendering, escaped title, self-contained mobile viewport. `marked` 17.0.5 is retained; the existing dashboard phone stylesheet replaces the duplicate 1.x style block.
+- `src/server/routes.ts:28718-28818`: bounded title/body and missing lookup refusal. The 256-character title limit carries; the body uses the existing answer resource ceiling (20 KiB including fixed disclosures). The source turn makes a stable ID; there is no retry-created UUID/file orphan.
+- `src/server/middleware.ts:904-917` and `docs/specs/dashboard-conversations-browser-device.md` section 4.12: sandboxed report responses. Raw HTML is escaped and links/images are inert, with default-src none, no forms, no scripts or external resources.
+- `src/server/viewTunnelUrl.ts` possession/HMAC admission and the nonfunctional view PIN form do not meet this slice's owner binding. Existing 2.0 PIN sessions replace them; tests prove absent/invalid sessions and another principal reveal no report content.
+- Specs also inspected: `DOORWAY-MODEL-KNOWLEDGE-REGISTRY-SPEC.md` section 2.7 (no localhost link and token-free handoff), `MULTI-MACHINE-SEAMLESSNESS-SPEC.md` WS4.4 (holder routing). History includes `948d48d0a`, `22de6cfdd`, `e9ac0a725`, `0b0af029b`; the prior research names the additional scaffold and middleware references.
+
+No unchanged 1.x file is copied. The new renderer and record module are adapted port lines; the session/journal/output wiring is new 2.0 integration. Exact line accounting is in the build report. ONEX-LESSONS.md was not found in the searched /Users/adriana/echo-compute tree. The named Studio path and evidence snapshots were unavailable: no URLs or INSTAR_AUTH_TOKEN were supplied; no absence is claimed for that unsearched remote path.
+
+## Evidence and limits
+
+`tests/preview/private-view.test.ts` exercises worker creation, conversation link, actual HTTP PIN/session access, direct report return after sign-in, wrong session/principal, missing/expired records, loopback suppression, inert HTML/resources, title/body bounds, secret refusal, restart and accepted/unknown-send uniqueness. Existing dashboard tests hold the eleven phone floors. Prompt/context regression tests accompany the output instruction change. Build, typecheck, architecture, lint and register replay results are in the canonical report named above.
+
+Recorded shapes come from `tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json`: summary writer `summary:715672480`, uncertain summary `715672483`, Jev undecided `715672482`, Jev unsure `969389570`, reply review `969389923`, delivered reply `telegram:8994258214:update:715672479`, and empty reply `telegram:8994258214:update:715672550`. All are replayed as captured bytes through the worker output path as negative controls; the delivered reply additionally fires creation under the explicit new envelope, with existing PREVIEW-prefix normalization. These are replay evidence, not new live model judgments.
+
+Row 90 remains incomplete for public publishing, file editing, members/guests and sharing. The desk must bind the existing read-only dashboard to its own private Tailscale IPv4 and port using its existing PIN verifier, ensure the operator phone reaches that private address, then prove opening a conversation-delivered report link after PIN sign-in. This unit opens no new port and changes no live installation. The machine-local PIN session resets on restart; report contents and send history survive.
+
+simplestRobustRoute: This is the simplest robust route: port 1.x create/get/GFM onto existing dashboard authentication and durable reply intent. Reusing the final reviewed answer prevents a separate unreviewed body; a seven-day access lifetime and existing answer bounds prevent unbounded serving; source/operator binding prevents cross-person disclosure. Start is an explicit field on an admitted operator answer, end is the durable send intent plus authenticated GET, and limits are the existing stop/spend/secret/send gates plus exact owner/size/expiry checks. The desk's live phone installation/proof remains unclaimed.
+80/20: One bounded create/get slice reuses current ownership, storage, delivery, phone style and authentication. No public publishing, file API, extra port, bearer-link service or sharing machinery was added.
+VERDICT: author submission for independent desk/Astra review; local proofs and remaining installation limits are reported separately
