@@ -20,8 +20,10 @@ Bug evidence: Feature carryover with worker/HTTP positive and negative tests, du
 Hook bypass: none
 Convergence: none
 Prompt review: The new privateViewTitle field requests a page of the current complete reply. It does not infer user intent from keywords or specify a judge's verdict. Existing recorded summary/uncertain/Jev/review/empty reply outputs do not create pages; an explicit creation envelope around a genuine delivered reply exercises the new path. Independent Astra judgment remains the desk's acceptance step.
-Decision: C90-SLICE | Implement the desk-authorized complete slice using final reviewed reply text, the existing durable intent and PIN session; no second body/store/dispatcher. Measured product size and check outputs are in the report. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-90-private-view-1112-p2-build-report.md
+Decision: C90-SLICE | Implement the desk-authorized complete slice using final reviewed reply text, the existing durable intent and PIN session; no second body/store/dispatcher. Measured product size is 190 changed lines (177 added, 13 removed), including dependency lock and declaration/fixture wiring; check outputs are in the report. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-90-private-view-1112-p2-build-report.md
 Decision: C90-PHONE | Derive the link only from the actual listening socket and configured private address; loopback, disabled or failed listeners give a plain unavailable statement. PIN sign-in returns only to an exact dashboard report path. Desk binds the existing listener and proves phone access. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-90-private-view-1112-p2-build-report.md
+
+Decision: C90-CONTEXT | Put the creation contract in generated capability awareness only; increase measured fixed prompt allowance by 160 bytes after the real envelope tests exposed overflow, preserving the unchanged 3,000-byte turn-headroom floor. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-90-private-view-1112-p2-build-report.md
 
 ## 1.x FIRST: carried behavior and adaptations
 
@@ -33,7 +35,9 @@ Fetched actual JKHeadley/instar main at `db3ed6d3052cfcc24888b6c8bc86086abcfc298
 - `src/server/viewTunnelUrl.ts` possession/HMAC admission and the nonfunctional view PIN form do not meet this slice's owner binding. Existing 2.0 PIN sessions replace them; tests prove absent/invalid sessions and another principal reveal no report content.
 - Specs also inspected: `DOORWAY-MODEL-KNOWLEDGE-REGISTRY-SPEC.md` section 2.7 (no localhost link and token-free handoff), `MULTI-MACHINE-SEAMLESSNESS-SPEC.md` WS4.4 (holder routing). History includes `948d48d0a`, `22de6cfdd`, `e9ac0a725`, `0b0af029b`; the prior research names the additional scaffold and middleware references.
 
-No unchanged 1.x file is copied. The new renderer and record module are adapted port lines; the session/journal/output wiring is new 2.0 integration. Exact line accounting is in the build report. ONEX-LESSONS.md was not found in the searched /Users/adriana/echo-compute tree. The named Studio path and evidence snapshots were unavailable: no URLs or INSTAR_AUTH_TOKEN were supplied; no absence is claimed for that unsearched remote path.
+The generated capability entry carries the output contract, avoiding duplicate always-sent instructions. The measured fixed prompt allowance grows by 160 bytes to 23,619; default turn headroom stays 3,013 bytes, above its unchanged 3,000-byte floor.
+
+No unchanged 1.x file is copied. The new renderer and record module are adapted port lines; the session/journal/output wiring is new 2.0 integration. Line accounting: 57 adapted port additions (39 record/create/get, 18 renderer), 133 new integration changes (120 added, 13 removed); zero unchanged 1.x lines claimed copied. ONEX-LESSONS.md was not found in the searched /Users/adriana/echo-compute tree. The named Studio path and evidence snapshots were unavailable: no URLs or INSTAR_AUTH_TOKEN were supplied; no absence is claimed for that unsearched remote path.
 
 ## Evidence and limits
 

@@ -234,7 +234,9 @@ export const replyReviewReserveFor = (maxBytes: number) =>
  * note's header sentence, whose two facts the status-command and register-tooling lines already state. */
 // Includes the answer-provenance instruction; default-context-floor measures both
 // answer and review envelopes, so moving this allowance cannot conceal overflow.
-export const PREVIEW_FIXED_PROMPT_BYTES = 23_459;
+// Row 90: measured summary 23,575 bytes plus the existing 40-byte margin;
+// 23,619 retains 3,013 bytes of default turn headroom (floor remains 3,000).
+export const PREVIEW_FIXED_PROMPT_BYTES = 23_619;
 /** The room a context limit must still leave for the operator's own message and its history once the fixed
  * parts and the reply-review reserve are taken. At the approved 32768 default this was 1563 bytes, and the
  * packet had to drop the obligation guide from the third turn of a fresh root onward -- measured, not
