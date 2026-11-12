@@ -295,13 +295,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       {cwd:process.cwd(),timeout: CHILD_TIMEOUT,env});
     expect(run.status,run.stderr).toBe(0);
     const physical = readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line));
-    // This fixture spends four of sixteen reserved attempts: one durable rate warning is now due.
-    const warnings = physical.filter(row => row.text.startsWith('Infrastructure allowance warning. '));
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toMatchObject({ chat_id: world.configuration.chatId });
-    expect(warnings[0].message_thread_id).toBeUndefined();
-    expect(warnings[0].text).toContain('Allowance may run short within 30 min.');
-    const sends = physical.filter(row => !warnings.includes(row));
+    // A short startup burst is visible in status, but cannot spend a reply on a rate warning.
+    expect(physical.some(row => row.text.startsWith('Infrastructure allowance warning. '))).toBe(false);
+    const sends = physical;
     expect(sends).toHaveLength(2 + Number(unknown));
     if (unknown) expect(sends[2]).toMatchObject({ chat_id: world.configuration.chatId,
       message_thread_id: 7, text: UNKNOWN_SEND_NOTICE });
@@ -311,7 +307,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(JSON.parse((await runChild(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       // Each turn records the unavailable Jev attempt and its retry without repeating the reply send.
-      {cwd:process.cwd(),env,timeout: CHILD_TIMEOUT})).stdout)).toMatchObject({calls:4,replies:3 + Number(unknown),unknownCalls:4,unknownCallBreakdown:{ jev:4,total:4 },unknownSends:2 * Number(unknown),
+      {cwd:process.cwd(),env,timeout: CHILD_TIMEOUT})).stdout)).toMatchObject({calls:4,replies:2 + Number(unknown),unknownCalls:4,unknownCallBreakdown:{ jev:4,total:4 },unknownSends:2 * Number(unknown),
         lastReplyTiming: { update: mode === 'echo' ? 2 : 1,
           intakeToApiAcceptedMs: expect.any(Number), checkMs: expect.any(Number) },
         coherence:{checked:2,unchecked:0,failed:0}});

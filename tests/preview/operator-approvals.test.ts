@@ -195,7 +195,7 @@ it('keeps the phone stop reachable past the ordinary turn allowance', () => with
   expect(journal.view.order[1]?.reserve).toBe(true);
   const stopPrompts = sent.filter(item => item.text === STOP_CONFIRM_TEXT);
   expect(stopPrompts).toHaveLength(1);
-  expect(sent.filter(item => item.text.startsWith('Infrastructure allowance warning. '))).toHaveLength(1);
+  expect(sent.filter(item => item.text.startsWith('Infrastructure allowance warning. '))).toHaveLength(0);
   worker.intake([press(3, buttons(stopPrompts[0])[0]!.callback_data!)]);
   expect(journal.view.stop).toBe('operator');
   journal.close();

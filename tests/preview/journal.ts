@@ -1,4 +1,4 @@
-import { recordBurnCalls, burnObservation, burnStatus, type BurnState } from './burn-observation.js';
+import { recordBurnCalls, burnObservation, burnNoticeReady, burnStatus, type BurnState } from './burn-observation.js';
 import { createPromiseStore, recordCommitments, closeCommitment, recordReplyLoop, schedulePromise, promiseRetryDelay as workRetryDelay, COMMITMENT_WAITS_ON } from '../../src/rungraph/promises.js';
 import type { CommitmentNote as CoreCommitmentNote, CommitmentClosure, CommitmentWaitsOn, ReplyLoop } from '../../src/rungraph/promises.js';
 export { COMMITMENT_WAITS_ON, OBLIGATION_FORMAT_RETRIES, OBLIGATION_FORMAT_RETRY_MS } from '../../src/rungraph/promises.js';
@@ -8896,19 +8896,22 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * precedes dispatch, so a crash or an UNKNOWN never repeats it; the kept turns are answered when capacity returns. */
   let burnInFlight: Promise<void> | undefined;
   const observeBurn = () => burnInFlight ??= sendBurnNotice().finally(() => { burnInFlight = undefined; });
+  const burnReplyRoom = (reserved = false) => journal.view.replies - Number(reserved) < journal.view.limits.maxReplies - Math.max(1,
+    journal.view.order.filter(turn => turn.accepted && turn.intent === undefined && !turn.groupedInto).length);
   const sendBurnNotice = async () => {
     const now = ports.now(), observation = burnObservation(journal.view, now);
     if (halted()) return;
     if (observation.active !== (journal.view.burn?.active ?? false)) journal.append({ kind: 'burn',
       action: observation.active ? 'open' : 'close', episode: observation.episode + Number(observation.active), at: now });
     const b = journal.view.burn;
-    if (!b?.active || b.notice?.episode === b.episode || journal.view.replies >= journal.view.limits.maxReplies - 1) return;
+    if (!b?.active || b.notice?.episode === b.episode || !burnNoticeReady(journal.view, now) || !burnReplyRoom()) return;
     if (journal.view.genesis.forum && !await original.groupDisclosure?.()) return;
     const episode = b.episode, text = burnNoticeText(journal.view, now), chat = journal.view.genesis.chat, target = `burn:${episode}`;
     ports.checkOutbound(text);
     const provenance = journal.signOutbound('infrastructure', { target, chat, body: text });
     const current = () => !halted() && journal.view.burn?.episode === episode
-      && burnObservation(journal.view, ports.now()).active && burnNoticeText(journal.view, ports.now()) === text;
+      && burnNoticeReady(journal.view, ports.now()) && burnReplyRoom(journal.view.burn?.notice?.episode === episode)
+      && burnNoticeText(journal.view, ports.now()) === text;
     const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, update: 0, current }, () => {
       journal.append({ kind: 'burn', action: 'intent', episode, text, provenance, at: now });
     });
