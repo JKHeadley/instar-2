@@ -429,7 +429,7 @@ it('Rule 35: a test-endpoint composition refuses a production journal before tak
   expect(existsSync(join(root, 'runs.jsonl'))).toBe(false);
 }, 2 * CHILD_TIMEOUT);
 
-it('Rules 2, 42: a launch refused under the writer lease records its scrubbed reason and stderr stays terse', async () => {
+it('Rules 2, 42: a launch refused under the writer lease records its scrubbed cause and stderr first line', async () => {
   const world = successiveWorld(), root = join(world.directory, 'refused-launch');
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, { kind: 'genesis', origin: 'test',
     bot: '1001', chat: '2002', operator: '2002', grant: 'grant:refusal', configurationDigest: 'sha256:recorded',
@@ -444,16 +444,16 @@ it('Rules 2, 42: a launch refused under the writer lease records its scrubbed re
     '--expires-at', '9999999999999', '--max-calls', '4', '--max-replies', '4', '--max-turns', '4'],
   { cwd: process.cwd(), timeout: CHILD_TIMEOUT, env });
   expect(run.status).toBe(1);
-  expect(run.stderr).toContain('details suppressed');
+  expect(run.stderr).toContain('preview refused to start or continue: Error: preview: configuration-digest differs from journal');
   expect(run.stderr.match(/^runner exiting: .+$/gm)).toEqual(['runner exiting: refused before launch']);
-  expect(run.stderr).not.toContain('configuration-digest');
+  expect(run.stderr).not.toMatch(/at main\s*\(/u);
   const rows = readFileSync(join(root, 'runs.jsonl'), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
   expect(rows).toHaveLength(2);
   expect(rows[1]).toEqual({ v: 1, launch: rows[0].launch, exit: expect.any(Number), reason: 'refused before launch',
-    refused: 'preview: configuration-digest differs from journal' });
+    refused: 'Error: preview: configuration-digest differs from journal', cause: 'Error: preview: configuration-digest differs from journal' });
   // The lease is released after the record, so the next launch is not refused as a concurrent boot.
   expect(existsSync(join(root, '.writer', '.boot-lease'))).toBe(false);
   const status = JSON.parse((await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
     'tests/preview/journal-agent.mjs', 'status', '--root', root], { cwd: process.cwd(), env, timeout: CHILD_TIMEOUT })).stdout);
-  expect(status.startupRefusals).toEqual({ count: 1, last: { at: rows[0].launch, reason: 'preview: configuration-digest differs from journal' } });
+  expect(status.startupRefusals).toEqual({ count: 1, last: { at: rows[0].launch, reason: 'Error: preview: configuration-digest differs from journal' } });
 }, 3 * CHILD_TIMEOUT);

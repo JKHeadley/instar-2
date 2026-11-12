@@ -30,6 +30,8 @@ Snapshot result: snapshotOf at journal.ts:2037 and restoreSnapshot:2066 already 
 
 Publication: Native contract passed 10/10 after mechanical renewal to sha256:07561228d25df881bfc62134aeef0ad9a04538e5a42226e7f59ca7fbe2b8472e. Rebuild confirmed the same bytes; register replay uses source commit 25ecc6c8c051e2c923d94bd09d363e910a42c1c7. Product diff is 70 executable lines (55 additions, 15 deletions), plus 2 declaration lines; tests, review and generated publication are measured separately.
 
+Validation follow-up: The existing launcher startup-refusal assertion expected the old suppressed stderr; update it to require the requested redacted class/first-line diagnostic and exit cause, retaining its lease-release and single-exit assertions. No executable change.
+
 Validation: Foreground, nice -n 10, one file and --maxWorkers 1 per Vitest run. Exact commands, final results, measured product lines and pushed custody are in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-close-tolerant-1112-build-report.md. The native certificate is renewed only by the Studio's passing contract tool, followed by existing register regeneration.
 Prompt finding: 0725f0150c56 | protocol-literal | Unchanged delivered instruction or notice text asserted by existing fixtures; no phrase-based semantic gate added or modified.
 Prompt finding: 105c1569b6bb | protocol-literal | Unchanged delivered instruction or notice text asserted by existing fixtures; no phrase-based semantic gate added or modified.
