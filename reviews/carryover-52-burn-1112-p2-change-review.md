@@ -42,7 +42,7 @@ Team posture: Allowance belongs to the operator; no new member/guest permission.
 
 Independent review: burn_review inspected the implementation twice. First pass found shed-boundary resets, stale dispatch text, missing-history zero and group disclosure. Those were repaired; the second pass accepted the non-additive rollback route provided snapshot limits and numeric availability are explicit, now recorded. No independent desk approval is claimed.
 
-Decision: burn-register | Replay register from tested source 1ada87711; downloaded desk chain changed zero inventory pins; owner rehash refreshed the changed launcher test artifact only. Seven generated register projections are the only publication changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-52-burn-1112-p2-PROGRESS.md
+Decision: burn-register | Replay register from tested source af820975c; downloaded desk chain changed zero inventory pins; owner rehash refreshed the changed launcher test artifact only. Seven generated register projections are the only publication changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-52-burn-1112-p2-PROGRESS.md
 
 Decision: burn-enddate | Keep observation alive after reminder expiry, matching the base; preserve the final reply slot. Both allowance boundaries tested, reviewer concurred. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-52-burn-1112-p2-PROGRESS.md
 
