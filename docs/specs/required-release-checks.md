@@ -1,5 +1,7 @@
 # Required release checks from registered rules
 
+**Status: draft, awaiting approval. Governed.**
+
 Release requirements live in `register-source/rule-release-checks.json`, keyed by
 an authoritative register rule number. Each value has `id`, `evidenceLocation`
 and `stage` (`build` or `runtime`). The existing fact validator rejects empty

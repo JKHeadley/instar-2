@@ -28,3 +28,5 @@ Decision: publication-authority | Shape approval belongs to Justin, not the desk
 simplestRobustRoute: Keep the already-authored release requirements as committed source metadata, use the existing fact validator and register rule roster, and emit through the existing build adapter. This is the simplest robust route: it prevents malformed or unresolvable requirements without a new governing schema, approval binding, inventory or release judge. The actual CLI replay, malformed-input refusal, generated-file comparison and before/after native contract are the publication evidence; no autonomous runtime capability is claimed.
 80/20: Focused emission/refusal and payload-preservation tests, actual replay and CLI negative neighbor, native conformance, architecture, lint, register check and required pinned tests; no full suite on the Studio builder.
 VERDICT: author review candidate; independent compliance and landing review remain the desk's.
+
+Integration repair (train-240): retain the spec's original governed draft status and add its two-version changelog; no new shape, approval or runtime behavior. The no-shape publication design remains unchanged.

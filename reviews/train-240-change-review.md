@@ -30,3 +30,5 @@ Decision: train-240-desk | Existing repin/build/rehash/replay chain updates one 
 simplestRobustRoute: One ordinary exact-head merge and the existing desk regeneration tools; this is the simplest robust route. No new runtime machinery. Start guards are exact base and reviewed-head identity; end guards are generated consistency, targeted tests, final-head checks and clean pushed custody. Runtime release obligations remain unpassed until separately proven.
 80/20: Changed release tests and direct builder consumers, mandatory register lifecycle/subscription/context-floor checks and pinned READY tests; the pipeline owns the full suite and release proof.
 VERDICT: author submission; independent desk owns landing approval
+
+Decision: train-240-review-repair | Restore governed draft status and both spec versions, index inherited decisions in their original reports, and carry replay publication in the final review range. Preserve the reviewed no-shape implementation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-240-PROGRESS.md
