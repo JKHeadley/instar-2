@@ -1,6 +1,6 @@
 [
   {
-    "type": "Declaration", "schemaVersion": 1, "id": "threadline-runtime.recoverableSpool",
+    "type": "Declaration", "schemaVersion": 1, "id": "threadline-runtime.createThreadlineRuntime",
     "kind": "stores", "status": "live",
     "requiredFacts": {
       "growth": "deletes", "holdsAgentMemory": "no",
