@@ -53,6 +53,8 @@ Prompt finding: dd26956910e2 | quoted-evidence | Unchanged existing instructions
 Prompt finding: e8708c7fea24 | quoted-evidence | Unchanged existing instructions or status text asserted by the cited regression fixture; this diff changes only accounting metadata and retirement evidence, with no new phrase-based judgment.
 Prompt finding: e8d54b193e5d | quoted-evidence | Unchanged existing instructions or status text asserted by the cited regression fixture; this diff changes only accounting metadata and retirement evidence, with no new phrase-based judgment.
 
+Publication: generated register replay is derived from source commit dca535110; the publication commit changes only generated artifacts and this review record. Final-head commands and pushed-commit evidence are recorded in the Studio report.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the journal's existing reservation, trace and replay, the provider's own count, the mandatory hook and the existing admission/physical cleanup owners. A terminal result alone cannot prove child retirement, and tokens cannot prove call count. The one explicit settlement phase prevents historical reinterpretation and duplicate refunds. Start guard is whole liability under the cap; end guard is complete certificate; limits/stop remain unchanged. Tests replay the shipped path and recorded shapes; no new unattended live deployment result is claimed.
