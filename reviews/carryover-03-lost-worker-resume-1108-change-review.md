@@ -1,31 +1,31 @@
-# Change review — lost-worker resume at the session work entry point
+# Change review — session-work boundary reopened for exact close refusal
 
-Subject base: 82a4c739a77d3f52291242c5bb89235ab3c768d4
+Subject base: e3cb0f08d3a74d70c9e059edbd64fc457492bfff
 Review state: open
 Reviewed content: none
-Outcome: Carryover row 03 (lost-worker-resume) in lanes/carryover-1028.md, carried onto train-217. When a worker dies mid-task, a repeated request for the same work operation reads its durable record first: a proven result returns once with its exact bytes and no new worker; uncertain, foreign-owned, unclosed, duplicate-close and changed-result records stay held as uncertain and are never replayed; a proven no-child failure keeps its identity while the existing schedule may issue a distinct bounded step. Ported from commit 14aaecc7 (unit carryover-03-lost-worker-resume-1104) without change to source or tests. This is the run-boundary slice, not live proof of the whole worker-loss-to-delivered-result outcome; row 03 stays OPEN until the desk's live task shows it.
-Affected rules: 1, 2, 4, 26, 34, 37, 49, 60, 61, 63, 68, 70, 74, 101, 102, 111, 113, 114, 116
-Affected floors: secrets — no new input, output or credential surface; spend cap — reconciliation dispatches no model call and new work keeps its existing reservations; stop — checked before reconciliation, and the existing launch and poll checks remain; no duplicate sends — a recorded operation never re-enters dispatch, including one with uncertain effects; durable intake — the existing journal edges and result bytes stay intact and no new store is added.
+Outcome: Reopen the session-work boundary review for the shared exact close-refusal constant and its host/journal consumers. The lost-worker collector behavior is unchanged.
+Affected rules: 26, 33, 42, 49, 60, 68, 70, 74, 90, 101, 102, 109, 111, 113, 116, 123
+Affected floors: Secrets are scrubbed in diagnostics; spend caps and stop checks are unchanged; no duplicate sends or replay is introduced; durable intake and recorded outcomes remain retained.
 Operator questions: none
-Suggested tier: significant
+Suggested tier: critical
 Declared tier: critical
-Tier rationale: The run entry point decides whether work is dispatched again and whether uncertain work is preserved; targeted offline tests support a scoped submission, not release or live proof.
-Side effects: A repeated run call for the same operation now returns its recorded disposition instead of starting again. Read-only recovery works after the local step ceiling because it uses no step. Stop and in-flight guards still refuse run calls. A caller that means distinct work must supply a distinct operation identity, as SessionWorkRequest already requires; the journal's obligation ids are slot-scoped, so each new scheduled step already has one.
-Undo and recovery: Revert the source and test change together. Keep the journal and result files. Do not replay any uncertain operation during rollback.
-Multi-machine posture: Reconciliation uses the existing parent, owner, placement, scope and result-destination checks. Records owned elsewhere cannot authorize a launch and stay uncertain. Result files remain machine-local; this change adds no cross-host recovery authority or shared queue.
-Layer below: 1.x at JKHeadley/instar main 149377310f9b586641a05eddf196df4543dc031a, identical for these files to 4f88880a45f0a119aae3cfd2ccaf9ace26d405b9 used by the 1104 unit: src/monitoring/ResumeQueue.ts reconcileFromReapLog (a stable key already known as an entry or tombstone is never enqueued again), src/monitoring/ResumeQueueDrainer.ts validateReality (re-read live session, owner elsewhere, binding and operator stop immediately before a respawn; any failure or unreadable state invalidates, never spawns), and src/monitoring/SessionRecovery.ts (bounded attempts). Behaviour reused: the stable identity and the pre-respawn revalidation. Not reused: 1.x's at-least-once replay of a resumed session, which 2.0 refuses for uncertain effects. Checked and set aside: 1.x main 8d81ecb24b0d (2026-11-07, src/commands/server.ts) concerns conversation watchers' false "stopped" claims, a different path from this delegated work step. In 2.0 inspected createSessionWorkPort.collect and run, the journal's workObligations recovery tick (tests/preview/journal.ts, recoverSessionWork), and journal-agent.mjs wiring of recoverSessionWork and sessionWork. collect already validates exact closure, cleanup, call accounting, byte bound and digest; run did not consult it.
-Bug class: unit
-Bug evidence: reproducer=tests/assembly/production-session-work.test.ts
-Hook bypass: none; checked core.hooksPath and the hooks directory before committing.
+Tier rationale: This renewed review concerns a shared lifecycle/durability boundary. It asserts no acceptance of changed bytes by the former reviewer.
+Side effects: The shared named refusal allows the host to retain an uncertain local close while preserving strict journal duplicate refusal. No lost-worker recovery predicate or dispatch path changes.
+Undo and recovery: Revert the unit with its matching publication. Preserve the original review and source history; do not revive the old frozen certificate for different bytes.
+Multi-machine posture: Journal ownership and replication are unchanged; local host custody remains under the existing owner lease.
+Team posture: Existing ownership and sharing apply. Diagnostics contain no newly exposed private input or credential, and no team permission changes.
+Layer below: The strict journal admission, original lost-worker collect-before-run implementation and tests, local custody retirement/replacement, and the ordinary-lane failure latch.
+Bug class: integration
+Bug evidence: reproducer=tests/assembly/production-conversation-session.test.ts
+Hook bypass: none
 Convergence: none
-Prompt review: No prompt, parser, model choice or semantic judgment changed. The run-boundary tests replay the recorded c1 workOutput from tests/preview/fixtures/work-recovery-2026-10-15.json (obligation:commitment:0:1792042495116) and its negativeOutputs (summary:840342889 text and null, 969390298, telegram:8820318295:update:969389570, telegram:8968100844:update:840343048:reply-review, telegram:8968100844:update:840343079:reply-review null, telegram:8993213212:update:46040043, messageId:4 empty) through a reopened port's run, so the new path fires on them; bytes stay opaque and identical. No live model or delivery proof claimed.
+Prompt review: This repair changes lifecycle refusal handling and diagnostics, not a model prompt or model-output acceptance. Existing literal assertions are unchanged.
+Decision: session-close-tolerant-1112-B | Scope the reopened round to the unit base so it cannot claim intervening unrelated changelog history. Original source and review commits remain covered by the existing train-220 review and immutable Git history. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-close-tolerant-1112-PROGRESS.md
 
-Decision: CARRYOVER-03-1108-1 | Carry 14aaecc7 unchanged onto train-217: call the existing collect at the run entry point, the 2.0 form of 1.x stable-identity pre-respawn revalidation; uncertain effects stay held and proven results return without new dispatch. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-lost-worker-resume-1108-PROGRESS.md
-Decision: CARRYOVER-03-1108-2 | Replace the cherry-picked 1104 record with this one based on train-217, because its old base would make it claim every commit between bcbe1def and train-217. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-lost-worker-resume-1108-PROGRESS.md
-Decision: CARRYOVER-03-1108-3 | Keep a proven no-child failure under the same operation identity; the existing schedule owns the distinct next bounded step. Keep row 03 OPEN pending the desk's live evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-lost-worker-resume-1108-PROGRESS.md
+Prior round: the full original frozen record is preserved at e1b60f970f212bbfc6f7a6cbafdfaba9695e7192:reviews/carryover-03-lost-worker-resume-1108-change-review.md. Its original two-commit range (526543fec and e1b60f970, above 82a4c739) is also covered by reviews/train-220-change-review.md at 7b6bbe6eb736422bd5713db895c0ee14d49822ba; ancestry was checked. No earlier evidence is deleted or rewritten.
 
-## Closing block
+1.x comparison: This repair's research is JKHeadley/instar main 72dfe3a52b8cfe7a2ebed131b7acfc332f4c02f0, src/core/ReplicatedJournalCompactor.ts and src/commands/server.ts, docs/specs/unified-session-lifecycle-robustness.md, history ab26b7ca3 and ONEX-LESSONS.md section 2. Reuse projection verification and observable nonfatal cleanup design; the HLC/tmux code does not fit typed session-work liability. The unchanged original recovery implementation retains its prior comparison at 149377310f9b586641a05eddf196df4543dc031a, ResumeQueue.reconcileFromReapLog and ResumeQueueDrainer.validateReality.
 
-simplestRobustRoute: This is the simplest route: call the existing collector immediately before dispatch. It prevents replay and erasure of a saved result after a lost host without another queue, timer, schema, heuristic or model prompt. Start guards are stop and in-flight ownership; end guards are the collector's exact closure and digest; resource ceilings stay on new dispatch. No unattended shipped-path completion is claimed.
-80/20: Nine run-boundary cases fail on unmodified train-217 source and all 46 cases pass with the change. Scope is durable result recovery and preservation of uncertain work at the dispatch boundary; the desk's live proof and independent gate remain required.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+simplestRobustRoute: Keep the existing collector and journal admission; share one exact refusal constant and contain cleanup errors at the existing host boundary. No new allowance, worker, timer, model or replay. Existing stop/ownership/reservation guards remain the start and limit guards; one durable settlement and visible uncertain custody remain the end guard.
+80/20: The unit's real-journal reproducer, unchanged lost-worker tests, actual launcher diagnostics, native contract and mandatory checks cover this renewed scope. Full evidence is in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-close-tolerant-1112-build-report.md.
+VERDICT: author submission; the independent desk judges the renewed round
