@@ -50,7 +50,7 @@ import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COV
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom,
   staleAgainst, updateDelivery, updatePacketItem } from './installation.js';
 import { currentActionFacts, bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, ModelNotStarted, createModelLaunchBoundary, capacityAlerts } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, replyCheckCauses, unavailableChecks, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, replyCheckCauses, unavailableChecks, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, requestedToolSources, conversationTurnEligible, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, readSelfAccess, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
@@ -1926,13 +1926,25 @@ async function main() {
     const toolPromptLimit = () => Math.max(journal.view.limits.maxBytes,
       doorway.policyFor(required(options, 'model'), doorway.toolsFraming ?? doorway.conversationFraming).maxPromptBytes);
     const preparation = toolPreparation(() => toolsActive());
+    const sessionTurnEligible = (id, current = true) => conversationTurnEligible(journal.view, id,
+      source => sessionWork?.port.hasInput?.(source, sessionWork.authority) === true
+        && (!current || sessionWork.port.available()));
+    const scopedTurnEligible = (id, activation = toolsRecord) => {
+      if (toolTurnEligible(id)) return true;
+      const sources = requestedToolSources(journal.view, id);
+      return activation !== null && sources.length > 0 && sources.every(source => {
+        const reserved = journal.toolReservation(source.id);
+        return source.toolRouted === true && reserved?.delegation?.authority === `${activation.reference} ${activation.invocationPolicyDigest}`
+          && (reserved.mcp?.digest ?? null) === (readRootMcp(root)?.digest ?? null);
+      });
+    };
     const modelEnvelope = input => {
       // Local transcripts use the same source and held-secret boundary as text intake.
       input = prepareMediaInput(input, currentMedia, text => redact(concealSecretMaterial(text, heldSecretValues())).text);
       const bytes = prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
       // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
       // for the text-only prompt, instead of leaving the turn to fall back to a text-only answer.
-      if (preparation.active() && identityRefusal === null && toolTurnEligible(input.id)
+      if (preparation.active() && identityRefusal === null && scopedTurnEligible(input.id)
         && Buffer.byteLength(bytes) + Buffer.byteLength(doorway.toolTurn?.system ?? SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + TOOL_NOTICE_MAX_BYTES > toolPromptLimit())
         throw Error('preview: complete prompt overflow');
       return bytes;
@@ -2094,6 +2106,7 @@ async function main() {
       const runtime = loginRuntimes.get(selected.index);
       const turnHarness = runtime?.harness ?? harness;
       const turnActivation = runtime?.toolsRecord ?? toolsRecord;
+      if (!scopedTurnEligible(id, turnActivation)) return invokeSubscription(prepared, id);
       return (await runToolTurn({ journal, root, id, prepared,
       promptLimit: toolPromptLimit(), mcp: readRootMcp(root),
       // Rule 100: an MCP server's SecretRef is opened from this root's custody vault and handed to that server alone.
@@ -2216,7 +2229,7 @@ async function main() {
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
       replyReviewTiming: conversationSession ? 'after-send' : 'before-send',
-      toolRoute: id => conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id) ? true : preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
+      toolRoute: id => conversationSession && sessionTurnEligible(id) ? true : preparation.active() && identityRefusal === null && scopedTurnEligible(id) && toolPacketFits(journal.view),
       // Scheduled obligations keep their existing route; continuing operator conversation is selected below.
       // The session route is taken only while its grant holds and the call allowance can hold the
       // step's whole reserved liability on top of the obligation's own start.
@@ -2276,7 +2289,7 @@ async function main() {
           shape => recordShape(shapesPath, 'answer', 'decision', 'malformed', shape)));
       } } : {}),
       collectModel: async id => {
-        if (!conversationSession || !sessionWork || !/^telegram:[0-9]+:update:[0-9]+$/u.test(id)) return null;
+        if (!conversationSession || !sessionWork || !sessionTurnEligible(id, false)) return null;
         const turn = journal.view.turns.get(id);
         const operation = turn?.promptKind === 'format-retry' ? `${id}:format-retry` : id;
         const saved = await sessionWork.port.collect(operation);
@@ -2287,7 +2300,7 @@ async function main() {
       model: async ({ id, prepared, question, context: packet }) => {
         try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
-        if (conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id)) {
+        if (conversationSession && sessionTurnEligible(id)) {
           // The journal reserves the one format repair before this call. Its exact packet gets
           // a durable child identity; replaying the original bytes still names the original turn.
           // Never relax the host's same-identity request-digest check.
@@ -2297,6 +2310,7 @@ async function main() {
           let outcome;
           try {
             sessionWork?.select?.();
+            if (!sessionTurnEligible(id)) return invokeSubscription(prepared, id);
             if (!sessionWork?.port.available()) throw new ModelNotStarted();
             outcome = await sessionWork.port.run({ operation, question: prepared, context: packet,
               authority: sessionWork.authority });
@@ -2310,7 +2324,7 @@ async function main() {
         }
         const callsBefore = journal.view.modelCalls.total;
         let result;
-        try { result = await modelLaunch.run(() => toolsActive() && toolTurnEligible(id) ? invokeTools(prepared, id) : invokeSubscription(prepared, id)); }
+        try { result = await modelLaunch.run(() => toolsActive() && scopedTurnEligible(id) ? invokeTools(prepared, id) : invokeSubscription(prepared, id)); }
         catch (error) {
           // A resumed tool turn may already have invoked a provider before a later disclosure refusal.
           if (error instanceof ModelDisclosureRefused && journal.view.modelCalls.total !== callsBefore)
@@ -2961,7 +2975,7 @@ async function main() {
           topicOf: operation => {
             // A repair inherits only its admitted parent's topic, never its execution identity.
             // The durable one-repair reservation is required; a suffix alone grants nothing.
-            const parent = /^telegram:[0-9]+:update:[0-9]+:format-retry$/u.test(operation)
+            const parent = operation.endsWith(':format-retry')
               ? journal.view.turns.get(operation.slice(0, -':format-retry'.length)) : undefined;
             const turn = journal.view.turns.get(operation)
               ?? (parent?.reserved && parent.answerRetried && parent.promptKind === 'format-retry' ? parent : undefined);

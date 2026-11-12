@@ -3021,6 +3021,23 @@ export const requestSource = (view: JournalView, item: Pick<DatedItem, 'source' 
 /** A request by its key, local or carried. */
 export const requestByKey = (view: JournalView, key: string) =>
   view.dated.find(item => datedKey(item) === key) ?? carriedRequests(view).find(item => datedKey(item) === key);
+/** Rules 28/29/57: due text grants nothing. Inherit only from every still-active, locally verified source. */
+export const requestedToolSources = (view: JournalView, id: string): Turn[] => {
+  const turn = view.turns.get(id), due = turn?.requestedAction;
+  if (!turn?.accepted || turn.writer?.kind !== 'system' || !due?.items.length || due.legacy || due.owed
+    || actionWithdrawn(view, turn)) return [];
+  const sources = [...due.items, ...due.overflow ?? []].map(ref => {
+    const item = requestByKey(view, reminderKey(ref)), source = item && view.turns.get(item.source);
+    return source && !source.requestedAction && verifiedOperatorTurn(view, source) ? source : undefined;
+  });
+  return sources.every((source): source is Turn => source !== undefined) ? sources : [];
+};
+/** The host's durable session custody proves the original route, including across runner restarts. */
+export const conversationTurnEligible = (view: JournalView, id: string, inherited: (source: string) => boolean) => {
+  if (/^telegram:[0-9]+:update:[0-9]+$/u.test(id)) return true;
+  const sources = requestedToolSources(view, id);
+  return sources.length > 0 && sources.every(source => inherited(source.id));
+};
 /** Rules 57, 93: a due turn created but not yet sent is withdrawn once any request it carries is cancelled, corrected
  * or forgotten. It is never answered or sent; its other requests fall due again on their own. */
 export const actionWithdrawn = (view: JournalView, turn: Turn) => {
@@ -5992,6 +6009,9 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     const sessionWorkRecords = (): readonly (SessionWorkEdge | SessionWorkEdgeClose)[] =>
       recoveryRecords(row => row.kind === 'session-work').flatMap(row => row.kind === 'session-work'
         && (row.record.type === 'SessionWorkEdge' || row.record.type === 'SessionWorkEdgeClose') ? [row.record] : []);
+    const toolReservation = (id: string) => recoveryRecords(row => row.kind === 'tool-turn' && row.id === id)
+      .filter((row): row is Extract<JournalRecord, { kind: 'tool-turn'; phase: 'reserved' }> =>
+        row.kind === 'tool-turn' && row.phase === 'reserved').at(-1);
     // The ordinary tool-backed obligation uses the same durable checkpoint as its normal return:
     // recorded model output, verified process allocation return, and settled tool/child results.
     const obligationCheckpoint = (id: string): (SessionWorkOutcome & { usage?: ModelUsage }) | null => {
@@ -6019,7 +6039,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         ...(outputs[0]!.usage ? { usage: outputs[0]!.usage! } : {}),
         detail: 'collected recorded output after verified worker closure' };
     };
-    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, get retainedRows() { return retained.length; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter, sessionWorkRecords, obligationCheckpoint,
+    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, get retainedRows() { return retained.length; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter, sessionWorkRecords, toolReservation, obligationCheckpoint,
       close: () => { if (!closed) { closed = true; closeSync(fd); } } };
   } catch (error) { if (!closed) closeSync(fd); throw error; }
 }
