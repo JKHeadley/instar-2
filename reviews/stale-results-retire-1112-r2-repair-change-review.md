@@ -29,7 +29,7 @@ Prompt finding: 9f0106c66027 | protocol-literal | Unchanged protocol guidance in
 Prompt finding: bac6ce7485d9 | protocol-literal | Unchanged protocol guidance inherited from the reviewed base, not a new classifier — fixture-phrase tests/preview/journal.ts <- tests/preview/plain-task-stop.test.ts: "work on your request stopped before a finished answer was available."
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged protocol guidance inherited from the reviewed base, not a new classifier — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 
-Subject (4 paths): tests/preview/README.md, tests/preview/journal.ts, tests/preview/stale-results-retire.test.ts, tests/preview/summary-cascade-stall.test.ts
+Subject (12 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/required-release-checks.json, generated/rules.md, generated/source.json, tests/preview/README.md, tests/preview/journal.ts, tests/preview/stale-results-retire.test.ts, tests/preview/summary-cascade-stall.test.ts
 
 Team posture: Only the verified operator in the source topic receives retired-result context or its lookup. A different topic sees no archive content/count/notice; the regression covers both sides. Existing team-of-one preview scope is unchanged.
 
@@ -37,6 +37,8 @@ Team posture: Only the verified operator in the source topic receives retired-re
 Decision: repair-context | Reuse bounded whole-result fallback and disclose omissions; preserve source-scoped archive. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stale-results-retire-1112-r2-repair-PROGRESS.md
 Decision: repair-legacy | Require a current unopposed report; missing new markers do not discharge a retained old objection. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stale-results-retire-1112-r2-repair-PROGRESS.md
 Decision: repair-lookup | Use the existing one-call lookup for archived sources before or after compaction and prioritize its exact source matches. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stale-results-retire-1112-r2-repair-PROGRESS.md
+
+Decision: repair-register | Replayed generated register from source commit 7fd570b1afc3cc9d93ff804cbc1a431bd9fd3c6c after the delegated repin scripts; no hand-edited pin. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stale-results-retire-1112-r2-repair-PROGRESS.md
 
 ## Closing block
 
