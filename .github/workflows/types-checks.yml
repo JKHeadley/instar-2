@@ -1,5 +1,11 @@
 name: constitutional-types
 on: [push, pull_request]
+# The event owns the target: PR target head, or the previous pushed head.
+# A branch push checks only its increment; whole-unit readiness requires the PR
+# target or the desk's declared unit base. New-branch zero boundaries refuse.
+env:
+  CHANGE_REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+  REGISTER_CHANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
 jobs:
   contract:
     strategy:

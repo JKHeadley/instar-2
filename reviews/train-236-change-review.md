@@ -4,7 +4,7 @@ Subject base: 90448f1d79133f246efa1c454c8a624b1d992bac
 Review state: open
 Reviewed content: none
 Outcome: Integrate the exact reviewed connected-tools-copyfirst and register-scope-base heads on the live build, preserving installed trust recovery, local conversation reachability and explicit change-boundary enforcement.
-Affected rules: 2, 15, 18, 34, 37, 44, 49, 70, 72, 73, 74, 90, 95, 100, 101, 102, 109, 111, 113, 116, 123
+Affected rules: 45, 2, 15, 18, 34, 37, 44, 49, 70, 72, 73, 74, 90, 95, 100, 101, 102, 109, 111, 113, 116, 123
 Affected floors: secrets — no custody or connector change; spend cap — no new model calls or prompt growth; stop — unchanged; no duplicate sends — no send changes; durable intake — no intake changes
 Operator questions: none
 Suggested tier: critical
@@ -25,6 +25,7 @@ Decision: train-236-A | Preserve both member behaviors; generated conflicts reta
 Decision: train-236-B | Create branch directly at exact live 90448f1d79133f246efa1c454c8a624b1d992bac and preserve ancestry; no main merge or newer member tip. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-236-PROGRESS.md
 Decision: train-236-D | Run bounded foreground targeted tests and mandatory checks on WSL; report host-dependent failures without changing guards, and retain Studio native/live gate ownership. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-236-PROGRESS.md
 Decision: train-236-desk | Run downloaded desk repin, build, owner rehash and register replay on merged source d0a42e8d0b9e92e68d97385e7492d211eb0de6e4. No owner or grounding pins changed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-236-PROGRESS.md
+Decision: train-236-callers | Repair the older convergence fixture to copy the new helper and pass its pinned base; propagate GitHub event-owned bases to document/type workflows. Local CLI callers still must supply their declared target. Branch-push checks cover only the push increment, never whole-unit readiness; PR or desk target-bound checks remain mandatory, and new-branch zero boundaries refuse. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-236-PROGRESS.md
 Prompt review: No prompt wording added. Preserve member real-shape replay in product-run.test.ts: updates 715672480, 715672483, 715672482, 969389570, 969389923, 715672479, 715672550; this configuration replay is not a new model-judgment claim.
 Deferral: generated/register.json:1 | not-a-deferral=Generated rule and historical register prose, not a new commitment or omitted train work.
 

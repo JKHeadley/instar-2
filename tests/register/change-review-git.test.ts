@@ -596,13 +596,13 @@ describe('landing gate and the append-only evidence ledger (Rules 37, 74, 107, 1
   it('loads the built predicate when a current record claims convergence', () => {
     const r = repo();
     r.write('README.md', 'fixture\n'); const base = r.commit('base');
-    for (const name of ['check-change-review.mjs', 'change-review.mjs', 'check-governed-docs.mjs'])
+    for (const name of ['check-change-review.mjs', 'change-review.mjs', 'check-governed-docs.mjs', 'change-scope.mjs'])
       r.write(`scripts/${name}`, readFileSync(resolve('scripts', name), 'utf8'));
     r.write('package.json', '{"type":"module"}\n');
     r.write('dist/verification/index.js', 'console.log("built convergence predicate loaded"); export const convergenceEligible = () => false;\n');
     r.write('reviews/change.md', record(base).replace('Convergence: none', 'Convergence: claimed'));
     r.commit('claim convergence');
-    const result = spawnSync(process.execPath, [join(r.dir, 'scripts/check-change-review.mjs'), 'landing'], { cwd: r.dir, encoding: 'utf8', env });
+    const result = spawnSync(process.execPath, [join(r.dir, 'scripts/check-change-review.mjs'), 'landing'], { cwd: r.dir, encoding: 'utf8', env: { ...env, CHANGE_REVIEW_BASE: base } });
     expect(result.stdout).toContain('built convergence predicate loaded');
     expect(result.status, result.stderr).toBe(1);
     expect(result.stderr).toContain('change-review landing REFUSED');
