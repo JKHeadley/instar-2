@@ -297,6 +297,7 @@ export function renderDashboard({ token, view, state, pending, readOnly = false 
     : `<ul class="facts">${s.allowance.map(item => `<li>${escape(`${item.label}: ${item.used} of ${item.max} used.`)}<meter aria-label="${escape(item.label)} used" min="0" max="${item.max}" value="${Math.min(item.used, item.max)}"></meter></li>`).join('')}
 <li>${escape(`Model tokens so far: ${s.tokens.input.toLocaleString('en-US')} in, ${s.tokens.output.toLocaleString('en-US')} out.`)}</li>
 <li>${escape(`Model calls whose size was not reported: ${s.tokens.unknownCalls}.`)}</li>
+${s.status.filter(line => line.startsWith('Call rate:')).map(line => `<li>${escape(line)}</li>`).join('')}
 <li>Dollar spend is not recorded for this installation.</li></ul>`);
   if (view === 'stop' && readOnly) return page(token, 'stop', VIEW.stop, state, readOnlyStop(s, state));
   if (view === 'stop') return page(token, 'stop', VIEW.stop, state, s?.state === 'stopped'

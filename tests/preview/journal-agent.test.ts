@@ -294,7 +294,10 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       '--bot-username',world.configuration.botUsername,'--max-cycles','4','--max-poll-seconds','1'],
       {cwd:process.cwd(),timeout: CHILD_TIMEOUT,env});
     expect(run.status,run.stderr).toBe(0);
-    const sends = readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line));
+    const physical = readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line));
+    // A short startup burst is visible in status, but cannot spend a reply on a rate warning.
+    expect(physical.some(row => row.text.startsWith('Infrastructure allowance warning. '))).toBe(false);
+    const sends = physical;
     expect(sends).toHaveLength(2 + Number(unknown));
     if (unknown) expect(sends[2]).toMatchObject({ chat_id: world.configuration.chatId,
       message_thread_id: 7, text: UNKNOWN_SEND_NOTICE });

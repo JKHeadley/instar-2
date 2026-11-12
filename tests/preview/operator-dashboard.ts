@@ -1,3 +1,4 @@
+import { burnStatus } from './burn-observation.js';
 /** The operator dashboard's data (Rules 79, 81, 87; tests/preview/README.md "The operator dashboard"). The runner projects
  * it from the durable journal with the same functions the chat "status" reply and the status command use, and publishes
  * it into its own approval outbox. The operator's own approval page renders it behind the operator's passkey. It is a
@@ -124,7 +125,8 @@ export function dashboardSnapshot(view: JournalView, input: { now: number; zone:
   const bot = input.bot?.replace(/^@/u, '') ?? null;
   return { type: DASHBOARD_SNAPSHOT, schemaVersion: 1, asOf: now, zone,
     state: input.stopped || view.stop !== null ? 'stopped' : 'running', until: stamp(view.expires, zone),
-    status: input.statusText.split('\n').slice(0, L.statusLines).map(line => clip(line, L.lineChars)),
+    status: input.statusText.split('\n').slice(0, L.statusLines).map(line => clip(
+      view.genesis.forum && line.startsWith('Call rate:') ? burnStatus(view, input.now) : line, L.lineChars)),
     counts: { turnsToday: turnsToday(view, now, zone), held: [...heldReplies(view).values()].reduce((a, b) => a + b, 0),
       waiting: requests.filter(item => item.open).length },
     allowance: [{ label: 'Model calls', used: view.calls, max: view.limits.maxCalls },
