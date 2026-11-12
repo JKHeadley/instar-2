@@ -4598,3 +4598,11 @@ the last. Evidence a gate compares with the run's start therefore stays on the h
 (`tests/setup/host-clock.mjs`): model-provider proofs, the grounding ledger and boot receipts.
 Vitest stamps file windows on the shifted clock, so the process exit row records the shift and
 the gate moves each window back to the host clock before comparing.
+
+Finished results declined by an unrelated ordinary reply remain awaiting delivery. The answering
+model uses `deferredReports` for relevance or freshness-only objections and `rejectedReports` for
+concrete defects in the result. Only the latter returns ordinary results to work. A writer pass
+retires undelivered results with a complete checklist after five days since their source message,
+retaining results and reasons in `results-retired` records. Open work, dependencies, unknown sends
+and new explicit result defects are excluded. One pull-status line and one sentence on the next
+ordinary reply disclose retirement; the source audience can ask to list the retained results.

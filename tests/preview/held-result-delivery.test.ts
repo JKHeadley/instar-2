@@ -273,3 +273,19 @@ it('the revision call asks for renewed words only when it has own-words results,
   expect(parseReplyRevision(JSON.stringify({ reply: KEPT, carriedReports: given }), ['defers_work']).carriedReports).toEqual(given);
   expect(parseReplyRevision(KEPT, ['defers_work']).carriedReports).toBeUndefined();
 });
+
+it('an unrelated reply can defer every finished result without a re-ask or work attempt', async () => {
+  const run = await sequence(keys => ({ deferredReports: keys }));
+  try {
+    expect(run.hiCalls()).toBe(1);
+    await run.work();
+    heldCleanly(run);
+  } finally { run.close(); }
+});
+it('reply review removing a verbatim report leaves the stored result waiting, not rejected', async () => {
+  const run = await sequence(keys => ({ selectedReports: keys }), { review: { excise: REPORT } });
+  try {
+    await run.work();
+    heldCleanly(run);
+  } finally { run.close(); }
+});
