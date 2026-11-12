@@ -3,7 +3,8 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, owedResultAuthority, owedResultOccurrence, owedResultId, obligationDecision,
-  LOOP_REVISIT_MS, type JournalRecord, type PreviewPorts } from './journal-test-worker.js';
+  LOOP_REVISIT_MS, OWED_RESULT_MESSAGES_PER_PASS, OWED_RESULT_MESSAGES_PER_HOUR, OWED_RESULT_WINDOW_MS,
+  owedResultMessagesInWindow, type JournalRecord, type PreviewPorts } from './journal-test-worker.js';
 import { writerRecord } from './intake-principal.js';
 import { loopHealth } from './obligations.js';
 import { readAnswer } from './answer-reading.js';
@@ -14,7 +15,7 @@ const promise = 'I will finish the check and send you the result.';
 const result = 'The check is complete: all three supplied totals agree.';
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
-function world(options: { authorize?: boolean; report?: string; rawWork?: string | { state: 'uncertain' }; thread?: number; count?: number; ports?: Partial<PreviewPorts> } = {}) {
+function world(options: { distinctReports?: boolean; legacyMessage?: boolean; messageCommitments?: boolean; authorize?: boolean; report?: string; rawWork?: string | { state: 'uncertain' }; thread?: number; count?: number; ports?: Partial<PreviewPorts> } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'owed-delivery-'))); dirs.push(dir);
   const path = join(dir, 'journal.encrypted');
   const genesis = { kind: 'genesis' as const, bot: '12345678', chat: options.thread ? '-1001234' : '7654321', operator: '7654321',
@@ -26,8 +27,13 @@ function world(options: { authorize?: boolean; report?: string; rawWork?: string
     groupDisclosure: async () => state.audience,
     model: async input => {
       state.calls.push(input.id);
-      if (input.id.startsWith('obligation:')) return options.rawWork ?? JSON.stringify({ outcome: 'report', report: options.report ?? result });
-      if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'The operator requested a check.', people: [], commitments: [], closed: [] });
+      if (input.id.startsWith('obligation:')) return options.rawWork ?? JSON.stringify({ outcome: 'report', report: options.distinctReports ? `${input.id}: ${(options.report ?? result).slice(100)}` : options.report ?? result });
+      if (input.id.startsWith('summary:')) {
+        const history = (JSON.parse(input.context) as { history: { user: string }[] }).history;
+        return JSON.stringify({ summary: 'The operator requested a check.', people: [], closed: [],
+          commitments: options.messageCommitments ? history.flatMap(turn => turn.user.split('\n').map(quote => ({ in: 'message', quote, waitsOn: 'nothing' }))) : [] });
+      }
+      if ((options.messageCommitments || options.legacyMessage) && !state.cancel) return JSON.stringify({ reply: 'I have the request.', memory: [], dated: [] });
       if (state.cancel) return JSON.stringify({ reply: 'I cancelled that result delivery.', memory: [], dated: [],
         cancelDeliveries: [{ id: 0, quote: input.question }] });
       return JSON.stringify({ reply: Array.from({ length: options.count ?? 1 }, (_, i) => i ? `${promise} Check ${i}.` : promise).join(' '), memory: [], dated: [], openLoops: Array.from({ length: options.count ?? 1 }, (_, i) => ({ kind: 'promise', quote: i ? `${promise} Check ${i}.` : promise, waitsOn: 'nothing',
@@ -36,10 +42,17 @@ function world(options: { authorize?: boolean; report?: string; rawWork?: string
       return state.unknown ? null : state.sends.length; }, ...options.ports };
   let worker = createJournalWorker(journal, ports);
   const reopen = () => { journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports); };
-  const prepare = async (text = request, sender = 7654321) => {
-    worker.intake([{ update_id: 1, message: { chat: options.thread ? { id: -1001234, type: 'supergroup', is_forum: true } : { id: 7654321, type: 'private' }, from: { id: sender }, text,
+  const prepare = async (text = request, sender = 7654321, update = 1) => {
+    worker.intake([{ update_id: update, message: { chat: options.thread ? { id: -1001234, type: 'supergroup', is_forum: true } : { id: 7654321, type: 'private' }, from: { id: sender }, text,
       date: Math.floor(start / 1000), ...(options.thread ? { message_thread_id: options.thread } : {}) } }]);
-    await worker.drain(); state.now += LOOP_REVISIT_MS; await worker.workObligations();
+    await worker.drain();
+    if (options.legacyMessage) {
+      journal.append({ kind: 'summary-reserve', through: update, at: state.now });
+      journal.append({ kind: 'summary', through: update, text: 'The operator requested a check.',
+        commitments: [{ in: 'message', source: `telegram:12345678:update:${update}`, quote: text, owner: 'agent', waitsOn: 'nothing' }], at: state.now });
+    }
+    if (options.messageCommitments) await worker.summarizeIfNeeded(true);
+    state.now += LOOP_REVISIT_MS; await worker.workObligations();
   };
   return { state, prepare, reopen, ports, get journal() { return journal; }, get worker() { return worker; } };
 }
@@ -71,7 +84,7 @@ const heldReviewCapture = JSON.parse(readFileSync(new URL('./fixtures/credlabel-
 it.each(['same worker', 'restart', 'unknown holding send', 'passing review'] as const)(
   'replays recorded review outcomes without stranding owed work: %s', async mode => {
     let hold = mode !== 'passing review';
-    const w = world({ report: heldReviewCapture.turn.recordedAnswer });
+    const w = world({ messageCommitments: true, report: heldReviewCapture.turn.recordedAnswer });
     try {
       await w.prepare();
       const slot = w.journal.view.obligationWork['commitment:0']!.lastSlot;
@@ -184,7 +197,7 @@ it('delivers the real recorded completed work bytes through the new path', async
   if (!reading.ok) throw Error('recorded answer unreadable');
   const decision = obligationDecision(reading.value, 'commitment', start, 'UTC'); expect(decision.outcome).toBe('report');
   if (!decision.report) throw Error('recorded report missing');
-  const w = world({ rawWork: reading.value });
+  const w = world({ messageCommitments: true, rawWork: reading.value });
   try {
     await w.prepare(); await w.worker.sendRequested();
     expect(w.state.sends[1]?.text).toContain(decision.report.replaceAll('**', ''));
@@ -246,7 +259,7 @@ it('closes none of a batched split result until the last transport part has a re
 const recordedShapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
   otherShapes: { kind: string; id: string; raw: string }[] };
 it.each(recordedShapes.otherShapes)('replays recorded $kind ($id) as work output: no invented completed result or delivery', async shape => {
-  const w = world({ rawWork: shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw });
+  const w = world({ messageCommitments: true, rawWork: shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw });
   try {
     await w.prepare(); expect(w.state.calls.some(id => id.startsWith('obligation:'))).toBe(true);
     await w.worker.sendRequested();
@@ -349,3 +362,133 @@ it('delivers each topic\'s owed result once, in its own topic, across a restart 
     expect(state.sends).toHaveLength(sent);
   } finally { journal.close(); }
 });
+
+// Desk's read-only live-root observation, 2026-11-12 09:40. These are recorded shapes,
+// not invented deliveryRequest/openLoops outputs or a claim to possess the full journal.
+const messageAsks = [
+  [969390664, 'Reply here with the PR link, branch, commit, tests, and any remaining risk when you finish.'],
+  [969390674, 'If you cannot continue, report the exact blocker from your own work session.'],
+  [969390679, 'When it is merged, or if something truly stops you, tell me in plain words what happened and show me how you checked.'],
+  [969390680, 'Tell me plainly what you did, how you checked it, and anything that stopped you.'],
+] as const;
+it.each([...messageAsks, [0, 'Reply here with the PR link'] as const])(
+  'delivers a newly recorded message commitment without another message: update %s', async (_update, ask) => {
+    const w = world({ messageCommitments: true });
+    try {
+      await w.prepare(ask, 7654321, _update || 1);
+      expect(w.journal.view.commitments[0]).toMatchObject({ in: 'message', quote: ask, owner: 'agent', waitsOn: 'nothing' });
+      expect(w.journal.view.commitments[0]?.deliveryRequest).toBeUndefined();
+      expect(w.journal.view.obligationWork['commitment:0']?.report?.text).toBe(result);
+      w.reopen(); await w.worker.sendRequested(); await w.worker.sendRequested();
+      expect(w.state.sends.filter(send => send.text.includes(result))).toHaveLength(1);
+      expect(w.journal.view.closed.has(0)).toBe(true);
+      w.reopen(); await w.worker.sendRequested();
+      expect(w.state.sends.filter(send => send.text.includes(result))).toHaveLength(1);
+    } finally { w.journal.close(); }
+  });
+
+it('leaves old finished message commitments waiting across upgrade and repeated restart', async () => {
+  const w = world({ legacyMessage: true });
+  try {
+    await w.prepare(messageAsks[0][1]);
+    expect(w.journal.view.obligationWork['commitment:0']?.report?.text).toBe(result);
+    for (let restart = 0; restart < 3; restart++) {
+      w.reopen(); await w.worker.sendRequested();
+      expect(w.journal.view.commitments[0]?.resultRequested).toBeUndefined();
+      expect(w.state.sends).toHaveLength(1);
+      expect(loopHealth(w.journal.view, w.state.now).deliveryInhibition).toContain('waits for your next message');
+    }
+  } finally { w.journal.close(); }
+});
+
+it.each(['stop', 'reply cap', 'call cap', 'secret', 'shared audience', 'withdrawal', 'unknown'] as const)(
+  'new message request preserves the existing %s floor', async mode => {
+    const w = world({ messageCommitments: true, ...(mode === 'shared audience' ? { thread: 42 } : {}) });
+    try {
+      await w.prepare(messageAsks[0][1]);
+      if (mode === 'stop') w.state.stopped = true;
+      if (mode === 'reply cap') w.journal.view.limits.maxReplies = w.journal.view.replies;
+      if (mode === 'call cap') w.journal.view.limits.maxCalls = w.journal.view.calls;
+      if (mode === 'secret') w.state.secret = true;
+      if (mode === 'shared audience') {
+        const source = w.journal.view.order[0]!.id;
+        w.journal.view.memory.push({ mode: 'remember', source, trigger: source, quote: messageAsks[0][1] });
+        w.state.audience = false;
+      }
+      if (mode === 'withdrawal') {
+        w.state.cancel = true;
+        w.worker.intake([{ update_id: 2, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+          text: 'Cancel that check and do not send its result.', date: Math.floor(w.state.now / 1000) } }]);
+        await w.worker.sendRequested();
+        expect(w.state.sends).toHaveLength(1);
+        await w.worker.drain();
+        expect(w.journal.view.closed.has(0)).toBe(true);
+      }
+      if (mode === 'unknown') w.state.unknown = true;
+      await w.worker.sendRequested().catch(error => { if (mode !== 'stop') throw error; });
+      expect(w.state.sends.filter(send => send.text.includes(result))).toHaveLength(mode === 'unknown' ? 1 : 0);
+      expect(w.journal.view.obligationWork['commitment:0']?.report?.delivered).toBeUndefined();
+      if (mode === 'shared audience') expect(loopHealth(w.journal.view, w.state.now).deliveryInhibition).toContain('disclosure');
+      if (mode === 'unknown' || mode === 'withdrawal') {
+        w.reopen(); await w.worker.sendRequested();
+        expect(w.state.sends.filter(send => send.text.includes(result))).toHaveLength(mode === 'unknown' ? 1 : 0);
+      }
+    } finally { w.journal.close(); }
+  });
+
+it('never grants source-message authority to an unverified speaker or a reply-side self-created promise', async () => {
+  const other = world({ messageCommitments: true }), self = world({ authorize: false });
+  try {
+    await other.prepare(messageAsks[0][1], 9999999); await self.prepare('What should we do next?');
+    for (const w of [other, self]) {
+      expect(w.journal.view.commitments.every(note => note.resultRequested === undefined)).toBe(true);
+      w.reopen(); await w.worker.sendRequested();
+      expect(w.state.sends.some(send => send.text.includes(result))).toBe(false);
+    }
+  } finally { other.journal.close(); self.journal.close(); }
+});
+
+it('bounds actual result messages per pass and rolling hour, including split parts and restart', async () => {
+  const w = world({ messageCommitments: true, distinctReports: true, report: '&'.repeat(1500) });
+  try {
+    await w.prepare(Array.from({ length: 10 }, (_, i) => `Reply here with the PR link for task ${i}.`).join('\n'));
+    for (let i = 1; i < 10; i++) await w.worker.workObligations();
+    expect(Object.values(w.journal.view.obligationWork).filter(work => work.report)).toHaveLength(10);
+    const initial = w.state.sends.length;
+    for (let pass = 0; pass < 8; pass++) {
+      const before = w.state.sends.length;
+      w.reopen(); await w.worker.sendRequested();
+      expect(w.state.sends.length - before).toBeLessThanOrEqual(OWED_RESULT_MESSAGES_PER_PASS);
+      if (pass === 0) expect(w.state.sends.length - before).toBe(OWED_RESULT_MESSAGES_PER_PASS);
+    }
+    expect(w.state.sends.length - initial).toBe(OWED_RESULT_MESSAGES_PER_HOUR);
+    expect(owedResultMessagesInWindow(w.journal.view, w.state.now)).toBe(OWED_RESULT_MESSAGES_PER_HOUR);
+    expect(loopHealth(w.journal.view, w.state.now).deliveryInhibition).toContain('pace limit');
+    w.state.now += OWED_RESULT_WINDOW_MS - 1; w.reopen(); await w.worker.sendRequested();
+    expect(w.state.sends.length - initial).toBe(OWED_RESULT_MESSAGES_PER_HOUR);
+    w.state.now++; w.reopen();
+    for (let pass = 0; pass < 8; pass++) await w.worker.sendRequested();
+    expect(w.journal.view.closed.size).toBe(10);
+    const sent = w.state.sends.length; w.reopen(); await w.worker.sendRequested();
+    expect(w.state.sends).toHaveLength(sent);
+  } finally { w.journal.close(); }
+});
+
+it.each(['retracted', 'probe', 'requested action', 'wrong quote', 'wrong slot', 'not agent'] as const)(
+  'rechecks the new message authority before dispatch: %s', async reason => {
+    const w = world({ messageCommitments: true });
+    try {
+      await w.prepare(messageAsks[0][1]);
+      const note = w.journal.view.commitments[0]!, source = w.journal.view.turns.get(note.source)!;
+      const ref = { key: 'commitment:0', slot: w.journal.view.obligationWork['commitment:0']!.lastSlot };
+      expect(owedResultAuthority(w.journal.view, ref)).toBeDefined();
+      // Isolate each authority-time boundary after real writer admission. No mutation goes to a live root.
+      if (reason === 'retracted') w.journal.view.retracted = [source.id];
+      if (reason === 'probe') source.text = `Build check abcdef0: ${source.text}`;
+      if (reason === 'requested action') source.requestedAction = { items: [] };
+      if (reason === 'wrong quote') note.quote = 'A sentence the operator never wrote.';
+      if (reason === 'wrong slot') ref.slot++;
+      if (reason === 'not agent') delete note.owner;
+      expect(owedResultAuthority(w.journal.view, ref)).toBeUndefined();
+    } finally { w.journal.close(); }
+  });

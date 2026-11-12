@@ -1530,7 +1530,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   /** The first message's retained preparation, including any parse refusal. */
   formatting?: ReplyFormatting;
   /** The later messages of a reply split across several (part 2 onward, in order), with each one's dispatch start and receipt. */
-  replyParts?: (ReplyPart & { started?: true; sent?: number; sentAt?: number })[];
+  replyParts?: (ReplyPart & { started?: true; startedAt?: number; sent?: number; sentAt?: number })[];
   /** Calls the turn made beyond `toolAttempts` (the review bound); the review is told its excerpt is incomplete. */
   toolAttemptsOmitted?: number;
   /** Part Thirteen §9: whether this turn's latest answer attempt ran on the scoped-tool route (reserved) or was refused to text. */
@@ -2535,12 +2535,35 @@ export const pendingReports = (view: JournalView, topic?: { thread: number | und
   .filter(item => view.genesis.forum !== true || topic === undefined || view.turns.get(item.source)?.thread === topic.thread);
 /** A finished work slot is the durable identity of the result, across restart and ownership transfer. */
 export interface OwedResultRef { key: string; slot: number }
+/** Rule 52: aggregate up to REQUEST_ITEM_LIMIT results per reply, then pace actual transport
+ * messages (including split parts). Four per pass and twelve per rolling hour allow useful
+ * completion batches without turning a burst of finished work into a notification flood. */
+export const OWED_RESULT_MESSAGES_PER_PASS = 4, OWED_RESULT_MESSAGES_PER_HOUR = 12;
+export const OWED_RESULT_WINDOW_MS = 60 * 60_000;
+export const OWED_RESULT_PACE_HOLD = 'requested result delivery pace limit';
+export function owedResultMessagesInWindow(view: JournalView, now: number): number {
+  return view.order.filter(turn => turn.requestedAction?.owed).reduce((count, turn) => count
+    + Number(turn.intentAt !== undefined && turn.intentAt > now - OWED_RESULT_WINDOW_MS)
+    + (turn.replyParts ?? []).filter(part => part.started && (part.startedAt ?? turn.intentAt ?? turn.at)
+      > now - OWED_RESULT_WINDOW_MS).length, 0);
+}
+
+/** A model-selected commitment quoting the verified operator's own message is the request.
+ * The writer stamps new notes only; old summaries never acquire authority on replay. */
+function messageResultRequest(view: JournalView, note: CommitmentNote): boolean {
+  const source = view.turns.get(note.source);
+  return note.in === 'message' && note.owner === 'agent' && !!source && verifiedOperatorTurn(view, source)
+    && !source.requestedAction && !probeTurn(view, source) && !retractedTurn(view, source.id)
+    && source.text.includes(note.quote) && projectMemoryClause(view, note.quote, source.id) === note.quote;
+}
+const resultRequest = (view: JournalView, note: CommitmentNote) => note.deliveryRequest
+  ?? (note.resultRequested === 'source-message-v1' && messageResultRequest(view, note) ? note.quote : undefined);
 /** Only an explicit request in the verified source message authorizes an initiated result reply.
  * Model judgment selects that clause; code checks its source, standing and exact destination. */
 export function owedResultAuthority(view: JournalView, ref: OwedResultRef) {
   if (!/^commitment:(0|[1-9][0-9]*)$/u.test(ref.key)) return undefined;
   const id = Number(ref.key.slice(11)), note = view.commitments[id], work = view.obligationWork[ref.key];
-  const source = note && view.turns.get(note.source), request = note?.deliveryRequest;
+  const source = note && view.turns.get(note.source), request = note && resultRequest(view, note);
   if (!source || !request || !commitmentOpen(view, id) || !verifiedOperatorTurn(view, source)
     || source.requestedAction || retractedTurn(view, source.id) || source.intent === undefined || !source.text.includes(request)
     || projectMemoryClause(view, request, source.id) !== request
@@ -2549,7 +2572,7 @@ export function owedResultAuthority(view: JournalView, ref: OwedResultRef) {
 }
 const deliveryCancellationSupported = (view: JournalView, turn: Turn, item: CommitmentClosure) => {
   const note = item && view.commitments[item.id], source = note && view.turns.get(note.source);
-  return !!note?.deliveryRequest && !!source && source.update < turn.update && item.source === turn.id
+  return !!note && !!resultRequest(view, note) && !!source && source.update < turn.update && item.source === turn.id
     && verifiedOperatorTurn(view, turn) && !turn.requestedAction && !probeTurn(view, turn)
     && turn.grounding?.commitments.includes(item.id) === true && boundedText(item.quote, 1, 500) && turn.text.includes(item.quote);
 };
@@ -4628,6 +4651,9 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (view.stepCheckStarted) view.stepChecks.set(`summary:${row.through}`, {});
     if (row.commitments?.some(note => note.owner !== undefined && (note.owner !== 'agent' || !COMMITMENT_WAITS_ON.includes(note.waitsOn!))))
       throw Error('preview journal: undeclared commitment dependency');
+    if (row.commitments?.some(note => note.resultRequested !== undefined
+      && (note.resultRequested !== 'source-message-v1' || !messageResultRequest(view, note))))
+      throw Error('preview journal: unsupported message result request');
     if (row.commitments) recordCommitments(view, row.commitments);
     if (row.commitmentRefusals !== undefined) {
       if (!Number.isSafeInteger(row.commitmentRefusals) || row.commitmentRefusals < 1) throw Error('preview journal: invalid commitment refusal count');
@@ -4824,7 +4850,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (!part || !Number.isSafeInteger(row.part) || previousSent === undefined || view.sendOutcomes.some(item => item.target === replyPartTarget(turn.id, row.part))
       || (row.kind === 'reply-part-start' ? part.started !== undefined : !part.started || part.sent !== undefined || !Number.isSafeInteger(row.message) || row.message <= 0))
       throw Error('preview journal: reply part order');
-    if (row.kind === 'reply-part-start') { part.started = true; return; }
+    if (row.kind === 'reply-part-start') { part.started = true; part.startedAt = row.at; return; }
     part.sent = row.message; part.sentAt = row.at;
     if (row.part === parts.length + 1) settleDeliveredReply(view, turn, row.message, row.at);
     return;
@@ -8993,12 +9019,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * accepted; its durable start is written before its dispatch, so a part started with no receipt (a crash, or an
    * unknown or refused outcome) is never re-sent, and the parts after it are not sent out of order. Stop and expiry
    * end it like any send. */
+  let owedMessagesLeft = 0;
+  const takeOwedMessage = (turn: Turn) => {
+    if (!turn.requestedAction?.owed) return true;
+    if (owedMessagesLeft <= 0 || owedResultMessagesInWindow(journal.view, ports.now()) >= OWED_RESULT_MESSAGES_PER_HOUR) return false;
+    owedMessagesLeft--; return true;
+  };
   const sendReplyParts = async (turn: Turn) => {
     const parts = turn.replyParts ?? [];
     for (const [index, part] of parts.entries()) {
       if (part.sent !== undefined) continue;
       const previous = index === 0 ? turn.sent : parts[index - 1]!.sent;
-      if (part.started || previous === undefined) return;
+      if (part.started || previous === undefined || !takeOwedMessage(turn)) return;
       gate();
       const number = index + 2, target = replyPartTarget(turn.id, number);
       journal.append({ kind: 'reply-part-start', id: turn.id, part: number, at: ports.now() });
@@ -9088,6 +9120,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const drainTurnsOnce = async (due: boolean) => {
     if (working) throw Error('preview journal: second worker refused');
     working = true; workingSince = ports.now();
+    // Reserve the pass's remaining hourly room synchronously, including concurrent topic drains.
+    owedMessagesLeft = Math.min(OWED_RESULT_MESSAGES_PER_PASS,
+      OWED_RESULT_MESSAGES_PER_HOUR - owedResultMessagesInWindow(journal.view, ports.now()));
     try {
       // Rebuild every pending intake timer before serial answer work can await the first turn.
       for (const turn of journal.view.order) startAcknowledgement(turn);
@@ -9130,6 +9165,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         let releasedHold: string | undefined;
         const currentHold = () => turn.held === releasedHold ? undefined : turn.held;
         if (currentHold() === GROUP_DISCLOSURE_HOLD) { releasedHold = turn.held; }
+        if (currentHold() === OWED_RESULT_PACE_HOLD) {
+          if (owedMessagesLeft <= 0) continue;
+          releasedHold = turn.held;
+        }
         startAcknowledgement(turn);
         // int11 answers a status command and a too-long-input notice even while a
         // correction holds ordinary answers; the burst ordering hold keeps that exemption.
@@ -10662,6 +10701,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             replyDigest: createHash('sha256').update(reply).digest('hex') } } : {}),
           update: turn.update, grant: journal.view.genesis.grant, at: intentAt });
         gate();
+        if (!takeOwedMessage(turn)) {
+          journal.append({ kind: 'hold', id: turn.id, reason: OWED_RESULT_PACE_HOLD, at: ports.now() }); continue;
+        }
         const sendStarted = elapsedMs();
         const outcome = await push(approval ? 'approval' : 'reply', `reply:${turn.id}`, provenance, { text: body, expectedText: formatting.shown, formatting,
           chat: journal.view.genesis.chat, ...thread, update: turn.update, ...(approval ? { replyMarkup: approvalMarkup(approval.id) } : {}) }, admitReply);
@@ -11348,7 +11390,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         : journal.view.commitments.length + notes.length;
       if (existingRoom) links.push({ id, source: source.id, quote });
       else if (freshRoom) (notes[fresh]!.sources ??= []).push({ source: source.id, quote });
-      else notes.push({ in: side, source: source.id, quote, owner: 'agent', waitsOn: waitsOn as CommitmentWaitsOn });
+      else {
+        const note: CommitmentNote = { in: side, source: source.id, quote, owner: 'agent', waitsOn: waitsOn as CommitmentWaitsOn };
+        if (messageResultRequest(journal.view, note)) note.resultRequested = 'source-message-v1';
+        notes.push(note);
+      }
       // Made and settled within this same stretch: closed only by a later message the operator verifiably sent.
       const closer = typeof closedBy === 'string' && Buffer.byteLength(closedBy) <= 1000 && terms(closedBy).length
         ? shown.find(turn => turn.update > source.update && fromOperator(turn) && redact(turn.text).text.includes(closedBy)) : undefined;
@@ -12583,7 +12629,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const note = journal.view.commitments[item.id]!, source = journal.view.turns.get(note.source)!;
         return { kind: note.loop ?? (note.agentPromise ? 'promise' : note.in === 'message' ? 'request' : 'promise'),
           quote: clean(redact(note.quote).text, true, note.source), waitsOn: commitmentWaitsOn(journal.view, item.id),
-          ...(note.deliveryRequest ? { deliveryRequest: clean(redact(note.deliveryRequest).text, true, note.source) } : {}),
+          ...(resultRequest(journal.view, note) ? { deliveryRequest: clean(redact(resultRequest(journal.view, note)!).text, true, note.source) } : {}),
           since: dated(source), operatorMessage: clip(clean(redact(source.text).text, true, source.id), 2000),
           ...(sentText(source) ? { yourReply: clip(clean(redact(sentText(source)!).text, true), 2000) } : {}) };
       })() : (() => {
