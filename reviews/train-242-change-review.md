@@ -43,7 +43,7 @@ Prompt finding: e8708c7fea24 | protocol-literal | Unchanged existing protocol/no
 
 Deferral: generated/register.json:1 | not-a-deferral=mechanical replay retains existing descriptions and commitments; adds no deferral
 
-Verification: member, connector, transport and tool-turn batches pass; production-provider-subscription passes 119 tests. The initial floor failure and metadata findings remain recorded in the Studio report; the unchanged floor now passes after README summary compaction. Final pinned/check results and exact packet measurements are recorded in that report.
+Verification: member, connector, transport and tool-turn batches pass; production-provider-subscription passes 119 tests. The initial floor failure and metadata findings remain recorded in the Studio report; the unchanged floor now passes after README summary compaction. Conversation always-sent bytes are 23,164 under the unchanged 23,459 guard; tools retain every required context key. The 38-test recorded wording replay passes. Final pinned/check results are recorded in that report.
 
 ## Closing block
 
