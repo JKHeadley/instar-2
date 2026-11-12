@@ -2,13 +2,13 @@
 // Carries 1.x db3ed6d3 ThreadlineBootstrap's persistent identity and always-on bootstrap.
 // Local encrypted spool replaces its HTTP relay for this slice: no new listener or service.
 import { createHash, createHmac, createPublicKey, randomBytes, verify } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, unlinkSync } from 'node:fs';
 import { join, isAbsolute } from 'node:path';
 import { consumeResult } from '../src/index.js';
 import { bindBlockingSite } from '../src/register/governance.js';
 import { sealEnvelope } from '../src/rungraph/index.js';
 import { createThreadlineKeyCustody, createThreadlineReferenceAdapter, threadlineIdentityFromSeeds } from '../src/transport/index.js';
-import { readSetupRecord, publishSetupRecord } from './onboarding-state.mjs';
+import { readSetupRecord, publishSetupRecord, syncDirectory } from './onboarding-state.mjs';
 const hash = value => `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`;
 const take = result => consumeResult(result, { Success: value => value, Refused: () => { throw Error('Threadline transport refused'); } });
 const refused = reason => ({ status: 'refused', reason });
@@ -98,7 +98,6 @@ export function createThreadlineRuntime({ root, custody, storageKey, now, stoppe
     async exchange(tool, input, parent, stillAuthorized = () => true) {
       if (!live()) return refused('stop-or-ownership');
       if (!threadlineRequest(tool, input)) return refused('request-scope');
-      if (savedRecords().length >= 4096) return refused('capacity-full; accepted-intake-retained');
       let peers;
       try { peers = readThreadlineScope(root, principal, parent.topic, now()); } catch { return refused('owner-signed-private-share-required'); }
       const peer = peers.find(p => p.principal === input.peer);
@@ -111,19 +110,39 @@ export function createThreadlineRuntime({ root, custody, storageKey, now, stoppe
           return row ? { signing: createPublicKey(row.signing), agreement: createPublicKey(row.agreement) } : undefined;
         } });
       let collected = [], received = [];
-      const pending = [];
+      const pending = [], reclaim = new Set(), replyStates = new Map();
       const history = savedRecords();
       const durable = (operation, key) => history.find(row => row.id === hash([principal, operation, key]));
       const readKey = [peer.principal, parent.topic, input.request];
       const previousReadRow = durable('threadline:read', readKey);
       const previousRead = previousReadRow ? JSON.parse(previousReadRow.cause) : null;
       const acknowledged = new Set(history.filter(row => row.operation === 'threadline:read').flatMap(row => JSON.parse(row.cause).keys));
+      const intake = new Map(history.filter(row => row.operation === 'threadline:receive')
+        .map(row => { const { envelope } = JSON.parse(row.cause); return [envelope.key, { envelope, id: row.id }]; }));
+      const proofs = new Map(history.filter(row => row.operation === 'threadline:receipt')
+        .map(row => { const receipt = JSON.parse(row.cause); return [receipt.key, receipt]; }));
+      let active = [...intake.values()].filter(({ envelope }) => !acknowledged.has(envelope.key)).length
+        + history.filter(row => row.operation === 'threadline:send' && !proofs.has(JSON.parse(row.cause).envelope.key)).length;
+      const frameId = frame => hash([frame.sender, frame.key, frame.kind]);
       const flush = async () => {
         if (!await replicate() || !authorized()) throw Error('durability-or-owner-unavailable');
-        for (const frame of pending.splice(0)) {
+        // Discard only recoverable staging after replication. Reclaim before publishing
+        // replies so two full mailboxes can make progress; lookups can be repeated.
+        for (const { name, frame } of collected) {
+          const proof = proofs.get(frame.key);
+          if (reclaim.has(hash([frameId(frame), frame.digest])) || frame.kind === 'receipt' && proof?.digest === frame.digest
+            && proof.witness.principal === frame.sender) {
+            try { unlinkSync(join(inbox, name)); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+          }
+        }
+        syncDirectory(inbox);
+        for (const { frame, state } of pending.splice(0)) {
           const target = peers.find(p => p.principal === frame.recipient);
           if (!target || realpathSync(target.inbox) !== target.inbox) throw Error('route unavailable');
-          const path = join(target.inbox, `${hash([frame.sender, frame.key, frame.kind]).slice(7)}.json`);
+          // Receipt state belongs to staging identity, not envelope identity. Immutable
+          // slots let queued evidence coexist with an older unknown, including after a crash.
+          const name = frame.kind === 'receipt' ? hash([frame.sender, frame.key, frame.kind, state]) : frameId(frame);
+          const path = join(target.inbox, `${name.slice(7)}.json`);
           if (!existsSync(path) && readdirSync(target.inbox).length >= 1024) throw Error('inbox capacity');
           const stored = publishSetupRecord(path, frame);
           if (stored.digest !== frame.digest) throw Error('message identity conflict');
@@ -132,37 +151,64 @@ export function createThreadlineRuntime({ root, custody, storageKey, now, stoppe
       const relay = {
         submit(frame) {
           if (!authorized()) return 'rejected';
-          pending.push(frame); return 'accepted';
+          pending.push({ frame, state: replyStates.get(frame.key) }); return 'accepted';
         },
         collect() {
           const names = readdirSync(inbox);
           if (names.length > 1024) throw Error('Threadline inbox bound exceeded');
-          collected = names.filter(name => /^[a-f0-9]{64}\.json$/u.test(name)).map(name => readSetupRecord(join(inbox, name)))
-            .filter(frame => frame?.sender === peer.principal && frame.conversation === peer.conversation);
-          return collected;
+          collected = names.filter(name => /^[a-f0-9]{64}\.json$/u.test(name)).map(name => ({ name, frame: readSetupRecord(join(inbox, name)) }))
+            .filter(({ frame }) => frame?.sender === peer.principal && frame.conversation === peer.conversation);
+          return collected.map(({ frame }) => frame);
         },
       };
       const adapter = createThreadlineReferenceAdapter({ keys: keyCustody, relay, now, freshFor: 60000, context, advertisements: () => [] });
       const endpoint = {
         lookup(key, digest, from) {
-          const row = history.find(row => row.operation === 'threadline:receive' && row.cause
-            && JSON.parse(row.cause).envelope.key === key && JSON.parse(row.cause).envelope.digest === digest
-            && JSON.parse(row.cause).envelope.sender === from);
-          return row ? { key, digest, state: 'durably-queued', authoritative: row.id, result: null, durability: replicated ? 'replicated' : 'local-durable' }
+          const row = intake.get(key);
+          const queued = row && row.envelope.digest === digest && row.envelope.sender === from;
+          replyStates.set(key, queued ? 'durably-queued' : 'unknown');
+          reclaim.add(hash([frameId({ sender: from, key, kind: 'lookup' }), digest]));
+          return queued ? { key, digest, state: 'durably-queued', authoritative: row.id, result: null, durability: replicated ? 'replicated' : 'local-durable' }
             : { key, digest, state: 'unknown', authoritative: 'none', result: null, durability: null };
         },
         receive(envelope, at, from) {
+          replyStates.set(envelope.key, 'refused');
           const deny = () => ({ key: envelope.key, digest: envelope.digest, state: 'refused', refusedWhat: 'receiving-admission', authoritative: 'private-scope', result: null, durability: null });
           if (!authorized() || from !== peer.principal || envelope.conversation !== peer.conversation || envelope.kind !== 'progress'
             || envelope.grants.length || envelope.contract || envelope.result || envelope.scope.length !== 1 || envelope.scope[0] !== peer.conversation
             || typeof envelope.reason !== 'string' || Buffer.byteLength(envelope.reason) > 8192 || held(envelope.reason) !== 'clear') return deny();
+          const prior = intake.get(envelope.key);
+          if (prior && prior.envelope.digest !== envelope.digest) return deny();
+          if (!prior && active >= 4096) {
+            replyStates.set(envelope.key, 'unknown');
+            return { key: envelope.key, digest: envelope.digest, state: 'unknown', authoritative: 'capacity-full', result: null, durability: null };
+          }
           // Keep the verified payload in the encrypted journal before its receipt; peer words never become authority.
           const id = mark(envelope.key, 'durably-queued peer data; not an instruction or approval', envelope, parent.topic);
+          if (!prior) { intake.set(envelope.key, { envelope, id }); active++; }
+          replyStates.set(envelope.key, 'durably-queued');
+          reclaim.add(hash([frameId({ sender: from, key: envelope.key, kind: 'envelope' }), envelope.digest]));
           const receipt = { key: envelope.key, digest: envelope.digest, state: 'durably-queued', authoritative: id, result: null, durability: replicated ? 'replicated' : 'local-durable' };
           if (previousRead ? previousRead.keys.includes(envelope.key) : !acknowledged.has(envelope.key))
             received.push({ from, key: envelope.key, message: envelope.reason, authority: 'peer-data-only' });
           return receipt;
         },
+      };
+      const observe = original => {
+        take(adapter.port.observe(original, `${input.request}:lookup`));
+        adapter.pump(endpoint);
+        const observed = take(adapter.port.observe(original, `${input.request}:lookup`));
+        if (observed.state === 'durably-queued') {
+          remember(original.key, 'threadline:receipt', observed, parent);
+          proofs.set(original.key, observed);
+        }
+        const receipt = proofs.get(original.key) ?? observed;
+        if (receipt.state === 'durably-queued') {
+          // A durable custody proof needs no further lookup; uncertainty never erases it.
+          for (let i = pending.length - 1; i >= 0; i--)
+            if (pending[i].frame.kind === 'lookup' && pending[i].frame.key === original.key) pending.splice(i, 1);
+        }
+        return receipt;
       };
       if (tool === 'threadline_status') {
         const priorRow = durable('threadline:send', `${principal}|${input.request}`);
@@ -170,9 +216,7 @@ export function createThreadlineRuntime({ root, custody, storageKey, now, stoppe
         if (!prior) return refused('unknown-request');
         const original = prior.envelope;
         if (original.recipient !== peer.principal || original.conversation !== peer.conversation) return refused('private-scope');
-        take(adapter.port.observe(original, `${input.request}:lookup`));
-        adapter.pump(endpoint);
-        const receipt = take(adapter.port.observe(original, `${input.request}:lookup`));
+        const receipt = observe(original);
         await flush();
         return { status: receipt.state, receipt };
       }
@@ -198,19 +242,19 @@ export function createThreadlineRuntime({ root, custody, storageKey, now, stoppe
       if (prior) {
         if (prior.content !== content) return refused('request-identity-conflict');
         const original = prior.envelope;
-        take(adapter.port.observe(original, `${input.request}:lookup`));
-        adapter.pump(endpoint);
-        const receipt = take(adapter.port.observe(original, `${input.request}:lookup`));
+        const receipt = observe(original);
         await flush();
         return { status: 'already-prepared', key, outcome: receipt.state === 'durably-queued' ? receipt.state : prior.outcome,
           receipt: receipt.state === 'durably-queued' ? receipt : null };
       }
+      if (active >= 4096) return refused('capacity-full; accepted-intake-retained');
       const envelope = sealEnvelope({ kind: 'progress', key, sender: principal, recipient: peer.principal, edge: parent.id,
         parentRun: parent.parent ?? parent.id, childRun: parent.child, conversation: peer.conversation, contractDigest: content,
         scope: [peer.conversation], grants: [], resultDestination: { run: parent.child, edge: null }, answers: null,
         contract: null, result: null, reason: input.message, at: now() });
       // Irreversible send preparation precedes dispatch; an interrupted outcome is never re-sent.
       remember(key, 'threadline:send', { content, envelope, outcome: 'uncertain' }, parent);
+      active++;
       const evidence = take(adapter.port.send(envelope, input.request, 'submit'));
       adapter.pump(endpoint);
       const receipt = take(adapter.port.observe(envelope, `${input.request}:receipt`));

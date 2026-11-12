@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, readFileSync, readdirSync, rmSync, writeFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { generateKeyPairSync, sign } from 'node:crypto';
@@ -134,3 +134,107 @@ it('keeps identity and never-twice evidence through restart/compaction and refus
   expect(await a!.call('threadline_send', { ...input, request: 'replica-lost' })).toMatchObject({ status: 'uncertain' });
   expect(readdirSync(join(b!.root, 'threadline/inbox')).filter(name => JSON.parse(readFileSync(join(b!.root, 'threadline/inbox', name), 'utf8')).kind === 'envelope')).toEqual(before);
 }, 30000);
+
+it('review: later authenticated custody replaces an earlier unknown receipt', async () => {
+  const [a, b] = await pair();
+  const input = { peer: b!.runtime.publicRecord.principal, request: 'reordered', message: 'keep this' };
+  expect(await a!.call('threadline_send', input)).toMatchObject({ status: 'accepted-by-transport' });
+  const inbox = join(b!.root, 'threadline/inbox');
+  const name = readdirSync(inbox).find(name => JSON.parse(readFileSync(join(inbox, name), 'utf8')).kind === 'envelope')!;
+  renameSync(join(inbox, name), join(b!.root, 'delayed-envelope'));
+  expect(await b!.call('threadline_receive', { peer: a!.runtime.publicRecord.principal, request: 'early' })).toMatchObject({ status: 'received', messages: [] });
+  const staleReceipt = readdirSync(join(a!.root, 'threadline/inbox')).map(name => readFileSync(join(a!.root, 'threadline/inbox', name), 'utf8'))[0]!;
+  renameSync(join(b!.root, 'delayed-envelope'), join(inbox, name));
+  expect(await b!.call('threadline_receive', { peer: a!.runtime.publicRecord.principal, request: 'later' })).toMatchObject({ status: 'received', messages: [{ message: 'keep this' }] });
+  expect(await a!.call('threadline_status', { peer: b!.runtime.publicRecord.principal, request: 'reordered' })).toMatchObject({ status: 'durably-queued' });
+  expect(readdirSync(inbox)).toHaveLength(0);
+  expect(readdirSync(join(a!.root, 'threadline/inbox'))).toHaveLength(0);
+  // Legacy staging and late stale evidence cannot erase journaled custody after restart.
+  writeFileSync(join(a!.root, 'threadline/inbox', `${'0'.repeat(64)}.json`), staleReceipt);
+  a!.journal.compact(); b!.journal.compact();
+  expect(await createThreadlineRuntime(a!.runtimeOptions).exchange('threadline_status', { peer: input.peer, request: input.request }, a!.edge)).toMatchObject({ status: 'durably-queued' });
+  expect(readdirSync(join(a!.root, 'threadline/inbox'))).toHaveLength(0);
+  expect(await createThreadlineRuntime(b!.runtimeOptions).exchange('threadline_receive', { peer: a!.runtime.publicRecord.principal, request: 'later' }, b!.edge)).toMatchObject({ messages: [{ message: 'keep this' }] });
+  expect(b!.journal.threadlineRecords().filter(row => row.operation === 'threadline:receive')).toHaveLength(1);
+}, 20000);
+it('review: capacity allows already accepted unread intake to drain', async () => {
+  const [a, b] = await pair();
+  for (let n = 0; n < 9; n++) expect(await a!.call('threadline_send', {
+    peer: b!.runtime.publicRecord.principal, request: `capacity-${n}`, message: `retained-${n}`
+  })).toMatchObject({ status: 'accepted-by-transport' });
+  const input = { peer: a!.runtime.publicRecord.principal, request: 'first-page' };
+  const first = await b!.call('threadline_receive', input) as { status: string; messages: unknown[] };
+  expect(first.status).toBe('received'); expect(first.messages).toHaveLength(8);
+  const saved = b!.journal.threadlineRecords();
+  expect(saved.filter(row => row.operation === 'threadline:receive')).toHaveLength(9);
+  const runtime = createThreadlineRuntime({ ...b!.runtimeOptions, records: () => [...saved, ...Array.from({ length: 4096 - saved.length }, (_, i) => ({ ...saved[0], id: `unrelated-${i}`, operation: 'threadline:send' }))] });
+  const last = await runtime.exchange('threadline_receive', { ...input, request: 'second-page' }, b!.edge);
+  expect(last.status).toBe('received'); expect(last.messages).toHaveLength(1);
+  expect(await runtime.exchange('threadline_receive', input, b!.edge)).toMatchObject({ messages: first.messages });
+  expect(readdirSync(join(b!.root, 'threadline/inbox'))).toHaveLength(0);
+}, 20000);
+
+
+it('bounds new admission by active work while preserving recovery and admitting beyond settled history', async () => {
+  const [a, b] = await pair();
+  const input = { peer: b!.runtime.publicRecord.principal, request: 'active', message: 'tracked' };
+  expect(await a!.call('threadline_send', input)).toMatchObject({ status: 'accepted-by-transport' });
+  const sent = a!.journal.threadlineRecords().find(row => row.operation === 'threadline:send')!;
+  const outstanding = Array.from({ length: 4095 }, (_, i) => ({ ...sent, id: `pending-${i}`,
+    cause: JSON.stringify({ ...JSON.parse(sent.cause!), envelope: { ...JSON.parse(sent.cause!).envelope, key: `other-${i}` } }) }));
+  const full = createThreadlineRuntime({ ...a!.runtimeOptions, records: () => [...a!.journal.threadlineRecords(), ...outstanding] });
+  expect(await full.exchange('threadline_send', { ...input, request: 'over-cap' }, a!.edge)).toMatchObject({ status: 'refused', reason: 'capacity-full; accepted-intake-retained' });
+  expect(await full.exchange('threadline_send', input, a!.edge)).toMatchObject({ status: 'already-prepared' });
+  expect(await b!.call('threadline_receive', { peer: a!.runtime.publicRecord.principal, request: 'drain' })).toMatchObject({ messages: [{ message: 'tracked' }] });
+  expect(await full.exchange('threadline_status', { peer: input.peer, request: input.request }, a!.edge)).toMatchObject({ status: 'durably-queued' });
+  // The proof releases active capacity even though lifetime history remains above 4096.
+  expect(await full.exchange('threadline_send', { ...input, request: 'freed-slot' }, a!.edge)).toMatchObject({ status: 'accepted-by-transport' });
+  expect(await full.exchange('threadline_send', { ...input, request: 'full-again' }, a!.edge)).toMatchObject({ status: 'refused' });
+}, 20000);
+
+it('same-pump lookups see current intake, and replication failure keeps staging recoverable', async () => {
+  const [a, b] = await pair();
+  const input = { peer: b!.runtime.publicRecord.principal, request: 'same-pump', message: 'durable first' };
+  await a!.call('threadline_send', input);
+  const inbox = join(b!.root, 'threadline/inbox');
+  // Deterministic ordering without host load or thousands of real operations.
+  for (const name of readdirSync(inbox)) {
+    const frame = JSON.parse(readFileSync(join(inbox, name), 'utf8'));
+    renameSync(join(inbox, name), join(inbox, `${(frame.kind === 'envelope' ? '0' : 'f').repeat(64)}.json`));
+  }
+  expect(await b!.runtime.exchange('threadline_receive', { peer: a!.runtime.publicRecord.principal, request: 'first' }, b!.edge)).toMatchObject({ messages: [{ message: 'durable first' }] });
+  expect(readdirSync(inbox)).toHaveLength(0);
+  // This lookup ran after receive in the SAME pump; no pre-pump snapshot is valid.
+  expect(readdirSync(join(a!.root, 'threadline/inbox'))).toHaveLength(1);
+  await a!.call('threadline_status', { peer: input.peer, request: input.request });
+  await a!.call('threadline_send', { ...input, request: 'replication' });
+  b!.setReplication(false);
+  await expect(b!.runtime.exchange('threadline_receive', { peer: a!.runtime.publicRecord.principal, request: 'read' }, b!.edge)).rejects.toThrow('durability-or-owner-unavailable');
+  expect(readdirSync(inbox)).toHaveLength(2);
+  expect(readdirSync(join(a!.root, 'threadline/inbox'))).toHaveLength(0);
+  b!.setReplication(true);
+  expect(await b!.runtime.exchange('threadline_receive', { peer: a!.runtime.publicRecord.principal, request: 'read' }, b!.edge)).toMatchObject({ messages: [{ message: 'durable first' }] });
+  expect(readdirSync(inbox)).toHaveLength(0);
+  expect(await a!.call('threadline_status', { peer: input.peer, request: 'replication' })).toMatchObject({ status: 'durably-queued' });
+}, 20000);
+
+
+it('leaves new envelopes staged at active capacity and accepts them after capacity is released', async () => {
+  const [a, b] = await pair();
+  const input = { peer: b!.runtime.publicRecord.principal, request: 'capacity-recovery', message: 'wait for capacity' };
+  await a!.call('threadline_send', input);
+  const sent = a!.journal.threadlineRecords().find(row => row.operation === 'threadline:send')!;
+  let busy = true;
+  const outstanding = Array.from({ length: 4096 }, (_, i) => ({ ...sent, id: `pending-${i}`,
+    cause: JSON.stringify({ ...JSON.parse(sent.cause!), envelope: { ...JSON.parse(sent.cause!).envelope, key: `other-${i}` } }) }));
+  const runtime = createThreadlineRuntime({ ...b!.runtimeOptions, records: () => [...b!.journal.threadlineRecords(), ...(busy ? outstanding : [])] });
+  const read = { peer: a!.runtime.publicRecord.principal, request: 'full' };
+  expect(await runtime.exchange('threadline_receive', read, b!.edge)).toMatchObject({ messages: [] });
+  expect(b!.journal.threadlineRecords().filter(row => row.operation === 'threadline:receive')).toHaveLength(0);
+  expect(readdirSync(join(b!.root, 'threadline/inbox'))).toHaveLength(1);
+  expect(await a!.call('threadline_status', { peer: input.peer, request: input.request })).toMatchObject({ status: 'uncertain' });
+  busy = false;
+  expect(await runtime.exchange('threadline_receive', { ...read, request: 'released' }, b!.edge)).toMatchObject({ messages: [{ message: input.message }] });
+  expect(await a!.call('threadline_status', { peer: input.peer, request: input.request })).toMatchObject({ status: 'durably-queued' });
+  expect(readdirSync(join(b!.root, 'threadline/inbox'))).toHaveLength(0);
+}, 20000);
