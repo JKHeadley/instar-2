@@ -26,3 +26,15 @@ Worker processes and their replacement are local to the current conversation
 owner. Existing ownership fencing, durable intake, admission hooks, result
 collection and send identity continue to govern both local and multi-machine
 installations. No new queue, timer or store is added.
+
+A delivered promise whose background work becomes uncertain keeps its execution
+hold. On the next ordinary obligation cycle, the conversation receives one plain
+interruption notice. Simultaneous interrupted promises in that conversation share
+one notice. The promise remains open and visible as stalled in status; the existing
+scheduled observation still checks for a saved result. This notice neither starts
+another worker nor claims that the promised result was delivered.
+
+The notice uses the existing signed outbound doorway, with its intent durably
+recorded before dispatch. Restart and journal compaction preserve that identity.
+An unknown notice delivery is not retried. Stop, the reply allowance, conversation
+ownership and audience admission still govern delivery.
