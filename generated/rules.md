@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:0287a4fe225ddd908407ac2276281d59a619b628e9b19141c328cd65fe9a2978
-Source commit: 88924b99162b6be29d8195f69dfa0ff442269cda
+Register generation: sha256:6e98993d62e0c07414b6baa390865693484691bf79e462b52c25bb7b1d9b1b7e
+Source commit: b10f66c694b025aa96222b9c06c908e286a9b65a
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -193,6 +193,13 @@ Every Instar feature works fully without the user buying anything from a third p
 
 Check: Nothing checks this yet. Owed: a no-purchase boot test, in which a fresh installation running only on the subscription the person chose for the agent, with no other paid service, passes the live end-to-end proofs (#43, #62) with nothing refused, held or degraded for want of an outside service. Whether a design degrades core function when the service is absent is a judgment, held by the independent review of that design, not a script.
 Terms: term:feature, term:user
+
+## 123. An Instar Agent Always Serves a Team
+
+Every feature treats an agent as serving several people with different roles (owner, member, guest), by default. Anything a person creates or is given (a document, a project, a conversation, a note, a comment) has an owner. It is private to that owner by default, and can be shared with chosen people or with the whole team. The person's role and the share decide who may see it and who may act on it. Access is granted only through the owner's signed team record. The agent can narrow access but never widen it on its own. A feature that serves only one person is an exception that states its reason. An agent with one person is a team of one and loses nothing. Extends #31 and #113 from machines to people. An organization of several agents builds on this rule; it does not replace it.
+
+Check: Nothing checks this yet; the checks are being built. Owed: a required team-posture statement on every design and change artifact, naming who sees it, who can act, the default and how sharing works, where absence fails as it does for #113; and a live proof before done that includes a member and a guest who must not see or act on anything not given to them, tested on both sides. Whether a stated team posture is honest is a judgment, held by the independent review of that change, not a script.
+Terms: term:feature
 
 ## 13. Quantitative Claims Must Bind a Subject
 

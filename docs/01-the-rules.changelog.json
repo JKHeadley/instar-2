@@ -1,6 +1,6 @@
 [
   {
-    "revision": 24,
+    "revision": 25,
     "date": "2026-11-09",
     "status": "draft",
     "cause": {
@@ -16,23 +16,7 @@
     ]
   },
   {
-    "revision": 23,
-    "date": "2026-11-05",
-    "status": "draft",
-    "cause": {
-      "kind": "conversation",
-      "note": "Echo proposed this effort in Telegram 139374/139375 on 2026-11-05. Justin replied: \"Perfect please start a 24 hour autonomous session to move this work forward\" and \"I expect some of the results of this work to be an ongoing job that also reports directly within this topic\" [source: telegram 139374/139377 2026-11-05T22:42:43Z]. These words authorize pursuing the work, not final constitutional wording. Final-head constitutional review and paired PR approval remain pending."
-    },
-    "changes": [
-      {
-        "what": "Strengthen existing foundational Rule 39 Observability with measurable outcomes, recorded baselines, versioned repeated evaluations, understandable visual history, whole-effort and material-part coverage, independent coverage checks and accountable recurring corrective review.",
-        "why": "Telemetry and an active or completed process do not by themselves prove improvement; unregistered work and gaps must stay visible, and evidence must reach a visual a person understands.",
-        "ref": "Echo proposal Telegram 139374/139375 and Justin reply 139374/139377 2026-11-05; paired 1.x Observability amendment and constitution-alignment map."
-      }
-    ]
-  },
-  {
-    "revision": 22,
+    "revision": 24,
     "date": "2026-11-08",
     "status": "draft",
     "cause": {
@@ -44,6 +28,38 @@
         "what": "Rule 72's check states the deadline effect: \"A deadline that has passed fails only builds that change the feature it belongs to, and puts an item in front of the operator; every other build keeps moving.\"",
         "why": "On 2026-11-07 from 16:00 to about 19:30 every new build, urgent fixes included, was refused because deadlines on two switched-off features had passed; the deadline now bites the change to its own feature and reaches the operator as an item instead of halting unrelated work.",
         "ref": "Justin, topic 102965, 2026-11-08 12:00 PST: \"I agree with your recommended changes to the constitution to prevent things from being blocked\" [source: telegram 102965/140776 2026-11-08], answering the desk's proposal of the exact sentence in 102965/140750. \"you\" in the approved sentence reads \"the operator\" to match the document's third-person voice. Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
+    "revision": 23,
+    "date": "2026-11-10",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 141014, 2026-11-10: \"Yes\" [source: telegram 141014/141483 2026-11-10T20:36:17Z], approving the exact wording proposed in 141014/141482; origin: 141014/141466 and 141014/141472. Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Add Rule 123, An Instar Agent Always Serves a Team, in Needs building with its rationale and source note; update the group and total counts.",
+        "why": "Rules 31 and 113 hold one agent across machines; no rule required a feature to consider several people, roles, access and privacy between them.",
+        "ref": "Justin, topic 141014, 2026-11-10: \"Yes\" [source: telegram 141014/141483 2026-11-10T20:36:17Z], approving the exact wording proposed in 141014/141482; origin: 141014/141466 and 141014/141472. Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
+    "revision": 22,
+    "date": "2026-11-05",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Echo proposed this effort in Telegram 139374/139375 on 2026-11-05. Justin replied: \"Perfect please start a 24 hour autonomous session to move this work forward\" and \"I expect some of the results of this work to be an ongoing job that also reports directly within this topic\" [source: telegram 139374/139377 2026-11-05T22:42:43Z]. These words authorize pursuing the work, not final constitutional wording. Final-head constitutional review and paired PR approval remain pending."
+    },
+    "changes": [
+      {
+        "what": "Strengthen existing foundational Rule 39 Observability with measurable outcomes, recorded baselines, versioned repeated evaluations, understandable visual history, whole-effort and material-part coverage, independent coverage checks and accountable recurring corrective review.",
+        "why": "Telemetry and an active or completed process do not by themselves prove improvement; unregistered work and gaps must stay visible, and evidence must reach a visual a person understands.",
+        "ref": "Echo proposal Telegram 139374/139375 and Justin reply 139374/139377 2026-11-05; paired 1.x Observability amendment and constitution-alignment map."
       }
     ]
   },
