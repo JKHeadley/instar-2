@@ -1,6 +1,7 @@
 # Change review — scoped reservation settlement step-0 conflict
 
-Subject base: b29f81631996e5efabed7894015dd9e47a7b1b7b
+Subject base: e3cb0f08d3a74d70c9e059edbd64fc457492bfff
+Subject scope: inherited live-burn diagnosis tests from b29f81631996e5efabed7894015dd9e47a7b1b7b, reviewed for settlement evidence; this unit adds only this record and claims no new test or product implementation.
 Review state: open
 Reviewed content: none
 Outcome: record the task-mandated stop before implementation: the existing toolsreal-whole-liability decision explicitly retains the allowance even after completion because subscription charge remains unknown. No settlement repair or READY claim.
