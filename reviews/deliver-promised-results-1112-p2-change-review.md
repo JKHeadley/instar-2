@@ -4,7 +4,7 @@ Subject base: e3cb0f08d3a74d70c9e059edbd64fc457492bfff
 Review state: open
 Reviewed content: none
 Outcome: A newly recorded commitment quoting the verified operator's own message can deliver its finished result in the original conversation without another inbound message. Existing unmarked commitments retain next-reply delivery, including after restart. The existing reply-sentence deliveryRequest authority is unchanged.
-Affected rules: 1, 4, 8, 10, 28, 29, 34, 36, 44, 45, 46, 49, 52, 55, 57, 63, 70, 74, 83, 86, 87, 101, 102, 105, 111, 113, 116, 121, 123
+Affected rules: 1, 4, 8, 10, 28, 29, 34, 36, 44, 45, 46, 49, 52, 55, 57, 63, 70, 74, 83, 86, 87, 93, 101, 102, 105, 111, 113, 116, 121, 123
 Affected floors: secrets — existing outbound check; spend cap — unchanged call/reply and provider admission; stop — unchanged stop checks before scheduling and dispatch; no duplicate sends — existing signed occurrence, durable intent, part starts and receipts; durable intake — existing journal, with a writer-only source-message marker and no side store.
 Operator questions: none; the desk supplied the source-message authority and forward-only direction.
 Suggested tier: critical

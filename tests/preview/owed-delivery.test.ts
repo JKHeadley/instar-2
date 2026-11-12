@@ -492,3 +492,38 @@ it.each(['retracted', 'probe', 'requested action', 'wrong quote', 'wrong slot', 
       expect(owedResultAuthority(w.journal.view, ref)).toBeUndefined();
     } finally { w.journal.close(); }
   });
+
+it.each(['queued', 'settled'] as const)('paced split delivery respects %s cancellation', async mode => {
+  const w = world({ messageCommitments: true, distinctReports: true, report: '&'.repeat(1500) });
+  try {
+    await w.prepare(Array.from({ length: 5 }, (_, i) => `Reply here with the PR link for task ${i}.`).join('\n'));
+    for (let i = 1; i < 5; i++) await w.worker.workObligations();
+    await w.worker.sendRequested();
+    const turn = w.journal.view.order.find(t => t.requestedAction?.owed && t.replyParts?.some(p => !p.started))!;
+    expect(turn).toBeDefined();
+    const parts = structuredClone(turn.replyParts), reports = structuredClone(w.journal.view.obligationWork);
+    const ref = turn.requestedAction!.owed![0]!;
+    expect(owedResultAuthority(w.journal.view, ref)).toBeUndefined();
+    expect(owedResultAuthority(w.journal.view, ref, turn.id)).toBeDefined();
+    expect(owedResultAuthority(w.journal.view, ref, `${turn.id}:other`)).toBeUndefined();
+    w.state.cancel = true;
+    w.worker.intake([{ update_id: 2, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+      text: 'Cancel that check and do not send its result.', date: Math.floor(w.state.now / 1000) } }]);
+    if (mode === 'settled') {
+      await w.worker.drain();
+      expect(w.journal.view.closed.has(0)).toBe(true);
+      w.reopen();
+    }
+    const before = w.state.sends.length;
+    await w.worker.sendRequested();
+    expect(w.state.sends.length).toBe(before);
+    expect(w.journal.view.turns.get(turn.id)!.replyParts).toEqual(parts);
+    expect(w.journal.view.obligationWork).toEqual(reports);
+    // Neither a fresh message budget nor another replay revives the cancelled batch.
+    w.state.now += OWED_RESULT_WINDOW_MS; w.reopen();
+    await w.worker.sendRequested();
+    expect(w.state.sends.length).toBe(before);
+    expect(w.journal.view.turns.get(turn.id)!.replyParts).toEqual(parts);
+    expect(w.journal.view.obligationWork).toEqual(reports);
+  } finally { w.journal.close(); }
+});

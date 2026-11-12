@@ -2559,15 +2559,16 @@ function messageResultRequest(view: JournalView, note: CommitmentNote): boolean 
 const resultRequest = (view: JournalView, note: CommitmentNote) => note.deliveryRequest
   ?? (note.resultRequested === 'source-message-v1' && messageResultRequest(view, note) ? note.quote : undefined);
 /** Only an explicit request in the verified source message authorizes an initiated result reply.
- * Model judgment selects that clause; code checks its source, standing and exact destination. */
-export function owedResultAuthority(view: JournalView, ref: OwedResultRef) {
+ * Model judgment selects that clause; code checks its source, standing and exact destination.
+ * A continuation must name the exact reply already carrying the report; initial sends require no binding. */
+export function owedResultAuthority(view: JournalView, ref: OwedResultRef, boundReply?: string) {
   if (!/^commitment:(0|[1-9][0-9]*)$/u.test(ref.key)) return undefined;
   const id = Number(ref.key.slice(11)), note = view.commitments[id], work = view.obligationWork[ref.key];
   const source = note && view.turns.get(note.source), request = note && resultRequest(view, note);
   if (!source || !request || !commitmentOpen(view, id) || !verifiedOperatorTurn(view, source)
     || source.requestedAction || retractedTurn(view, source.id) || source.intent === undefined || !source.text.includes(request)
     || projectMemoryClause(view, request, source.id) !== request
-    || !attachableReport(work) || work!.lastSlot !== ref.slot) return undefined;
+    || !pendingReport(work) || work!.report!.boundTo !== boundReply || work!.lastSlot !== ref.slot) return undefined;
   return { source, request, report: work!.report!, grant: view.genesis.grant, chat: view.genesis.chat, thread: source.thread };
 }
 const deliveryCancellationSupported = (view: JournalView, turn: Turn, item: CommitmentClosure) => {
@@ -9010,7 +9011,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const due = turn.requestedAction;
     if (!due) return null;
     if (due.legacy !== undefined || actionWithdrawn(journal.view, turn)) return 'withdrawn';
-    if (due.owed) return due.owed.some(ref => { const authority = owedResultAuthority(journal.view, ref);
+    if (due.owed) return due.owed.some(ref => { const authority = owedResultAuthority(journal.view, ref,
+      turn.intent === undefined ? undefined : turn.id);
       return !authority || clean(authority.request) !== authority.request || owedUnsettled(authority.source); }) ? 'unsettled' : null;
     return due.items.map(item => requestItem(journal.view, item))
       .some(item => !item || clean(item.quote) !== item.quote || reminderUnsettled(item)) ? 'unsettled' : null;
@@ -9030,7 +9032,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     for (const [index, part] of parts.entries()) {
       if (part.sent !== undefined) continue;
       const previous = index === 0 ? turn.sent : parts[index - 1]!.sent;
-      if (part.started || previous === undefined || !takeOwedMessage(turn)) return;
+      if (part.started || previous === undefined) return;
+      // Rules 57/93: pacing or restart never outlives the request's current authority.
+      // Its report is already bound to this reply; keep receipts and unsent work intact.
+      if ((turn.requestedAction?.owed && actionBlocked(turn)) || !takeOwedMessage(turn)) return;
       gate();
       const number = index + 2, target = replyPartTarget(turn.id, number);
       journal.append({ kind: 'reply-part-start', id: turn.id, part: number, at: ports.now() });
