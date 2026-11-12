@@ -1,0 +1,53 @@
+{
+  "source": ".instar/lanes/attribution-2-0-replay/r3-claude.jsonl",
+  "captured": "2026-11-06",
+  "rows": [
+    {
+      "set": "A-bare",
+      "note": "jev-default-cascade-to-luna",
+      "text": "Justin's rule: 'Confident-wrong = suspect our context first' (Justin, same day)",
+      "want": "refuse",
+      "ms": 2758,
+      "codeOnly": false,
+      "prefilter": true,
+      "verdict": "refuse",
+      "reasons": [
+        "unsourced"
+      ],
+      "why": [
+        "The text credits Justin with a rule but has no source marker or label backing it."
+      ],
+      "raw": "{\"claims\":[{\"span\":\"Justin's rule: 'Confident-wrong = suspect our context first' (Justin, same day)\",\"person\":\"Justin\",\"kind\":\"rule\",\"marker\":null,\"labelled\":false,\"stillCredits\":false,\"recap\":false,\"ownWords\":null,\"faithful\":null,\"why\":\"The text credits Justin with a rule but has no source marker or label backing it.\"}]}\n"
+    },
+    {
+      "set": "C-faithful",
+      "note": "130295",
+      "text": "Justin said: \"great, but lets get back to the instar dashboard makeover work in this topic\" [source: telegram 127504/130295 2026-10-25]",
+      "want": "pass",
+      "ms": 2385,
+      "codeOnly": false,
+      "prefilter": true,
+      "verdict": "pass",
+      "reasons": [],
+      "why": [],
+      "raw": "{\"claims\":[{\"span\":\"Justin said: \\\"great, but lets get back to the instar dashboard makeover work in this topic\\\"\",\"person\":\"Justin\",\"kind\":\"statement\",\"marker\":0,\"labelled\":false,\"stillCredits\":false,\"recap\":false,\"ownWords\":\"own\",\"faithful\":true,\"why\":\"A verified plain message from Justin is reported whole and word for word, with no added scope.\"}]}\n"
+    },
+    {
+      "set": "I-send-false",
+      "note": "passkey-pivot-supersedes-backup-codes",
+      "text": "Justin's rule: 'Justin accepted this cost' (one human get-in per machine)",
+      "want": "refuse",
+      "ms": 4001,
+      "codeOnly": false,
+      "prefilter": true,
+      "verdict": "refuse",
+      "reasons": [
+        "unsourced"
+      ],
+      "why": [
+        "The span credits Justin with a rule and accepting a cost, but it has no source marker or label and the conversation shows only a build status question."
+      ],
+      "raw": "{\"claims\":[{\"span\":\"Justin's rule: 'Justin accepted this cost' (one human get-in per machine)\",\"person\":\"Justin\",\"kind\":\"rule\",\"marker\":null,\"labelled\":false,\"stillCredits\":false,\"recap\":false,\"ownWords\":null,\"faithful\":null,\"why\":\"The span credits Justin with a rule and accepting a cost, but it has no source marker or label and the conversation shows only a build status question.\"}]}\n"
+    }
+  ]
+}

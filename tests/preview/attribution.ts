@@ -20,7 +20,7 @@ export interface MarkerFact { index: number; marker: string; ref: string | null;
 /** `unchecked` is never a pass: no verdict exists (timeout, unreadable answer, no call allowance). It is counted. */
 export type AttributionVerdict = 'pass' | 'refuse' | 'unchecked';
 /** What the row keeps of each credit it saw, passed or refused: the later wording a future trace reads back. */
-export interface CreditedSpan { span: string; person?: string; ref?: string }
+export interface CreditedSpan { span: string; person?: string; ref?: string; sourceFound?: boolean }
 export interface AttributionResult { verdict: AttributionVerdict; findings: AttributionFinding[]; cause?: string; claims: number; spans?: CreditedSpan[] }
 
 const MARKER = /\[source:[^\]\n]*\]?/giu;

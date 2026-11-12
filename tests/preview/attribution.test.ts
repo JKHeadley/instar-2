@@ -12,6 +12,8 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { JEV_MODEL, jevQuestions } from './reply-check.js';
 import { attributionPacket, decideAttribution, markerFacts, normalizeWords, parseAttributionAnswer, parseMarker, worthJudging,
   type AttributionMode, type SourceRecord } from './attribution.js';
+import recordedAttribution from './fixtures/attribution-record-1111-captured.json' with { type: 'json' };
+import recordedShapes from './fixtures/retrospective-duty-followup-train-1-2026-10-08.json' with { type: 'json' };
 import { LIVE_JUDGMENTS } from './model-call-boundary.js';
 // @ts-expect-error the hook's decision stays plain JavaScript
 import { ADMISSION_WAIT_MS, ATTRIBUTION_WAIT_MS, HOOK_PRE_MAX_MS, noteText } from './tool-admission.mjs';
@@ -101,16 +103,18 @@ describe('the verdict', () => {
 });
 
 const FALSE_CREDIT = 'Sam told me never to spawn on the laptop.', HONEST = 'I would avoid the laptop; that is my own view.', KEPT = 'The build is done.';
-interface Scenario { mode?: AttributionMode; answer?: string; judge?: 'refuse' | 'pass' | 'throw' | 'junk' | 'partial' | 'relayed'; revised?: string; crash?: string; maxCalls?: number; note?: string; noteTwice?: boolean; before?: string; ask?: string; imported?: { account: string; id: string; from: string; text: string; conversation: string } }
+interface Scenario { legacySplit?: boolean; partialSend?: boolean; recordReplies?: boolean; judgeValue?: string; replay?: boolean; mode?: AttributionMode; answer?: string; judge?: 'refuse' | 'pass' | 'throw' | 'junk' | 'partial' | 'relayed'; revised?: string; crash?: string; maxCalls?: number; note?: string; noteTwice?: boolean; before?: string; ask?: string; imported?: { account: string; id: string; from: string; text: string; conversation: string } }
 async function drive(s: Scenario) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'attribution-'))); roots.push(root);
   const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(23), sends: string[] = [], packets: string[] = [];
   let judged = 0, crashes = 0;
   const reply = s.answer ?? FALSE_CREDIT;
   const ports = (): PreviewPorts => ({ now: () => 1790000000000, stopped: () => false, prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', 9999999999999), model: async () => reply,
-    checkOutbound: () => {}, send: async input => { sends.push(input.expectedText); return sends.length; },
-    ...(s.mode ? { attribution: { mode: s.mode, judge: async ({ id, packet }) => {
+    checkOutbound: () => {}, send: async input => { sends.push(input.expectedText); return s.partialSend && sends.length > 1 ? { kind: 'unknown', reason: 'test transport lost receipt' } : sends.length; },
+    ...(s.mode || s.recordReplies ? { attribution: { mode: s.mode ?? 'record', recordReplies: s.recordReplies ?? false, notes: !!s.mode, judge: async ({ id, packet }) => {
       judged++; packets.push(packet);
+      if (s.recordReplies) { expect(sends.length).toBeGreaterThan(0); if (!s.partialSend) expect(sends).toEqual([reply]); }
+      if (s.judgeValue !== undefined) return { value: s.judgeValue };
       // The real launcher's own recorder writes this row before the answer is read. Refusing it turned every judge answer into
       // UNKNOWN on the real route, and hand-built rows hid that (found live, 2026-11-06): so this goes through the real recorder.
       await observedSubscriptionIO({ execute: async () => ({ code: 0, limited: false, stdout: '', stdoutBytes: new Uint8Array() }) },
@@ -136,6 +140,9 @@ async function drive(s: Scenario) {
     if (s.imported) importChannelItems(journal, [{ source: 'conversation', at: 1789000000000, ...s.imported }], s.imported.account, 1790000000000);
     worker.intake([{ update_id: 1, message: { message_id: 1, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: s.ask ?? 'Where should builds run?' } }]);
     await worker.drain();
+    if (s.legacySplit) delete journal.view.order[0]!.formatting;
+    await worker.reviewReplies();
+    if (s.replay) { journal.close(); journal = open(false); worker = createJournalWorker(journal, ports()); await worker.reviewReplies(); }
     if (s.crash && s.note !== undefined) { await expect(worker.attributionOfNote('toolu_1', s.note)).rejects.toThrow('TEST crash'); journal.close(); journal = open(false); worker = createJournalWorker(journal, ports()); }
     if (s.noteTwice && s.note !== undefined) await worker.attributionOfNote('toolu_1', s.note);
     if (s.before !== undefined) await worker.attributionOfNote('toolu_0', s.before);
@@ -287,4 +294,60 @@ describe('the real hook asks the real checkpoint (a note is written or refused b
   it('never asks about code', async () => {
     const result = await run(async () => 'refused', 'a.ts', FALSE_CREDIT); expect(result.asked).toEqual([]); expect(result.denied).toBe(false);
   });
+});
+
+
+describe('reply RECORD (post-send, no enforcement)', () => {
+  it('disabled is byte-identical with no attribution record or call', async () => {
+    const result = await drive({ answer: FALSE_CREDIT });
+    expect(result.sends).toEqual([FALSE_CREDIT]); expect(result.judged).toBe(0); expect(result.rows).toEqual([]);
+  });
+  it('records a credit without a source after delivery and once across reopen', async () => {
+    const result = await drive({ recordReplies: true, replay: true });
+    expect(result.sends).toEqual([FALSE_CREDIT]); expect(result.judged).toBe(1);
+    expect(result.rows).toMatchObject([{ surface: 'send', mode: 'record', spans: [{ person: 'Sam', sourceFound: false }] }]);
+  });
+  it.each([['telegram 7654321/1', true], ['telegram 7654321/999', false]] as const)('records source lookup %s as %s', async (ref, sourceFound) => {
+    const day = new Date(1790000000000).toISOString().slice(0, 10);
+    const answer = `Sam said: "Where should builds run?" [source: ${ref} ${day}]`;
+    const result = await drive({ recordReplies: true, answer, judgeValue: claim({ span: answer }) });
+    expect(result.sends).toEqual([answer]); expect(result.judged).toBe(1);
+    expect(result.rows).toMatchObject([{ surface: 'send', spans: [{ span: answer, person: 'Sam', ref, sourceFound }] }]);
+  });
+  it('reply-only recording does not turn on the note-write check', async () => {
+    const result = await drive({ recordReplies: true, answer: KEPT, note: FALSE_CREDIT });
+    expect(result.note).toBeNull(); expect(result.judged).toBe(0); expect(result.rows).toEqual([]);
+  });
+  it.each(['throw', 'junk'] as const)('judge %s cannot alter delivered reply', async judge => {
+    const result = await drive({ recordReplies: true, judge });
+    expect(result.sends).toEqual([FALSE_CREDIT]); expect(result.rows).toMatchObject([{ surface: 'send', verdict: 'unchecked' }]);
+  });
+});
+
+
+describe('recorded model shapes (replay, not new judgments)', () => {
+  it.each(recordedAttribution.rows)('records captured $set / $note after delivery', async row => {
+    const result = await drive({ recordReplies: true, answer: row.text, judgeValue: row.raw });
+    expect(result.sends).toEqual([row.text]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]!.spans?.length).toBeGreaterThan(0);
+    expect(result.rows[0]!.spans?.every(span => span.person === 'Justin' && span.sourceFound === false)).toBe(true);
+  });
+  it.each(recordedShapes.otherShapes)('counts unrelated captured $kind / $id as unreadable, without changing delivery', async shape => {
+    const result = await drive({ recordReplies: true, judgeValue: shape.raw });
+    expect(result.sends).toEqual([FALSE_CREDIT]);
+    expect(result.rows).toMatchObject([{ surface: 'send', verdict: 'unchecked', cause: 'unreadable answer' }]);
+  });
+});
+
+
+it.each([false, true])('records the delivered first part when a later part has no receipt (legacy %s)', async legacySplit => {
+  const answer = `${FALSE_CREDIT}\n${'A detailed explanation. '.repeat(250)}`;
+  const result = await drive({ recordReplies: true, answer, partialSend: true, replay: true, legacySplit });
+  expect(result.sends.length).toBeGreaterThan(1);
+  expect(result.turn.sent).toBeDefined(); expect(result.turn.replyParts?.[0]?.sent).toBeUndefined();
+  expect(result.judged).toBe(1);
+  expect(result.rows).toMatchObject([{ surface: 'send', spans: [{ person: 'Sam', sourceFound: false }] }]);
+  const text = (JSON.parse(result.packets[0]!) as { packet: { text: string } }).packet.text;
+  expect(text).toBe(result.sends[0]); expect(text.length).toBeLessThan(answer.length);
 });

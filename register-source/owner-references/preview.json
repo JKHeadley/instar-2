@@ -71,7 +71,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/attribution.test.ts",
-        "hash": "sha256:bd12050ca125d27382b35d42458c003f9d76412eaa755814bfcfc1e7f908409d"
+        "hash": "sha256:f355f9bcc976597606d79e4f0b38f8673ede2d125c6e82d6a77f121ba53d5388"
       }
     },
     {

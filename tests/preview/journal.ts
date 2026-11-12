@@ -6295,7 +6295,7 @@ export interface PreviewPorts {
     /** Plan #389: the desk's current retraction proposal, read from the root by the host (propose-retract), or none. */
     retractProposal?(): RetractProposal | undefined };
   /** Rule 121. Absent: no attribution check runs and nothing changes. `judge` is the one recorded model call. */
-  attribution?: { mode: AttributionMode; judge(prepared: { id: string; packet: string; deadlineAt: number }): Promise<{ value: string | null; usage?: ModelUsage }> };
+  attribution?: { mode: AttributionMode; recordReplies?: boolean; notes?: boolean; judge(prepared: { id: string; packet: string; deadlineAt: number }): Promise<{ value: string | null; usage?: ModelUsage }> };
   /** Continuing conversations send first; model review is a durable signal for the next turn. */
   replyReviewTiming?: 'before-send' | 'after-send';
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
@@ -7113,10 +7113,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** Rule 121 at write time: the agent's own note, checked once per exact text before the file changes. Null clears it; a
    * string refuses with the way through. Record mode never refuses. Anything but a refusal clears: a note the judge could
    * not read is counted, not lost, and a crash after the reservation leaves it unchecked, never a replayed call. */
-  const attributionOfNote = async (call: string, text: string): Promise<string | null> => {
-    const port = ports.attribution, id = `note:${call}`, digest = attributionDigest(text);
-    if (!port) return null;
-    const refused = (result: AttributionResult) => port.mode === 'enforce' && result.verdict === 'refuse' ? attributionReason(result) : null;
+  const attributionOf = async (call: string, text: string, surface: 'send' | 'write'): Promise<string | null> => {
+    const port = ports.attribution, id = surface === 'write' ? `note:${call}` : call, digest = attributionDigest(text);
+    if (!port || (surface === 'write' && port.notes === false)) return null;
+    const refused = (result: AttributionResult) => surface === 'write' && port.mode === 'enforce' && result.verdict === 'refuse' ? attributionReason(result) : null;
     const prior = journal.view.attribution?.find(row => row.id === id && row.digest === digest);
     if (prior) return refused(prior);
     // Sources are looked up only inside the bound one call reads, so a long note never scans the journal per marker.
@@ -7125,27 +7125,31 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (!facts.length && !worthJudging(text, names)) return null;
     const started = ports.now();
     const record = (result: AttributionResult, usage?: ModelUsage) => {
-      journal.append({ kind: 'attribution-check', id, digest, surface: 'write', mode: port.mode, verdict: result.verdict, findings: result.findings,
+      journal.append({ kind: 'attribution-check', id, digest, surface, mode: surface === 'send' ? 'record' : port.mode, verdict: result.verdict, findings: result.findings,
         claims: result.claims, ...(result.spans?.length ? { spans: result.spans } : {}), ...(result.cause === undefined ? {} : { cause: result.cause }), latencyMs: Math.max(0, ports.now() - started),
         ...(usage ? { usage } : {}), at: ports.now() });
       return refused(result);
     };
     // A failed exact fact needs no reading: nothing a model says can put the words in the record.
-    if (facts.some(fact => fact.refusal)) return record(decideAttribution(text, 'write', facts, []));
+    if (surface === 'write' && facts.some(fact => fact.refusal)) return record(decideAttribution(text, surface, facts, []));
     // Owed: 1.x chunking. Until then a note longer than one check is recorded unchecked, never judged on a part.
     if (text.length > ATTRIBUTION_TEXT_MAX) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'text longer than one check' });
     if (halted() || journal.view.calls >= journal.view.limits.maxCalls) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'call cap' });
     gate();
-    journal.append({ kind: 'attribution-reserve', id, digest, surface: 'write', maxInputTokens: journal.view.limits.maxBytes,
+    journal.append({ kind: 'attribution-reserve', id, digest, surface, maxInputTokens: journal.view.limits.maxBytes,
       maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
     try {
-      const answer = await port.judge({ id: `${id}:attribution-check`, deadlineAt: ports.now() + ATTRIBUTION_BUDGET_MS, packet: attributionPacket({ text, surface: 'write', facts }) });
+      const answer = await port.judge({ id: `${id}:attribution-check`, deadlineAt: ports.now() + ATTRIBUTION_BUDGET_MS, packet: attributionPacket({ text, surface, facts }) });
       if (answer.value === null) return record({ verdict: 'unchecked', findings: [], claims: 0, cause: 'no answer' }, answer.usage);
-      return record(decideAttribution(text, 'write', facts, parseAttributionAnswer(answer.value)), answer.usage);
+      const result = decideAttribution(text, surface, facts, parseAttributionAnswer(answer.value));
+      if (surface === 'send' && result.spans) result.spans = result.spans.map(span => ({ ...span,
+        sourceFound: !!span.ref && facts.some(fact => fact.ref === span.ref && fact.record !== null) }));
+      return record(result, answer.usage);
     } catch (error) {
       return record({ verdict: 'unchecked', findings: [], claims: 0, cause: error instanceof SyntaxError ? 'unreadable answer' : 'judge failed' });
     }
   };
+  const attributionOfNote = (call: string, text: string) => attributionOf(call, text, 'write');
   // Conservative identity for an exact restatement. A different value keeps a
   // different key; semantic near-matches remain separate for the model to judge.
   const commitmentKey = (note: Pick<CommitmentNote, 'in' | 'quote'>) => JSON.stringify([note.in,
@@ -9004,7 +9008,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const reviewReplies = (): Promise<void> => {
     if (replyReviewJob) return replyReviewJob;
     replyReviewJob = (async () => {
-      for (const turn of journal.view.order) await reviewAfterSend(turn);
+      for (const turn of journal.view.order) {
+        await reviewAfterSend(turn);
+        // Record only delivered text, beside the send lane; an interrupted paid call is never replayed.
+        if (ports.attribution?.recordReplies && turn.sent !== undefined && turn.intent !== undefined && !halted()) {
+          const first = turn.formatting?.shown ?? (turn.replyParts?.length
+            ? (turn.intentBody ?? '').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&') : turn.intent);
+          await attributionOf(turn.id, first, 'send');
+          for (const [index, part] of (turn.replyParts ?? []).entries())
+            if (part.sent !== undefined && !halted()) await attributionOf(`${turn.id}#part-${String(index + 2)}`, part.formatting?.shown ?? part.text, 'send');
+        }
+      }
     })().finally(() => { replyReviewJob = null; });
     return replyReviewJob;
   };
