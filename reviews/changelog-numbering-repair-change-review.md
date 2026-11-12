@@ -6,7 +6,7 @@ Reviewed content: none
 Outcome: Prepare the single merge of published main into live for the operator's review; retain both histories and every approved body sentence.
 Affected rules: 4, 37, 49, 74, 82, 90, 91, 94, 95, 101, 111, 112, 113, 116, 119, 123
 Affected floors: secrets — untouched; spend cap — untouched; stop — untouched; no duplicate sends — untouched; durable intake — untouched
-Operator questions: Approve the exact Rule 94 numbering waiver below before landing? This is a proposal, not approval. No push or release is authorized by this record.
+Operator questions: Approve the exact Rule 94 numbering waiver below before landing? Landing requires the operator’s approval recorded on the waiver line below; this record alone authorizes no push or release.
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: One exact exception to preservation of numbered governed history; no new rule wording.
@@ -22,12 +22,16 @@ Convergence: none
 Prompt review: No model prompts, output parsers or model accept/escalate/refuse decisions change.
 Constitution counterpart: none; this merges previously approved wording without changing obligations. Rule 123's existing counterpart is 1.x 818107de4 (#3046); main's review record is retained.
 Rule 94 waiver: proposed bc95ab494d5c035f750c6efc1379913e2d8b6e46 d3d563cd1c2396a72bf08fc08c7a7740be419ca8
-Decision: rule90-D1 | Refuse the proposed waiver until the operator approval artifact is recorded; an approved exception excuses only the four suffix comparisons at the pinned repaired state, never a missing body version. Pin the remaining tree and review text so later record edits cannot extend the exception. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule90-main-reconcile-r2-1111-PROGRESS.md
+Decision: rule90-D1 | Recognize the exact proposed repair for history validation only; operator authorization before landing remains outstanding. No draft-status exemption or general renumbering support. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule90-main-reconcile-1111-PROGRESS.md
+Decision: rule90-D3 | 2026-11-11 (rounds 2/3): Supersedes rule90-D1: refuse the proposed waiver until the operator approval artifact is recorded; excuse only the four suffix comparisons at the pinned repaired state, never a missing body version. Pin the remaining tree and review text except the waiver line; keep fixtures and pinned instructions valid across approval. Restore the landing predicate import. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule90-main-reconcile-r3-1111-PROGRESS.md
 Decision: rule90-D2 | Reuse main's complete anchor roster and publication metadata, retain live's shape, and recompute hashes through repository canonical/bootstrapDeclarations, then regenerate the register from a committed source. This accommodates approved Rule 123 without changing the desk pipeline's deliberately strict same-roster merger. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule90-main-reconcile-1111-PROGRESS.md
 
 Landing this also puts the Rule 72 deadline sentence on main for the first time; changelog entries 24 and 25 are status draft, "code-owner approval and merge pending".
 
-The waiver remains proposed, so the change-review check must fail until the operator answers. The exact approval form is `Rule 94 waiver: approved <M> <L> <approval-artifact>`, using the full frozen SHAs below and one non-whitespace artifact reference. The independent landing review must verify that artifact records the operator’s approval; a label alone does not authenticate the operator. Only that line may change without renewing this exact exception.
+The change-review check fails until the waiver line records the operator’s approval. The exact approval form is `Rule 94 waiver: approved <M> <L> <approval-artifact>`, using the full frozen SHAs below and one non-whitespace artifact reference. The independent landing review must verify that artifact records the operator’s approval. Only that line may change without renewing this exact exception.
+
+The approval line is written by whoever records it, and nothing in the checker can prove the operator approved; what ties landing to the operator is that this pull request can only merge with the operator’s own GitHub review on its final head, and the line should cite that review and the Telegram message of his answer.
+The `freeze` command edits this record’s "Review state:" line and would therefore switch the exception off: do not freeze this record before it lands.
 
 The two copies of the history assigned different numbers to some entries. This proposal keeps the numbers already published on main and places the live-only entries above them, in their existing order. It changes 38 labels and keeps every entry's words, dates, status and links. No rule is rewritten or newly approved. The old live labels remain findable at the frozen live commit and through the map below. The operator must approve this particular exception before it can land.
 
@@ -108,12 +112,14 @@ The accepted design's citation inventory still applies: reviews/rule72-scope-110
 
 Round 2 inherits that comparison and rechecked those 1.x source/spec paths at the same revision, their history (05d490cbf and ab26b7ca3), and ONEX-LESSONS.md:125–142. The repair keeps the existing checker and its real-history fixtures. No document body, changelog data, anchor or generated file changes in this round.
 
+Round 3 inherits and rechecks the same 1.x revision, source/spec paths, history and lessons; it restores the landing import and decision history and makes fixtures and pinned instructions valid across approval. Exact commands and exit codes: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule90-main-reconcile-r3-1111-PROGRESS.md.
+
 ## Verification
 
-Round 1 evidence remains in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule90-main-reconcile-1111-PROGRESS.md. Round 2 commands and exit codes are in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule90-main-reconcile-r2-1111-PROGRESS.md: the real Git fixture derives its subject from the diff, exercises the reviewer’s three body edits, added governed files, later entry/record edits, and missing/proposed approvals, alongside the old controls. Direct and symlinked CLI paths must both reject unknown commands. This record asserts no independent convergence or operator approval.
+Round 1 evidence remains in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule90-main-reconcile-1111-PROGRESS.md. Round 2 commands and exit codes are in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule90-main-reconcile-r2-1111-PROGRESS.md: the real Git fixture derives its subject from the diff, exercises the reviewer’s three body edits, added governed files, later entry/record edits, and missing/proposed approvals, alongside the old controls. Direct and symlinked CLI paths must both reject unknown commands. This author record alone establishes neither independent convergence nor operator approval.
 
 ## Closing block
 
 simplestRobustRoute: Keep main's complete suffix, place live-only entries above it, render with the existing tool, and permit only four exact suffix exceptions with recorded operator approval, both ancestor commits, and exact tree and review-text pins. The tree digest binds every path, mode and blob ID except this checker, its test and this separately pinned record. Only the waiver line is excluded from the review-text pin. These pins prevent body changes, added governed files and record reuse; the body-version check always runs. This is the simplest robust route. No pipeline changes or new runtime mechanism are introduced.
 80/20: Real histories and negative neighbors cover the repair; existing tests retain the general preservation rule. Data, renders and evidence dominate the diff; the checker stays small; the additional tests reproduce the independent findings and prove both acceptance and refusal.
-VERDICT: author submission, pending operator waiver and independent review; not approved or released
+VERDICT: landing requires the operator waiver and independent review; this author record alone authorizes neither landing nor release

@@ -176,7 +176,7 @@ describe('the frozen main/live numbering repair (Rules 90/94)', () => {
     };
     // The real repaired bodies, including Rule 123 from M; never a changelog-only subject.
     r.git('read-tree', 'aba76eda4ff1914491611344b376e4d5963e1c04');
-    put(repairRecord, readFileSync(resolve(repairRecord), 'utf8').replace(proposed, waiver));
+    put(repairRecord, readFileSync(resolve(repairRecord), 'utf8').replace(/^Rule 94 waiver:.*$/m, waiver));
     const tree = (parents = [live, main]) => r.git('commit-tree', r.git('write-tree'), ...parents.flatMap(p => ['-p', p]), '-m', 'fixture repair');
     const check = (base: string, last: string, extra = waiver, path = repairRecord) => {
       const script = `import { governedVersionErrors } from ${JSON.stringify(CHECKER)};
@@ -186,7 +186,7 @@ describe('the frozen main/live numbering repair (Rules 90/94)', () => {
       const subject = r.git('diff', '--name-only', base, last).split('\n').filter(p => !p.startsWith('reviews/'));
       r.write('probe.mjs', script);
       const out = spawnSync(process.execPath, [join(r.dir, 'probe.mjs'),
-        JSON.stringify({ base, last, path, subject, text: text.replace(waiver, extra) })], { cwd: r.dir, encoding: 'utf8', env });
+        JSON.stringify({ base, last, path, subject, text: text.replace(/^Rule 94 waiver:.*$/m, extra) })], { cwd: r.dir, encoding: 'utf8', env });
       expect(out.status, out.stderr).toBe(0); return JSON.parse(out.stdout) as string[];
     };
     return { r, put, tree, check, repaired: tree() };
@@ -584,6 +584,20 @@ describe('a record answers only for text its own commits wrote (Rules 6, 12, 27,
 });
 
 describe('landing gate and the append-only evidence ledger (Rules 37, 74, 107, 112)', () => {
+  it('loads the built predicate when a current record claims convergence', () => {
+    const r = repo();
+    r.write('README.md', 'fixture\n'); const base = r.commit('base');
+    for (const name of ['check-change-review.mjs', 'change-review.mjs', 'check-governed-docs.mjs'])
+      r.write(`scripts/${name}`, readFileSync(resolve('scripts', name), 'utf8'));
+    r.write('package.json', '{"type":"module"}\n');
+    r.write('dist/verification/index.js', 'console.log("built convergence predicate loaded"); export const convergenceEligible = () => false;\n');
+    r.write('reviews/change.md', record(base).replace('Convergence: none', 'Convergence: claimed'));
+    r.commit('claim convergence');
+    const result = spawnSync(process.execPath, [join(r.dir, 'scripts/check-change-review.mjs'), 'landing'], { cwd: r.dir, encoding: 'utf8', env });
+    expect(result.stdout).toContain('built convergence predicate loaded');
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain('change-review landing REFUSED');
+  });
   const setup = () => {
     const r = repo();
     r.write('README.md', 'fixture\n'); withGate(r); const base = r.commit('base'); adopt(r);

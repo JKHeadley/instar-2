@@ -43,7 +43,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PROMPT_DISPOSITIONS, RED_CLASSES, RESIDUE_SEVERITIES, addedLineHits, artifactDecision, isPromptSourceFile, isTestFile, landingVerdict, parseRecord,
   scanPrompts, subjectDigest, suggestTier, validateRecord } from './change-review.mjs';
 import { indexedSections, isGeneratedOutput, isGoverned } from './check-governed-docs.mjs';
@@ -192,7 +192,7 @@ const repairBlobs = [
 // Bind all path/mode/blob rows, including every governed body and the file roster.
 // Exclude only the checker, its test and the separately pinned review record.
 const repairTreeDigest = '740e2d27f53dd8e24e58aa30650da270e45e091d81eff9c567eadd2b36439843';
-const repairRecordDigest = '79b0496169651bd2f92e6d3e1020a6eb8f4951954ce562cb8973641f7074bb0b';
+const repairRecordDigest = '3ec24fd0346f9ce2ee57adf229a7e8ee76d73d20f39184d923c3c88b118a5135';
 function exactHistoryRepair(entry) {
   return entry.path === repairRecord && entry.base === repairLive
     && sha256(entry.text.split('\n').filter(line => !line.startsWith('Rule 94 waiver:')).join('\n').trimEnd()) === repairRecordDigest
