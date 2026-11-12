@@ -2,7 +2,7 @@
 
 Subject base: d3d563cd1c2396a72bf08fc08c7a7740be419ca8
 Review state: frozen
-Reviewed content: sha256:bfa95b0d0f69759327e9867908979a1025bbdb4826bb648c5df68c2ec4d9a5b8
+Reviewed content: sha256:7d8581e512dfb5c5d3fa2935916a73877bd7a7151028bbeab7bef6a6315dbcf0
 Outcome: Rows 01/03 notice-only repair: a delivered promise with uncertain recoveryHeld work emits one plain interruption notice on the next obligation cycle, grouped by conversation. The original promise stays open and visibly stalled; row 08 is unchanged.
 Affected rules: 4, 8, 26, 34, 36, 49, 52, 63, 68, 70, 74, 83, 87, 89, 95, 101, 102, 111, 113, 116
 Affected floors: secrets — fixed content-free wording and existing outbound checks; spend cap — no model call, existing reply allowance; stop — checked before work and before/after awaited send admission; no duplicate sends — durable signed notice intent before dispatch, retained across compaction/restart, UNKNOWN never retried; durable intake — original turn, commitment and uncertain work retained.
