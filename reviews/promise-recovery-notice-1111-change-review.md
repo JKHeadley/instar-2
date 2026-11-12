@@ -29,7 +29,7 @@ Prompt finding: 9f0106c66027 | quoted-evidence | Unchanged base prompt wording t
 Prompt finding: bac6ce7485d9 | quoted-evidence | Unchanged base prompt wording tested against its exact retained text; this change introduces no semantic keyword judgment — fixture-phrase tests/preview/journal.ts <- tests/preview/plain-task-stop.test.ts: "work on your request stopped before a finished answer was available."
 Prompt finding: e8708c7fea24 | quoted-evidence | Unchanged base prompt wording tested against its exact retained text; this change introduces no semantic keyword judgment — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 
-Subject (3 paths): tests/preview/journal.ts, tests/preview/row-recovery.test.ts, tests/preview/journal-obligations.test.ts
+Subject: tests/preview/journal.ts, tests/preview/row-recovery.test.ts, tests/preview/journal-obligations.test.ts; mechanical owner-reference and generated register pins.
 
 Team posture: Only the verified source conversation receives the fixed content-free notice; no recipient or sharing scope changes. Existing disclosure and send admission still decide whether that conversation can receive it. No promise text or private source content is copied.
 Decision: promise-notice-only | Retain unknown-effect hold and report interruption once through the existing send path, instead of building an unsafe automatic rerun. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/promise-recovery-notice-1111-PROGRESS.md
@@ -38,6 +38,8 @@ Decision: promise-notice-recheck | Revalidate eligibility after asynchronous adm
 1.x FIRST: JKHeadley/instar origin/main 3ae8208a69b027ad465dca78ec7db2eb2c16b66e, src/monitoring/PromiseBeacon.ts rung2Message/rung2 and src/monitoring/CommitmentTracker.ts pending/mutate lifecycle; searched src/, docs/specs/ and history (4018bf338, 7e8fde8e8, ff8344b4b, 11d127b5e, 1b4350998). Read PROMISE-BEACON-ESCALATION-SPEC.md sections 3.0–3.4 and ONEX-LESSONS sessions/recovery/shared-commitments areas. Reuses the truthful fixed fallback, open commitment and bounded conversation digest. Existing 2.0 intent-before-send and held-effect admission provide stronger uniqueness than copying the old beacon sender. Revival is not transplanted because this brief permits notice-only and unknown effects cannot be repeated.
 
 Independent review: review_promise_notice read this diff and foundation, raised outcome/history and post-admission eligibility findings, and concurred after repairs. Artifact retained by builder in /tmp/promise-notice-independent-review.md; desk gate review remains independent acceptance.
+
+Mechanical registration: The authenticated desk rehash script refreshed exactly one test-artifact hash in register-source/owner-references/preview.json after npm run build. The desk inventory repin script changed zero entries. Register replay pins the committed source bytes; it is shape evidence, not native self-host certification.
 
 ## Closing block
 
