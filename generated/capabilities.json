@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:54351ffdef7fe9df70d7276fbd4398fde32b0016c1ad02be37654426ec0fd79f",
-  "commit": "ec992f15f7889fd59a56164ee77a994b538f705c",
+  "generation": "sha256:d5d045eb4b33e505fb251d43ae7e7e15f159098ce8839c02aca9bd6cc4ad3fc1",
+  "commit": "a94f24bb6b5ad416ea93c258e938f468bec62778",
   "launchers": {
     "bin/instar2.mjs": [
       {
@@ -65,7 +65,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "7-day operator-only pages: {reply:Markdown,privateViewTitle:1–256-char title}; dashboard link or phone-unavailable."
+        "text": "operator-only pages (7d): {reply:Markdown,privateViewTitle:title(1–256)}; dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -81,7 +81,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "journal answers \"status\"/\"how are you doing\"; no model."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -89,7 +89,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "may mention a saved date due within 48h once in next reply."
+        "text": "may mention a saved date within 48h once next reply."
       },
       {
         "id": "preview.attribution-check",
@@ -113,7 +113,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "faithfulness-checked summaries of earlier turns."
+        "text": "summarizes earlier turns; checks faithfulness."
       },
       {
         "id": "register-tooling",
@@ -161,7 +161,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "local peer data: owner-signed private scope, custody, checkpoints, signed receipts."
+        "text": "private local peers: owner-signed scope, custody, checkpoints, signed receipts."
       }
     ],
     "bin/instar-production.mjs": [
@@ -227,7 +227,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "7-day operator-only pages: {reply:Markdown,privateViewTitle:1–256-char title}; dashboard link or phone-unavailable."
+        "text": "operator-only pages (7d): {reply:Markdown,privateViewTitle:title(1–256)}; dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -243,7 +243,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "journal answers \"status\"/\"how are you doing\"; no model."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -251,7 +251,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "may mention a saved date due within 48h once in next reply."
+        "text": "may mention a saved date within 48h once next reply."
       },
       {
         "id": "preview.attribution-check",
@@ -275,7 +275,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "faithfulness-checked summaries of earlier turns."
+        "text": "summarizes earlier turns; checks faithfulness."
       },
       {
         "id": "register-tooling",
@@ -323,7 +323,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "local peer data: owner-signed private scope, custody, checkpoints, signed receipts."
+        "text": "private local peers: owner-signed scope, custody, checkpoints, signed receipts."
       }
     ],
     "scripts/host-watch.mjs": [
@@ -389,7 +389,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "7-day operator-only pages: {reply:Markdown,privateViewTitle:1–256-char title}; dashboard link or phone-unavailable."
+        "text": "operator-only pages (7d): {reply:Markdown,privateViewTitle:title(1–256)}; dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -405,7 +405,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "journal answers \"status\"/\"how are you doing\"; no model."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -413,7 +413,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "may mention a saved date due within 48h once in next reply."
+        "text": "may mention a saved date within 48h once next reply."
       },
       {
         "id": "preview.attribution-check",
@@ -437,7 +437,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "faithfulness-checked summaries of earlier turns."
+        "text": "summarizes earlier turns; checks faithfulness."
       },
       {
         "id": "register-tooling",
@@ -485,7 +485,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "local peer data: owner-signed private scope, custody, checkpoints, signed receipts."
+        "text": "private local peers: owner-signed scope, custody, checkpoints, signed receipts."
       }
     ],
     "tests/preview/agent.mjs": [
@@ -551,7 +551,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "7-day operator-only pages: {reply:Markdown,privateViewTitle:1–256-char title}; dashboard link or phone-unavailable."
+        "text": "operator-only pages (7d): {reply:Markdown,privateViewTitle:title(1–256)}; dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -567,7 +567,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "journal answers \"status\"/\"how are you doing\"; no model."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -575,7 +575,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "may mention a saved date due within 48h once in next reply."
+        "text": "may mention a saved date within 48h once next reply."
       },
       {
         "id": "preview.attribution-check",
@@ -599,7 +599,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "faithfulness-checked summaries of earlier turns."
+        "text": "summarizes earlier turns; checks faithfulness."
       },
       {
         "id": "register-tooling",
@@ -647,7 +647,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "local peer data: owner-signed private scope, custody, checkpoints, signed receipts."
+        "text": "private local peers: owner-signed scope, custody, checkpoints, signed receipts."
       }
     ],
     "tests/preview/conversation-authority-server.mjs": [
@@ -713,7 +713,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "7-day operator-only pages: {reply:Markdown,privateViewTitle:1–256-char title}; dashboard link or phone-unavailable."
+        "text": "operator-only pages (7d): {reply:Markdown,privateViewTitle:title(1–256)}; dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -729,7 +729,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "journal answers \"status\"/\"how are you doing\"; no model."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -737,7 +737,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "may mention a saved date due within 48h once in next reply."
+        "text": "may mention a saved date within 48h once next reply."
       },
       {
         "id": "preview.attribution-check",
@@ -761,7 +761,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "faithfulness-checked summaries of earlier turns."
+        "text": "summarizes earlier turns; checks faithfulness."
       },
       {
         "id": "register-tooling",
@@ -809,7 +809,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "local peer data: owner-signed private scope, custody, checkpoints, signed receipts."
+        "text": "private local peers: owner-signed scope, custody, checkpoints, signed receipts."
       }
     ],
     "tests/preview/journal-agent.mjs": [
@@ -875,7 +875,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "7-day operator-only pages: {reply:Markdown,privateViewTitle:1–256-char title}; dashboard link or phone-unavailable."
+        "text": "operator-only pages (7d): {reply:Markdown,privateViewTitle:title(1–256)}; dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -891,7 +891,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "journal answers \"status\"/\"how are you doing\"; no model."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -899,7 +899,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "may mention a saved date due within 48h once in next reply."
+        "text": "may mention a saved date within 48h once next reply."
       },
       {
         "id": "preview.attribution-check",
@@ -923,7 +923,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "faithfulness-checked summaries of earlier turns."
+        "text": "summarizes earlier turns; checks faithfulness."
       },
       {
         "id": "register-tooling",
@@ -971,7 +971,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "local peer data: owner-signed private scope, custody, checkpoints, signed receipts."
+        "text": "private local peers: owner-signed scope, custody, checkpoints, signed receipts."
       }
     ]
   }
