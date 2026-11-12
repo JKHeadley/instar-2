@@ -45,6 +45,7 @@ import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, stepQuestionFor, stepQuestionsFor, type StepCheckResult } from './step-check.js';
 import type { Directive, VerifiedPrincipal } from '../../src/index.js';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
+import { SESSION_WORK_CLOSE_NOT_OPEN } from '../../src/assembly/production-session-work.js';
 import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkCall, SessionWorkEffect, SessionWorkOutcome } from '../../src/assembly/production-session-work.js';
 import type { ExhaustionAvenue } from '../../src/rungraph/index.js';
 import { consumeResult } from '../../src/index.js';
@@ -2729,7 +2730,7 @@ function projectSessionWork(view: JournalView, record: SessionWorkEdge | Session
   if (admission === 'new') {
     if (record.type === 'SessionWorkEdge' && active[record.id] !== undefined) throw Error('preview journal: session work edge already open');
     if (record.type === 'SessionWorkEdgeClose' && active[record.edge] === undefined)
-      throw Error('preview journal: session work close for an unknown or already closed edge');
+      throw Error(SESSION_WORK_CLOSE_NOT_OPEN);
   }
   if (record.type === 'SessionWorkEdge' && record.drawsOn === undefined && record.charge !== 'per-call'
     && view.calls + record.budget.calls > view.limits.maxCalls) throw Error('preview journal: session work call cap');

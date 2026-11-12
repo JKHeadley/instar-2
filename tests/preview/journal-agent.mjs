@@ -50,7 +50,7 @@ import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installati
 import { currentActionFacts, bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, ModelNotStarted, createModelLaunchBoundary, capacityAlerts } from './journal.js';
 import { openPreviewJournal as openJournal, createJournalWorker, replyCheckCauses, unavailableChecks, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
-import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, readSelfAccess, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
+import { redactedRunCause, appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, readSelfAccess, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
 import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
 import { JEV_MODEL, jevQuestions, publicCredentialRegister, concealSecretMaterial, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
@@ -426,6 +426,7 @@ const take = result => { if (result.kind !== 'Success') throw Error(`preview: ad
 const secretRef = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
 // The launcher captures stderr; mirror the durable end reason once, even if cleanup fails.
 let exitReported = false;
+let scrubRunText = text => redact(text).text;
 /** A refusal whose fixed text carries no secret, so the operator sees it instead of the suppressed default. */
 class PlainRefusal extends Error {}
 const reportExit = reason => {
@@ -1516,6 +1517,15 @@ async function main() {
   const versionCheck = createSubscriptionVersionCheck();
   let dueWake = null;
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false, startupFailure = null;
+  let maintenanceCause = null;
+  const reportMaintenanceFailure = error => {
+    const cause = redactedRunCause(error, scrubRunText);
+    if (cause === maintenanceCause) return;
+    maintenanceCause = cause;
+    process.stderr.write(`runner maintenance refused: ${cause}\n`);
+    try { appendRun(runsPath, { v: 1, launch: launchedAt, maintenance: cause, at: wallNow() }); }
+    catch { /* stderr remains evidence if the run log itself cannot be written */ }
+  };
   let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null, installation = null, installUpdate = null;
   // Rule 15 / Eleven §5: the installed shape's evidence, set once the activation is validated at launch.
   let installationPolicy = { kind: 'refused', reason: 'the activation is not validated yet' }, registerAtLaunch = null;
@@ -1859,6 +1869,7 @@ async function main() {
         [`harness quota login ${entry.index}`, () => [readHarnessLogin(entry.profile, entry.quotaLogin)]])),
     });
     const heldSecretValues = () => heldSecrets().values;
+    scrubRunText = text => redact(concealSecretMaterial(text, heldSecretValues())).text;
     // Plans #446, #451: the register's public entries (names, labels, custody, expiry, renewal standing and step), given
     // to the full-context review as quoted recorded facts. An unreadable register gives none; the review then holds as before.
     const credentialRegister = () => { try { return publicCredentialRegister(custody.records(), heldSecretValues(), wallNow()); } catch { return []; } };
@@ -3171,7 +3182,7 @@ async function main() {
         if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
         if (conversationSession) {
           try { sessionWork?.select?.(); } catch { /* unchanged grant bytes keep authorization closed; custody remains */ }
-          await sessionWork?.port.maintain();
+          try { await sessionWork?.port.maintain(); maintenanceCause = null; } catch (error) { reportMaintenanceFailure(error); }
         }
         await worker.drain();
         // Finished, explicitly requested results share this withdrawal-aware due point with dated requests.
@@ -3401,9 +3412,9 @@ async function main() {
       // lease refusal never reaches here, so it writes nothing); stderr and the fixed `reason` stay terse.
       if (launchedAt === null && startupFailure !== null) try {
         reportExit('refused before launch');
-        const at = wallNow(), detail = redact(String(startupFailure?.message ?? startupFailure)).text.split('\n')[0].slice(0, 240);
+        const at = wallNow(), detail = redactedRunCause(startupFailure, scrubRunText);
         appendRun(runsPath, { v: 1, launch: at, pid: process.pid });
-        appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: 'refused before launch', refused: detail || 'unknown' });
+        appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: 'refused before launch', refused: detail, cause: detail });
       } catch { /* the refusal still exits non-zero; only its record is lost */ }
       if (launchedAt !== null) {
         const reason = signalName ? `paused by signal ${signalName}` : journal?.view.stop === 'trial expired' ? 'trial expired'
@@ -3427,11 +3438,12 @@ async function main() {
             frontier: projectionDigest(journal.view) };
         } catch { /* an exit without a disposition is revived by the host watcher as a crash */ }
         if (retiredReason) end = { ...end, retired: retiredReason };
-        try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason, ...end }); } catch { /* the next launch reports an unrecorded end */ }
+        try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason, ...end,
+          ...(startupFailure === null ? {} : { cause: redactedRunCause(startupFailure, scrubRunText) }) }); } catch { /* the next launch reports an unrecorded end */ }
       }
     } finally {
       // A delegated session never outlives the launch that owns it.
-      try { if (conversationSession) await sessionWork?.port.close(); else sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
+      try { if (conversationSession) await sessionWork?.port.close(); else sessionWork?.port.stop(); } catch (error) { reportMaintenanceFailure(error); }
       if (gate) { gate.closeAll(); await gate.stop(); }
       for (const proxy of stepEgress.values()) await proxy.close();
       stepEgress.clear();
@@ -3443,7 +3455,6 @@ async function main() {
 
 try { await main(); } catch (error) {
   reportExit('error (details suppressed)');
-  process.stderr.write(error instanceof AgentPathRefused || error instanceof PlainRefusal ? `${error.message}\n`
-    : 'preview refused to start or continue; details suppressed\n');
+  process.stderr.write(`preview refused to start or continue: ${redactedRunCause(error, scrubRunText)}\n`);
   process.exitCode = 1;
 }

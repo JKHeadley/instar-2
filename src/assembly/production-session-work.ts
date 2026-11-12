@@ -5,6 +5,9 @@ import type { NativeHarnessDriverPort } from './harness.js';
 import type { SessionStopPort } from './production-session-driver.js';
 import type { Result } from '../index.js';
 
+/** Exact refusal shared by the journal owner and host custody reconciliation (Rule 42). */
+export const SESSION_WORK_CLOSE_NOT_OPEN = 'preview journal: session work close for an unknown or already closed edge';
+
 /**
  * Rule 114 on the live path: one parent→child run edge, recorded durably BEFORE the child
  * session is launched, naming everything a delegation must preserve — scope, owner, the

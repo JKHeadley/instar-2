@@ -15,11 +15,14 @@ import { secretMaterialIn } from './reply-check.js';
  * changes the failure episode (Rule 55): each failure is durable when it happens, and a successful poll after
  * failures records the restoration that closes the episode. */
 export type RunRecord = { v: 1; launch: number; pid: number } | { v: 1; launch: number; exit: number; reason: string } & RunEnd
-  | { v: 1; launch: number; poll: PollEvent; at: number };
+  | { v: 1; launch: number; poll: PollEvent; at: number }
+  | { v: 1; launch: number; maintenance: string; at: number };
 export type PollEvent = 'failed' | 'conflicted' | 'restored';
 /** What an exit leaves for the next launch (Rule 68): whether eligible accepted work remains queued for revival or is
  * inhibited by a stop, expiry or allowance, and when the next scheduled work step falls due. */
 export interface RunEnd { unfinished?: number;
+  /** Redacted error class and first line; never a stack or credential. */
+  cause?: string;
   revival?: 'queued' | 'inhibited' | 'none'; nextWorkAt?: number;
   /** Rule 63: this launch found another runner holding the conversation and retired without polling or sending. */
   nonowner?: { machine: string | null; since: number | null };
@@ -31,11 +34,19 @@ export interface RunEnd { unfinished?: number;
   refused?: string;
   /** Rule 33: the journal projection digest at this exit, so the exit claim is comparable only at that frontier. */
   frontier?: string }
-export interface RunLog { launches: ({ at: number; pid?: number; exit?: number; reason?: string } & RunEnd)[]; unreadable: number;
+export interface RunLog { launches: ({ at: number; pid?: number; exit?: number; reason?: string; maintenanceFailure?: { at: number; cause: string } } & RunEnd)[]; unreadable: number;
   /** The current poll-failure episode, folded in order over every launch; a crash cannot erase an attempt. */
   pollPressure?: { failed: number; conflicted: number };
   /** The log exists but could not be read: its history, poll pressure included, is unknown, never an empty episode. */
   readFailed?: true }
+
+/** Scrub the whole message before truncation, including multiline secrets and custom error names. */
+export function redactedRunCause(error: unknown, scrub: (text: string) => string = text => redact(text).text): string {
+  try {
+    const detail = error instanceof Error ? `${error.name}: ${error.message}` : `ThrownValue: ${String(error)}`;
+    return scrub(detail).split(/[\r\n]/u)[0]!.replace(/[\x00-\x1f\x7f]/gu, ' ').slice(0, 240) || 'unknown error';
+  } catch { return 'Error: cause unavailable'; }
+}
 
 /** Appends one line and fsyncs it before returning; the first write also fsyncs the directory. */
 export function appendRun(path: string, record: RunRecord): void {
@@ -58,10 +69,15 @@ export function readRuns(path: string): RunLog {
   const byLaunch = new Map<number, RunLog['launches'][number]>();
   for (const line of text.split('\n')) {
     if (!line) continue;
-    let row: Partial<RunRecord & { exit: number; reason: string; pid: number; poll: PollEvent; at: number } & RunEnd>;
+    let row: Partial<RunRecord & { exit: number; reason: string; pid: number; poll: PollEvent; maintenance: string; at: number } & RunEnd>;
     try { row = JSON.parse(line) as typeof row; } catch { log.unreadable++; continue; }
     if (row === null || typeof row !== 'object' || Array.isArray(row)
       || row.v !== 1 || !Number.isSafeInteger(row.launch)) { log.unreadable++; continue; }
+    if (row.maintenance !== undefined) {
+      const entry = byLaunch.get(row.launch!);
+      if (!entry || !Number.isSafeInteger(row.at) || typeof row.maintenance !== 'string') { log.unreadable++; continue; }
+      entry.maintenanceFailure = { at: row.at!, cause: row.maintenance }; continue;
+    }
     if (row.poll !== undefined) {
       if (!byLaunch.has(row.launch!) || !Number.isSafeInteger(row.at)
         || row.poll !== 'failed' && row.poll !== 'conflicted' && row.poll !== 'restored') { log.unreadable++; continue; }
@@ -79,6 +95,7 @@ export function readRuns(path: string): RunLog {
       const entry = byLaunch.get(row.launch!);
       if (!entry || entry.exit !== undefined || !Number.isSafeInteger(row.exit) || typeof row.reason !== 'string') { log.unreadable++; continue; }
       entry.exit = row.exit; entry.reason = row.reason;
+      if (typeof row.cause === 'string') entry.cause = row.cause;
       if (Number.isSafeInteger(row.unfinished) && row.unfinished! >= 0) entry.unfinished = row.unfinished!;
       if (row.revival === 'queued' || row.revival === 'inhibited' || row.revival === 'none') entry.revival = row.revival;
       if (Number.isSafeInteger(row.nextWorkAt)) entry.nextWorkAt = row.nextWorkAt!;

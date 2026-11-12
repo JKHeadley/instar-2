@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import type { HarnessInputDelivery as ConversationDelivery, HarnessAdapterPort, HarnessWorkerHandle as ConversationWorker } from './contracts.js';
 import { canonical, type Result } from '../index.js';
-import { sessionWorkPolicy, SESSION_WORK_LIMITS } from './production-session-work.js';
+import { sessionWorkPolicy, SESSION_WORK_LIMITS, SESSION_WORK_CLOSE_NOT_OPEN } from './production-session-work.js';
 import type { SessionWorkConfig, SessionWorkEdge, SessionWorkEdgeClose, SessionWorkCall, SessionWorkLease,
   SessionWorkOutcome, SessionWorkRequest } from './production-session-work.js';
 
@@ -639,12 +639,20 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       let used: number | null = null;
       try { used = calls(); } catch { problems.push('final call accounting unknown or outside reservation'); }
       if (state.inputs.some(input => input.state !== 'settled' || input.outcome?.state !== 'complete')) problems.push('pending or uncertain inputs retained');
-      const result: SessionWorkEdgeClose = freeze({ type: 'SessionWorkEdgeClose', schemaVersion: 1, id: `${processEdge}:host-close:${state.epoch}`, edge: processEdge,
+      let result: SessionWorkEdgeClose = freeze({ type: 'SessionWorkEdgeClose', schemaVersion: 1, id: `${processEdge}:host-close:${state.epoch}`, edge: processEdge,
         child: null, state: problems.length ? 'uncertain' : 'complete', detail: problems.join('; ') || 'conversation closed',
         evidence: state.edge.id, resultBytes: null, closedAt: config.now(), calls: used, reserved: config.maxCalls });
       // An edge the journal refused at the cap (reservation never confirmed) has no durable edge to close there; the
       // port's own record still carries the close. A second journal close for the same edge would be refused (row 16).
-      if (state.reserved) config.append(result);
+      if (state.reserved) {
+        try { config.append(result); }
+        catch (error) {
+          if (!(error instanceof Error) || error.message !== SESSION_WORK_CLOSE_NOT_OPEN) throw error;
+          // Historical/partially persisted closes must not kill the host or settle the journal twice.
+          // Keep the refusal in custody; missing journal ownership is not proof of completion (Rule 42).
+          result = freeze({ ...result, state: 'uncertain', detail: `${result.detail}; ${SESSION_WORK_CLOSE_NOT_OPEN}` });
+        }
+      }
       persist({ close: result }); return result;
     };
     const maintain = async () => {

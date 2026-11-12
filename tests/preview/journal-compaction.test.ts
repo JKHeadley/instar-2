@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createDecipheriv } from 'node:crypto';
+import { randomBytes, createDecipheriv } from 'node:crypto';
 import { brotliDecompressSync } from 'node:zlib';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, UNKNOWN_ANSWER_NOTICE, MODEL_FAILURE_REPLY } from './journal.js';
 import type { JournalRecord } from './journal.js';
@@ -385,5 +385,33 @@ it('retains every unique phase timing older than the latest 100 through repeated
       expect(again).toHaveLength(unique.length + 101);
       expect(again[unique.length]).toMatchObject({ observations: { count: 400, lastAt: 499 } });
     } finally { reopened.close(); }
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+// Live 2026-11-12 incident: distinguish lost snapshot ownership from a second lifecycle close.
+it('keeps an open session edge through the real 8 MiB compaction threshold, reopen and one close', () => {
+  const root = origin(), path = join(root, 'journal.encrypted');
+  const edge = { type: 'SessionWorkEdge' as const, schemaVersion: 1 as const, id: 'conversation:process',
+    parent: 'runner', child: 'conversation', scope: '/scope', owner: 'machine', authority: 'existing-role',
+    budget: { steps: 1 as const, deadline: genesis.expires, maxResultBytes: 65536, calls: 1, tokens: null },
+    exitTest: 'input settled', placement: 'local', transport: 'fake', resultDestination: '/scope/results', openedAt: 1000 };
+  let journal = openPreviewJournal(path, key, genesis);
+  try {
+    journal.append({ kind: 'session-work', record: edge, at: 1000 });
+    // Incompressible prepared inputs cross the production threshold without a stress loop or live state.
+    for (let n = 1; n <= 10; n++) {
+      journal.append({ kind: 'intake', id: id(n), update: n, text: 'question', raw: raw(n), accepted: true, cursor: n + 1, at: 1000 + n });
+      journal.append({ kind: 'reserve', id: id(n), prompt: randomBytes(950_000).toString('base64'), at: 1000 + n });
+    }
+    expect(journal.compacted).toBe(true);
+    expect(journal.view.activeSessionWork?.[edge.id]).toEqual(edge);
+    journal.close(); journal = openPreviewJournal(path, key);
+    expect(journal.view.activeSessionWork?.[edge.id]).toEqual(edge);
+    const close = { type: 'SessionWorkEdgeClose' as const, schemaVersion: 1 as const, id: 'conversation:close', edge: edge.id,
+      child: edge.child, state: 'complete' as const, detail: 'closed', evidence: edge.id, resultBytes: null, closedAt: 1100 };
+    journal.append({ kind: 'session-work', record: close, at: 1100 });
+    expect(journal.sessionWorkRecords().filter(row => row.type === 'SessionWorkEdgeClose' && row.edge === edge.id)).toEqual([close]);
+    expect(journal.view.activeSessionWork?.[edge.id]).toBeUndefined();
+    expect(() => journal.append({ kind: 'session-work', record: close, at: 1101 })).toThrow('unknown or already closed edge');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });

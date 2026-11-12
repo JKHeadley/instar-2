@@ -1,3 +1,4 @@
+import { openPreviewJournal } from '../preview/journal.js';
 import { tmpdir } from 'node:os';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -1566,4 +1567,40 @@ it('review: non-dispatch transfer must not retain a previous claim replay marker
   expect((await third.collect('asked'))?.outcome.state).toBe('complete');
   expect(f.delivered).toHaveLength(2);
   await third.close();
+});
+
+it('retains a refused historical close after retire, restart and a new process without killing maintenance', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'session-close-'));
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(7), {
+    kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
+    configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 30, maxReplies: 30,
+    maxTurns: 30, maxBytes: 262144, cursor: 0 });
+  const f = fixture(), original = f.config.append;
+  Object.assign(f.config, { append: (record: Parameters<typeof original>[0]) => {
+    journal.append({ kind: 'session-work', record, at: 1000 }); original(record);
+  } });
+  try {
+    await f.port.run(f.request('one')); await f.port.retireIdle(); await f.port.close();
+    const edge = f.state().edge!.id;
+    expect(journal.view.activeSessionWork?.[edge]).toBeUndefined();
+    const next = f.restart(); await next.run(f.request('two'));
+    expect(f.state()).toMatchObject({ reserved: true, close: null });
+    await next.retireIdle(); f.advance(100000);
+    await expect(next.maintain()).resolves.toBeUndefined();
+    expect(f.state().close).toMatchObject({ edge, state: 'uncertain' });
+    expect(f.state().close?.detail).toContain('unknown or already closed edge');
+    expect(journal.sessionWorkRecords().filter(row => row.type === 'SessionWorkEdgeClose' && row.edge === edge)).toHaveLength(1);
+    await next.maintain();
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each([
+  'preview journal: session work call cap',
+  'prefix: preview journal: session work close for an unknown or already closed edge',
+  'preview journal: substituted file',
+])('preserves a different journal refusal from close: %s', async message => {
+  const f = fixture(); await f.port.run(f.request('one')); f.stop();
+  Object.assign(f.config, { append: () => { throw Error(message); } });
+  await expect(f.port.maintain()).rejects.toThrow(message);
+  expect(f.state().close).toBeNull();
 });
