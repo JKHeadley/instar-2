@@ -3,7 +3,7 @@
 Subject base: 61db1447a0dd3ee1761b377096b15fc598d59a57
 Review state: open
 Reviewed content: none
-Outcome: Emit the Rule 117 release obligation through the existing source-metadata roster and register replay, preserving the approved shape, conversion anchor and all prior declarations.
+Outcome: Emit the Rule 117 release obligation through the existing source-metadata roster and register replay, preserving the approved shape, conversion anchor and all prior declaration payloads apart from the native certificate renewed by its contract.
 Affected rules: 26, 69, 74, 82, 90, 91, 94, 95, 98, 101, 111, 113, 115, 116, 117, 123
 Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake unchanged; no model calls, effects or private run evidence are added.
 Operator questions: none for this review candidate; the new-shape proposal is withdrawn. Existing protected-toolchain landing approval is not replaced by builder authorization or a green check.
@@ -14,7 +14,7 @@ Side effects: The builder validates committed release metadata against generated
 Undo and recovery: Revert the feature source and replay outputs together and regenerate with the existing builder; preserve history. No installed runtime data migration.
 Multi-machine posture: Repository metadata and deterministic generated output travel together. Evidence remains relative to the release host's artifact root; consumers resolve actual candidate-bound evidence.
 Team posture: Shared repository obligations contain no private conversation, user or credential data; no grant, audience or sharing default changes. Run evidence retains its existing access rules.
-Layer below: docs/07-the-declarations.md:201 and :266, src/register/shape-authority.ts:10–25, bootstrap anchor and conversion literal, existing source-roster pin checks and fact-schema validator, native conformance contract and all 308 pre-draft declaration payloads.
+Layer below: docs/07-the-declarations.md:201 and :266, src/register/shape-authority.ts:10–25, bootstrap anchor and conversion literal, existing source-roster pin checks and fact-schema validator, native conformance contract and all 308 pre-draft declaration payloads (only the independently validated native certificate may differ).
 Bug class: unit
 Bug evidence: reproducer=tests/register/release-checks.test.ts
 Hook bypass: none
