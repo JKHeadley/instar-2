@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:336969491bd0c2ffe8a35586c9995ad55966b0b642f3187d7529c69073d4683a",
-  "commit": "ef0bb07074b8fa9d360612491ce556a18fad59e5",
+  "generation": "sha256:01e22cc4b284d32b6da94d1d45fd194b22dcf2b22fb29d59b8bfca711a89cb88",
+  "commit": "0c98a7ef3aefedad1cf6472ada94f06b4cc60a60",
   "launchers": {
     "bin/instar2.mjs": [
       {
@@ -58,14 +58,6 @@
         "availability": "switched-off",
         "userFacing": true,
         "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
-      },
-      {
-        "id": "preview-private-reports",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "switched-off",
-        "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -214,14 +206,6 @@
         "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
-        "id": "preview-private-reports",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
-      },
-      {
         "id": "preview-requested-actions",
         "status": "dark",
         "module": "tests/preview",
@@ -366,14 +350,6 @@
         "availability": "not-loaded",
         "userFacing": true,
         "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
-      },
-      {
-        "id": "preview-private-reports",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
@@ -522,14 +498,6 @@
         "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
-        "id": "preview-private-reports",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
-      },
-      {
         "id": "preview-requested-actions",
         "status": "dark",
         "module": "tests/preview",
@@ -676,14 +644,6 @@
         "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
-        "id": "preview-private-reports",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
-      },
-      {
         "id": "preview-requested-actions",
         "status": "dark",
         "module": "tests/preview",
@@ -828,14 +788,6 @@
         "availability": "available",
         "userFacing": true,
         "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
-      },
-      {
-        "id": "preview-private-reports",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "available",
-        "userFacing": true,
-        "text": "operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable."
       },
       {
         "id": "preview-requested-actions",
