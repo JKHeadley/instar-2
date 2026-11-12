@@ -78,6 +78,33 @@ it('two inputs share one process and one cumulative reservation; exact duplicate
   expect(await f.port.close()).toMatchObject({ state: 'complete', calls: 2, reserved: 6 });
 });
 
+it('persists close when the journal refuses an already-closed edge but propagates other append errors', async () => {
+  for (const alreadyClosed of [true, false]) {
+    const f = fixture(); await f.port.run(f.request('one'));
+    const failure = Error(alreadyClosed
+      ? 'preview journal: session work close for an unknown or already closed edge'
+      : 'journal disk unavailable');
+    const append = f.config.append;
+    let attempts = 0;
+    f.config.append = row => {
+      if (row.type === 'SessionWorkEdgeClose' && row.id.includes(':host-close:')) {
+        attempts++; throw failure;
+      }
+      append(row);
+    };
+    if (alreadyClosed) {
+      const result = await f.port.close();
+      expect(result).toMatchObject({ type: 'SessionWorkEdgeClose', state: 'complete' });
+      expect(f.state().close).toEqual(result);
+      expect(await f.restart().close()).toEqual(result);
+    } else {
+      await expect(f.port.close()).rejects.toBe(failure);
+      expect(f.state().close).toBeNull();
+    }
+    expect(attempts).toBe(1);
+  }
+});
+
 it('persists a busy arrival before waiting and drains in source order', async () => {
   const f = fixture();
   const one = f.port.run(f.request('one'));
