@@ -15,7 +15,7 @@ Undo and recovery: Retain the new projection when rolling back consumers; revert
 Multi-machine posture: Same replicated journal and single writer as the original slice. Snapshot transfer includes the prior intent/receipt list; no new machine-local store. Installed transfer proof remains combined-build work, not claimed here.
 Layer below: Full purpose and rulebook; actual burn intent/receipt projection, shared sendOutcomeOf, snapshotOf spread and restore, existing send admission/stop/no-retry paths, status JSON unknownSends/sendOutcomes consumer. Real encrypted writer and child-process status tests.
 Bug class: durability
-Bug evidence: reproducer=tests/preview/burn-observation.test.ts; restart=tests/preview/burn-observation.test.ts
+Bug evidence: reproducer=tests/preview/burn-observation.test.ts; restart=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-52-burn-1112-p2-repair-041116-PROGRESS.md
 Hook bypass: none; core.hooksPath=.husky/_, directory absent; no hook installed or bypassed.
 Convergence: none
 Decision: burn-summary-history | Retain minimal prior episode/receipt pairs in existing BurnState; count prior and current notices through sendOutcomeOf so a new episode cannot erase counts. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-52-burn-1112-p2-repair-041116-PROGRESS.md
@@ -33,10 +33,10 @@ Prompt finding: 441c66bc033f | protocol-literal | Exact unchanged infrastructure
 1.x comparison: Inherits the reviewed db3ed6d3052cfcc24888b6c8bc86086abcfc2987 comparison (BurnDetector.ts, BurnThrottleRunbook.ts, BurnVerifier.ts), rechecked src, docs/specs/token-burn-detection-and-self-heal.md and history df87e1630/d6b57c988/9d0088053. Retains recent activity, episode suppression and honest missing baseline; allowance reservations remain this slice's measurement. 1.x transport/remediation is not needed for this 2.0 summary repair. ONEX-LESSONS 3/4/6: ambiguous delivery is not non-send; missing evidence is not zero; verify consumers.
 Team posture: Same operator-private allowance summary and authenticated dashboard; forum audience masking and notice admission unchanged. No permission expansion.
 
+Decision: burn-summary-register | Replay generated register from tested source c2ebba1f1; prescribed owner rehash and inventory chain changed zero pins. Generated files publish the current source hashes mechanically. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-52-burn-1112-p2-repair-041116-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: enumerate current and prior burn intents using the existing outcome reader. The small prior list prevents loss when the latest notice is replaced. Existing journal capacity and reply cap bound writes; no competing delivery service or authority. Start, stop and end-of-episode guards stay unchanged. No unattended installed-path completion claim.
 80/20: Five product lines plus focused real-writer regression assertions. Portable targeted tests and cheap gates only; combined installed acceptance and wider row-52 work remain as recorded by the independent review.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Decision: burn-summary-register | Replay generated register from tested source c2ebba1f1; prescribed owner rehash and inventory chain changed zero pins. Generated files publish the current source hashes mechanically. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-52-burn-1112-p2-repair-041116-PROGRESS.md
