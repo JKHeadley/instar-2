@@ -35,6 +35,9 @@ Diagnosis: journal.ts:3384 omitted work-repair from recognized physical-call ids
 Measurement: Final product diff from train-240 is 4 added lines, 0 removed, in tests/preview/journal.ts. Tests, this review and mechanical register projections are separate. The initial retry approach is removed in a forward commit; prior green history is preserved and no retry field remains in the final tree.
 Validation: On unchanged train-240 product code, three recorded-work cases and the positive repair-reservation case failed; the real adapter separately returned uncertain with null usage after a successful physical repair. Both suites pass with the admission fix. Final-head checks, counts and host limitations are in the handoff report. No real subscription spend or deployed Telegram proof is claimed.
 
+Deferral: generated/register.json:1 | not-a-deferral=mechanically replayed register projection, not a new promise or deferred implementation.
+Register publication: Eight generated projections were replayed from corrected source commit 06021d1ac3dcc4c7bde939e8167eef5bbc17be5e, generation sha256:f415b0c43deb5c060bbf8fe3db3366c312c3b4061618be60c4472d4af23cb9b9. No constitutional wording, changelog numbering, owner pin or conformance declaration was edited.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: extend the existing physical observation validator with the repair reservation it already records. The exact id, in-flight slot, repairSlot and model role admit the diagnostic; all existing content/resource checks still apply. The completed frame then reaches the existing adapter, task validator and result/send path. No new retry, queue, scheduler, schema, prompt, login workaround or fallback is needed. Start guards are the existing counted repair admission; end guards are the existing result validation and send intent; one existing repair call remains the bound. Unattended live-provider completion is not claimed.
