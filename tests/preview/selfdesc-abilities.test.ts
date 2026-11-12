@@ -127,7 +127,7 @@ it('translates only the exact retired inventory entry and retains unrelated capa
   expect(renderedNote(capture.note.replace('changes nothing.', 'changes everything.'))).not.toBe(current);
   expect(renderedNote(capture.note.replace('faithfulness-checked', 'unchecked'))).not.toBe(current);
   expect(renderedNote(capture.note.replace('keeps standing instructions', 'ignores standing instructions'))).not.toBe(current);
-  expect(renderedNote(capture.note)).not.toBe(current.replace('operator-only pages', 'public pages'));
+  expect(renderedNote(capture.note)).not.toBe(current.replace('owner-only pages', 'public pages'));
   expect(capture.note).toContain(retiredStepCheck);
 });
 
