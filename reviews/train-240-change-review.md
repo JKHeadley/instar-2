@@ -27,10 +27,11 @@ Decision: train-240-desk | Existing repin/build/rehash/replay chain updates one 
 
 1.x comparison: Actual JKHeadley/instar origin/main db3ed6d3052cfcc24888b6c8bc86086abcfc2987 searched in src/, docs/specs/ and history (05d490cbf, ab26b7ca3). Inspected src/core/StandardsRegistryParser.ts, src/core/StandardsEnforcementAuditor.ts, src/monitoring/ReleaseReadinessSentinel.ts, docs/specs/CARTOGRAPHER-CONFORMANCE-AUDIT.md and docs/specs/RELEASE-READINESS-VISIBILITY-SPEC.md. Reuse the member's declaration/reference coverage distinction from executed proof. The sentinel detects release backlog, not typed register publication; no code transplant fits. ONEX-LESSONS.md:125–142 informs source-history retention, bounded tests, production assembly and actual-route evidence.
 
-simplestRobustRoute: One ordinary exact-head merge and the existing desk regeneration tools; this is the simplest robust route. No new runtime machinery. Start guards are exact base and reviewed-head identity; end guards are generated consistency, targeted tests, final-head checks and clean pushed custody. Runtime release obligations remain unpassed until separately proven.
-80/20: Changed release tests and direct builder consumers, mandatory register lifecycle/subscription/context-floor checks and pinned READY tests; the pipeline owns the full suite and release proof.
-VERDICT: author submission; independent desk owns landing approval
 
 Decision: train-240-review-repair | Restore governed draft status and both spec versions, index inherited decisions in their original reports, and carry replay publication in the final review range. Preserve the reviewed no-shape implementation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-240-PROGRESS.md
 
 Publication coverage: regenerated outputs from source cf0b90467 are committed with this review update, including the preceding 90c943ad7 replay. Final report records exact SHA and checks.
+
+simplestRobustRoute: One ordinary exact-head merge and the existing desk regeneration tools; this is the simplest robust route. No new runtime machinery. Start guards are exact base and reviewed-head identity; end guards are generated consistency, targeted tests, final-head checks and clean pushed custody. Runtime release obligations remain unpassed until separately proven.
+80/20: Changed release tests and direct builder consumers, mandatory register lifecycle/subscription/context-floor checks and pinned READY tests; the pipeline owns the full suite and release proof.
+VERDICT: author submission; independent desk owns landing approval

@@ -25,8 +25,9 @@ Decision: publication-authority | Shape approval belongs to Justin, not the desk
 
 1.x comparison: Inherited and rechecked JKHeadley/instar main db3ed6d3052cfcc24888b6c8bc86086abcfc2987; searched src/ and docs/specs/ and inspected StandardsRegistryParser.ts, StandardsEnforcementAuditor.ts, CARTOGRAPHER-CONFORMANCE-AUDIT.md and their history (05d490cbf, ab26b7ca3; preceding unit additionally 330b8ed7 and 576a390d). Reuse declaration coverage distinct from executed evidence. ReleaseReadinessSentinel detects release stalls, not register conversion; no code transplant fits the typed 2.0 register. ONEX-LESSONS.md:125–142 informs preserved history, consumer consistency and actual-route verification.
 
+
+Integration repair (train-240): retain the spec's original governed draft status and add its two-version changelog; no new shape, approval or runtime behavior. The no-shape publication design remains unchanged.
+
 simplestRobustRoute: Keep the already-authored release requirements as committed source metadata, use the existing fact validator and register rule roster, and emit through the existing build adapter. This is the simplest robust route: it prevents malformed or unresolvable requirements without a new governing schema, approval binding, inventory or release judge. The actual CLI replay, malformed-input refusal, generated-file comparison and before/after native contract are the publication evidence; no autonomous runtime capability is claimed.
 80/20: Focused emission/refusal and payload-preservation tests, actual replay and CLI negative neighbor, native conformance, architecture, lint, register check and required pinned tests; no full suite on the Studio builder.
 VERDICT: author review candidate; independent compliance and landing review remain the desk's.
-
-Integration repair (train-240): retain the spec's original governed draft status and add its two-version changelog; no new shape, approval or runtime behavior. The no-shape publication design remains unchanged.
