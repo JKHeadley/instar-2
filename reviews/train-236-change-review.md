@@ -15,8 +15,8 @@ Undo and recovery: Revert this integration and its generated register together t
 Multi-machine posture: Local Git calculations use the same explicit train base on every host; source and tests travel in Git. Native conformance and final live gates remain on Studio; no live roots or runner are touched here.
 Team posture: Existing owner-scoped policy and grants remain authoritative; this integration grants no person, guest or worker additional standing and changes no sharing defaults.
 Layer below: Exact member source and reviews, 1.x source comparison below, actual target Git ancestry, product launcher to journal runner to effect admission, current Studio driver base propagation, unchanged native guards and context floor.
-Bug class: none
-Bug evidence: none
+Bug class: integration
+Bug evidence: reproducer=tests/register/change-review-git.test.ts
 Hook bypass: none
 Convergence: none
 Decision: train-236-M1 | Merge reviewed 72a698c14697e14d06703586fe3983938245cd13; evidence /Users/dabombstudio/.instar/agents/echo/.instar/lanes/connected-tools-copyfirst-1105-PROGRESS.md includes its startup recovery repair. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-236-PROGRESS.md
