@@ -69,20 +69,16 @@ const currentChannelNote = (text: string) => compactRecordedNote(text.replace(re
   // the original notes; they do not certify private reports (covered by private-view.test.ts).
   .replace('- keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.',
     '- keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.\n'
-    + '- operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable.')
+    + '- operator-only pages (7d): {reply:Markdown,privateViewTitle:title (1–256 chars)}; host adds link or phone-unavailable.')
   // train-242: preserve captured bytes; translate only the declared compact summaries and local Threadline addition.
   .replace('saves inbound Telegram files under bounded admission; refusals keep their message.',
-    'saves Telegram files under bounded admission; refusals retain the message.')
+    'saves Telegram files with bounded admission; keeps refused messages.')
   .replace('answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.',
-    'answers operator chat/topics; intake encrypts photos, audio and files with text descriptions.')
-  .replace('an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.',
-    'encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts.')
+    'answers operator chat/topics; encrypts inbound media with text descriptions.')
   .replace('"status" and "how are you doing" are answered from the journal without a model call.',
     'answers "status" and "how are you doing" from the journal, without a model call.')
-  .replace('an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.',
-    'answers explicit timed requests once, daily or weekdays until cancelled; no new message needed.')
   .replace('keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.',
-    'keeps instructions, works promises; sends explicitly requested results, else holds them for the next message.')
+    'keeps instructions, works promises; sends requested results, else holds for next message.')
   .replace('- generates the register, rules, glossary and this briefing from declarations.',
     '- generates the register, rules, glossary and this briefing from declarations.\n- local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts.');
 

@@ -53,6 +53,9 @@ describe('the live enumeration rule 4 asks for', () => {
       // Rule 4's recorded-governed-state admission for the updater (scripts/update.declarations.json):
       // installation state, release schema and migration postconditions must match exactly; a refusal
       // keeps the staging, the current release and the migration intent, and publishes nothing.
+      // Threadline default (29630763): exact owner signature, scope, durable cause and
+      // ownership/stop checks; refused inputs remain in the hook trace and encrypted journal.
+      'threadline-runtime.admitThreadline',
       'update.updateRoot', 'update.writeUpdateRuntime']);
   });
   it('rules 60 and 61 each have a live holder, and its honesty class says what is still owed', () => {

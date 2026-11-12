@@ -8578,6 +8578,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (!('obligationDecision' in packet)) return [];
           packet.obligationDecision = OBLIGATION_DECISION_FLOOR; delete packet.governingConstraints; delete packet.capabilities;
           const guided = [JSON.stringify(packet)];
+          // Keep open commitment ids available for source-backed withdrawals before
+          // spending that room on the ancillary view of other runners.
+          if ('commitments' in packet && 'concurrentWork' in packet) {
+            delete packet.concurrentWork; guided.push(JSON.stringify(packet));
+          }
           if (step < dropOrder.length) return guided;
           if ('concurrentWork' in packet) { delete packet.concurrentWork; guided.push(JSON.stringify(packet)); }
           if (!reviewReserveWaived) return guided;

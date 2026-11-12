@@ -124,6 +124,7 @@ createServer((req,res)=>{const chunks=[]; req.on('data',b=>chunks.push(b)); req.
     else expect(sends()[0].body.text).toContain(JSON.parse(recorded.work).report);
     if (mode==='uncertain') expect(sends()[1].body.text).toContain('My answer may not have arrived.');
     journal = openPreviewJournal(path, OFFLINE_STORAGE_KEY);
+    if (mode === 'withdrawn') expect(journal.view.order.find(turn => turn.text === 'Cancel that result delivery.')?.grounding?.commitments).toContain(0);
     expect(journal.view.closed.has(0)).toBe(mode!=='uncertain');
     expect(journal.view.obligationWork['commitment:0'].report.delivered !== undefined).toBe(mode==='delivered');
     journal.close();

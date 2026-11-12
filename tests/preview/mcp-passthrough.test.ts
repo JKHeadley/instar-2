@@ -1,4 +1,5 @@
 // @ts-nocheck -- executes the shipped JavaScript composition with disposable roots.
+import { admitThreadline } from '../../scripts/threadline-runtime.mjs';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -48,7 +49,7 @@ it.each([false, true])('shipped session admission forwards listed connectors and
     const admission = JSON.parse(readFileSync(join(root, 'admission/step/config.json'), 'utf8'));
     expect(admission.mcpReads).toEqual(configured ? ['mcp__harmless__read'] : []);
     const decision = source.split('effects: createToolEffectOwner({ decide: ')[1].split(',\n          append: appendWork')[0];
-    const decisionEnv = { conversationSession, sessionConnectors, admissionConfig: env.admissionConfig,
+    const decisionEnv = { admitThreadline, threadline: null, conversationSession, sessionConnectors, admissionConfig: env.admissionConfig,
       readRootMcp, root, accountActions: false, wallNow: env.wallNow, admitSessionConnector, admitToolCallEffect };
     const decide = Function(...Object.keys(decisionEnv), `return ${decision}`)(...Object.values(decisionEnv));
     for (const row of recorded) {
