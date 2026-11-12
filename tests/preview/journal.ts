@@ -1268,10 +1268,10 @@ export type JournalRecord =
   | { kind: 'held-notice-review'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'held-notice-intent'; id: string; text: string; chat: string; thread?: number; update: number; grant: string;
     /** Other held messages in this conversation the one notice also answers; none gets a second push (P-14). */
-    covers?: string[]; acknowledgement?: true; acknowledgementMode?: 'reaction-or-text'; workingProgress?: WorkingProgress; waitingProgress?: true; deliveryUnknown?: true;
+    covers?: string[]; promiseRecovery?: true; acknowledgement?: true; acknowledgementMode?: 'reaction-or-text'; workingProgress?: WorkingProgress; waitingProgress?: true; deliveryUnknown?: true;
     /** limit-notice-1020: its own durable slot (`login-outage:<id>`). Non-additive: a reader that skipped it would repeat the notice. */
     loginOutage?: { resetAt: number | null }; closing?: { end: number; zone: string }; provenance?: OutboundProvenance; at: number }
-  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; loginOutage?: true; closing?: number; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
+  | { kind: 'held-notice-sent'; id: string; message: number; promiseRecovery?: true; deliveryUnknown?: true; loginOutage?: true; closing?: number; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
 
   // Non-additive: reservations/checks below may follow a sent reply; an older writer must refuse.
   | { kind: 'reply-review-after-send'; id: string; at: number }
@@ -1543,6 +1543,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   reminderDecided?: true; askConflict?: string; lastNamedPerson?: string;
 
 
+  promiseRecoveryNotice?: { lead: string; text: string; at: number; sent?: number };
   deliveryNotice?: { lead: string; text: string; at: number; sent?: number };
   /** limit-notice-1020: the one fixed notice that every reviewed login was out of capacity, on the turn host custody queued. */
   loginOutageNotice?: { text: string; at: number; resetAt: number | null; sent?: number };
@@ -3444,6 +3445,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
     return progress ? { sent: progress.sent } : undefined; }
   if (kind === 'waiting-progress') { const progress = view.turns.get(key)?.waitingProgress;
     return progress ? { sent: progress.sent } : undefined; }
+  if (kind === 'promise-recovery') { const notice = view.turns.get(key)?.promiseRecoveryNotice;
+    return notice?.lead === key ? { sent: notice.sent } : undefined; }
   if (kind === 'delivery-notice') { const notice = view.turns.get(key)?.deliveryNotice;
     return notice?.lead === key ? { sent: notice.sent } : undefined; }
   if (kind === 'login-outage') { const notice = view.turns.get(key)?.loginOutageNotice;
@@ -3472,6 +3475,15 @@ export function sendOutcomeOf(view: JournalView, target: string, sent: number | 
   if (sent !== undefined) return { kind: 'accepted', message: sent };
   const recorded = view.sendOutcomes.find(item => item.target === target);
   return recorded?.outcome === 'refused' ? { kind: 'refused', reason: recorded.reason } : { kind: 'unknown', reason: recorded?.reason ?? null };
+}
+/** Rules 8/68/83: an interruption account never closes the promise or releases uncertain effects. */
+export const PROMISE_RECOVERY_NOTICE = 'The work promised here was interrupted, and its outcome is not confirmed. '
+  + 'It remains open in status while saved results are checked. It will not be repeated while its outcome is unknown.';
+function needsPromiseRecoveryNotice(view: JournalView, turn: Turn, reserved = false): boolean {
+  return (reserved || !turn.promiseRecoveryNotice) && verifiedOperatorTurn(view, turn) && !turn.requestedAction
+    && !retractedTurn(view, turn.id) && wholeReplySent(turn) && view.commitments.some((note, id) =>
+      note.source === turn.id && note.in === 'reply' && commitmentOpen(view, id)
+      && view.obligationWork[`commitment:${id}`]?.recoveryHeld === true);
 }
 /** A failed or unknown answer keeps its original intent fenced. Its separate content-free notice may start once. */
 function needsDeliveryNotice(view: JournalView, turn: Turn): boolean {
@@ -3542,6 +3554,7 @@ export function sendOutcomeCounts(view: JournalView) {
   for (const turn of view.order) {
     if (turn.intent !== undefined) settle(replyTarget(turn), turn.sent);
     for (const [index, part] of (turn.replyParts ?? []).entries()) if (part.started) settle(replyPartTarget(turn.id, index + 2), part.sent);
+    if (turn.promiseRecoveryNotice?.lead === turn.id) settle(`promise-recovery:${turn.id}`, turn.promiseRecoveryNotice.sent);
     if (turn.deliveryNotice?.lead === turn.id) settle(`delivery-notice:${turn.id}`, turn.deliveryNotice.sent);
     for (const progress of turn.workingProgress ?? []) settle(`working-progress:${progress.ordinal}:${turn.id}`, progress.sent);
     if (turn.waitingProgress) settle(`waiting-progress:${turn.id}`, turn.waitingProgress.sent);
@@ -3591,7 +3604,7 @@ export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' |
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'limited-intent') return { target: `limited:${row.id}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'intent') return { target: `reply:${row.id}`, chat: row.chat, ...thread, body: row.body ?? row.text };
-  if (row.kind === 'held-notice-intent') return { target: `${row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.loginOutage ? 'login-outage' : row.closing ? `closing-notice:${row.closing.end}` : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
+  if (row.kind === 'held-notice-intent') return { target: `${row.promiseRecovery ? 'promise-recovery' : row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.loginOutage ? 'login-outage' : row.closing ? `closing-notice:${row.closing.end}` : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
   return { target: `requested-reminder:${String(row.batch)}`, chat: row.chat, ...thread, body: row.body };
 }
 /** Verifies a recorded system writer's owner signature over its exact occurrence. */
@@ -4831,6 +4844,26 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       throw Error('preview journal: acknowledgement review result order');
     turn.heldNoticeReview = row.result;
     if (row.result.verdict !== 'unavailable') settleTokens(view, `held-notice-review:${row.id}`, row.result.usage);
+    return;
+  }
+  if ((row.kind === 'held-notice-intent' || row.kind === 'held-notice-sent') && row.promiseRecovery !== undefined) {
+    if (row.promiseRecovery !== true || row.deliveryUnknown || row.loginOutage || row.closing || row.workingProgress || row.waitingProgress)
+      throw Error('preview journal: mixed promise notice');
+    if (row.kind === 'held-notice-intent') {
+      const covered = [turn, ...(row.covers ?? []).map(id => view.turns.get(id))];
+      if (row.acknowledgement || row.acknowledgementMode || row.text !== PROMISE_RECOVERY_NOTICE
+        || view.stop !== null || row.at >= view.expires || view.replies >= view.limits.maxReplies
+        || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
+        || row.grant !== view.genesis.grant || new Set(covered).size !== covered.length
+        || !row.provenance || row.provenance.speaker !== 'infrastructure'
+        || covered.some(item => !item || item.thread !== turn.thread || !needsPromiseRecoveryNotice(view, item)))
+        throw Error('preview journal: promise notice intent order');
+      for (const item of covered as Turn[]) item.promiseRecoveryNotice = { lead: turn.id, text: row.text, at: row.at };
+      view.replies++; return;
+    }
+    if (row.acknowledgementPath || turn.promiseRecoveryNotice?.lead !== turn.id || turn.promiseRecoveryNotice.sent !== undefined
+      || !Number.isSafeInteger(row.message) || row.message <= 0) throw Error('preview journal: promise notice receipt order');
+    for (const item of view.order) if (item.promiseRecoveryNotice?.lead === turn.id) item.promiseRecoveryNotice.sent = row.message;
     return;
   }
   if (row.kind === 'held-notice-intent' && row.closing) {
@@ -7836,6 +7869,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
       ...(item.heldNoticeIntent ? { heldNotice: true, heldNoticeOutcome: heldNoticeOutcome(item) } : {}),
+      ...(item.promiseRecoveryNotice ? { promiseInterruption: item.promiseRecoveryNotice.text,
+        promiseInterruptionOutcome: sendOutcomeOf(journal.view, `promise-recovery:${item.promiseRecoveryNotice.lead}`, item.promiseRecoveryNotice.sent) } : {}),
       ...(item.deliveryNotice ? { deliveryNotice: item.deliveryNotice.text, deliveryNoticeOutcome:
         sendOutcomeOf(journal.view, `delivery-notice:${item.deliveryNotice.lead}`, item.deliveryNotice.sent).kind } : {}),
       ...(item.limited ? { limitedAnswer: true, limitedAnswerOutcome: limitedOutcome(item) } : {}), outcome: outcome(item) }));
@@ -7925,6 +7960,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
       ...(item.heldNoticeIntent ? { heldNotice: true, heldNoticeOutcome: heldNoticeOutcome(item) } : {}),
+      ...(item.promiseRecoveryNotice ? { promiseInterruption: item.promiseRecoveryNotice.text,
+        promiseInterruptionOutcome: sendOutcomeOf(journal.view, `promise-recovery:${item.promiseRecoveryNotice.lead}`, item.promiseRecoveryNotice.sent) } : {}),
       ...(item.deliveryNotice ? { deliveryNotice: item.deliveryNotice.text, deliveryNoticeOutcome:
         sendOutcomeOf(journal.view, `delivery-notice:${item.deliveryNotice.lead}`, item.deliveryNotice.sent).kind } : {}),
       ...(item.limited ? { limitedAnswer: true, limitedAnswerOutcome: limitedOutcome(item) } : {}),
@@ -8893,6 +8930,30 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: lead.update });
     if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: lead.id, message: outcome.message, at: ports.now() }); }
     catch { /* the notice stays UNKNOWN; never repeated */ }
+  };
+  // One durable interruption account per source promise; coalesce this cycle's losses by conversation.
+  // The existing push owns disclosure, lease, stop, spend and the signed intent-before-send boundary.
+  const noticeInterruptedPromises = async () => {
+    for (const turn of journal.view.order) {
+      if (halted() || ports.now() >= journal.view.expires || journal.view.replies >= journal.view.limits.maxReplies) return;
+      if (!needsPromiseRecoveryNotice(journal.view, turn)) continue;
+      const covered = journal.view.order.filter(item => item.thread === turn.thread && needsPromiseRecoveryNotice(journal.view, item));
+      const text = PROMISE_RECOVERY_NOTICE, chat = journal.view.genesis.chat, target = `promise-recovery:${turn.id}`;
+      const thread = turn.thread === undefined ? {} : { thread: turn.thread };
+      ports.checkOutbound(text);
+      const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
+      let reserved = false;
+      const current = () => !halted() && ports.now() < journal.view.expires
+        && (reserved || journal.view.replies < journal.view.limits.maxReplies)
+        && covered.every(item => needsPromiseRecoveryNotice(journal.view, item, reserved));
+      const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: turn.update, current }, () => {
+        journal.append({ kind: 'held-notice-intent', id: turn.id, promiseRecovery: true, text, chat, ...thread,
+          update: turn.update, grant: journal.view.genesis.grant, covers: covered.filter(item => item !== turn).map(item => item.id), provenance, at: ports.now() });
+        reserved = true;
+      });
+      if (outcome.kind === 'accepted') journal.append({ kind: 'held-notice-sent', id: turn.id, promiseRecovery: true,
+        message: outcome.message, at: ports.now() });
+    }
   };
   // Reuse the durable notice doorway, with a separate slot because the acknowledgement may
   // already have used heldNoticeIntent. A notice's own UNKNOWN never creates another notice.
@@ -12519,6 +12580,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             ...(work?.recoveryHeld || work?.session || recovered ? { recoveryHeld: true as const } : {}), at: ports.now() });
         }
       }
+      await noticeInterruptedPromises();
       const now = ports.now(), item = dueObligationWork(journal.view, now)[0];
       if (!item || !obligationCapacity(journal.view)) return false;
       const zone = ports.timeZone ?? 'America/Los_Angeles', work = journal.view.obligationWork[item.key];

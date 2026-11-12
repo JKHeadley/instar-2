@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, settledConstraintWording, currentBlockers, declaredObligations, dueObligationWork, obligationSchedule,
-  LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE, OBLIGATION_WORK_QUESTION, OBLIGATION_WORK_QUESTION_TOOLS, previewCapabilities,
+  PROMISE_RECOVERY_NOTICE, LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE, OBLIGATION_WORK_QUESTION, OBLIGATION_WORK_QUESTION_TOOLS, previewCapabilities,
   TOOL_ATTEMPTS_MEANING, TOOL_ATTEMPTS_PARTIAL_MEANING, TOOL_ATTEMPTS_REVIEWED, governingConstraints, OBLIGATION_DECISION,
   OBLIGATION_FLOOR_PACKET_BYTES, OBLIGATION_DECISION_TOOLS, REPLY_ACKNOWLEDGEMENT } from './journal-test-worker.js';
 // @ts-expect-error The runner side stays plain JavaScript.
@@ -801,7 +801,9 @@ it('replays the real c1 tool-worker checkpoint through startup/tick recovery, in
           ? { outcome: 'report', attempts: 1, report: { text: recorded.workResult.report } }
           : { outcome: 'uncertain', recoveryHeld: true, attempts: 1 });
       }
-      expect(again.work).toEqual([]); expect(again.sent).toEqual([]); expect(again.journal.view.calls).toBe(calls);
+      expect(again.work).toEqual([]);
+      expect(again.sent).toEqual(['complete', 'budget-exhausted'].includes(variant) ? [] : [PROMISE_RECOVERY_NOTICE]);
+      expect(again.journal.view.calls).toBe(calls);
       again.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
@@ -918,7 +920,7 @@ it('reconciles a held step on its original host and permits new work only after 
     w.clock.now += LOOP_REVISIT_MS; await w.worker.workObligations(); await w.worker.workObligations();
     expect(w.work).toHaveLength(2);
     expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'report', attempts: 2 });
-    expect(w.sent).toHaveLength(1); // Only the original reply; no unsolicited recovery send.
+    expect(w.sent).toEqual([LATER, PROMISE_RECOVERY_NOTICE]); // The interruption account is not a result or closure.
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

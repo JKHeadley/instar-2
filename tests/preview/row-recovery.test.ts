@@ -2,14 +2,14 @@
  * 7e4fa298997895086534bb3a315b4746981f897e078ec635028ec3187085209c.
  * Update367056086: worker81127 killed, verified cleanup, no answer/modelState.
  * Update367056089: accepted before restart, later uncertain with eight returned checks.
- * Update367056088: promised commitment1 recoveryHeld; remains open (separate design).
+ * Update367056088: promised commitment1 recoveryHeld; remains open with one interruption account.
  * Provider accounting prose below is a test control, not a captured model answer. */
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { createJournalWorker, openPreviewJournal, pendingUnknownCalls, ModelPending, ModelNotStarted,
+import { createJournalWorker, openPreviewJournal, pendingUnknownCalls, ModelPending, ModelNotStarted, PROMISE_RECOVERY_NOTICE, commitmentOpen, sendOutcomeOf, sendOutcomeCounts, LOOP_REVISIT_MS,
   type PreviewPorts, type CallOutcome, type JournalRecord } from './journal-test-worker.js';
 // @ts-expect-error Physical adapter is JavaScript.
 import { toolTurnEligible } from './tool-turn.mjs';
@@ -126,7 +126,7 @@ it('replays captured summary, Jev, review and delivered/empty reply shapes as ac
     } finally { f.close(); }
   }
 });
-it('row01 retains the recorded uncertain promise shape without fabricating a fulfilled result', async () => {
+it.each(['runner-restart', 'worker-lost'] as const)('promised work %s sends one interruption account without fabricating a result', async cut => {
   const f = setup(), id = idOf(367056088);
   const promise = "Got it, Justin. I'll compare the discussion and linked evidence for the three most recently updated open issues on JKHeadley/instar, give one plausible alternative explanation for each issue, and send you one combined report when it's done. This is a new comparison job, separate from the short summaries I sent at 07:53.";
   try {
@@ -137,10 +137,17 @@ it('row01 retains the recorded uncertain promise shape without fabricating a ful
     f.journal.append({ kind: 'sent', id, message: 6376, at: 1794239759010 });
     const slot = 1794239760000;
     f.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: slot });
-    f.reopen(); await f.worker().workObligations(); await f.worker().workObligations();
+    if (cut === 'runner-restart') f.reopen();
+    else f.journal.append({ kind: 'obligation-result', obligation: 'commitment:0', slot, outcome: 'uncertain', recoveryHeld: true, at: slot + 1 });
+    await f.worker().workObligations(); await f.worker().workObligations();
     expect(f.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'uncertain', recoveryHeld: true, attempts: 1 });
     expect(f.journal.view.obligationWork['commitment:0']?.report).toBeUndefined();
-    expect(f.calls).toEqual([]); expect(f.sent).toEqual([]);
+    expect(f.calls).toEqual([]); expect(f.sent).toEqual([PROMISE_RECOVERY_NOTICE]);
+    expect(commitmentOpen(f.journal.view, 0)).toBe(true);
+    expect(f.journal.view.turns.get(id)?.promiseRecoveryNotice).toMatchObject({ text: PROMISE_RECOVERY_NOTICE, sent: 6378 });
+    f.journal.compact(); f.reopen(); await f.worker().workObligations();
+    f.reopen(); await f.worker().workObligations();
+    expect(f.sent).toEqual([PROMISE_RECOVERY_NOTICE]); expect(f.calls).toEqual([]);
   } finally { f.close(); }
 });
 
@@ -269,3 +276,118 @@ it.each(['missing-parent', 'unreserved-parent', 'original-reservation', 'ordinar
       expect(f.journal.view.callOutcomes.some(row => row.id === operation)).toBe(false);
     } finally { f.close(); }
   });
+
+// Measured cuts: rowproof3-1111, promise receipts 6608 (worker SIGKILL) and 6610 (runner restart).
+// Replay the retained state, not an invented provider completion; send behavior below is controlled.
+function interruptedPromise(f: ReturnType<typeof setup>, n = 367056090, sent = true, hold = true) {
+  const id = idOf(n), promise = 'I will compare the issues and send the report.';
+  f.worker().intake([update(n)]);
+  f.journal.append({ kind: 'reserve', id, at: f.ports.now() });
+  f.journal.append({ kind: 'answer', id, text: promise, loops: [{ kind: 'deferral', quote: promise, waitsOn: 'nothing' }], at: f.ports.now() });
+  f.journal.append({ kind: 'intent', id, text: promise, loops: [{ kind: 'deferral', quote: promise, waitsOn: 'nothing' }], chat: genesis.chat, update: n, grant: genesis.grant, at: f.ports.now() });
+  if (sent) f.journal.append({ kind: 'sent', id, message: 6608, at: f.ports.now() });
+  if (!hold) return id;
+  const key = `commitment:${f.journal.view.commitments.length - 1}`, slot = f.ports.now();
+  f.journal.append({ kind: 'obligation-start', obligation: key, slot, session: true, at: slot });
+  f.journal.append({ kind: 'obligation-result', obligation: key, slot, outcome: 'uncertain', recoveryHeld: true, at: slot });
+  return id;
+}
+it.each(['unknown', 'refused', 'accepted'] as const)('promise notice %s send is recorded once across restart and compaction', async outcome => {
+  const f = setup();
+  try {
+    const id = interruptedPromise(f);
+    f.ports.send = async input => { f.sent.push(input.expectedText);
+      expect(f.journal.view.turns.get(id)?.promiseRecoveryNotice).toBeDefined();
+      return outcome === 'accepted' ? 6611 : { kind: outcome, reason: 'controlled transport cut' }; };
+    await f.worker().workObligations(); f.journal.compact(); f.reopen(); await f.worker().workObligations();
+    expect(f.sent).toEqual([PROMISE_RECOVERY_NOTICE]); expect(f.calls).toEqual([]);
+    expect(f.journal.view.turns.get(id)?.promiseRecoveryNotice?.sent).toBe(outcome === 'accepted' ? 6611 : undefined);
+    expect(sendOutcomeOf(f.journal.view, `promise-recovery:${id}`, f.journal.view.turns.get(id)?.promiseRecoveryNotice?.sent).kind).toBe(outcome);
+    expect(sendOutcomeCounts(f.journal.view)[outcome === 'accepted' ? 'accepted' : outcome === 'refused' ? 'refused' : 'unknown']).toBe(outcome === 'accepted' ? 2 : 1);
+    expect(commitmentOpen(f.journal.view, 0)).toBe(true);
+  } finally { f.close(); }
+});
+it('aggregates interrupted promises in the same conversation, without closing either', async () => {
+  const f = setup();
+  try {
+    const first = interruptedPromise(f), second = interruptedPromise(f, 367056091);
+    await f.worker().workObligations(); f.reopen(); await f.worker().workObligations();
+    expect(f.sent).toEqual([PROMISE_RECOVERY_NOTICE]);
+    expect(f.journal.view.turns.get(second)?.promiseRecoveryNotice?.lead).toBe(first);
+    expect([0, 1].every(id => commitmentOpen(f.journal.view, id))).toBe(true);
+  } finally { f.close(); }
+});
+it.each(['stop', 'expired', 'reply-cap', 'undelivered', 'closed'] as const)('promise notice preserves %s boundary', async mode => {
+  const f = setup();
+  try {
+    interruptedPromise(f, 367056090, mode !== 'undelivered');
+    if (mode === 'stop') f.ports.stopped = () => true;
+    if (mode === 'expired') f.ports.now = () => genesis.expires;
+    // Boundary inputs here exercise the worker's final current-state guard; production values come from replay.
+    if (mode === 'reply-cap') f.journal.view.limits.maxReplies = f.journal.view.replies;
+    if (mode === 'closed') f.journal.view.closed.set(0, { id: 0, source: idOf(367056090), quote: 'closed' });
+    await f.worker().workObligations().catch(error => { expect(String(error)).toContain('stopped'); });
+    expect(f.sent).toEqual([]); expect(f.calls).toEqual([]);
+  } finally { f.close(); }
+});
+
+it.each(['closed', 'recovered', 'stop'] as const)('rechecks %s after durable admission and before physical send', async mode => {
+  const f = setup();
+  try {
+    interruptedPromise(f); f.ports.sendAdmits = true;
+    f.ports.send = async input => {
+      input.admit!(); await Promise.resolve();
+      if (mode === 'closed') f.journal.view.closed.set(0, { id: 0, source: idOf(367056090), quote: 'cancelled' });
+      if (mode === 'recovered') delete f.journal.view.obligationWork['commitment:0']!.recoveryHeld;
+      if (mode === 'stop') f.ports.stopped = () => true;
+      // The real transport checks this after replication, before its network call.
+      if (!input.current!()) return { kind: 'refused', reason: 'current obligation changed' };
+      f.sent.push(input.expectedText); return 6611;
+    };
+    // The stopped callback must observe live state, including a stop during awaited admission.
+    let stopped = false; f.ports.stopped = () => stopped;
+    const send = f.ports.send;
+    f.ports.send = async input => { if (mode !== 'stop') return send(input);
+      input.admit!(); await Promise.resolve(); stopped = true;
+      expect(input.current!()).toBe(false); return { kind: 'refused', reason: 'stopped' }; };
+    await f.worker().workObligations();
+    expect(f.sent).toEqual([]); expect(f.calls).toEqual([]);
+  } finally { f.close(); }
+});
+it.each([true, false])('promise interruption obeys verified forum audience (%s)', async admitted => {
+  const f = setup(20, true), id = idOf(367056090), promise = 'I will send the comparison.';
+  try {
+    const u = update(367056090);
+    f.worker().intake([{ ...u, message: { ...u.message, chat: { id: -7654321, type: 'supergroup', is_forum: true }, message_thread_id: 12 } }]);
+    f.journal.append({ kind: 'reserve', id, at: f.ports.now() });
+    f.journal.append({ kind: 'answer', id, text: promise, loops: [{ kind: 'deferral', quote: promise, waitsOn: 'nothing' }], at: f.ports.now() });
+    f.journal.append({ kind: 'intent', id, text: promise, loops: [{ kind: 'deferral', quote: promise, waitsOn: 'nothing' }], chat: '-7654321', thread: 12, update: u.update_id, grant: genesis.grant, at: f.ports.now() });
+    f.journal.append({ kind: 'sent', id, message: 6608, at: f.ports.now() });
+    const slot = f.ports.now();
+    f.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: slot });
+    f.ports.groupDisclosure = async () => admitted;
+    f.ports.send = async input => { expect(input.chat).toBe('-7654321'); expect(input.thread).toBe(12);
+      f.sent.push(input.expectedText); return 6611; };
+    f.reopen();
+    f.journal.view.memory.push({ mode: 'remember', source: id, trigger: id, quote: 'private source memory' });
+    await f.worker().workObligations();
+    expect(f.sent).toEqual(admitted ? [PROMISE_RECOVERY_NOTICE] : []);
+    expect(f.journal.view.turns.get(id)?.promiseRecoveryNotice !== undefined).toBe(admitted);
+  } finally { f.close(); }
+});
+
+it.each(['throws', 'uncertain'] as const)('live obligation consumer %s then the next ordinary cycle accounts once', async cut => {
+  const f = setup();
+  try {
+    interruptedPromise(f, 367056090, true, false);
+    f.ports.now = () => 1794239921042 + LOOP_REVISIT_MS + 1;
+    f.ports.model = async input => { f.calls.push(input);
+      if (cut === 'throws') throw Error('worker exited after SIGKILL');
+      return { state: 'uncertain' }; };
+    const worker = f.worker();
+    expect(await worker.workObligations()).toBe(true);
+    expect(f.journal.view.obligationWork['commitment:0']).toMatchObject({ recoveryHeld: true, outcome: 'uncertain' });
+    await worker.workObligations(); f.reopen(); await f.worker().workObligations();
+    expect(f.sent).toEqual([PROMISE_RECOVERY_NOTICE]); expect(f.calls).toHaveLength(1);
+  } finally { f.close(); }
+});
