@@ -1,0 +1,32 @@
+# Change review — train-250
+
+Subject base: 47d0dffffc4d0c48bdf190d0c70b1bee27a568d6
+Review state: open
+Reviewed content: none
+Outcome: Integrate the exact reviewed promised-result head into the live train-243 base. Newly recorded verified operator message commitments deliver completed results without another inbound message; legacy notes do not flush. Paced continuation respects current cancellation.
+Affected rules: 1, 4, 8, 10, 28, 29, 34, 36, 37, 44, 45, 46, 49, 52, 55, 57, 63, 69, 70, 74, 83, 86, 87, 90, 93, 101, 102, 105, 111, 112, 113, 116, 121, 123
+Affected floors: secrets retain outbound custody/checks; spend cap and stop retain admission and dispatch checks; no duplicate sends retains durable intent, starts and receipts; durable intake retains owned journal records.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Integration carries initiated delivery authority and cancellation at the outbound boundary.
+Side effects: The member's writer-only source-message marker, four-message/pass and twelve/hour pacing, original-topic aggregation, current authority checks and status reporting compose with the base's sign-in repair notices and generation-7 journal marker. No new integration-specific runtime mechanism. Generated metadata is replayed, and native composition certification is renewed only from the passing contract.
+Undo and recovery: Revert member behavior without deleting journal rows or receipts; old unmarked commitments retain next-reply delivery. Preserve the live base's non-additive signin-repair-version marker and use a compatible reader after a sign-in notice exists. Never repeat an uncertain send. Regenerate derived metadata after any revert.
+Multi-machine posture: Existing owned conversation journal retains request source, optional marker, work-slot identity, cancellation and dispatch receipts across replay and transfer. The existing owner signs occurrences. No new machine-local store or authority.
+Team posture: Only verified operator sources qualify, with original chat/thread and current audience admission. Private by default; no sharing grant or visibility widening. Member/guest access stays at existing disclosure gates.
+Layer below: Source writer and projection validation, pendingReport/exact reply binding, withdrawal and unsettled-input checks, durable part starts/receipts, existing signed due occurrence, loop-health consumer, journal generation/rollback compatibility, and native composition/register derivation.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/owed-delivery.test.ts; restart=tests/preview/owed-delivery.test.ts
+Hook bypass: none; core.hooksPath unset and common hooks directory contains samples only.
+Convergence: none
+Prompt review: No integration-authored prompt/parser changes. Member carries verified request through the existing work-packet field. Recorded fixture replays exercise summary writer 715672480, uncertain summary 715672483, undecided Jev 715672482, unsure Jev 969389570, reply review 969389923, delivered reply 715672479 and empty reply 715672550 from retrospective-duty-followup-train-1-2026-10-08.json; completed work 6232091 from obligation-step-outputs-live-2026-10-04.json; and credlabel-proofroom-T-2026-10-03.json review shapes. No fresh live acceptance is claimed.
+Decision: train-250-M1 | Ordinary merge of exactly 586b6e62074a04e1c4863739b371b37b160cb98c; member review/report is /Users/dabombstudio/.instar/agents/echo/.instar/lanes/deliver-promised-results-1112-p3-PROGRESS.md. Carry both original delivery behavior and cancellation repair. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-250-PROGRESS.md
+Decision: train-250-A | Preserve live base and reviewed member behavior. Only eight generated artifacts conflicted: retain base copies temporarily for the ordinary merge, then regenerate all from merged source. Product hunks merge without conflict. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-250-PROGRESS.md
+Decision: train-250-B | Existing clean separate train-250 worktree already starts at exact required live base. Preserve recorded train-240 member ancestry, with no branch movement, extra main merge or newer member tip. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-250-PROGRESS.md
+Decision: train-250-desk | Use existing repin/build/rehash/replay chain and native contract renewal; guards and timeouts stay unchanged. Foreground targeted consumer checks plus required READY set; full combined and live gates remain pipeline-owned. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-250-PROGRESS.md
+
+1.x comparison: searched actual local JKHeadley/instar origin/main db3ed6d3052cfcc24888b6c8bc86086abcfc2987 src/monitoring/CommitmentTracker.ts and src/monitoring/PromiseBeacon.ts, docs/specs/PROMISE-BEACON-SPEC.md and agent-owned-followthrough.md, and git history with src/scheduler/JobScheduler.ts, including 7e8fde8e8. Inherit member history 164d3f56d/570bd25fc and its comparison in reviews/deliver-promised-results-1112-p2-change-review.md. Reuse durable lifecycle, terminal withdrawal, original-topic batching and stable retry identity through existing 2.0 owed-result machinery. ONEX-LESSONS.md section 5 was read: shared ownership, durable reminders and missing checkInAt writer support writer-through-delivery and restart checks. No second store/scheduler is needed: owed-delivery.test.ts exercises signed due turns and durable receipts. Cached main is identified exactly, not claimed freshly fetched.
+
+simplestRobustRoute: This is the simplest robust route: one ordinary exact-head merge, retain both intended behaviors, and use existing desk regeneration tools. Start guards are exact base/head ancestry and verified source; end guards are delivery receipts, targeted checks, clean pushed custody and independent release gates. Pacing, authority, secrets, spend cap, stop and durable intake remain held. No new unattended live completion claim.
+80/20: Product integration adds no bespoke code. The inherited product diff is under 100 changed lines; most change volume is regression evidence. Direct affected consumers and the required register/subscription/context/READY checks are selected without sweeping unrelated shared-index importers. No full repository suite.
+VERDICT: author integration submission; independent review and release acceptance remain with the desk.
