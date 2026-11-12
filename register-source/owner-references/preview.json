@@ -207,7 +207,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/threadline-default.test.ts",
-        "hash": "sha256:d5ff2b2e3443999ac4d27d869cf903535fb7f2af07d8cce81ceed0b35a0dc148"
+        "hash": "sha256:2498947b066e684c0a585c424252a5ab463c66b02331c81ae660e8bb1561524b"
       }
     }
   ],

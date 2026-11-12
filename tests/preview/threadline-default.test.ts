@@ -54,6 +54,7 @@ async function pair() {
       threadline: (id: string, tool: string, input: unknown) => gate.threadline(`claim-${n}`, id, tool, input) }); cleanup.push(() => connectors.close());
     const launch = connectors.launch().launch.threadline;
     const child = spawn(launch.command, launch.args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stderr = ''; child.stderr.on('data', data => { stderr += data; });
     cleanup.push(async () => { if (child.exitCode === null) { child.stdin.end(); await new Promise(resolve => child.once('exit', resolve)); } });
     let pending = '', serial = 0;
     const waits = new Map<number, (row: { result: { content: { text: string }[] } }) => void>();
@@ -65,7 +66,7 @@ async function pair() {
       waits.set(id, row => { clearTimeout(timer); resolve(JSON.parse(row.result.content[0]!.text)); });
       child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } })}\n`);
     });
-    installs.push({ root, runtime, runtimeOptions, setReplication: (ok: boolean) => { replicating = ok; }, rows, journal, call, gate, edge, effects, setStop: () => { stop = true; } });
+    installs.push({ root, runtime, runtimeOptions, logs: () => stderr, setReplication: (ok: boolean) => { replicating = ok; }, rows, journal, call, gate, edge, effects, setStop: () => { stop = true; } });
   }
   for (const [index, current] of installs.entries()) {
     const other = installs[1 - index]!;
@@ -103,6 +104,8 @@ it('unknown peer, private topic, held secret, stop and unsigned team edits refus
   expect(await a!.call('threadline_send', input)).toMatchObject({ status: 'refused' });
   expect(readdirSync(join(b!.root, 'threadline/inbox'))).toHaveLength(0);
   expect(JSON.stringify(a!.rows)).not.toContain('secret-value-1234567890');
+  expect(a!.logs() + b!.logs()).not.toContain('secret-value-1234567890');
+  expect(readFileSync(join(a!.root, 'journal.encrypted')).includes(Buffer.from('secret-value-1234567890'))).toBe(false);
 }, 20000);
 
 it('replays recorded model shapes as peer data and refuses the recorded empty candidate without granting authority', async () => {
