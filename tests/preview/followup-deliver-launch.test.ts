@@ -38,6 +38,7 @@ it.each(['delivered', 'uncertain', 'withdrawn'])('the shipped poll loop retains 
   validateSubscriptionActivation, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
   subscriptionToolsPolicy } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
 import { existsSync, writeFileSync } from 'node:fs';
+import { openPreviewJournal } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'tests/preview/journal.ts')).href)};
 ${FIXTURE_DOORWAY}
 ${PER_RULE_PASS}
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
@@ -49,8 +50,21 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     const deadline = Date.now() + 15000;
     while (!existsSync(${JSON.stringify(polled)}) && Date.now() < deadline) await new Promise(r => setTimeout(r, 10));
     if (!existsSync(${JSON.stringify(polled)})) throw Error('fixture poll never arrived');
-    // The two empty polls finish while work is still in flight. Inject latency, never CPU load.
-    await new Promise(r => setTimeout(r, 300));
+    // The endpoint marker precedes response delivery. Observe durable intake, not elapsed
+    // time, so cancellation is actually available before the work result can be sent.
+    if (${JSON.stringify(mode)} === 'withdrawn') {
+      let accepted = false;
+      const intakeDeadline = Date.now() + 15000;
+      while (!accepted && Date.now() < intakeDeadline) {
+        let reader;
+        try {
+          reader = openPreviewJournal(${JSON.stringify(path)}, Uint8Array.from(${JSON.stringify([...OFFLINE_STORAGE_KEY])}), undefined, undefined, true);
+          accepted = reader.view.order.some(turn => turn.update === ${recorded.provenance.sourceUpdate + 1} && turn.accepted);
+        } finally { reader?.close(); }
+        if (!accepted) await new Promise(r => setTimeout(r, 10));
+      }
+      if (!accepted) throw Error('fixture cancellation never reached durable intake');
+    }
     text=${JSON.stringify(recorded.work)};
   } else if (asked==='Cancel that result delivery.') text=JSON.stringify({reply:'I cancelled that result delivery.',cancelDeliveries:[{id:0,quote:asked}]});
   else if (asked.startsWith('Judge this proposed reply')) text=perRulePass(asked,'The recorded result answers the request.');
@@ -124,7 +138,9 @@ createServer((req,res)=>{const chunks=[]; req.on('data',b=>chunks.push(b)); req.
     else expect(sends()[0].body.text).toContain(JSON.parse(recorded.work).report);
     if (mode==='uncertain') expect(sends()[1].body.text).toContain('My answer may not have arrived.');
     journal = openPreviewJournal(path, OFFLINE_STORAGE_KEY);
-    expect(journal.view.closed.has(0), JSON.stringify({ commitments: journal.view.commitments, turns: journal.view.order.map(t => ({ id: t.id, text: t.text, grounding: t.grounding, dropped: t.packetDropped, answer: t.answer, obligations: t.obligations })) })).toBe(mode!=='uncertain');
+    expect(journal.view.closed.has(0), JSON.stringify(journal.view.order.map(turn => ({
+      id: turn.id, grounding: turn.grounding, dropped: turn.packetDropped, answer: turn.answer,
+    })))).toBe(mode!=='uncertain');
     expect(journal.view.obligationWork['commitment:0'].report.delivered !== undefined).toBe(mode==='delivered');
     journal.close();
     // A fresh launcher rereads the durable receipt; it must not deliver the result again.

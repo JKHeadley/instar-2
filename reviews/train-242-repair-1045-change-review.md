@@ -27,6 +27,8 @@ Decision: T242-R-RETRY | Expect quota-only same-turn recovery; assert one A atte
 Decision: T242-R-CONTEXT | Restore protected memory/reminder/status guidance and shorten other README capability summaries until the available inventory is no larger than live e3cb0f08. Keep context caps, cancellation authority and all four features unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-242-repair-1045-PROGRESS.md
 Decision: T242-R-GATE | Use the brief-required same branch and per-file WSL checks; Studio owns native conformance renewal and complete suite. Commit source before mechanical register replay because generation reads committed inputs. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-242-repair-1045-PROGRESS.md
 
+Decision: T242-R-ORDER | The cancellation fixture previously released work 300 ms after a marker written before the HTTP response. Replace the sleep with bounded read-only observation of durable cancellation intake; retain all three mode assertions. The live e3cb0f08 fixture has the same race; no runtime dispatch rule changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-242-repair-1045-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: correct stale extracted-test dependencies and intentional retry expectations, enumerate the existing site, and regain packet room through existing generated summaries. No new retry, scheduler, gate or context-selection mechanism. Start is exact supplied branch; end is preserved features with targeted evidence and pushed commits. No autonomous-completion or live-release claim.
