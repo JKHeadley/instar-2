@@ -996,8 +996,8 @@ export interface ObligationWork { attempts: number; last: number; lastSlot: numb
   /** Worker-backed steps (delegated sessions or tool workers) need exact closure before another attempt. */
   session?: true; recoveryHeld?: true;
   outcome?: ObligationOutcome; completion?: readonly RunCompletionItem[]; note?: string; waitsOn?: 'operator' | 'external';
-  /** Same-slot format repair and one no-result retry are separately reserved across replay and snapshots. */
-  repairSlot?: number; repairRetrySlot?: number; formatFailures?: number; failedAttempts?: number; failureClass?: 'malformed';
+  /** Same-slot format repair is reserved once; counts survive journal replay and snapshots. */
+  repairSlot?: number; formatFailures?: number; failedAttempts?: number; failureClass?: 'malformed';
   /** How many journal turns existed when the latest result was recorded: later turns are what arrived since. */
   turnsSeen?: number;
   /** `boundTo` is the reply whose durable intent carries the result (it is never attached again); `delivered` is set
@@ -1316,7 +1316,7 @@ export type JournalRecord =
 
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   /** Rules 8, 22, 92, 99, 102: one scheduled piece of work on a due obligation, started at most once per slot. */
-  | { kind: 'obligation-start'; obligation: string; slot: number; session?: true; repair?: true; repairRetry?: true; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'obligation-start'; obligation: string; slot: number; session?: true; repair?: true; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   /** Rules 60, 114: one delegated-session edge, or that same edge's settled close. The edge is
    * recorded before the child session exists and the close on every path out, so a delegation is
    * never a session nobody owns. Its loss detector is replay: an obligation-result whose step ran
@@ -2568,18 +2568,13 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
   const kind = workTarget(view, row.obligation), work = view.obligationWork[row.obligation];
   const tokenKey = `obligation:${row.obligation}:${row.slot}`;
   if (row.kind === 'obligation-start') {
-    if (row.repairRetry !== undefined && (row.repairRetry !== true || row.repair !== true))
-      throw Error('preview journal: obligation repair retry order');
     if (row.repair) {
-      if (!kind || !work || work.inFlight !== row.slot
-        || (row.repairRetry ? work.repairSlot !== row.slot || work.repairRetrySlot === row.slot : work.repairSlot === row.slot)
-        || !obligationCapacity(view))
+      if (!kind || !work || work.inFlight !== row.slot || work.repairSlot === row.slot || !obligationCapacity(view))
         throw Error('preview journal: obligation repair order or cap');
       settleTokens(view, tokenKey, row.usage);
       reserveTokens(view, tokenKey, 'answer', row.maxInputTokens ?? view.limits.maxBytes, row.maxOutputTokens ?? subscriptionOutputMaximum);
       view.calls++;
       work.repairSlot = row.slot;
-      if (row.repairRetry) work.repairRetrySlot = row.slot;
       return;
     }
     if (!kind || !Number.isSafeInteger(row.slot) || row.slot > row.at || work?.inFlight !== undefined || work?.recoveryHeld || pendingReport(work)
@@ -3387,11 +3382,15 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
   // and an index-only pass (its reservation still open). Refusing their row turned a completed call into UNKNOWN
   // (live D run 2026-10-03: every work step settled uncertain, so no result ever waited for delivery).
   const work = /^obligation:((?:commitment|blocker):(?:0|[1-9][0-9]*)):(0|[1-9][0-9]*)$/u.exec(row.id);
+  // A formatting-only repair owns a separate counted start in this exact work slot.
+  const repair = /^work-repair:((?:commitment|blocker):(?:0|[1-9][0-9]*)):(0|[1-9][0-9]*)$/u.exec(row.id);
   const index = /^summary:index:(0|[1-9][0-9]*)$/u.exec(row.id);
   // Recovery has its own physical invocation ID, but the parent owns its charged replacement.
   const recovery = row.id.startsWith('recovery:') ? view.turns.get(row.id.slice(9)) : undefined;
   const valid = row.id.startsWith('recovery:') ? row.role === 'model' && !!recovery?.reserved
     && recovery.answerReplaced === true && recovery.answerAccount === true
+    : repair ? row.role === 'model' && view.obligationWork[repair[1]!]?.inFlight === Number(repair[2])
+      && view.obligationWork[repair[1]!]?.repairSlot === Number(repair[2])
     : work ? row.role === 'model' && view.obligationWork[work[1]!]?.inFlight === Number(work[2])
     : index ? row.role === 'summary' && view.indexOpen?.key === `index:${index[1]!}`
     : row.role === 'summary' ? !!summary && view.summaryReservations.has(Number(summary[1]))
@@ -12680,28 +12679,22 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         : typeof value === 'string' || 'text' in value
           ? obligationDecision(textOf(value)!, item.kind, ports.now(), zone, work?.completion).outcome === 'failed' : false;
       if (malformed(answer) && textOf(answer) !== undefined && !halted() && obligationCapacity(journal.view)) {
-        // Formatting-only calls: distinct ids exclude scoped tools and delegated sessions. No work effect is repeated.
+        // One formatting-only call: a distinct id excludes both scoped tools and delegated sessions. No effect is repeated.
         const repairId = `work-repair:${item.key}:${item.slot}`;
         const repairContext = JSON.stringify({ ...JSON.parse(context) as Record<string, unknown>,
           previousOutput: clean(redact(textOf(answer)!).text, true) });
         if (Buffer.byteLength(repairContext) <= journal.view.limits.maxBytes) {
           const repairQuestion = question + ' Your previous output in previousOutput did not match the requested object. '
             + 'Return one valid object for this obligation using the same facts. You have no tools in this formatting step; do not claim new actions.';
-          // Rules 8/55/68/75/83: one no-result retry, never a repeat of the completed work.
-          // Each start settles the preceding liability and reserves another call, including unknown usage.
-          for (let attempt = 0; attempt < 2 && !halted() && obligationCapacity(journal.view); attempt++) {
-            const attemptId = attempt === 0 ? repairId : `${repairId}:retry`;
-            let repairPrepared: string | undefined;
-            try { repairPrepared = ports.prepareModel?.({ question: repairQuestion, context: repairContext, id: attemptId }); }
-            catch { break; } // Keep the original format failure or the first repair's uncertainty.
-            if (halted()) break;
+          let repairPrepared: string | undefined, preparedRepair = true;
+          try { repairPrepared = ports.prepareModel?.({ question: repairQuestion, context: repairContext, id: repairId }); }
+          catch { preparedRepair = false; } // The original format failure still settles when an envelope cannot fit.
+          if (preparedRepair && !halted()) {
             journal.append({ kind: 'obligation-start', obligation: item.key, slot: item.slot, repair: true,
-              ...(attempt === 1 ? { repairRetry: true as const } : {}),
               ...usageOf(answer), maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
-            try { answer = await ports.model({ question: repairQuestion, context: repairContext, id: attemptId,
+            try { answer = await ports.model({ question: repairQuestion, context: repairContext, id: repairId,
               ...(repairPrepared === undefined ? {} : { prepared: repairPrepared }) }); }
-            catch { answer = { state: 'uncertain' }; }
-            if (typeof answer === 'string' || !('state' in answer) || answer.state !== 'uncertain') break;
+            catch { settle({ outcome: 'uncertain' }); return true; }
           }
         }
       }

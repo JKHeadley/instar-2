@@ -7,6 +7,9 @@ import { createJournalWorker, openPreviewJournal, obligationSchedule, OBLIGATION
   type PreviewPorts } from './journal-test-worker.js';
 import { loopHealth, loopStatusLines } from './obligations.js';
 import { readAnswer } from './answer-reading.js';
+import { modelCallRecord } from './model-call-boundary.js';
+// @ts-expect-error Physical host JavaScript is exercised through its real journal writer.
+import { observedSubscriptionIO, subscriptionCallOutcome } from './call-diagnostics.mjs';
 // @ts-expect-error The shipped launcher module is JavaScript.
 import { toolTurnEligible } from './tool-turn.mjs';
 
@@ -20,7 +23,7 @@ const launched = (output: string, id: string): Answer => {
   const read = readAnswer(output, { wrapped: 'accept', evidence: [id] });
   return read.ok ? { text: read.value, usage } : { state: 'complete', failureClass: 'malformed', rawOutput: output, usage };
 };
-async function world(outputs: (string | Answer | Error)[], options: { tools?: boolean; selectReports?: boolean; cap?: number; revisit?: number; refuseRepairPreparation?: boolean; refuseRetryPreparation?: boolean; afterCall?: (clock: { now: number; stopped: boolean }) => void } = {}) {
+async function world(outputs: (string | Answer)[], options: { physical?: boolean; tools?: boolean; selectReports?: boolean; cap?: number; revisit?: number; refuseRepairPreparation?: boolean; afterCall?: (clock: { now: number; stopped: boolean }) => void } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'work-output-repair-')), path = join(root, 'journal');
   const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
     grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: T0 + 10 * DAY, maxCalls: options.cap ?? 100,
@@ -28,14 +31,29 @@ async function world(outputs: (string | Answer | Error)[], options: { tools?: bo
   const clock = { now: T0, stopped: false }, sent: string[] = [], calls: { id: string; context: string }[] = [];
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => clock.stopped,
     toolRoute: () => options.tools === true,
-    prepareModel: input => { if (options.refuseRepairPreparation && input.id.startsWith('work-repair:') || options.refuseRetryPreparation && input.id.endsWith(':retry')) throw Error('envelope does not fit'); return input.context; },
+    prepareModel: input => { if (options.refuseRepairPreparation && input.id.startsWith('work-repair:')) throw Error('envelope does not fit'); return input.context; },
     model: async input => {
       if (/^(obligation|work-repair):/u.test(input.id)) {
         calls.push(input); options.afterCall?.(clock);
         const output = outputs.shift();
         if (output === undefined) throw Error('test has no output');
-        if (output instanceof Error) throw output;
-        return typeof output === 'string' ? launched(output, input.id) : output;
+        if (!options.physical || typeof output !== 'string') return typeof output === 'string' ? launched(output, input.id) : output;
+        const io = observedSubscriptionIO({ execute: async () => {
+          if (input.id.startsWith('work-repair:')) clock.now += 26000;
+          return { code: 0, limited: false, stdout: JSON.stringify({ type: 'result', subtype: 'success',
+            is_error: false, result: output, usage: { output_tokens: usage.outputTokens } }) };
+        } }, { maxTokens: 2048, maxOutputBytes: 16384 }, input.id,
+        (row: Parameters<typeof journal.append>[0]) => journal.append(row), { elapsed: () => clock.now, at: () => clock.now });
+        let answer: Answer;
+        // Same boundary as production-provider.ts: an observation-writer exception happens
+        // before the adapter reads the returned frame/usage and becomes uncertainty.
+        try { await io.execute({ args: ['--print'], stdin: input.context }); answer = launched(output, input.id); }
+        catch { answer = { state: 'uncertain' }; }
+        const complete = typeof answer === 'string' || !('state' in answer) || answer.state !== 'uncertain';
+        journal.append(modelCallRecord({ id: input.id, judgment: 'answer', route: 'preview-subscription', model: 'synthetic',
+          input: input.context, output: complete ? output : null, outcome: complete ? 'complete' : 'uncertain',
+          latencyMs: 26000, usage: complete ? usage : null, at: clock.now }));
+        return answer;
       }
       const answer = JSON.stringify(sent.length ? { reply: 'Here is the answer.' }
         : { reply: 'I will review the plan.', openLoops: [{ kind: 'deferral', quote: 'I will review the plan.', waitsOn: 'nothing' }] });
@@ -198,123 +216,87 @@ it('a repaired report stays owed when the current answer omits selection, includ
   } finally { w.close(); }
 });
 
-// Live brief: 2026-11-12 commitments 57/58/59 completed before a no-result repair;
-// exact November output bytes were not supplied. These captured proof-room outputs
-// (updates 46039927/46039928, frames 131/138/181) exercise the real format trigger.
-it.each(fixture.calls)('retains completed frame $frame through one no-result repair and delivers once', async call => {
-  for (const missing of [{ state: 'uncertain' } as Answer, Error('preflight returned no result')]) {
-    const w = await world([call.output, missing, '{"outcome":"report","report":"The review is complete."}'], { tools: true });
-    try {
-      const before = w.journal.view.calls;
-      expect(await w.worker.workObligations()).toBe(true);
-      expect(w.calls).toHaveLength(3);
-      expect(w.calls.filter(c => c.id.startsWith('obligation:'))).toHaveLength(1);
-      expect(w.calls[2]!.id).toBe(`${w.calls[1]!.id}:retry`);
-      expect(w.calls[2]!.context).toBe(w.calls[1]!.context);
-      expect(toolTurnEligible(w.calls[2]!.id)).toBe(false);
-      expect(w.journal.view.calls - before).toBe(3);
-      expect(w.journal.view.tokenTotals.answer.unknownCalls).toBe(1);
-      expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ attempts: 1, outcome: 'report' });
-      expect(w.journal.view.obligationWork['commitment:0']!.recoveryHeld).toBeUndefined();
-      await w.say(2); await w.say(3);
-      expect(w.sent.filter(text => text.includes('The review is complete.'))).toHaveLength(1);
-      const replay = openPreviewJournal(w.path, key);
-      try {
-        expect(replay.view.obligationWork).toEqual(w.journal.view.obligationWork);
-        expect(replay.view.calls).toBe(w.journal.view.calls);
-        expect(replay.view.tokenTotals).toEqual(w.journal.view.tokenTotals);
-      } finally { replay.close(); }
-    } finally { w.close(); }
-  }
-});
 
-it('keeps genuinely uncertain tool work held without any repair', async () => {
-  const w = await world([{ state: 'uncertain' }], { tools: true });
-  try {
-    await w.worker.workObligations();
-    expect(w.calls).toHaveLength(1);
-    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'uncertain', recoveryHeld: true });
-    expect(obligationSchedule(w.journal.view)[0]!.slot).toBe(Infinity);
-    expect(await w.worker.workObligations()).toBe(false);
-  } finally { w.close(); }
-});
-
-
-it('exhausts two formatting calls, keeps both unknown liabilities, and never reruns tool work', async () => {
-  const w = await world([fixture.calls[0]!.output, { state: 'uncertain' }, { state: 'uncertain' }], { tools: true });
+it.each(fixture.calls)('keeps completed frame $frame when its physical repair outcome is durably recorded', async call => {
+  const w = await world([call.output, '{"outcome":"report","report":"The review is complete."}'], { physical: true, tools: true });
   try {
     const before = w.journal.view.calls;
     await w.worker.workObligations();
-    expect(w.calls).toHaveLength(3);
-    expect(w.journal.view.calls - before).toBe(3);
-    expect(w.journal.view.tokenTotals.answer.unknownCalls).toBe(2);
-    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'uncertain', recoveryHeld: true });
-    expect(await w.worker.workObligations()).toBe(false);
+    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'report' });
+    expect(w.journal.view.obligationWork['commitment:0']!.recoveryHeld).toBeUndefined();
+    expect(w.calls).toHaveLength(2);
+    expect(w.journal.view.calls - before).toBe(2);
+    expect(w.journal.view.callOutcomes.map(row => row.id)).toEqual(w.calls.map(call => call.id));
+    expect(w.journal.view.modelCalls.last.map(row => row.outcome)).toEqual(['complete', 'complete']);
+    expect(w.journal.view.tokenTotals.answer.unknownCalls).toBe(0);
+    expect(toolTurnEligible(w.calls[1]!.id)).toBe(false);
+    await w.say(2); await w.say(3);
+    expect(w.sent.filter(text => text.includes('The review is complete.'))).toHaveLength(1);
     w.journal.compact();
     const replay = openPreviewJournal(w.path, key);
     try { expect(replay.view.obligationWork).toEqual(w.journal.view.obligationWork);
-      expect(replay.view.tokenTotals).toEqual(w.journal.view.tokenTotals); } finally { replay.close(); }
+      expect(replay.view.tokenTotals).toEqual(w.journal.view.tokenTotals);
+      expect(replay.view.callOutcomes).toEqual(w.journal.view.callOutcomes);
+    } finally { replay.close(); }
   } finally { w.close(); }
 });
 
-it('a formatting retry yields to the cap, stop, and preparation refusal', async () => {
-  for (const boundary of ['cap', 'stop', 'preparation'] as const) {
-    let calls = 0;
-    const w = await world([fixture.calls[0]!.output, { state: 'uncertain' }], {
-      tools: true, ...(boundary === 'cap' ? { cap: 5 } : {}),
-      afterCall: clock => { if (++calls === 2 && boundary === 'stop') clock.stopped = true; },
-      ...(boundary === 'preparation' ? { refuseRetryPreparation: true } : {}),
-    });
+it('admits repair diagnostics only for the exact in-flight reserved repair, with the model role', async () => {
+  const w = await world([]);
+  try {
+    const slot = w.clock.now, id = `work-repair:commitment:0:${slot}`;
+    const outcome = subscriptionCallOutcome({ code: 0, limited: false, stdout: '{}' }, 1, 1, 2048, 16384);
+    const row = { kind: 'call-outcome' as const, id, role: 'model' as const, outcome, at: slot };
+    expect(() => w.journal.append(row)).toThrow('call outcome malformed');
+    w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, at: slot });
+    expect(() => w.journal.append(row)).toThrow('call outcome malformed');
+    w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, repair: true, usage, at: slot });
+    for (const wrong of [{ id: `work-repair:commitment:0:${slot + 1}` }, { id: `work-repair:commitment:1:${slot}` },
+      { id: `${id}:retry` }, { role: 'summary' as const }, { role: 'reply-review' as const }])
+      expect(() => w.journal.append({ ...row, ...wrong })).toThrow('call outcome malformed');
+    w.journal.append(row);
+    w.journal.append({ kind: 'obligation-result', obligation: 'commitment:0', slot, outcome: 'failed', usage, at: slot });
+    expect(() => w.journal.append(row)).toThrow('call outcome malformed');
+  } finally { w.close(); }
+});
+
+it('keeps genuinely uncertain work or a genuinely missing repair held without repeating either call', async () => {
+  for (const outputs of [[{ state: 'uncertain' as const }], [fixture.calls[0]!.output, { state: 'uncertain' as const }]]) {
+    const expected = outputs.length, w = await world(outputs, { physical: true, tools: true });
     try {
       await w.worker.workObligations();
-      expect(w.calls, boundary).toHaveLength(2);
-      expect(w.journal.view.tokenTotals.answer.unknownCalls).toBe(1);
+      expect(w.calls).toHaveLength(expected);
       expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'uncertain', recoveryHeld: true });
+      expect(obligationSchedule(w.journal.view)[0]!.slot).toBe(Infinity);
+      expect(w.journal.view.tokenTotals.answer.unknownCalls).toBe(1);
+      expect(await w.worker.workObligations()).toBe(false);
+      w.journal.compact();
+      const replay = openPreviewJournal(w.path, key);
+      try { expect(replay.view.obligationWork).toEqual(w.journal.view.obligationWork);
+        expect(replay.view.tokenTotals).toEqual(w.journal.view.tokenTotals); } finally { replay.close(); }
     } finally { w.close(); }
   }
 });
 
-it('requires the first repair reservation, permits one retry, and refuses a third even after replay', async () => {
-  const w = await world([]);
-  try {
-    const slot = w.clock.now;
-    const start = { kind: 'obligation-start' as const, obligation: 'commitment:0', slot, at: slot };
-    w.journal.append(start);
-    const repair = { ...start, repair: true as const, usage };
-    const retry = { ...start, repair: true as const, repairRetry: true as const };
-    expect(() => w.journal.append(retry)).toThrow('repair order or cap');
-    expect(() => w.journal.append({ ...start, repairRetry: true })).toThrow('repair retry order');
-    w.journal.append(repair); w.journal.append(retry);
-    expect(() => w.journal.append(retry)).toThrow('repair order or cap');
-    const replay = openPreviewJournal(w.path, key);
-    try { expect(() => replay.append(retry)).toThrow('repair order or cap'); } finally { replay.close(); }
-    expect(await w.worker.workObligations()).toBe(false);
-    expect(w.calls).toHaveLength(0);
-    expect(w.journal.view.tokenTotals.answer.unknownCalls).toBe(2);
-  } finally { w.close(); }
-});
 
-
-it('replays the recorded summary, Jev, review and delivered-answer shapes without accepting them as work reports', async () => {
+it('replays recorded summary, Jev, review and delivered-answer shapes without accepting them as work reports', async () => {
   const corpus = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
     otherShapes: { kind: string; id: string; raw: string }[] };
   for (const shape of corpus.otherShapes) {
-    // These are foreign-protocol controls, not claimed November work outputs.
-    // Empty output follows the launcher's explicit empty result, before readAnswer.
-    const original = shape.raw ? launched(shape.raw, shape.id) : { state: 'complete' as const, failureClass: 'empty' as const, usage };
-    const w = await world([original, { state: 'uncertain' }, '{"outcome":"continue","note":"The report still needs work."}'], { tools: true });
+    // Foreign-protocol controls, not claimed November work outputs. Empty uses
+    // the launcher's explicit empty outcome, before the answer reader.
+    const original = shape.raw || { state: 'complete' as const, failureClass: 'empty' as const, usage };
+    const w = await world([original, '{"outcome":"continue","note":"The report still needs work."}'], { physical: true, tools: true });
     try {
       await w.worker.workObligations();
-      expect(w.calls, shape.id).toHaveLength(shape.raw ? 3 : 1);
+      expect(w.calls, shape.id).toHaveLength(shape.raw ? 2 : 1);
       expect(w.journal.view.obligationWork['commitment:0']!.outcome, shape.id).toBe(shape.raw ? 'continue' : 'failed');
       expect(w.journal.view.obligationWork['commitment:0']!.report).toBeUndefined();
-      if (shape.raw) expect(JSON.parse(w.calls[2]!.context).previousOutput).toBe(JSON.parse(w.calls[1]!.context).previousOutput);
     } finally { w.close(); }
   }
 });
 
-
-it('replays the old completed-work/uncertain-repair history without releasing already held work', async () => {
+it('replays the old complete-work/uncertain-repair history without releasing already held results', async () => {
   const w = await world([], { tools: true });
   try {
     const slot = w.clock.now;
@@ -330,7 +312,6 @@ it('replays the old completed-work/uncertain-repair history without releasing al
     expect(await w.worker.workObligations()).toBe(false);
     expect(w.calls).toHaveLength(0);
     expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'uncertain', recoveryHeld: true });
-    expect(w.journal.view.obligationWork['commitment:0']!.repairRetrySlot).toBeUndefined();
     expect(w.journal.view.tokenTotals.answer.unknownCalls).toBe(1);
   } finally { w.close(); }
 });
