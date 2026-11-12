@@ -40,10 +40,10 @@
 //   landing [--records DIR]               the landing gate for HEAD; with the desk's record
 //                                         directory it consumes candidate/review/gate.json
 import { execFileSync, spawnSync } from 'node:child_process';
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { PROMPT_DISPOSITIONS, RED_CLASSES, RESIDUE_SEVERITIES, addedLineHits, artifactDecision, isPromptSourceFile, isTestFile, landingVerdict, parseRecord,
   scanPrompts, subjectDigest, suggestTier, validateRecord } from './change-review.mjs';
 import { indexedSections, isGeneratedOutput, isGoverned } from './check-governed-docs.mjs';
@@ -178,8 +178,8 @@ function governingAt(commit, path) {
   const index = `${dirname(path)}.md`; const text = tryGit('show', `${commit}:${index}`);
   return text !== null && isGoverned(text) && indexedSections(index, text).includes(path) ? index : null;
 }
-// Rule 94 proposal: only the frozen reconciliation described in this record. This
-// recognizes its history bytes for review; it does not grant operator landing approval.
+// Rule 94: only an approved, frozen reconciliation may excuse suffix equality.
+// The independent landing review verifies the named operator approval artifact.
 const repairMain = 'bc95ab494d5c035f750c6efc1379913e2d8b6e46';
 const repairLive = 'd3d563cd1c2396a72bf08fc08c7a7740be419ca8';
 const repairRecord = 'reviews/changelog-numbering-repair-change-review.md';
@@ -189,16 +189,26 @@ const repairBlobs = [
   ['docs/15-the-operator-surfaces.changelog.json', 'f0905d8ecd0ae7b01ddebc970238cb5fd69fa865', '3630347890514b18a9768074b2dd4879ebd0d105'],
   ['docs/17-harness-adapters.changelog.json', '96bc9a6e6eabf990419075f628f2aa2995933070', '638c946d6ea6c258aaf59dc3e2c19d9b0c53789e'],
 ];
+// Bind all path/mode/blob rows, including every governed body and the file roster.
+// Exclude only the checker, its test and the separately pinned review record.
+const repairTreeDigest = '740e2d27f53dd8e24e58aa30650da270e45e091d81eff9c567eadd2b36439843';
+const repairRecordDigest = '79b0496169651bd2f92e6d3e1020a6eb8f4951954ce562cb8973641f7074bb0b';
 function exactHistoryRepair(entry) {
   return entry.path === repairRecord && entry.base === repairLive
-    && entry.text.split('\n').filter(line => line.startsWith('Rule 94 waiver:')).join('\n') === `Rule 94 waiver: proposed ${repairMain} ${repairLive}`
+    && sha256(entry.text.split('\n').filter(line => !line.startsWith('Rule 94 waiver:')).join('\n').trimEnd()) === repairRecordDigest
     && isAncestor(repairMain, entry.last) && isAncestor(repairLive, entry.last)
+    && sha256(lines(git('ls-tree', '-r', entry.last)).filter(row =>
+      ![CHECKER, 'tests/register/change-review-git.test.ts', repairRecord].includes(row.split('\t')[1])).join('\n')) === repairTreeDigest
     && repairBlobs.every(([path, before, after]) => tryGit('rev-parse', `${entry.base}:${path}`) === before
       && tryGit('rev-parse', `${entry.last}:${path}`) === after);
 }
 export function governedVersionErrors(entry) {
   const errors = [];
-  const repair = exactHistoryRepair(entry);
+  const waiver = entry.text.split('\n').filter(line => line.startsWith('Rule 94 waiver:'));
+  const approved = waiver.length === 1 && new RegExp(`^Rule 94 waiver: approved ${repairMain} ${repairLive} \\S+$`).test(waiver[0]);
+  const repair = approved && exactHistoryRepair(entry);
+  if (entry.path === repairRecord && entry.base === repairLive && !approved)
+    errors.push("Rule 94: the operator's waiver is not recorded yet; record approved M L and the operator approval artifact before applying the history exception");
   const touched = new Map(); // governing document -> whether its body (or a section) changed
   for (const path of entry.subject) {
     if (path.endsWith('.changelog.json')) { const doc = path.replace(/\.changelog\.json$/, '.md'); if (!touched.has(doc)) touched.set(doc, false); continue; }
@@ -219,9 +229,9 @@ export function governedVersionErrors(entry) {
     if (!Array.isArray(after)) { errors.push(`Rule 90: ${changelog} is not a changelog array`); continue; }
     const old = Array.isArray(before) ? before : [];
     const tail = after.slice(after.length - old.length);
-    if (repair && repairBlobs.some(([path]) => path === changelog)) continue;
-    if (after.length < old.length || JSON.stringify(tail) !== JSON.stringify(old)) errors.push(`Rule 90: ${changelog} rewrites or drops an earlier version; append a new one instead`);
-    else if (bodyChanged && wasGoverned && after.length === old.length) errors.push(`Rule 90: ${changelog} gained no new version for this change`);
+    const suffixWaived = repair && repairBlobs.some(([path]) => path === changelog);
+    if (!suffixWaived && (after.length < old.length || JSON.stringify(tail) !== JSON.stringify(old))) errors.push(`Rule 90: ${changelog} rewrites or drops an earlier version; append a new one instead`);
+    if (bodyChanged && wasGoverned && after.length === old.length) errors.push(`Rule 90: ${changelog} gained no new version for this change`);
   }
   return errors;
 }
@@ -597,4 +607,7 @@ async function main(argv) {
     default: console.error(`unknown command ${command}`); return 2;
   }
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) process.exitCode = await main(process.argv.slice(2)).catch(e => { console.error(`change-review: ${e.message}`); return 2; });
+try {
+  if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]))
+    process.exitCode = await main(process.argv.slice(2));
+} catch (e) { console.error(`change-review: ${e.message}`); process.exitCode = 2; }

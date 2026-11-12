@@ -1,7 +1,7 @@
 // The change review check and landing gate, driven through the real CLI against throwaway git
 // repositories: each refusal is shown next to the neighbour it must accept.
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -160,52 +160,107 @@ describe('coverage and the frozen round (Rules 74, 109)', () => {
 });
 
 describe('the frozen main/live numbering repair (Rules 90/94)', () => {
-  it('accepts main unchanged and only the exact live transition, refusing each nearby history edit', () => {
+  const main = 'bc95ab494d5c035f750c6efc1379913e2d8b6e46', live = 'd3d563cd1c2396a72bf08fc08c7a7740be419ca8';
+  const repairRecord = 'reviews/changelog-numbering-repair-change-review.md';
+  const proposed = `Rule 94 waiver: proposed ${main} ${live}`;
+  const waiver = `Rule 94 waiver: approved ${main} ${live} fixture://operator-approval`;
+  const paths = ['01-the-rules', '14-the-assembly', '15-the-operator-surfaces', '17-harness-adapters'].map(n => `docs/${n}.changelog.json`);
+  const blobs = ['0a24ebcf2e4020e7d98346fc0fcef6c6a922dbf4', 'ac6d0724de956bbd1b2fde3b05e9688a3fafe957',
+    '3630347890514b18a9768074b2dd4879ebd0d105', '638c946d6ea6c258aaf59dc3e2c19d9b0c53789e'];
+  function fixture() {
     const r = repo();
     const sourceGit = (...args: string[]) => spawnSync('git', args, { encoding: 'utf8' }).stdout.trim();
     r.write('.git/objects/info/alternates', resolve(sourceGit('rev-parse', '--git-common-dir'), 'objects') + '\n');
-    const main = 'bc95ab494d5c035f750c6efc1379913e2d8b6e46', live = 'd3d563cd1c2396a72bf08fc08c7a7740be419ca8';
-    const paths = ['01-the-rules', '14-the-assembly', '15-the-operator-surfaces', '17-harness-adapters'].map(n => `docs/${n}.changelog.json`);
-    const blobs = ['0a24ebcf2e4020e7d98346fc0fcef6c6a922dbf4', 'ac6d0724de956bbd1b2fde3b05e9688a3fafe957',
-      '3630347890514b18a9768074b2dd4879ebd0d105', '638c946d6ea6c258aaf59dc3e2c19d9b0c53789e'];
-    const waiver = `Rule 94 waiver: proposed ${main} ${live}`;
-    const check = (base: string, last: string, extra = waiver, path = 'reviews/changelog-numbering-repair-change-review.md') => {
+    const put = (path: string, text: string) => {
+      r.write(path, text); r.git('update-index', '--add', '--cacheinfo', '100644', r.git('hash-object', '-w', path), path);
+    };
+    // The real repaired bodies, including Rule 123 from M; never a changelog-only subject.
+    r.git('read-tree', 'aba76eda4ff1914491611344b376e4d5963e1c04');
+    put(repairRecord, readFileSync(resolve(repairRecord), 'utf8').replace(proposed, waiver));
+    const tree = (parents = [live, main]) => r.git('commit-tree', r.git('write-tree'), ...parents.flatMap(p => ['-p', p]), '-m', 'fixture repair');
+    const check = (base: string, last: string, extra = waiver, path = repairRecord) => {
       const script = `import { governedVersionErrors } from ${JSON.stringify(CHECKER)};
-        import { parseRecord } from ${JSON.stringify(resolve('scripts/change-review.mjs'))};
-        const e = JSON.parse(process.argv[1]); e.record = parseRecord(e.text);
+        const e = JSON.parse(process.argv[2]);
         console.log(JSON.stringify(governedVersionErrors(e)));`;
-      const out = spawnSync(process.execPath, ['--input-type=module', '-e', script,
-        JSON.stringify({ base, last, path, subject: paths, text: record(base, extra) })], { cwd: r.dir, encoding: 'utf8', env });
+      const text = r.git('show', `${last}:${repairRecord}`) + '\n';
+      const subject = r.git('diff', '--name-only', base, last).split('\n').filter(p => !p.startsWith('reviews/'));
+      r.write('probe.mjs', script);
+      const out = spawnSync(process.execPath, [join(r.dir, 'probe.mjs'),
+        JSON.stringify({ base, last, path, subject, text: text.replace(waiver, extra) })], { cwd: r.dir, encoding: 'utf8', env });
       expect(out.status, out.stderr).toBe(0); return JSON.parse(out.stdout) as string[];
     };
-    const tree = () => r.git('commit-tree', r.git('write-tree'), '-p', live, '-p', main, '-m', 'fixture merge');
-    r.git('read-tree', live);
-    paths.forEach((p, i) => r.git('update-index', '--add', '--cacheinfo', '100644', blobs[i]!, p));
-    const repaired = tree();
+    return { r, put, tree, check, repaired: tree() };
+  }
+  it('accepts main unchanged and only the exact approved live transition, refusing each nearby history edit', () => {
+    const { r, put, tree, check, repaired } = fixture();
     expect(check(main, repaired, '')).toEqual([]);
     expect(check(live, repaired)).toEqual([]);
-    expect(check(live, repaired, '')).toHaveLength(4);
-    expect(check(live, repaired, `${waiver}\n${waiver}`)).toHaveLength(4);
-    const noMain = r.git('commit-tree', r.git('write-tree'), '-p', live, '-m', 'unmerged fixture');
-    expect(check(live, noMain)).toHaveLength(4);
-    expect(check(live, repaired, waiver.replace(main, live))).toHaveLength(4);
+    expect(check(live, repaired, '')).toHaveLength(5);
+    expect(check(live, repaired, `${waiver}\n${waiver}`)).toHaveLength(5);
+    expect(check(live, tree([live]))).toHaveLength(4);
+    expect(check(live, repaired, waiver.replace(main, live))).toHaveLength(5);
     expect(check(live, repaired, waiver, 'reviews/other.md')).toHaveLength(4);
     expect(check(r.git('rev-parse', `${live}^`), repaired).length).toBeGreaterThan(0);
     for (const [index, path] of paths.entries()) {
-      const exact = JSON.parse(sourceGit('show', blobs[index]!));
+      const exact = JSON.parse(r.git('show', blobs[index]!));
       for (const mutate of [
         (a: typeof exact) => { a[0].changes[0].what += ' altered'; },
         (a: typeof exact) => { a.splice(0, 1); },
         (a: typeof exact) => { a[0].revision += 1; },
       ]) {
         const altered = structuredClone(exact); mutate(altered);
-        r.write(path, JSON.stringify(altered, null, 2) + '\n');
-        r.git('update-index', '--cacheinfo', '100644', r.git('hash-object', '-w', path), path);
+        put(path, JSON.stringify(altered, null, 2) + '\n');
         expect(check(live, tree()).some(e => e.includes(path))).toBe(true);
         r.git('update-index', '--cacheinfo', '100644', blobs[index]!, path);
       }
     }
   }, 120_000);
+  it('refuses proposed approval and approval without an artifact', () => {
+    const { check, repaired } = fixture();
+    for (const line of [proposed, `Rule 94 waiver: approved ${main} ${live}`, `${waiver} trailing`]) {
+      expect(check(live, repaired, line)).toContain("Rule 94: the operator's waiver is not recorded yet; record approved M L and the operator approval artifact before applying the history exception");
+      expect(check(live, repaired, line).some(e => e.includes('rewrites or drops'))).toBe(true);
+    }
+  }, 120_000);
+  it('refuses the reviewer reproduction with exact four changelogs and three altered bodies', () => {
+    const { r, put, tree, check, repaired } = fixture();
+    for (const name of ['01-the-rules', '14-the-assembly', '17-harness-adapters']) {
+      const path = `docs/${name}.md`;
+      put(path, r.git('show', `${repaired}:${path}`) + '\nUnversioned body alteration.\n');
+    }
+    const errors = check(live, tree());
+    expect(errors.some(e => e.includes('01-the-rules.changelog.json') && e.includes('rewrites or drops'))).toBe(true);
+    for (const name of ['14-the-assembly', '17-harness-adapters'])
+      expect(errors).toContain(`Rule 90: docs/${name}.changelog.json gained no new version for this change`);
+  }, 120_000);
+  it('refuses an added governed file, even with its initial version', () => {
+    const { put, tree, check } = fixture();
+    put('extra.md', '# Extra\n\n**Status: approved. Governed.**\n');
+    put('extra.changelog.json', '[{"revision":1}]\n');
+    expect(check(live, tree()).filter(e => e.includes('rewrites or drops'))).toHaveLength(4);
+  }, 120_000);
+  it('refuses later entry appends and record edits instead of extending the old range', () => {
+    const { r, put, tree, check, repaired } = fixture();
+    const path = paths[0]!;
+    const entries = JSON.parse(r.git('show', blobs[0]!));
+    put(path, JSON.stringify([{ ...entries[0], revision: entries[0].revision + 1 }, ...entries]) + '\n');
+    expect(check(live, tree([repaired])).some(e => e.includes(path))).toBe(true);
+    r.git('read-tree', repaired);
+    put(repairRecord, r.git('show', `${repaired}:${repairRecord}`) + '\nLater record edit.\n');
+    expect(check(live, tree([repaired])).filter(e => e.includes('rewrites or drops'))).toHaveLength(4);
+    put('docs/17-harness-adapters.md', r.git('show', `${repaired}:docs/17-harness-adapters.md`) + '\nLater body edit.\n');
+    expect(check(live, tree([repaired]))).toContain('Rule 90: docs/17-harness-adapters.changelog.json gained no new version for this change');
+  }, 120_000);
+  it('fails closed through both direct and symlinked CLI paths', () => {
+    const r = repo();
+    const link = join(r.dir, 'linked-scripts'); symlinkSync(dirname(CHECKER), link, 'dir');
+    for (const script of [CHECKER, join(link, 'check-change-review.mjs')]) {
+      const result = spawnSync(process.execPath, [script, 'nosuchcommand'], { encoding: 'utf8', env });
+      expect(result.status).toBe(2); expect(result.stderr).toContain('unknown command nosuchcommand');
+    }
+    const missing = spawnSync(process.execPath, ['--input-type=module', '-e', `import ${JSON.stringify(CHECKER)}`, join(r.dir, 'missing.mjs')], { encoding: 'utf8', env });
+    expect(missing.status).toBe(2); expect(missing.stderr).toContain('ENOENT');
+  });
 });
 
 describe('governed documents go through the version chain (Rule 90)', () => {
