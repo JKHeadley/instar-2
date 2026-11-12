@@ -7,9 +7,10 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { tools as playwrightTools } from 'playwright-core/lib/coreBundle';
-import { program } from 'playwright-core/lib/utilsBundle';
+import { createRequire } from 'node:module';
 import { runProfileCode, inspectProfileOutput } from './browser-code.mjs';
+// Ordinary session startup reads profile metadata without loading the browser runtime.
+const loadTools = () => createRequire(import.meta.url)('playwright-core/lib/coreBundle').tools;
 export function readBrowserProfile(root, name) {
   if (name === undefined) return null;
   const refuse = () => { throw Error('browser profile refused: record an existing agent-owned profile for this installation (Rules 18/100)'); };
@@ -26,8 +27,9 @@ export function readBrowserProfile(root, name) {
     return { ...row, installation, digest: createHash('sha256').update(text).digest('hex') };
   } catch { return refuse(); }
 }
-const definitions = playwrightTools.filteredTools({ capabilities: playwrightTools.browserTools.map(tool => tool.capability) });
+const definitions = () => { const tools = loadTools(); return tools.filteredTools({ capabilities: tools.browserTools.map(tool => tool.capability) }); };
 export async function profileCatalog(root) {
+  const playwrightTools = loadTools(), { program } = await import('playwright-core/lib/utilsBundle');
   const args = JSON.parse(readFileSync(join(root, 'mcp.json'), 'utf8')).mcpServers.playwright.args ?? [];
   const command = program.createCommand(); playwrightTools.decorateMCPCommand(command, 'profile');
   command.exitOverride().configureOutput({ writeOut() {}, writeErr() {} }).action(() => {});
@@ -38,9 +40,9 @@ export async function profileCatalog(root) {
   return { config, tools: playwrightTools.filteredTools(config) };
 }
 // RCE and channels outside browser interception retain their tool, with consequential admission.
-export const profileRead = name => ['browser_navigate', 'browser_tabs'].includes(name) || definitions.some(tool => tool.schema.name === name && ['readOnly', 'assertion'].includes(tool.schema.type));
+export const profileRead = name => ['browser_navigate', 'browser_tabs'].includes(name) || definitions().some(tool => tool.schema.name === name && ['readOnly', 'assertion'].includes(tool.schema.type));
 export const profileConsequential = (name, input) => ['browser_run_code_unsafe', 'browser_take_screenshot', 'browser_pdf_save', 'browser_file_upload', 'browser_drop'].includes(name)
-  || Boolean(input?.filename || input?.isolatedContext) || !definitions.some(tool => tool.schema.name === name);
+  || Boolean(input?.filename || input?.isolatedContext) || !definitions().some(tool => tool.schema.name === name);
 export function profileRequest(name, input) {
   if (input?.browserEffect) {
     const { browserEffect, ...operation } = input;
@@ -50,7 +52,7 @@ export function profileRequest(name, input) {
       && /^sha256:[a-f0-9]{64}$/u.test(browserEffect.bodyDigest);
   }
   return Boolean(input && JSON.stringify(input).length <= 8192
-    && definitions.find(tool => tool.schema.name === name)?.schema.inputSchema.strict().safeParse(input).success);
+    && definitions().find(tool => tool.schema.name === name)?.schema.inputSchema.strict().safeParse(input).success);
 }
 export const profileRefused = reason => ({ status: 'refused', reason });
 /** One exact child per claim. The existing resource owner holds and reaps its whole process tree. */
@@ -128,6 +130,7 @@ export function createProfileBrowser({ binding, hold, check, call, deadline, sto
   } };
 }
 if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.meta.url)) {
+  const playwrightTools = loadTools();
   const { chromium } = await import('playwright');
   const { register } = await import('node:module');
   register('../../scripts/slice-ts-loader.mjs', import.meta.url);

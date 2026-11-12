@@ -9,7 +9,6 @@ import { spawn } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
 import { createInterface } from 'node:readline';
-import { inprocess, server } from 'playwright-core/lib/coreBundle';
 
 // Decode only for the existing custody check; inspection bytes never enter the result or journal.
 export function inspectProfileOutput(value, clear) {
@@ -51,6 +50,7 @@ export function inspectProfileOutput(value, clear) {
 
 export async function runProfileCode({ context, page, code, clear, allowed, protect, capture, refused, network = async () => { throw Error('network-effect-or-scope'); } }) {
   if (typeof code !== 'string' || !clear(code)) { refused('output-secret-check'); return { isError: true, content: [] }; }
+  const { inprocess, server } = await import('playwright-core/lib/coreBundle');
   const root = mkdtempSync(join(tmpdir(), 'instar-browser-code-'));
   let child, timeout, scope, closed = false, total = 0, sent = 0, requests = 0, active = 0, outgoing = Promise.resolve(), complete = () => {};
   const controller = new AbortController(), transports = new Map();
