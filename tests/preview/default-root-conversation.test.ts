@@ -391,8 +391,8 @@ it('keeps the declaration duty in every packet of a default-size root under byte
     // The trimmed briefing now leaves an extra kilobyte. Keep this pressure proof
     // on its intended last rungs with explicit inert fixed input, not larger caps
     // or weaker assertions; the ordinary default-root cases above use no padding.
-    // Row 90's generated capability adds 156 UTF-8 bytes; keep total fixed pressure unchanged.
-    runtimeSources: [...shapes.runtimeSources, { id: 'fixture-pressure', text: 'x'.repeat(868) }],
+    // Row 90 adds 158 bytes in the real serialized envelope; keep total fixed pressure unchanged.
+    runtimeSources: [...shapes.runtimeSources, { id: 'fixture-pressure', text: 'x'.repeat(866) }],
     answer: (id, context) => extra.get(Number(id.split(':').at(-1)))?.realModel.output ?? shapes.answer(id, context) });
   const tail = run.report.slice(20);
   for (const turn of tail) expect(turn.sent, `turn ${String(turn.n)}: held ${turn.held ?? '-'} notice ${turn.notice ?? '-'}`).toBe(true);
