@@ -773,6 +773,7 @@ async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   if (options.attribution !== undefined && !['record', 'enforce'].includes(options.attribution)) throw Error('preview: --attribution must be record or enforce');
+  if (options['attribution-replies'] !== undefined && options['attribution-replies'] !== 'record') throw Error('preview: --attribution-replies must be record');
   // Retired 2026-10-20 by the operator's review (promotion record): no live evidence, so it can no longer be turned on.
   if (options['step-check'] === 'true') throw new PlainRefusal('preview: the step check is retired (2026-10-20, no live evidence); launch without --step-check true');
   const stepCheckEnabled = false;
@@ -2321,7 +2322,8 @@ async function main() {
       },
       summaryCheck: async evidence => (await callJev('jev-summary-faithfulness', evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
       // Rule 121, off unless launched with it. A summary-style object answer: the runner serializes it, the model never does.
-      ...(options.attribution === undefined ? {} : { attribution: { mode: options.attribution,
+      ...(options.attribution === undefined && options['attribution-replies'] === undefined ? {} : { attribution: { mode: options.attribution ?? 'record',
+        ...(options.attribution === undefined ? { notes: false } : {}), ...(options['attribution-replies'] === 'record' ? { recordReplies: true } : {}),
         judge: async ({ id, packet, deadlineAt }) => {
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}\n${packet}`, wallNow()));
           const prepared = modelEnvelope({ question: ATTRIBUTION_QUESTION, context: packet, id, ...(writer ? { writer } : {}) });
@@ -3009,7 +3011,7 @@ async function main() {
       } };
     const startup = executeProof(PREVIEW_PROOF_PLANS.find(plan => plan.id === 'startup'),
       { ...proofPorts, botIdentity: () => ({ id: identity.identity.id }), launch: { stepCheck: stepCheckEnabled, agentState: Boolean(options['agent-state-dir']),
-        attribution: options.attribution !== undefined,
+        attribution: options.attribution !== undefined || options['attribution-replies'] === 'record',
         ...Object.fromEntries(Object.entries(launchVersions).map(([id, version]) => [`${VERSION_PREFIX}${id}`, version])) } }, generation, clock.elapsed);
     // Rules 14/95: the proof log is evidence, not a gate on conversation. An unwritable log is reported and retried
     // with backoff; the undurable record never counts as proof, and intake and replies continue.

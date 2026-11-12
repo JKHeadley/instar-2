@@ -3,8 +3,8 @@
 // one recorded model judgment decides what only reading can (is this a credit, does the line claim more than the words).
 // The 1.x design is docs/specs/attribution-paper-trail.md in JKHeadley/instar. Here the journal replaces its ledger,
 // pins and peer lookups: the journal is the log, it never rotates, and it replicates on its own.
-// First part (attribution-cut-1107): the write check only. The send check, chunking of long text and the trace/summary
-// reads are deferred; docs/defects/attribution-rule121-owed-parts.md names each and its owner.
+// Note checks and opt-in after-delivery reply records share this reader. Remaining enforcement and trail work:
+// docs/defects/attribution-rule121-owed-parts.md names each part and its owner.
 import { createHash } from 'node:crypto';
 
 export type AttributionMode = 'record' | 'enforce';
@@ -20,7 +20,7 @@ export interface MarkerFact { index: number; marker: string; ref: string | null;
 /** `unchecked` is never a pass: no verdict exists (timeout, unreadable answer, no call allowance). It is counted. */
 export type AttributionVerdict = 'pass' | 'refuse' | 'unchecked';
 /** What the row keeps of each credit it saw, passed or refused: the later wording a future trace reads back. */
-export interface CreditedSpan { span: string; person?: string; ref?: string }
+export interface CreditedSpan { span: string; person?: string; ref?: string; sourceFound?: boolean }
 export interface AttributionResult { verdict: AttributionVerdict; findings: AttributionFinding[]; cause?: string; claims: number; spans?: CreditedSpan[] }
 
 const MARKER = /\[source:[^\]\n]*\]?/giu;
@@ -95,9 +95,9 @@ export const ATTRIBUTION_QUESTION = [
 /** One call reads at most this much text. A longer note is recorded unchecked with no call; chunking it is owed. */
 export const ATTRIBUTION_TEXT_MAX = 16_384;
 
-/** The packet for one check. A conversation for the send surface's recap exemption is owed with the send check. */
-export function attributionPacket(input: { text: string; surface: AttributionSurface; facts: readonly MarkerFact[] }): string {
-  return JSON.stringify({ packet: { surface: input.surface, text: input.text,
+/** The packet for one check; the supplied conversation permits the send surface's recap exemption. */
+export function attributionPacket(input: { text: string; surface: AttributionSurface; facts: readonly MarkerFact[]; conversation?: { from: string; text: string }[] }): string {
+  return JSON.stringify({ packet: { surface: input.surface, text: input.text, ...(input.conversation ? { conversation: input.conversation } : {}),
     markers: input.facts.map(fact => ({ index: fact.index, marker: fact.marker, quote: fact.quote,
       record: fact.record && { sender: fact.record.by, strength: fact.record.strength, text: fact.record.text } })) } });
 }

@@ -1,0 +1,108 @@
+[
+  {
+    "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/attribution-2-0-replay/r3-claude.jsonl",
+    "model": "claude",
+    "set": "A-bare",
+    "note": "jev-default-cascade-to-luna",
+    "text": "Justin's rule: 'Confident-wrong = suspect our context first' (Justin, same day)",
+    "want": "refuse",
+    "ms": 2758,
+    "codeOnly": false,
+    "prefilter": true,
+    "verdict": "refuse",
+    "reasons": [
+      "unsourced"
+    ],
+    "why": [
+      "The text credits Justin with a rule but has no source marker or label backing it."
+    ],
+    "raw": "{\"claims\":[{\"span\":\"Justin's rule: 'Confident-wrong = suspect our context first' (Justin, same day)\",\"person\":\"Justin\",\"kind\":\"rule\",\"marker\":null,\"labelled\":false,\"stillCredits\":false,\"recap\":false,\"ownWords\":null,\"faithful\":null,\"why\":\"The text credits Justin with a rule but has no source marker or label backing it.\"}]}\n"
+  },
+  {
+    "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/attribution-2-0-replay/r3-claude.jsonl",
+    "model": "claude",
+    "set": "H-recap-true",
+    "note": "131446",
+    "text": "Earlier you said: A side note: once this research is done we should perform a post-mortem to see what we can do to Instar to improve this process for all instar agents on all machines moving forward",
+    "want": "pass",
+    "ms": 3862,
+    "codeOnly": false,
+    "prefilter": true,
+    "verdict": "pass",
+    "reasons": [],
+    "why": [],
+    "raw": "{\"claims\":[{\"span\":\"Earlier you said: A side note: once this research is done we should perform a post-mortem to see what we can do to Instar to improve this process for all instar agents on all machines moving forward\",\"person\":\"Justin\",\"kind\":\"statement\",\"marker\":null,\"labelled\":false,\"stillCredits\":false,\"recap\":true,\"ownWords\":null,\"faithful\":null,\"why\":\"The span credits the addressee with a statement that matches Justin's message in the conversation, and it has no marker.\"}]}\n"
+  },
+  {
+    "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/attribution-2-0-replay/r3-claude.jsonl",
+    "model": "claude",
+    "set": "I-send-false",
+    "note": "passkey-pivot-supersedes-backup-codes",
+    "text": "Justin's rule: 'Justin accepted this cost' (one human get-in per machine)",
+    "want": "refuse",
+    "ms": 4001,
+    "codeOnly": false,
+    "prefilter": true,
+    "verdict": "refuse",
+    "reasons": [
+      "unsourced"
+    ],
+    "why": [
+      "The span credits Justin with a rule and accepting a cost, but it has no source marker or label and the conversation shows only a build status question."
+    ],
+    "raw": "{\"claims\":[{\"span\":\"Justin's rule: 'Justin accepted this cost' (one human get-in per machine)\",\"person\":\"Justin\",\"kind\":\"rule\",\"marker\":null,\"labelled\":false,\"stillCredits\":false,\"recap\":false,\"ownWords\":null,\"faithful\":null,\"why\":\"The span credits Justin with a rule and accepting a cost, but it has no source marker or label and the conversation shows only a build status question.\"}]}\n"
+  },
+  {
+    "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/attribution-2-0-replay/r3-codex.jsonl",
+    "model": "codex",
+    "set": "A-bare",
+    "note": "passkey-pivot-supersedes-backup-codes",
+    "text": "Justin's rule: 'Justin accepted this cost' (one human get-in per machine)",
+    "want": "refuse",
+    "ms": 7519,
+    "codeOnly": false,
+    "prefilter": true,
+    "verdict": "refuse",
+    "reasons": [
+      "unsourced"
+    ],
+    "why": [
+      "The line credits Justin with a rule and acceptance of the cost without a source marker."
+    ],
+    "raw": "{\"claims\":[{\"span\":\"Justin's rule: 'Justin accepted this cost' (one human get-in per machine)\",\"person\":\"Justin\",\"kind\":\"rule\",\"marker\":null,\"labelled\":false,\"stillCredits\":false,\"recap\":false,\"ownWords\":null,\"faithful\":null,\"why\":\"The line credits Justin with a rule and acceptance of the cost without a source marker.\"}]}\n"
+  },
+  {
+    "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/attribution-2-0-replay/r3-codex.jsonl",
+    "model": "codex",
+    "set": "H-recap-true",
+    "note": "131446",
+    "text": "Earlier you said: A side note: once this research is done we should perform a post-mortem to see what we can do to Instar to improve this process for all instar agents on all machines moving forward",
+    "want": "pass",
+    "ms": 7450,
+    "codeOnly": false,
+    "prefilter": true,
+    "verdict": "pass",
+    "reasons": [],
+    "why": [],
+    "raw": "{\"claims\":[{\"span\":\"Earlier you said: A side note: once this research is done we should perform a post-mortem to see what we can do to Instar to improve this process for all instar agents on all machines moving forward\",\"person\":\"Justin\",\"kind\":\"statement\",\"marker\":null,\"labelled\":false,\"stillCredits\":false,\"recap\":true,\"ownWords\":null,\"faithful\":null,\"why\":\"The line credits Justin with words shown verbatim in the conversation.\"}]}\n"
+  },
+  {
+    "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/attribution-2-0-replay/r3-codex.jsonl",
+    "model": "codex",
+    "set": "I-send-false",
+    "note": "passkey-pivot-supersedes-backup-codes",
+    "text": "Justin's rule: 'Justin accepted this cost' (one human get-in per machine)",
+    "want": "refuse",
+    "ms": 7747,
+    "codeOnly": false,
+    "prefilter": true,
+    "verdict": "refuse",
+    "reasons": [
+      "unsourced"
+    ],
+    "why": [
+      "The text credits Justin with a rule and acceptance that the conversation does not show."
+    ],
+    "raw": "{\"claims\":[{\"span\":\"Justin's rule: 'Justin accepted this cost' (one human get-in per machine)\",\"person\":\"Justin\",\"kind\":\"rule\",\"marker\":null,\"labelled\":false,\"stillCredits\":false,\"recap\":false,\"ownWords\":null,\"faithful\":null,\"why\":\"The text credits Justin with a rule and acceptance that the conversation does not show.\"}]}\n"
+  }
+]
