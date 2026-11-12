@@ -17,7 +17,7 @@ Layer below: Read constitution in full; traced journal replay/cap authority, env
 Bug class: integration
 Bug evidence: reproducer=tests/preview/default-context-floor.test.ts; restart=tests/preview/default-context-floor.test.ts; live=recorded proof-room fixtures replayed in default-root-conversation.test.ts and summary-cascade-stall.test.ts; provider=tests/assembly/production-provider-subscription.test.ts
 Hook bypass: none
-Convergence: GPT-6 Astra independently reviewed the implementation twice; initial model-ceiling and post-raise retention findings repaired, then implementation accepted. Verification remains the author’s responsibility; no live-completion claim.
+Convergence: none
 Decision: context-window-default | Reserve fixed measured bytes plus one quarter of remaining recorded window, with one byte per token conservative accounting and existing 1 MiB ceiling; same bounded inputs work on every harness. | reported=reviews/context-default-1112-change-review.md
 Decision: context-notice-retention | Persist one optional notice flag so restart, status and post-raise recall distinguish fixed-context overflow from oversized user input. | reported=reviews/context-default-1112-change-review.md
 Prompt review: No capability line, system prompt or answer instruction is shortened. A larger permitted packet retains existing source text. The runner-authored context-limit notice distinguishes installation capacity from message length. Recorded summaries, uncertain/undecided verdicts, reply reviews and empty historical replies are replayed by the existing suites.
@@ -70,12 +70,6 @@ Full desk handoff report: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/
 This off-Studio builder supplies the requested M5 handoff for the desk to copy there. The committed decision
 report above is also readable in the Studio checkout and is the Rule 102 evidence for both decision rows.
 
-## Closing block
-
-simplestRobustRoute: This is the simplest route: derive the genesis budget beside the existing measured floor; keep per-source limits, summary/retrieval, encrypted intake, cap records and raised-prompt provider admission. One durable notice flag prevents misclassifying saved ordinary input after repair. No new allocator, tokenizer, store, service or authority mechanism.
-80/20: Targeted boundary, recorded-shape, restart, provider, migration and launcher tests establish the changed behavior; build/typecheck, architecture, lint, register and final pinned tests are recorded in the handoff report. No live deployment claim.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
 ## Independent implementation review
 
 Reviewer: GPT-6 Astra, independent read-only agent, context-default-1112/astra_review, 2026-11-12.
@@ -94,3 +88,9 @@ checks remain the author’s responsibility. The requested subject-list correcti
 The preview fixture artifact pin was recomputed with the existing canonical hash function after all 25 journal-agent launcher tests passed; register output is replay-generated from the committed source. No native conformance certificate or governed changelog number is edited.
 
 Register reproduction: replay from source ec3632ea81ec29a9feb842fd580582b9b7419820 produced generation sha256:580b24d6954f7ee76e7027fd7f67b330fb5b9b136a7946a62a0ccb1fa98a3ddc, committed in a77442ab9. Eight generated files changed mechanically; they add no product mechanism.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest route: derive the genesis budget beside the existing measured floor; keep per-source limits, summary/retrieval, encrypted intake, cap records and raised-prompt provider admission. One durable notice flag prevents misclassifying saved ordinary input after repair. No new allocator, tokenizer, store, service or authority mechanism.
+80/20: Targeted boundary, recorded-shape, restart, provider, migration and launcher tests establish the changed behavior; build/typecheck, architecture, lint, register and final pinned tests are recorded in the handoff report. No live deployment claim.
+VERDICT: implementation accepted by independent Astra review above; the Studio landing gate remains the desk’s responsibility.
