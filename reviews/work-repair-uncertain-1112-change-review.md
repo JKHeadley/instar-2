@@ -1,0 +1,45 @@
+# Change review — retain the reserved formatting repair's physical result
+
+Subject base: e3cb0f08d3a74d70c9e059edbd64fc457492bfff
+Review state: open
+Reviewed content: none
+Outcome: A completed obligation formatting repair records its physical outcome and usage, then reaches normal result delivery instead of being converted to uncertain and held by its own observation writer.
+Affected rules: 4, 8, 36, 41, 55, 57, 58, 68, 70, 74, 75, 83, 101, 102, 113, 116, 123
+Affected floors: secrets — existing diagnostic redaction and outbound checks; spend cap — the existing counted repair reservation is required; stop — unchanged work/repair admission checks; no duplicate sends — no new call or retry, existing result/send intent fence; durable intake — unchanged journal writer and accepted input.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Corrects the physical-call observation admission in a scheduled model path; no new authority, retry or prompt.
+Side effects: call-outcome now accepts work-repair ids only for the model role and the exact in-flight slot with its repairSlot reservation. Ordinary work, summary, index and review validation remain unchanged. Every diagnostic shape/resource/redaction check still runs. Unreserved, stale, other-obligation, suffixed and wrong-role repair rows remain refused. No additional model call is introduced.
+Undo and recovery: Revert the four-line admission change and regenerate the register; records use the existing schema and retain all charges. Old journals replay unchanged. Existing held commitments 57/58/59 stay held: their omitted repair outcomes were never committed and this fix does not invent or rewrite them. Any separate recovery must use independently retained exact output/effect evidence through the existing journal writer and preserve send uniqueness; do not rerun the tool work merely to clear a hold.
+Multi-machine posture: Existing journal owner and model-route authority remain the only owners. There is no new state, store, ownership transfer or peer requirement; existing replay and snapshots retain the same histories.
+Team posture: Existing obligation principal, context redaction and delivery audience remain unchanged. The observer gains no sharing/access path and widens no recipient's visibility.
+Layer below: Inspected actual observedSubscriptionIO -> journal.append -> validateCallOutcome -> subscription adapter catch -> launcher model-call -> obligation-result. The writer refused every work-repair id because it had only an obligation-id branch; its exception happened before the adapter parsed returned usage. The real adapter with a fake physical port reproduces complete work, uncertain repair with null usage, missing repair call-outcome and a held obligation on train-240. No restart, cap shortage, login failure or timeout is needed. Preflight failure remains a separate possible no-result cause and is not relabeled successful.
+Bug class: integration
+Bug evidence: reproducer=tests/assembly/production-provider-subscription.test.ts
+Hook bypass: none
+Convergence: none
+Decision: reserved-repair-diagnostics | Admit only the exact active, counted repair's physical observation; preserve completed output through the existing adapter instead of adding another call that would hit the same refusal. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/work-repair-uncertain-1112-build-report.md
+Prompt review: No prompt or parser changes. Recorded proof-room work frames 131/138/181 (updates 46039927/46039928, work-output-live-2026-10-12.json) pass through the actual observation wrapper and journal writer, trigger the format repair and reach normal delivery exactly once. The real Claude subscription adapter also exercises this full failure boundary with a fake physical port. November 12 commitments 57/58/59 provide the observed sequence but no raw output; their exact format defect cannot be distinguished. Foreign-protocol controls replay retrospective-duty-followup-train-1-2026-10-08.json: summary writer 715672480, summary uncertain 715672483, Jev undecided 715672482 and unsure 969389570, reply review 969389923, delivered reply 715672479 and empty reply in recorded context 715672550; none is accepted as a work report. Genuine uncertain work and genuinely missing repair still remain held.
+Prompt finding: 105c1569b6bb | protocol-literal | Existing stop wording is unchanged; this change neither edits nor evaluates it by phrase.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing tool-evidence instruction is unchanged; the repair retains the original scoped packet.
+Prompt finding: 7ef11b68103f | protocol-literal | Existing activation wording is unchanged; no activation policy is changed.
+Prompt finding: 849db3a6296a | protocol-literal | Existing saved-memory response is unchanged, not a new model gate.
+Prompt finding: 85544c20941f | protocol-literal | Existing retained-message wording is unchanged; intake is unchanged.
+Prompt finding: 9f0106c66027 | protocol-literal | Existing interrupted-work notice is unchanged, not used to admit a physical outcome.
+Prompt finding: bac6ce7485d9 | protocol-literal | Existing stopped-work notice is unchanged, not used to admit a physical outcome.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label guidance is unchanged; no prompt mutation is introduced.
+
+1.x comparison: Searched actual JKHeadley/instar main db3ed6d3052cfcc24888b6c8bc86086abcfc2987 src/, docs/specs/ and git history. Read src/monitoring/ResumeQueueDrainer.ts:24-28,217-224,491-505, docs/specs/autonomous-run-outlives-session.md, src/core/SelfHealGate.ts and the Grok oneShotCompletion.ts envelope repair. Relevant history includes 7ef757d89, c56b38f6c, 7779f8a9a, 5129779c3 and a34adbc8e. Durable work and bounded recovery fit; session revival and Grok JSON rewriting do not implement this obligation-format diagnostic protocol. Reuse the existing 2.0 work-output-repair-1012 reservation/validation design and captured fixtures, extending the same validateCallOutcome active-slot check already used for obligation calls. ONEX-LESSONS is absent from the tracked repositories and unavailable at the named Studio path on this host; no absence beyond inspected paths is claimed.
+Diagnosis: journal.ts:3384 omitted work-repair from recognized physical-call ids; call-diagnostics.mjs:101 appended before returning the frame; production-provider.ts:674/724 caught the writer exception before parsing usage at 676-690. journal.ts:12693 replaced the completed work account with this uncertain repair and 12662-12664 attached recoveryHeld using the original tool route. The four-line change fixes the reproduced observation refusal itself.
+Measurement: Final product diff from train-240 is 4 added lines, 0 removed, in tests/preview/journal.ts. Tests, this review and mechanical register projections are separate. The initial retry approach is removed in a forward commit; prior green history is preserved and no retry field remains in the final tree.
+Validation: On unchanged train-240 product code, three recorded-work cases and the positive repair-reservation case failed; the real adapter separately returned uncertain with null usage after a successful physical repair. Both suites pass with the admission fix. Final-head checks, counts and host limitations are in the handoff report. No real subscription spend or deployed Telegram proof is claimed.
+
+Deferral: generated/register.json:1 | not-a-deferral=mechanically replayed register projection, not a new promise or deferred implementation.
+Register publication: Eight generated projections were replayed from corrected source commit 06021d1ac3dcc4c7bde939e8167eef5bbc17be5e, generation sha256:f415b0c43deb5c060bbf8fe3db3366c312c3b4061618be60c4472d4af23cb9b9. No constitutional wording, changelog numbering, owner pin or conformance declaration was edited.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: extend the existing physical observation validator with the repair reservation it already records. The exact id, in-flight slot, repairSlot and model role admit the diagnostic; all existing content/resource checks still apply. The completed frame then reaches the existing adapter, task validator and result/send path. No new retry, queue, scheduler, schema, prompt, login workaround or fallback is needed. Start guards are the existing counted repair admission; end guards are the existing result validation and send intent; one existing repair call remains the bound. Unattended live-provider completion is not claimed.
+80/20: The complete observation-to-hold chain is reproduced through the real adapter and journal, and fixed in four product lines. Exact live malformed bytes were not supplied, so no parser or prompt change is guessed. Independent compliance and convergence belong to the desk's Astra review.
+VERDICT: author submission; independent review remains with the desk

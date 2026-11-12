@@ -3387,11 +3387,15 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
   // and an index-only pass (its reservation still open). Refusing their row turned a completed call into UNKNOWN
   // (live D run 2026-10-03: every work step settled uncertain, so no result ever waited for delivery).
   const work = /^obligation:((?:commitment|blocker):(?:0|[1-9][0-9]*)):(0|[1-9][0-9]*)$/u.exec(row.id);
+  // A formatting-only repair owns a separate counted start in this exact work slot.
+  const repair = /^work-repair:((?:commitment|blocker):(?:0|[1-9][0-9]*)):(0|[1-9][0-9]*)$/u.exec(row.id);
   const index = /^summary:index:(0|[1-9][0-9]*)$/u.exec(row.id);
   // Recovery has its own physical invocation ID, but the parent owns its charged replacement.
   const recovery = row.id.startsWith('recovery:') ? view.turns.get(row.id.slice(9)) : undefined;
   const valid = row.id.startsWith('recovery:') ? row.role === 'model' && !!recovery?.reserved
     && recovery.answerReplaced === true && recovery.answerAccount === true
+    : repair ? row.role === 'model' && view.obligationWork[repair[1]!]?.inFlight === Number(repair[2])
+      && view.obligationWork[repair[1]!]?.repairSlot === Number(repair[2])
     : work ? row.role === 'model' && view.obligationWork[work[1]!]?.inFlight === Number(work[2])
     : index ? row.role === 'summary' && view.indexOpen?.key === `index:${index[1]!}`
     : row.role === 'summary' ? !!summary && view.summaryReservations.has(Number(summary[1]))

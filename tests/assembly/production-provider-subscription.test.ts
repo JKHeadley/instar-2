@@ -22,6 +22,12 @@ import summaryCapture from '../preview/fixtures/summary-cap-2026-10-26.json' wit
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 
+import { createJournalWorker, openPreviewJournal } from '../preview/journal-test-worker.js';
+import { readAnswer } from '../preview/answer-reading.js';
+import { modelCallRecord } from '../preview/model-call-boundary.js';
+// @ts-expect-error Physical observation host is JavaScript.
+import { observedSubscriptionIO } from '../preview/call-diagnostics.mjs';
+
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const hash = (value: unknown) => canonical(value).kind === 'Success' ?
@@ -848,4 +854,54 @@ it('keeps scheduled work policy unchanged and requires the exact continuing-sess
   expect(() => codexConversation.validateActivation(codexScheduled, codexProfile, codexModel, 1000)).toThrow(/policy differs/u);
   expect(() => codexConversation.validateActivation({ ...codexGrant, acceptedResiduals: [] }, codexProfile, codexModel, 1000))
     .toThrow(/residual/u);
+});
+
+
+it('does not turn a completed formatting repair into unknown when its physical outcome reaches the journal', async () => {
+  const f = fixture({ conversation: true }), key = new Uint8Array(32).fill(41);
+  const journal = openPreviewJournal(join(f.root, 'journal'), key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+    operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+    maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 409600, cursor: 0, loopRevisitMs: 86400000 });
+  let now = 1000;
+  const raw = JSON.parse(readFileSync('tests/preview/fixtures/work-output-live-2026-10-12.json', 'utf8')) as { calls: { output: string }[] };
+  const workCalls: string[] = [];
+  const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, toolRoute: () => true,
+    model: async input => {
+      if (!/^(obligation|work-repair):/u.test(input.id)) return JSON.stringify({ reply: 'I will review the plan.',
+        openLoops: [{ kind: 'deferral', quote: 'I will review the plan.', waitsOn: 'nothing' }] });
+      workCalls.push(input.id);
+      const output = input.id.startsWith('obligation:') ? raw.calls[0]!.output : '{"outcome":"report","report":"The review is complete."}';
+      const io = observedSubscriptionIO({ ...f.input.io, execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => {
+        if (!command.stdin) return f.input.io.execute(command);
+        now += 26000;
+        const stdout = JSON.stringify({ type: 'result', subtype: 'success', is_error: false, session_id: input.id,
+          result: output, usage: { input_tokens: 20, output_tokens: 10, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } });
+        return { code: 0, limited: false, stdout, stdoutBytes: Buffer.from(stdout) };
+      } }, subscriptionConversationPolicy(f.input.model), input.id,
+      (row: Parameters<typeof journal.append>[0]) => journal.append(row), { elapsed: () => now, at: () => now });
+      const route = value(createClaudeCodeSubscriptionRoute({ ...f.input, io }));
+      const result = await route.invoke('{}', { ...f.bounds, operation: input.id });
+      journal.append(modelCallRecord({ id: input.id, judgment: 'answer', route: 'preview-subscription', model: f.input.model,
+        input: '{}', output: result.bytes, outcome: result.state, latencyMs: 26000,
+        usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null }, at: now }));
+      const usage = { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, charge: null,
+        ...(result.usage.inputComplete ? { inputComplete: true as const } : {}) };
+      if (result.state !== 'complete') return { state: 'uncertain' as const, usage };
+      const read = readAnswer(result.bytes!, { wrapped: 'accept', evidence: [input.id] });
+      return read.ok ? { text: read.value, usage }
+        : { state: 'complete' as const, failureClass: 'malformed' as const, rawOutput: result.bytes!, usage };
+    }, send: async () => 1, checkOutbound: () => {} });
+  try {
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+      text: 'Please review the plan.', date: 1 } }]);
+    await worker.drain(); now += 86400000;
+    expect(await worker.workObligations()).toBe(true);
+    expect(journal.view.modelCalls.last.map(row => ({ outcome: row.outcome, usage: row.usage }))).toEqual([
+      { outcome: 'complete', usage: { inputTokens: 20, outputTokens: 10, charge: null } },
+      { outcome: 'complete', usage: { inputTokens: 20, outputTokens: 10, charge: null } },
+    ]);
+    expect(journal.view.callOutcomes.map(row => row.id)).toEqual(workCalls);
+    expect(journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'report' });
+    expect(journal.view.obligationWork['commitment:0']!.recoveryHeld).toBeUndefined();
+  } finally { journal.close(); }
 });
