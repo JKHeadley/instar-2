@@ -1,0 +1,11 @@
+# train-247 decision report
+
+Decision: train-247-M1 | Ordinary merge of exact reviewed aa324c0994e75c5986a2ebb2d2ba366705fe178f fast-forwarded from the required live base. Member report: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/work-repair-uncertain-1112-PROGRESS.md; authenticated byte-identical copy in reviews/train-247-evidence/work-repair-uncertain-1112-PROGRESS.txt. | reported=reviews/train-247-evidence/decisions.txt
+Decision: train-247-A | Preserve all reviewed member behavior and the live base. No conflict or product rewrite; generated outputs are regenerated. | reported=reviews/train-247-evidence/decisions.txt
+Decision: train-247-B | Use the clean pre-provisioned separate train-247 worktree: reflog proves creation at e3cb0f08d3a74d70c9e059edbd64fc457492bfff from origin/train-240. No branch movement or main merge. | reported=reviews/train-247-evidence/decisions.txt
+Decision: train-247-C | No product conflict occurred; no member is left out. | reported=reviews/train-247-evidence/decisions.txt
+Decision: train-247-D | Run required suites unchanged on M5; classify any genuine Studio-only checks explicitly without changing guards or declaring them passed. | reported=reviews/train-247-evidence/decisions.txt
+Decision: train-247-desk | Apply the cint-L37 repin/build/rehash/replay chain using cached read-only desk tools. Inventory and owner repins are zero. Use the existing certified Node 24.14.1 runtime; native conformance renewal remains Studio-owned if needed. | reported=reviews/train-247-evidence/decisions.txt
+Decision: train-247-evidence | Commit the two hash-verified input report snapshots and this decision index under reviews/ so citations are readable on Studio. Final M5 report is handed off to /Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-247-build-report.md. Historical absolute report references are unchanged. | reported=reviews/train-247-evidence/decisions.txt
+
+The final execution report is handed off to /Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-247-build-report.md.

@@ -1,0 +1,154 @@
+# work-repair-uncertain-1112 build report
+
+The reproduced cause is the journal refusing the formatting repair's physical outcome. The final fix adds four product lines to admit that observation against its existing exact reservation. No retry, schema field, prompt, timeout or login change remains in the final tree.
+
+Branch: work-repair-uncertain-1112. Base: origin/train-240 e3cb0f08d3a74d70c9e059edbd64fc457492bfff. Pushed head: aa324c0994e75c5986a2ebb2d2ba366705fe178f. No merge from origin/main.
+
+## First comparison and governing rules
+
+Read docs/00-the-purpose.md in full, then docs/01-the-rules.md in full before implementation. Actual JKHeadley/instar main was fetched at db3ed6d3052cfcc24888b6c8bc86086abcfc2987. Searched its src/, docs/specs/ and git history for output/format/JSON repair and uncertainty. Inspected src/monitoring/ResumeQueueDrainer.ts:24-28,217-224,491-505, docs/specs/autonomous-run-outlives-session.md, src/core/SelfHealGate.ts and src/providers/adapters/grok-build/transport/oneShotCompletion.ts. Relevant history: 7ef757d89 (run revival), c56b38f6c (self-heal), 7779f8a9a/5129779c3/a34adbc8e (drainer). Fit: retain durable work and bound recovery. Mismatch: session revival and Grok envelope rewriting do not implement this obligation-format diagnostic reservation. Reused the existing 2.0 work-output-repair-1012 feature and validateCallOutcome's exact active-slot design, not new recovery machinery. ONEX-LESSONS.md was not found in either tracked repository; the named Studio lanes path is unavailable here and the corresponding known local checkout paths have no copy. No absence beyond inspected references is claimed.
+
+Rules touched:
+- 8, 83: the owned obligation reaches its normal stored-report/delivery path instead of being stranded by an observer defect.
+- 55: the existing single formatting call and bounded schedule are unchanged; no new retry or polling loop.
+- 68: completed work survives the repair's observation boundary; no external work is repeated.
+- 4, 57: admission is an exact match to recorded governed state: model role, obligation key, inFlight slot and repairSlot. All existing shape, resource and redaction checks still run.
+- 41, 58, 75: the already-counted repair records its physical result and usage. Unknown real work remains unknown; no usage is invented or counted as zero.
+- 36, 70: captured outputs and the real subscription adapter reproduce the failure; stubs alone were insufficient.
+- 74, 101, 102, 113, 116, 123: committed review, no hook bypass, reported engineering decision, same journal owner on every machine, simplest four-line repair, unchanged principal/audience/sharing.
+
+Secrets, spend caps, stop, exactly-once sends and durable intake are unchanged. The repair retains the existing role and original packet; no access or authority is widened.
+
+## Diagnosis, reported before the final implementation
+
+1. Repair trigger: tests/preview/journal.ts:12676-12682 (base 12672-12678) starts work-repair after complete/malformed with retained rawOutput, or when obligationDecision rejects the returned answer. The launcher reader at tests/preview/journal-agent.mjs:2070-2077 checks the answer envelope. journal.ts:2845-2885 checks JSON, outcome, required report/note/waitsOn, byte limits (1500 report, 500 note), and completion fields. The brief lacks the raw output for 57-59, so it cannot distinguish format, length or required-field failure. The twelve earlier report/waiting results without repair passed these validations.
+2. Exact no-result cause: tests/preview/journal.ts:3384 recognized obligation: but omitted work-repair:. tests/preview/call-diagnostics.mjs:101 appends call-outcome before returning the successful physical frame. The journal writer refused the repair id with “preview journal: call outcome malformed.” src/assembly/production-provider.ts:674 awaits that command; its catch at 724 converts the exception to uncertainty. Usage parsing at 676-690 never runs, so usage remains null/unknown. tests/preview/journal-agent.mjs:1969-1975 then records an uncertain model-call without a call-outcome. This is the supplied signature reproduced through the real adapter, not an inferred login failure.
+3. Why the whole obligation is held: journal.ts:12697 (base 12693) overwrites the original completed account with the repair result; 12705 (base 12701) settles uncertainty; 12666-12668 (base 12662-12664) adds recoveryHeld because the original route had tools. The held slot is unschedulable at 2490. Recovery deliberately excludes the original checkpoint when repairSlot matches (12569-12571); changing that would risk accepting malformed output or replaying effects.
+4. Timing/restart/cap: the defect needs no restart and is deterministic whenever a repair's physical observation reaches this validator. The reproducer advances a fake clock 26 seconds during the successful physical return, then observes the immediate failure; it does not sleep or create load. There is no demonstrated 20-second repair timeout. The existing conversation policy is 120 seconds; auth/version commands are bounded at five seconds each. A cap refusal before reservation cannot explain this reproduced post-call rejection. Approximately 12,800/17,500 calls is not evidence of every admission floor, but no cap/login change is justified. Restart may have preceded the first outputs needing repair; the records do not establish that it caused them.
+
+## Reproduction and final fix
+
+Decision: reserved-repair-diagnostics — admit a physical repair outcome only when its exact work-repair obligation/slot has the existing inFlight and repairSlot reservation and role=model. Keep the adapter, accounting, parser, repair count and delivery path unchanged.
+
+Failing-first, exact train-240 journal.ts:
+- /tmp/work-repair-physical-red.log: 4 failed / 15 passed. Three captured work outputs produce uncertain/held instead of report after a successful physical repair; the valid repair observation is rejected as call outcome malformed.
+- /tmp/work-repair-adapter-red.log: the real createClaudeCodeSubscriptionRoute plus observedSubscriptionIO and journal writer sees the original work complete with usage, then a successful fake physical repair becomes uncertain with usage=null. No provider/login failure is injected. The fake ports avoid real model spend.
+
+The final code is tests/preview/journal.ts:3385-3386,3392-3393. It recognizes the repair id and checks its exact reserved slot. With those four lines, both physical results are recorded and the adapter returns the repair output/usage. The ordinary task validator admits the report and the existing send path delivers it once. No extra call or tool work is introduced.
+
+Positive and negative checks cover: three captured malformed work outputs; valid original needs no repair; exact repair reservation versus absent, wrong slot, wrong obligation, wrong role, suffixed id and settled work; accounting and replay/snapshot equality; one delivery; stop/cap/preparation guard coverage; genuine uncertain WORK held unchanged; a genuinely missing repair still held without retry; old complete-work/uncertain-repair rows remain held across replay.
+
+Recorded inputs replayed:
+- work-output-live-2026-10-12.json, proofroom4-dshort15-20261012-165351 at train-15 7cabecf1, frames 131/138/181, source updates 46039927/46039928: real rejected text triggers the repaired physical-observation path.
+- retrospective-duty-followup-train-1-2026-10-08.json: summary writer 715672480, summary uncertain 715672483, Jev undecided 715672482 and unsure 969389570, reply review 969389923, delivered reply 715672479, empty reply in recorded context 715672550. These foreign-protocol controls cannot be accepted as work reports. Nonempty invalid accounts receive the existing format repair; empty stays failed without one. No claim that these were November work bytes or that an empty context field proves a delivered bubble.
+- The November 12 brief's commitments 57/58/59 establish the live sequence. Their exact malformed outputs were not supplied; that narrower limitation does not prevent reproducing the physical-observation failure.
+
+Measured final diff from train-240: product 4 additions + 0 deletions. Test files: work-output-repair.test.ts 122 additions + 2 deletions; production-provider-subscription.test.ts 56 additions. Eight generated register projections: 15 additions + 15 deletions. Review prose is separate. Register replay source 06021d1ac3dcc4c7bde939e8167eef5bbc17be5e, generation sha256:f415b0c43deb5c060bbf8fe3db3366c312c3b4061618be60c4472d4af23cb9b9. No constitution wording or changelog numbering changed.
+
+## Already-held live results
+
+Commitments 57, 58 and 59 stay held after this patch. Their omitted repair outcomes are not in the journal; replay must preserve that history. The patch neither invents a result nor reruns their external work. The desk would need independently retained exact result/effect evidence for a separate journal-writer reconciliation. This branch supplies no automatic recovery of those three and never clears a hold from exitCode=0 alone.
+
+## Verification record and host limits
+
+All corrected-source checks use the already-certified /Users/adriana/echo-compute/node/bin/node (v24.14.1) and TMPDIR=/private/tmp. The ambient v24.15.0 initially caused only a native-certificate runtime mismatch; changing the process runtime resolved it without editing a declaration. A first exploratory test run hit the /tmp symlink guard before execution; canonical TMPDIR fixed the setup. Neither is the bug reproduction.
+
+Corrected-source checks completed:
+- 107 tests pass across work-output-repair, journal-obligations, obligation-task-answer-live, runner-task-protocol and call-diagnostics. Log: /tmp/work-repair-regression-corrected.log.
+- Real adapter focused regression: 1 passed, 118 other tests excluded by the explicit name filter (not newly skipped). Log: /tmp/work-repair-adapter-final.log.
+- Typecheck and build pass. Logs: /tmp/work-repair-typecheck-corrected.log and /tmp/work-repair-build-corrected.log.
+- Change-review draft scans all prompt/fixture sources. All eight findings are dispositioned in the committed record. Local validateRecord checks use an explicit mapping from the mandated Studio report location to this handoff copy; that is not claimed to be a Studio landing review.
+
+The desk's lanes/pipeline/ready-gate-tests.py is absent from this checkout (ENOENT), and no remote snapshot URLs were supplied. A previous handoff identified its already-fetched read-only copy at /tmp/attribution-record-1111-ready-gate/ready-gate-tests.py, with driver.py's FAST_FIXED list (Nov 11). Both were inspected; that selector is also run on the final pushed head. It selects journal-obligations, proofs-launcher, e2e/register, integration/register, topic-awareness, constitution-briefing-sync, capability-briefing and journal-boundaries. The seven additional named pinned suites are run directly as well. The desk should confirm its current selector has not changed and perform the full Studio gate. No native Studio contract, real subscription model call or deployed Telegram delivery was run here. The whole-history review checker started on the superseded head was stopped by its observed exact PID 96801 after the design changed; it had no verdict. It is not represented as passing. The mandated Studio report destination is unavailable on this M5, so full Studio Rule 102/landing review belongs to the handoff.
+
+Process history: Initial fake-model tests exposed propagation but omitted the physical observation writer. That suggested a bounded retry; deeper inspection disproved it because every such retry hit the same writer refusal. The retry and schema marker were removed in forward commit 06021d1ac; prior green commits a09cef94e/6e7f7273f are preserved per Rule 112. The initial inference that missing call-outcome mainly meant preflight is withdrawn. The final tree contains only the four-line admission fix. No unexpected exit 137 occurred. No load burner, stash, force push, hook bypass or pattern kill was used. core.hooksPath was unset and the common hooks directory contained only sample hooks.
+
+Desk handoff: copy this report to /Users/dabombstudio/.instar/agents/echo/.instar/lanes/work-repair-uncertain-1112-build-report.md, the path cited by the committed review. Creating /Users/dabombstudio on this host was refused; that refusal was not bypassed. This local report destination is the task's explicit remote-handoff exception. No .instar file was staged or committed. Independent Astra compliance/convergence and live landing remain with the desk.
+
+## Final-head results
+
+- npm run lint: exit 0; architecture checks passed; register-wiring issues=[] (68 declared static-proof residual entries, no finding). Log: /tmp/work-repair-lint-final.log.
+- npm run register:check (node scripts/build-register.mjs --check): exit 0; generation f415b0c43deb5c060bbf8fe3db3366c312c3b4061618be60c4472d4af23cb9b9, 308 entries, 123 rules, check=true. Log: /tmp/work-repair-register-final.log.
+- Seven additional pinned suites: 60 passed, 1 existing skipped, 7 files passed on the final pushed head (249.59 seconds). Log: /tmp/work-repair-pinned-final.log.
+- Local final review-record validation: 8 scanned prompt findings dispositioned, generated deferral dispositioned, no skips added, errors=[], notes=[]. Report mapping is explicit, not a claimed whole-history or independent landing verdict. Log: /tmp/work-repair-record-final.log.
+- git diff --check origin/main...HEAD, git diff --check and git diff --cached --check: all exit 0.
+
+Pushed-head evidence:
+
+```text
+$ git status --porcelain
+```
+No output: clean worktree.
+
+```text
+$ git show --stat aa324c0994e75c5986a2ebb2d2ba366705fe178f
+commit aa324c0994e75c5986a2ebb2d2ba366705fe178f
+Author: Adriana <adriana@mac.lan>
+Date:   Thu Nov 12 10:14:12 2026 -0800
+
+    build: publish register for reserved repair diagnostics
+
+ generated/capabilities.json                         | 4 ++--
+ generated/capabilities.md                           | 4 ++--
+ generated/coverage.md                               | 4 ++--
+ generated/glossary.md                               | 4 ++--
+ generated/register.json                             | 2 +-
+ generated/required-release-checks.json              | 4 ++--
+ generated/rules.md                                  | 4 ++--
+ generated/source.json                               | 4 ++--
+ reviews/work-repair-uncertain-1112-change-review.md | 3 +++
+ 9 files changed, 18 insertions(+), 15 deletions(-)
+```
+
+The corrected source commit is an ancestor of that pushed head:
+
+```text
+$ git show --stat 06021d1ac3dcc4c7bde939e8167eef5bbc17be5e
+commit 06021d1ac3dcc4c7bde939e8167eef5bbc17be5e
+Author: Adriana <adriana@mac.lan>
+Date:   Thu Nov 12 10:13:36 2026 -0800
+
+    fix: admit physical outcomes for reserved work repairs
+
+ .../work-repair-uncertain-1112-change-review.md    |  44 +++---
+ .../production-provider-subscription.test.ts       |  56 +++++++
+ tests/preview/journal.ts                           |  37 ++---
+ tests/preview/work-output-repair.test.ts           | 167 +++++++++------------
+ 4 files changed, 166 insertions(+), 138 deletions(-)
+```
+
+READY selector result: 8 files passed, 135 tests passed, exit 0 on the final pushed head (545.87 seconds), including all 17 register end-to-end cases. Log: /tmp/work-repair-ready-gate-final.log. No host-dependent test failure remains. The selector came from the inspected Nov 11 cached Studio FAST_FIXED snapshot; the desk can compare it to its current list.
+
+Final verification after the last suite:
+
+```text
+$ git status --porcelain
+```
+No output: clean.
+
+```text
+$ git show --stat aa324c0994e75c5986a2ebb2d2ba366705fe178f
+commit aa324c0994e75c5986a2ebb2d2ba366705fe178f
+Author: Adriana <adriana@mac.lan>
+Date:   Thu Nov 12 10:14:12 2026 -0800
+
+    build: publish register for reserved repair diagnostics
+
+ generated/capabilities.json                         | 4 ++--
+ generated/capabilities.md                           | 4 ++--
+ generated/coverage.md                               | 4 ++--
+ generated/glossary.md                               | 4 ++--
+ generated/register.json                             | 2 +-
+ generated/required-release-checks.json              | 4 ++--
+ generated/rules.md                                  | 4 ++--
+ generated/source.json                               | 4 ++--
+ reviews/work-repair-uncertain-1112-change-review.md | 3 +++
+ 9 files changed, 18 insertions(+), 15 deletions(-)
+```
+
+Remote refs/heads/work-repair-uncertain-1112 equals aa324c0994e75c5986a2ebb2d2ba366705fe178f. Every changed repository file is in a pushed commit; the report is deliberately outside git. Whitespace checks against origin/main and both working/index diffs all exit 0.
+
+Copy this report to /Users/dabombstudio/.instar/agents/echo/.instar/lanes/work-repair-uncertain-1112-build-report.md before the Studio landing check. The native conformance checker passes under the certified Node runtime; no declaration was edited or renewed here. The following marker is the standing non-Studio handoff requirement: the desk owns any native re-pin required by the combined live composition.
+
+R105-REPIN-NEEDED
+READY aa324c0994e75c5986a2ebb2d2ba366705fe178f
