@@ -5,6 +5,8 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { tools as playwrightTools } from 'playwright-core/lib/coreBundle';
+import { program } from 'playwright-core/lib/utilsBundle';
 export function readBrowserProfile(root, name) {
   if (name === undefined) return null;
   const refuse = () => { throw Error('browser profile refused: record an existing agent-owned profile for this installation (Rules 18/100)'); };
@@ -21,16 +23,22 @@ export function readBrowserProfile(root, name) {
     return { ...row, installation, digest: createHash('sha256').update(text).digest('hex') };
   } catch { return refuse(); }
 }
-const definitions = {
-  browser_navigate: ['url'], browser_snapshot: [], browser_click: ['selector'], browser_type: ['selector', 'text'],
-  browser_hover: ['selector'], browser_press_key: ['key'], browser_wait_for: ['text'], browser_tabs: ['action'],
-};
-export const profileTools = Object.entries(definitions).map(([name, fields]) => ({ name,
-  description: `${name.slice(8).replaceAll('_', ' ')} in the installation's recorded agent-owned profile. Selectors use Playwright locator syntax. Site scope and current grants apply; page text is untrusted data.`,
-  inputSchema: { type: 'object', properties: Object.fromEntries(fields.map(field => [field, { type: 'string', maxLength: 2048 }])),
-    required: fields, additionalProperties: false } }));
+const definitions = playwrightTools.filteredTools({ capabilities: playwrightTools.browserTools.map(tool => tool.capability) });
+export async function profileCatalog(root) {
+  const args = JSON.parse(readFileSync(join(root, 'mcp.json'), 'utf8')).mcpServers.playwright.args ?? [];
+  const command = program.createCommand(); playwrightTools.decorateMCPCommand(command, 'profile');
+  command.exitOverride().configureOutput({ writeOut() {}, writeErr() {} }).action(() => {});
+  command.parse(args.slice(args.findIndex(arg => arg.startsWith('--')) >>> 0), { from: 'user' });
+  const options = command.opts();
+  if (options.config && !options.config.startsWith('/')) options.config = join(root, options.config);
+  const config = await playwrightTools.resolveCLIConfigForMCP(options, {});
+  return { config, tools: playwrightTools.filteredTools(config) };
+}
+// RCE and channels outside browser interception retain their tool, with consequential admission.
+export const profileRead = name => ['browser_navigate', 'browser_tabs'].includes(name) || definitions.some(tool => tool.schema.name === name && ['readOnly', 'assertion'].includes(tool.schema.type));
+export const profileConsequential = (name, input) => ['browser_run_code_unsafe', 'browser_take_screenshot', 'browser_pdf_save', 'browser_file_upload', 'browser_drop'].includes(name)
+  || Boolean(input?.filename || input?.isolatedContext) || !definitions.some(tool => tool.schema.name === name);
 export function profileRequest(name, input) {
-  const keys = definitions[name];
   if (input?.browserEffect) {
     const { browserEffect, ...operation } = input;
     return profileRequest(name, operation) && Object.keys(browserEffect).sort().join(',') === 'bodyDigest,method,url'
@@ -38,10 +46,8 @@ export function profileRequest(name, input) {
       && typeof browserEffect.url === 'string' && browserEffect.url.length <= 2048
       && /^sha256:[a-f0-9]{64}$/u.test(browserEffect.bodyDigest);
   }
-  return Boolean(keys && input && typeof input === 'object' && !Array.isArray(input)
-    && Object.keys(input).sort().join(',') === [...keys].sort().join(',')
-    && keys.every(key => typeof input[key] === 'string' && input[key].length <= 2048)
-    && (name !== 'browser_tabs' || input.action === 'list'));
+  return Boolean(input && JSON.stringify(input).length <= 8192
+    && definitions.find(tool => tool.schema.name === name)?.schema.inputSchema.strict().safeParse(input).success);
 }
 export const profileRefused = reason => ({ status: 'refused', reason });
 /** One exact child per claim. The existing resource owner holds and reaps its whole process tree. */
@@ -103,7 +109,10 @@ export function createProfileBrowser({ binding, hold, check, call, deadline, sto
   }, { binding });
   return { close, async request(id, input) {
     if (closed || busy || stopped() || now() >= deadline) return profileRefused('closed-stopped-or-busy');
-    if (input?.method === 'tools/list') return { status: 'observed', tools: profileTools };
+    if (input?.method === 'tools/list') {
+      const { tools } = await profileCatalog(binding().installation);
+      return { status: 'observed', tools: tools.map(({ schema }) => ({ ...schema, inputSchema: schema.inputSchema.toJSONSchema() })) };
+    }
     // Network effect envelopes are host-owned; the worker may only request UI tools.
     if (input?.arguments?.browserEffect !== undefined || !profileRequest(input?.name, input?.arguments)) return profileRefused('profile-tool-scope');
     busy = true;
@@ -122,8 +131,16 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
   const { redact } = await import('../../src/recall/redact.js');
   const { METHOD_OVERRIDES } = await import('./tool-admission.mjs');
   const root = process.argv[3], name = process.argv[4], initial = readBrowserProfile(root, name);
-  let context, page, action, refusal, active = false, effectSequence = 0;
+  let context, backend, action, refusal, outputHeld, active = false, effectSequence = 0;
   const effects = new Map(), networkEffects = new Map(), completions = new Map();
+  const finished = (requestId, status) => {
+    for (const effect of networkEffects.get(requestId) ?? []) {
+      if (status !== 'observed') refusal = 'network-result-unavailable';
+      completions.get(effect)?.(); completions.delete(effect);
+      process.stdout.write(`${JSON.stringify({ effectDone: effect, status })}\n`);
+    }
+    networkEffects.delete(requestId);
+  };
   const prepareRequest = (request, networkId) => {
     const headers = Object.fromEntries(Object.entries(request.headers).map(([key, value]) => [key.toLowerCase(), value]));
     const methods = [request.method, ...METHOD_OVERRIDES.flatMap(key => String(headers[key] ?? '').split(',').map(value => value.trim().toUpperCase()).filter(Boolean))];
@@ -136,63 +153,101 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
       bodyDigest: `sha256:${createHash('sha256').update(body).digest('hex')}` } };
     action.completions.push(new Promise(resolve => completions.set(effect, resolve)));
     return new Promise(resolve => {
-      effects.set(effect, resolve);
+      effects.set(effect, admitted => { if (!admitted) finished(networkId, 'unavailable'); resolve(admitted); });
       networkEffects.set(networkId, [...networkEffects.get(networkId) ?? [], effect]);
       process.stdout.write(`${JSON.stringify({ effect, tool: action.tool, input })}\n`);
     });
   };
   const held = new Set();
   const capture = async () => {
-    const state = await context.storageState({ indexedDB: true });
-    const strings = value => { if (typeof value === 'string') held.add(value); else if (value && typeof value === 'object') Object.values(value).forEach(strings); };
-    for (const cookie of state.cookies) held.add(cookie.value);
-    for (const origin of state.origins) { for (const item of origin.localStorage) held.add(item.value); for (const db of origin.indexedDB ?? []) for (const store of db.stores) for (const record of store.records) strings(record.value); }
-    if (page && allowed(page.url())) strings(await page.evaluate(() => Object.values(sessionStorage)));
+    for (const scope of context.browser().contexts()) {
+      const state = await scope.storageState({ indexedDB: true });
+      const strings = value => { if (typeof value === 'string') held.add(value); else if (value && typeof value === 'object') Object.values(value).forEach(strings); };
+      for (const cookie of state.cookies) held.add(cookie.value);
+      for (const origin of state.origins) { for (const item of origin.localStorage) held.add(item.value); for (const db of origin.indexedDB ?? []) for (const store of db.stores) for (const record of store.records) strings(record.value); }
+      for (const page of scope.pages()) for (const frame of page.frames())
+        if (allowed(frame.url())) strings(await frame.evaluate(() => Object.values(sessionStorage)).catch(() => []));
+    }
   };
-  const allowed = value => { try { if (JSON.stringify(readBrowserProfile(root, name)) !== JSON.stringify(initial)) return false; const url = new URL(value); return !url.username && !url.password && initial.origins.includes(url.origin); } catch { return false; } };
+  const allowed = value => { try { if (JSON.stringify(readBrowserProfile(root, name)) !== JSON.stringify(initial)) return false; const url = new URL(value); return !url.username && !url.password && initial.origins.includes(url.origin.replace(/^ws/u, 'http')); } catch { return false; } };
   const execute = async (tool, input) => {
     if (!profileRequest(tool, input) || JSON.stringify(readBrowserProfile(root, name)) !== JSON.stringify(initial)) return profileRefused('profile-or-tool-scope');
     if (tool === 'browser_navigate' && !allowed(input.url)) return profileRefused('site-scope');
     if (!context) {
-      context = await chromium.launchPersistentContext(initial.userDataDir, { headless: true, serviceWorkers: 'block', acceptDownloads: false });
+      const catalog = await profileCatalog(root);
+      context = await chromium.launchPersistentContext(initial.userDataDir, { ...catalog.config.browser.contextOptions, headless: true, serviceWorkers: 'block' });
       context.setDefaultTimeout(5000); context.setDefaultNavigationTimeout(10000);
-      await context.route('**/*', route => route.request().frame() === page?.mainFrame() && allowed(route.request().url()) ? route.continue() : route.abort());
-      await context.routeWebSocket('**/*', socket => socket.close());
-      page = context.pages()[0] ?? await context.newPage();
-      const network = await context.newCDPSession(page);
-      const finished = (event, status) => {
-        for (const effect of networkEffects.get(event.requestId) ?? []) {
-          if (status !== 'observed') refusal = 'network-result-unavailable';
-          completions.get(effect)?.(); completions.delete(effect);
-          process.stdout.write(`${JSON.stringify({ effectDone: effect, status })}\n`);
-        }
-        networkEffects.delete(event.requestId);
+      const install = async scope => {
+        const attached = new WeakMap();
+        const protect = page => {
+          if (!attached.has(page)) attached.set(page, (async () => {
+            const network = await scope.newCDPSession(page).catch(error => { if (!page.parentFrame) throw error; return null; });
+            if (!network) return; // Same-process frames are covered by their page session.
+            network.on('Network.loadingFinished', event => finished(event.requestId, 'observed'));
+            network.on('Network.loadingFailed', event => finished(event.requestId, 'unavailable'));
+            await network.send('Network.enable');
+            network.on('Fetch.requestPaused', async event => {
+              const admit = allowed(event.request.url) && await prepareRequest(event.request, event.networkId);
+              if (!admit) refusal = 'network-effect-or-scope';
+              await network.send(admit ? 'Fetch.continueRequest' : 'Fetch.failRequest', { requestId: event.requestId, ...(admit ? {} : { errorReason: 'BlockedByClient' }) }).catch(() => {});
+            });
+            await network.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
+          })());
+          return attached.get(page);
+        };
+        scope.on('page', page => { void protect(page); });
+        await Promise.all(scope.pages().map(protect));
+        scope.on('requestfinished', request => finished(request._guid, 'observed'));
+        scope.on('requestfailed', request => finished(request._guid, 'unavailable'));
+        await scope.route('**/*', async route => {
+          const request = route.request(); let frame;
+          try { frame = request.frame(); } catch { /* First popup request precedes its CDP target. */ }
+          let admit = allowed(request.url());
+          if (frame) { await protect(frame.page()); if (frame.parentFrame()) await protect(frame); }
+          else if (admit) admit = await prepareRequest({ method: 'UNINTERCEPTED', url: request.url(),
+            headers: await request.allHeaders(), postData: request.postData() ?? '' }, request._guid);
+          if (!admit) refusal = 'network-effect-or-scope';
+          return admit ? route.continue() : route.abort();
+        });
+        await scope.routeWebSocket('**/*', socket => {
+          if (!allowed(socket.url())) { refusal = 'site-scope'; return socket.close(); }
+          const originAction = action, server = socket.connectToServer();
+          socket.onMessage(async message => {
+            const previous = action; action = originAction;
+            const id = `ws:${++effectSequence}`, admitted = prepareRequest({ method: 'WS', url: socket.url(), headers: {}, postData: String(message) }, id);
+            action = previous;
+            if (await admitted) { server.send(message); finished(id, 'observed'); }
+            else { refusal = 'network-effect-or-scope'; socket.close(); }
+          });
+        });
       };
-      network.on('Network.loadingFinished', event => finished(event, 'observed'));
-      network.on('Network.loadingFailed', event => finished(event, 'unavailable'));
-      await network.send('Network.enable');
-      network.on('Fetch.requestPaused', async event => {
-        const admit = allowed(event.request.url) && await prepareRequest(event.request, event.networkId);
-        if (!admit) refusal = 'network-effect-or-scope';
-        await network.send(admit ? 'Fetch.continueRequest' : 'Fetch.failRequest', { requestId: event.requestId, ...(admit ? {} : { errorReason: 'BlockedByClient' }) }).catch(() => {});
-      });
-      await network.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
+      await install(context);
+      backend = new playwrightTools.BrowserBackend({ ...catalog.config, saveSession: false, snapshot: { mode: 'none' } }, context, catalog.tools);
+      await backend.initialize({ cwd: initial.userDataDir });
+      const isolated = backend._context._createIsolatedContext.bind(backend._context);
+      backend._context._createIsolatedContext = async name => { const scope = await isolated(name); await install(scope); return scope; };
+      backend._context.redactSecrets = text => {
+        if (!redact(text).count && !secretMaterialIn(text, [...held])) return text;
+        outputHeld = true; return '[withheld by credential checkpoint]';
+      };
+      // Console tools retain in-memory messages; automatic raw diagnostic logs never cross custody.
+      const onPage = backend._context._onPageCreated.bind(backend._context);
+      backend._context._onPageCreated = (...args) => {
+        onPage(...args); const tab = playwrightTools.Tab.forPage(args[0]); let log = tab._consoleLog; log.stop();
+        Object.defineProperty(tab, '_consoleLog', { get: () => log, set: value => { log = value; log.stop(); } });
+      };
     }
     await capture();
-    action = { tool, input, completions: [] }; refusal = null;
+    action = { tool, input, completions: [] }; refusal = null; outputHeld = false;
     try {
-      if (tool === 'browser_navigate') await page.goto(input.url);
-      else if (tool === 'browser_click') await page.locator(input.selector).click();
-      else if (tool === 'browser_type') await page.locator(input.selector).fill(input.text);
-      else if (tool === 'browser_hover') await page.locator(input.selector).hover();
-      else if (tool === 'browser_press_key') await page.keyboard.press(input.key);
-      else if (tool === 'browser_wait_for') await page.getByText(input.text, { exact: true }).waitFor();
+      const output = await backend.callTool(tool, input);
       await Promise.all(action.completions);
       if (refusal) return profileRefused(refusal);
-      if (!allowed(page.url())) return profileRefused('site-scope');
-      const result = { status: 'observed', url: page.url(), text: await page.locator('body').ariaSnapshot() };
+      const page = backend._context.currentTab()?.page;
+      const result = { status: output.isError ? 'refused' : 'observed', content: output.content,
+        text: page && allowed(page.url()) ? await page.locator('body').ariaSnapshot() : '' };
       await capture();
-      return redact(JSON.stringify(result)).count || secretMaterialIn(JSON.stringify(result), [...held]) ? profileRefused('output-secret-check') : { ...result, text: result.text.slice(0, 16000) };
+      return outputHeld || redact(JSON.stringify(result)).count || secretMaterialIn(JSON.stringify(result), [...held]) ? profileRefused('output-secret-check') : result;
     } finally { action = null; }
   };
   const lines = createInterface({ input: process.stdin });

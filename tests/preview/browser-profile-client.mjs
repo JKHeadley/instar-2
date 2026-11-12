@@ -19,5 +19,6 @@ createInterface({ input: process.stdin }).on('line', async line => {
   if (row.method === 'initialize') return send({ protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'playwright', version: '1' } });
   const result = await read(row.id, row.method === 'tools/list' ? { method: row.method } : row.params);
   send(row.method === 'tools/list' && result.tools ? { tools: result.tools }
-    : { content: [{ type: 'text', text: JSON.stringify(result) }], isError: result.status !== 'observed' });
+    : { content: [{ type: 'text', text: JSON.stringify({ ...result, content: result.content?.filter(part => part.type !== 'image') }) },
+      ...(result.status === 'observed' ? result.content?.filter(part => part.type === 'image') ?? [] : [])], isError: result.status !== 'observed' });
 });

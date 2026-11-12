@@ -188,7 +188,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       if (profileBrowser() && tool.startsWith('mcp__playwright__')) return profileRequest(tool.slice(17), call.tool_input) && !redact(JSON.stringify(call.tool_input)).count && held(JSON.stringify(call.tool_input)) === 'clear'
         && effects.authorized({ parent: state.edge, tool, input: call.tool_input })
         ? { decision: 'allow', reason: 'profile browser client allowed; host rechecks at execution' }
-        : { decision: 'deny', reason: 'profile browser scope or grant unavailable' };
+        : { decision: 'deny', reason: `profile browser requires current tool:mcp scope grant naming target=${tool} and the selected browserProfile (Rules 18/57)` };
       if (tool === OWNER_BROWSER_TOOL) return ownerBrowser && ownerBrowserRequest(call.tool_input)
         && effects.authorized({ parent: state.edge, tool, input: call.tool_input })
         ? { decision: 'allow', reason: 'owner read client allowed; owner rechecks at execution' }
@@ -282,7 +282,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       let cause;
       const authorized = () => !closed() && effects.authorized({ parent: state.edge, tool, input, cause });
       if (!valid || (supplied && (held(JSON.stringify(input)) !== 'clear' || redact(JSON.stringify(input)).count > 0)) || typeof call !== 'string' || !/^[A-Za-z0-9._:-]{1,200}$/u.test(call) || !browser || !authorized())
-        return ownerBrowserRefused('scope-grant-or-owner-unavailable');
+        return ownerBrowserRefused(supplied ? `scope-grant-or-owner-unavailable: requires current tool:mcp scope grant naming target=${tool} and the selected browserProfile (Rules 18/57)` : 'scope-grant-or-owner-unavailable');
       if (state.effects.has(call)) return ownerBrowserRefused('identity-in-use');
       if (state.ownerReads.has(call)) return ownerBrowserRefused('already-prepared');
       if (state.ownerReads.size >= state.allowance) return ownerBrowserRefused('claim-read-budget');

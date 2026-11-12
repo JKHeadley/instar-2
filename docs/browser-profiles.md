@@ -22,37 +22,48 @@ ownership and sign-in profiles refuse. Enrollment does not verify that a site's
 current account matches its recorded identity: it records the dedicated profile's
 custody; the resulting page supplies evidence of its current login state.
 
-The signed-profile client advertises navigate, snapshot, wait-for, tab-list, click,
-type, hover and key-press tools. Its locator arguments are explicit Playwright
-selectors. Snapshot returns a bounded accessibility tree. It deliberately does not
-reuse MCP's raw diagnostic files: they can contain page credentials before the
-host can check them. Raw JavaScript, storage export, arbitrary host files, images,
-network/console dumps and extra browsing targets are outside this adapter's
-credential-safe projection (purpose's secrets floor; Rules 18/57/100). The ordinary
-fresh-profile MCP still exposes its existing tools. This slice does not establish
-full browser-tool parity for row 31.
+The signed-profile client advertises the configured pinned Playwright catalog,
+including configured capabilities, using its original schemas and tool handlers.
+Tabs, embedded frames and WebSockets remain available. Tool results retain their
+MCP content, including admitted image blocks, plus a checked accessibility snapshot.
+Tool inputs use the pinned MCP schema (for example `target`, rather than the older
+adapter's `selector`). No tool name is removed to enforce profile safeguards.
 
-Read classification is restricted to recorded navigate, snapshot, wait-for and
-list-tabs reads. Each other supported operation requires a current effect-policy
-grant with `effect`, exact `target`, `browserProfile` and `approves` containing
-scope, plus the existing source/custodian/recovery and optional expiry fields.
-Existing effect registration, resource and sensitive-matter tests still apply.
-A read-list entry cannot turn a click into an ordinary read. The exact profile and
-policy accompany durable preparation, and an uncertain write is never retried.
-An exact profile grant does not change the doorway's registered reversibility:
-separate reversible UI calls retain separate call identities; registered
-consequential effects retain stable duplicate protection before dispatch. An actual
-non-GET/HEAD request also passes the existing effect owner before network dispatch,
-with the current tool/profile grant, URL, method and body digest. Its preparation
-is irreversible even when the UI operation that triggered it is reversible.
-Workers cannot submit the host's network-effect envelope as a UI tool argument.
+Configured reads and registered ordinary tab operations remain ordinary.
+Signed-in writes require the current effect policy's exact `tool:mcp` target and `browserProfile` scope grant; the existing
+resource and sensitive-matter tests still apply. Registration retains ordinary
+UI reversibility, so two separately requested ArrowDown calls both work. Actual
+non-GET/HEAD traffic receives a separate durable consequential identity containing
+the tool input, method, URL and body digest; uncertain writes cannot be repeated.
+Workers cannot supply this host-owned request envelope.
 
-Only the primary page is observed. Other frame/page requests and WebSockets are
-refused. Main-page requests, including redirects, are intercepted before dispatch
-and checked against recorded origins. Non-GET/HEAD traffic is allowed only during
-an admitted write. Browser errors are returned as bounded refusals. Cookies,
-local/session storage and IndexedDB strings stay host-side and are checked before
-any observation is returned; raw browser stderr is not exposed or journaled.
+`browser_run_code_unsafe` executes in the server process and can use `fetch`
+outside browser interception. Each call therefore passes the existing effect
+owner as consequential, even if a read list or reversible registration says
+otherwise. The refusal names the required target and profile grant. Filename
+operations, isolated-context creation and binary/file transfer tools also use
+this class where ordinary request/text interception cannot cover the operation.
+The grant authorizes the whole such operation, including its un-intercepted
+channels; it is not a claim that its traffic was inspected by Chromium.
+
+Every page and frame uses context routing and Chromium request interception.
+Named isolated contexts receive the same installation before their pages open.
+The pinned backend's first popup request has no frame/CDP target yet: that exact
+request is instead admitted as an `UNINTERCEPTED` consequential operation before
+dispatch. WebSocket origins are checked and each outgoing message passes the
+same effect owner with a body digest; receiving messages remains ordinary.
+HTTP observations follow network completion. WebSocket observations mean a
+message was handed to the transport, not that the remote application accepted it.
+
+Cookies, local/session storage and IndexedDB strings are inventoried across
+browser contexts and frames before and after tool execution. Credential checks
+run before output reaches the worker or its journal. Automatic MCP snapshot and
+console files are not published; console tools retain their in-memory messages
+and use the same checked output. The host child's stderr is not exposed. Existing
+claim lifetime, operation timeout, input/output bounds, ownership and stop checks
+still apply. The host continues to use the pinned Chromium runtime and the
+existing service-worker-blocked launch profile; this unit proves tab, frame,
+WebSocket and configured-tool restoration, not unrestricted browser networking.
 
 This state is deliberately machine-local (Rules 31/32/63/113). A different serving
 machine cannot use this directory or silently start a fresh replacement. Its own

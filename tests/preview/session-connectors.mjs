@@ -1,7 +1,7 @@
 // Continuing sessions reuse the per-call connector custody and launch preparation.
 // Machine-local, bounded by the session lifetime; root configuration is the recorded account scope.
 import { classifyEffect, decodeEffectPolicy } from './effect-doorway.mjs';
-import { createProfileBrowser } from './browser-profile.mjs';
+import { createProfileBrowser, profileConsequential, profileRead } from './browser-profile.mjs';
 import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -57,19 +57,20 @@ export function admitSessionConnector({ tool, input, config, mcp, enabled, now, 
   if (tool !== 'mcp__owner_github__observe' && (!mcp || !Object.keys(mcp.servers).some(name => tool.startsWith(`mcp__${name}__`))))
     return { admitted: false, reason: 'connector is outside the currently granted account set' };
   const networkEffect = mcp?.browserProfile && tool.startsWith('mcp__playwright__') && input?.browserEffect;
-  const reads = mcp?.browserProfile ? mcp.reads.filter(read => (!networkEffect || read !== tool) && (!read.startsWith('mcp__playwright__') || ['browser_navigate', 'browser_snapshot', 'browser_wait_for', 'browser_tabs'].some(name => read === `mcp__playwright__${name}`))) : mcp?.reads ?? [];
+  const consequential = mcp?.browserProfile && tool.startsWith('mcp__playwright__') && profileConsequential(tool.slice(17), input);
+  const reads = mcp?.browserProfile ? mcp.reads.filter(read => (!(networkEffect || consequential) || read !== tool) && (!read.startsWith('mcp__playwright__') || profileRead(read.slice(17)))) : mcp?.reads ?? [];
   const current = { ...config, mcpReads: reads, operations: enabled ? [...config.operations, 'tool:mcp'] : config.operations.filter(operation => operation !== 'tool:mcp') };
   const writing = mcp?.browserProfile && tool.startsWith('mcp__playwright__') && !reads.includes(tool);
   if (writing) {
     let grants = [];
     try { grants = classifyEffect({ effect: 'tool:mcp', target: tool }, decodeEffectPolicy(config.effectPolicy), { now }).grants; } catch { /* unavailable grants refuse */ }
     if (!grants.some(grant => grant.target === tool && grant.browserProfile === mcp.browserProfile.id && grant.approves.includes('scope')))
-      return { admitted: false, reason: 'signed-in writes require a current grant naming the tool and browserProfile (Rules 18/57)' };
+      return { admitted: false, reason: `signed-in effects require a current tool:mcp scope grant naming target=${tool} and browserProfile=${mcp.browserProfile.id} (Rules 18/57)` };
   }
   // Only the host browser emits this envelope, at the actual HTTP write boundary.
   // UI reversibility cannot make an external request reversible. Retain all other
   // cost, scope and sensitive-matter tests and the same exact tool/profile grant.
-  if (networkEffect) {
+  if (networkEffect || consequential) {
     const policy = decodeEffectPolicy(config.effectPolicy);
     const classification = classifyEffect({ effect: 'tool:mcp', target: tool }, policy, { now });
     const registered = policy.registered.find(row => row.effect === 'tool:mcp' && (!row.target || row.target === tool));

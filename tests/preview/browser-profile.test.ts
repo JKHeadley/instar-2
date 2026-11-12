@@ -7,8 +7,10 @@ import { mkdtempSync, chmodSync, mkdirSync, readFileSync, readdirSync, realpathS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
+// @ts-expect-error pinned Playwright's own websocket server
+import { wsServer } from 'playwright-core/lib/utilsBundle';
 // @ts-expect-error host adapter
-import { readBrowserProfile, profileRequest, createProfileBrowser } from './browser-profile.mjs';
+import { readBrowserProfile, profileRequest, createProfileBrowser, profileCatalog } from './browser-profile.mjs';
 // @ts-expect-error host connector
 import { prepareSessionConnectors, admitSessionConnector } from './session-connectors.mjs';
 // @ts-expect-error host configuration
@@ -19,15 +21,16 @@ import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs
 import { admitToolCallEffect } from './tool-admission.mjs';
 // @ts-expect-error shipped default
 import { DEFAULT_MCP } from '../../scripts/mcp-setup.mjs';
+const configuredMcp = { ...DEFAULT_MCP, mcpServers: { playwright: { ...DEFAULT_MCP.mcpServers.playwright, args: [...DEFAULT_MCP.mcpServers.playwright.args, '--caps', 'vision'] } } };
 const cleanup: (() => Promise<unknown> | void)[] = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); });
 const fresh = () => { const root = realpathSync(mkdtempSync(join(tmpdir(), 'profile-proof-'))); cleanup.push(() => rmSync(root, { recursive: true, force: true })); return root; };
 const enroll = (root: string, origin: string) => {
   const row = { id: 'agent-browser', identity: 'local-agent', service: 'fake-site', ownership: 'agent', purpose: 'browsing',
-    userDataDir: join(root, 'browser-profiles', 'agent-browser'), origins: [origin] };
+    userDataDir: join(root, 'browser-profiles', 'agent-browser'), origins: [origin, origin.replace('127.0.0.1', 'localhost')] };
   mkdirSync(row.userDataDir, { recursive: true, mode: 0o700 });
   writeFileSync(join(root, 'browser-profiles.json'), JSON.stringify({ installation: root, profiles: [row] }));
-  writeFileSync(join(root, 'mcp.json'), JSON.stringify({ ...DEFAULT_MCP, browserProfile: row.id }));
+  writeFileSync(join(root, 'mcp.json'), JSON.stringify({ ...configuredMcp, browserProfile: row.id }));
   return row;
 };
 function client(command: string, args: string[], env?: Record<string, string>, cwd?: string) {
@@ -76,6 +79,12 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   let writes = 0, preparedAtWrite = false, observedBeforeWrite = false; const authenticatedRequests: boolean[] = [];
   const server = createServer((req, res) => {
     const authenticated = req.headers.cookie === `session=${secret}`; authenticatedRequests.push(authenticated);
+    if (req.url === '/popup') { res.setHeader('Content-Type', 'text/html'); res.end('<form method="post" target="_blank" action="/popup-write"><button>Popup save</button></form>'); return; }
+    if (req.url === '/frame') { res.setHeader('Content-Type', 'text/html'); res.end('<h2>Embedded frame works</h2><form method="post"><button>Frame save</button></form>'); return; }
+    if (req.url === '/frame-write') { res.setHeader('Content-Type', 'text/html'); res.end('<h2>Frame write</h2><script>fetch("/frame-post",{method:"POST",body:"frame-probe"})</script>'); return; }
+    if (req.url === '/cross-frame') { res.setHeader('Content-Type', 'text/html'); res.end(`<h1>Cross frame</h1><iframe src="http://localhost:${(server.address() as {port: number}).port}/frame-write"></iframe>`); return; }
+    if (req.url === '/framed') { res.setHeader('Content-Type', 'text/html'); res.end('<h1>Frame parent</h1><iframe src="/frame"></iframe>'); return; }
+    if (req.url === '/ws') { res.setHeader('Content-Type', 'text/html'); res.end('<h1>Socket waiting</h1><script>const s=new WebSocket(location.origin.replace("http","ws"));s.onopen=()=>s.send("local-message");s.onmessage=e=>document.querySelector("h1").textContent=e.data;</script>'); return; }
     if (req.url === '/new-token') { res.setHeader('Content-Type', 'text/html'); res.end(`<body>${displayedToken}</body>`); return; }
     if (req.url === '/escape') { res.writeHead(302, { Location: escape }); res.end(); return; }
     if (req.url === '/same-site') { res.writeHead(302, { Location: '/' }); res.end(); return; }
@@ -110,14 +119,20 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   cleanup.push(() => persisted.close());
   expect((await persisted.cookies()).some(cookie => cookie.value === secret), 'throwaway seed persists').toBe(true);
   await persisted.close();
+  let socketMessages = 0;
+  const sockets = new wsServer({ server });
+  sockets.on('connection', (socket: { on: (name: string, fn: () => void) => void; send: (text: string) => void }) => socket.on('message', () => { socketMessages++; socket.send('WebSocket works'); }));
+  cleanup.push(() => { for (const socket of sockets.clients) socket.terminate(); sockets.close(); });
   let stopped = false, grant = false;
   const rows: { id: string; state?: string; cause?: string }[] = [], pids: number[] = [];
   const target = 'mcp__playwright__browser_click', keyTarget = 'mcp__playwright__browser_press_key';
+  const codeTarget = 'mcp__playwright__browser_run_code_unsafe';
+  const grantedTools = [target, keyTarget, codeTarget, 'mcp__playwright__browser_tabs', 'mcp__playwright__browser_navigate'];
   const expiresAt = Date.now() + 90000;
   const policy = () => ({ type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [],
-    registered: [target, keyTarget].map(tool => ({ effect: 'tool:mcp', target: tool, consequence: 'data',
+    registered: grantedTools.filter(tool => grant || tool !== 'mcp__playwright__browser_navigate').map(tool => ({ effect: 'tool:mcp', target: tool, consequence: 'data',
       reversibility: 'reversible', reach: 'agent', costUsd: 0, source: 'operator:proof' })),
-    grants: grant ? [target, keyTarget].map(tool => ({ id: tool, browserProfile: row.id, effect: 'tool:mcp', target: tool, approves: ['scope'], source: 'operator:proof', custodian: 'owner', recovery: 'withdraw', expiresAt })) : [] });
+    grants: grant ? grantedTools.map(tool => ({ id: tool, browserProfile: row.id, effect: 'tool:mcp', target: tool, approves: ['scope'], source: 'operator:proof', custodian: 'owner', recovery: 'withdraw', expiresAt })) : [] });
   const append = (record: { id: string; state?: string; cause?: string }) => { rows.push(record); };
   const effects = createToolEffectOwner({ append, stopped: () => stopped, now: Date.now, prepared: (id: string) => rows.some(row => row.id === id),
     decide: (tool: string, input: unknown) => admitSessionConnector({ tool, input, config: { operations: [], effectPolicy: policy() },
@@ -125,7 +140,7 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   const gate = await createAdmissionGate({ append, effects, stopped: () => stopped, now: Date.now, held: (text: string) => text.includes(secret) ? 'held' : 'clear', profileBrowser: () => Boolean(readRootMcp(root)?.browserProfile) });
   cleanup.push(() => gate.stop());
   const deadline = Date.now() + 90000;
-  gate.open('claim', { framework: 'claude-code', allowance: 40, edge: { id: 'proof-edge', child: 'claim', budget: { deadline } } });
+  gate.open('claim', { framework: 'claude-code', allowance: 80, edge: { id: 'proof-edge', child: 'claim', budget: { deadline } } });
   const privateDirectory = join(root, 'private'); mkdirSync(privateDirectory);
   let guestDispatched = false;
   expect((await gate.observeOwner('guest', 'guest-call', {}, { tool: 'mcp__playwright__browser_snapshot',
@@ -140,20 +155,30 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   const launchBytes = readFileSync(prepared.config, 'utf8');
   expect(launchBytes).not.toContain(row.userDataDir); expect(launchBytes).not.toContain(secret);
   const worker = client(command.command, command.args, command.env, root);
-  expect((await worker.rpc('tools/list')).result.tools).toHaveLength(8);
+  const signedTools = (await worker.rpc('tools/list')).result.tools as { name: string }[];
+  expect(signedTools.map(t => t.name).sort()).toEqual((await profileCatalog(root)).tools.map((t: {schema: {name: string}}) => t.schema.name).sort());
+  expect(signedTools.some(tool => tool.name === 'browser_mouse_click_xy')).toBe(true);
   const navigation = await worker.call('browser_navigate', { url: origin });
   expect(navigation.status, navigation.reason).toBe('observed'); expect(navigation.text?.includes('Signed-in workspace'), JSON.stringify({ requests: authenticatedRequests, login: navigation.text?.includes('LOGIN') })).toBe(true);
   expect(await worker.call('browser_snapshot', {})).toMatchObject({ status: 'observed', text: expect.stringContaining('Signed-in workspace') });
-  expect(await worker.call('browser_click', { selector: 'button' })).toMatchObject({ status: 'refused' }); expect(writes).toBe(0);
+  expect(await worker.call('browser_click', { target: 'button' })).toMatchObject({ status: 'refused' }); expect(writes).toBe(0);
   expect(await worker.call('browser_navigate', { url: 'http://127.0.0.1:1/' })).toMatchObject({ status: 'refused', reason: 'site-scope' });
   expect(await worker.call('browser_snapshot', { profile: 'wrong' })).toMatchObject({ status: 'refused' });
-  const overridden = JSON.parse(readFileSync(join(root, 'mcp.json'), 'utf8')); overridden.reads.push(target);
+  const overridden = JSON.parse(readFileSync(join(root, 'mcp.json'), 'utf8')); overridden.reads.push(target, codeTarget);
   writeFileSync(join(root, 'mcp.json'), JSON.stringify(overridden));
-  expect((await worker.call('browser_click', { selector: 'button' })).status).toBe('refused'); expect(writes).toBe(0);
+  expect((await worker.call('browser_click', { target: 'button' })).status).toBe('refused'); expect(writes).toBe(0);
+  const unsafe = { code: `async (page) => { await fetch('${escape}/code', {method:'POST', body:'local-probe'}); return 'Code works'; }` };
+  expect(await worker.call('browser_run_code_unsafe', unsafe)).toMatchObject({ status: 'refused', reason: expect.stringContaining(codeTarget) });
+  expect(escaped).toBe(0);
+  expect(await worker.call('browser_tabs', { action: 'new', isolatedContext: 'separate', url: origin })).toMatchObject({ status: 'refused' });
+  expect(await worker.call('browser_tabs', { action: 'new', url: origin })).toMatchObject({ status: 'observed' });
+  expect(await worker.call('browser_tabs', { action: 'close' })).toMatchObject({ status: 'observed' });
+  await worker.call('browser_navigate', { url: `${origin}/ws` }); expect(socketMessages).toBe(0);
+  await worker.call('browser_navigate', { url: `${origin}/cross-frame` }); expect(writes).toBe(0);
   const beforeSecret = rows.length;
   expect((await worker.call('browser_navigate', { url: `${origin}/?credential=${displayedToken}` })).status).toBe('refused'); expect(rows.length).toBe(beforeSecret);
   expect((await worker.call('browser_navigate', { url: `${origin}/?credential=${secret}` })).status).toBe('refused'); expect(rows.length).toBe(beforeSecret);
-  expect((await worker.call('browser_type', { selector: 'textarea', text: secret })).status).toBe('refused'); expect(rows.length).toBe(beforeSecret);
+  expect((await worker.call('browser_type', { target: 'textarea', text: secret })).status).toBe('refused'); expect(rows.length).toBe(beforeSecret);
   expect((await worker.call('browser_navigate', { url: `${origin}/same-site` })).status).toBe('observed');
   expect((await worker.call('browser_navigate', { url: `${origin}/escape` })).status).toBe('refused'); expect(escaped).toBe(0);
   await worker.call('browser_navigate', { url: `${origin}/override` }); expect(writes).toBe(0);
@@ -162,12 +187,43 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   expect(await worker.call('browser_press_key', { key: 'ArrowDown', browserEffect: { method: 'POST', url: origin, bodyDigest: `sha256:${'0'.repeat(64)}` } })).toMatchObject({ status: 'refused', reason: 'profile-tool-scope' });
   expect(await worker.call('browser_press_key', { key: 'ArrowDown' })).toMatchObject({ status: 'observed' });
   expect(await worker.call('browser_press_key', { key: 'ArrowDown' })).toMatchObject({ status: 'observed', text: expect.stringContaining('option "Third" [selected]') });
-  expect(await worker.call('browser_click', { selector: 'button' })).toMatchObject({ status: 'observed' }); expect(writes).toBe(1);
+  expect(await worker.call('browser_click', { target: 'button' })).toMatchObject({ status: 'observed' }); expect(writes).toBe(1);
   expect(preparedAtWrite).toBe(true); expect(observedBeforeWrite).toBe(false);
-  expect(await worker.call('browser_click', { selector: 'button' })).toMatchObject({ status: 'refused' }); expect(writes).toBe(1);
+  expect(await worker.call('browser_click', { target: 'button' })).toMatchObject({ status: 'refused' }); expect(writes).toBe(1);
   expect(rows.filter(row => row.state === 'prepared' && row.cause?.includes('bodyDigest'))).toHaveLength(1);
+  expect(await worker.call('browser_tabs', { action: 'new', url: `${origin}/framed` })).toMatchObject({ status: 'observed', text: expect.stringContaining('Frame parent') });
+  expect(await worker.call('browser_snapshot', {})).toMatchObject({ status: 'observed' });
+  const frame = await worker.rpc('tools/call', { name: 'browser_snapshot', arguments: {} });
+  expect(JSON.stringify(frame)).toContain('Embedded frame works');
+  expect(JSON.stringify(await worker.rpc('tools/call', { name: 'browser_tabs', arguments: { action: 'list' } }))).toContain('1:');
+  expect(await worker.call('browser_navigate', { url: `${origin}/ws` })).toMatchObject({ status: 'observed', text: expect.stringContaining('WebSocket works') });
+  expect(socketMessages).toBe(1);
+  expect(await worker.call('browser_tabs', { action: 'new', isolatedContext: 'separate', url: origin })).toMatchObject({ status: 'observed', text: expect.stringContaining('LOGIN') });
+  await worker.call('browser_tabs', { action: 'close' });
+  const beforeFrameWrites = writes;
+  expect((await worker.call('browser_navigate', { url: `${origin}/cross-frame` })).status).toBe('observed');
+  expect(writes).toBe(beforeFrameWrites + 1);
+  expect(rows.some(row => row.state === 'prepared' && row.cause?.includes('/frame-post') && row.cause.includes('bodyDigest'))).toBe(true);
+  const preparedCode = () => rows.filter(row => row.state === 'prepared' && row.cause?.includes(codeTarget));
+  const beforeCode = preparedCode().length;
+  expect((await worker.call('browser_run_code_unsafe', unsafe)).status).toBe('observed'); expect(escaped).toBe(1);
+  expect(preparedCode()).toHaveLength(beforeCode + 1);
+  await worker.call('browser_navigate', { url: `${origin}/popup` });
+  const writesBeforePopup = writes;
+  const popup = await worker.call('browser_click', { target: 'button' });
+  expect(popup.status, JSON.stringify(popup)).toBe('observed');
+  expect(writes).toBe(writesBeforePopup + 1);
+  expect(rows.some(row => row.state === 'prepared' && row.cause?.includes('bodyDigest') && row.cause.includes('/popup-write'))).toBe(true);
+  expect((await worker.call('browser_run_code_unsafe', unsafe)).status).toBe('refused'); expect(escaped).toBe(1);
+  const reveal = await worker.call('browser_run_code_unsafe', { code: 'async (page) => (await page.context().cookies()).map(cookie => cookie.value)' });
+  expect(reveal).toMatchObject({ status: 'refused', reason: 'output-secret-check' });
+  expect(JSON.stringify(reveal).includes(secret)).toBe(false);
+  await worker.call('browser_run_code_unsafe', { code: 'async (page) => { const value = (await page.context().cookies())[0].value; await page.evaluate(value => console.log(value), value); return 1; }' });
+  const diagnostics = join(row.userDataDir, '.playwright-mcp');
+  const diagnosticFiles = (() => { try { return readdirSync(diagnostics); } catch { return []; } })();
+  expect(diagnosticFiles.filter(file => file.endsWith('.log'))).toHaveLength(0);
   await worker.call('browser_navigate', { url: `${origin}/lost-form` });
-  expect(await worker.call('browser_click', { selector: 'button' })).toMatchObject({ status: 'refused' });
+  expect(await worker.call('browser_click', { target: 'button' })).toMatchObject({ status: 'refused' });
   const uncertain = rows.find(row => row.state === 'prepared' && row.cause?.includes('bodyDigest') && row.cause.includes(`${origin}/lost`));
   expect(uncertain).toBeDefined();
   expect(rows.some(row => row.id === uncertain!.id && row.state === 'observed')).toBe(false);
@@ -180,16 +236,19 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   expect(JSON.stringify(rows).includes(indexedSecret)).toBe(false); expect(worker.stderr().includes(indexedSecret)).toBe(false);
   expect(JSON.stringify(rows).includes(secret)).toBe(false); expect(worker.stderr().includes(secret)).toBe(false);
   expect(pids).toHaveLength(1); expect(rows.some(row => row.state === 'prepared')).toBe(true);
+  grant = false;
+  expect(await worker.call('browser_run_code_unsafe', { code: 'async () => 2' })).toMatchObject({ status: 'refused', reason: expect.stringContaining(codeTarget) });
   stopped = true; expect(await worker.call('browser_snapshot', {})).toMatchObject({ status: 'refused' });
   expect(() => prepareMcpLaunch({ mcp: readRootMcp(root), privateDirectory: root })).toThrow('host connector');
 
   // Existing no-selection CLI: a different, throwaway profile reaches LOGIN on the same local site.
-  const unsigned = fresh(); writeFileSync(join(unsigned, 'mcp.json'), JSON.stringify(DEFAULT_MCP));
+  const unsigned = fresh(); writeFileSync(join(unsigned, 'mcp.json'), JSON.stringify(configuredMcp));
   expect(readRootMcp(unsigned).browserProfile).toBeNull();
   const unsignedPrivate = join(unsigned, 'private'); mkdirSync(unsignedPrivate);
   const defaultLaunch = prepareMcpLaunch({ mcp: readRootMcp(unsigned), privateDirectory: unsignedPrivate, workspace: unsigned });
   const definition = defaultLaunch.launch.playwright, ordinary = client(definition.command, definition.args, definition.env, unsigned);
   await ordinary.rpc('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'local-profile-proof', version: '1' } });
+  expect(((await ordinary.rpc('tools/list')).result.tools as {name: string}[]).map(t => t.name).sort()).toEqual(signedTools.map(t => t.name).sort());
   const login = await ordinary.rpc('tools/call', { name: 'browser_navigate', arguments: { url: origin } });
   expect(login.result.isError).not.toBe(true);
   const snapshots = readdirSync(join(unsigned, '.playwright-mcp')).filter(name => name.endsWith('.yml'));
@@ -201,9 +260,11 @@ it('replays recorded summary/Jev/review/delivered/empty shapes as data, never pr
   const root = fresh(); enroll(root, 'http://127.0.0.1:9');
   expect(fixture.otherShapes).toHaveLength(7);
   for (const row of fixture.otherShapes as { id: string; raw: string }[]) {
+    expect(admitSessionConnector({ tool: 'mcp__playwright__browser_run_code_unsafe', input: { code: row.raw },
+      config: { operations: [] }, mcp: readRootMcp(root), enabled: true, now: 1, decide: admitToolCallEffect }).admitted, row.id).toBe(false);
     expect(profileRequest('browser_snapshot', { profile: row.raw }), row.id).toBe(false);
-    expect(profileRequest('browser_type', { selector: 'textarea', text: row.raw }), row.id).toBe(row.raw.length <= 2048);
-    expect(admitSessionConnector({ tool: 'mcp__playwright__browser_type', input: { selector: 'textarea', text: row.raw },
+    expect(profileRequest('browser_type', { target: 'textarea', text: row.raw }), row.id).toBe(JSON.stringify({ target: 'textarea', text: row.raw }).length <= 8192);
+    expect(admitSessionConnector({ tool: 'mcp__playwright__browser_type', input: { target: 'textarea', text: row.raw },
       config: { operations: [] }, mcp: readRootMcp(root), enabled: false, now: 1, decide: admitToolCallEffect }).admitted, row.id).toBe(false);
   }
 });
