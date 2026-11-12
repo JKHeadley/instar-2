@@ -75,23 +75,20 @@ const currentChannelNote = (text: string) => compactRecordedNote(text.replace(re
     'saves Telegram files under bounded admission; refusals retain the message.')
   .replace('answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.',
     'answers operator chat/topics; intake encrypts photos, audio and files with text descriptions.')
-  .replace('"status" and "how are you doing" are answered from the journal without a model call.',
-    'answers "status" and "how are you doing" from the journal, without a model call.')
   .replace('keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.',
     'keeps instructions, works promises; sends explicitly requested results, else holds them for the next message.')
   .replace('- generates the register, rules, glossary and this briefing from declarations.',
     '- generates the register, rules, glossary and this briefing from declarations.\n- local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts.')
   // Repair: exact declared summary edits only; historical evidence remains byte-for-byte unchanged.
-  .replace("operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable.", "7-day operator-only pages: {reply:Markdown,privateViewTitle:1–256-char title}; dashboard link or phone-unavailable.")
+  .replace("operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable.", "operator-only pages (7d): {reply:Markdown,privateViewTitle:title(1–256)}; dashboard link or phone-unavailable.")
   .replace("saves Telegram files under bounded admission; refusals retain the message.", "bounded Telegram files; refused messages kept.")
   .replace("answers operator chat/topics; intake encrypts photos, audio and files with text descriptions.", "answers operator chat/topics; encrypted media intake with text descriptions.")
-  .replace("answers \"status\" and \"how are you doing\" from the journal, without a model call.", "journal answers \"status\"/\"how are you doing\"; no model.")
-  .replace("a saved date within 48 hours can get one short mention in the next reply.", "may mention a saved date due within 48h once in next reply.")
+  .replace("a saved date within 48 hours can get one short mention in the next reply.", "may mention a saved date within 48h once next reply.")
   .replace("keeps instructions, works promises; sends explicitly requested results, else holds them for the next message.", "keeps instructions, works promises; sends explicitly requested results, else waits for next message.")
-  .replace("keeps a faithfulness-checked summary of earlier turns.", "faithfulness-checked summaries of earlier turns.")
+  .replace("keeps a faithfulness-checked summary of earlier turns.", "summarizes earlier turns; checks faithfulness.")
   .replace("with --attribution, checks quotes credited in notes.", "--attribution checks note quote credits.")
   .replace("checks replies against remembered turns; no model call.", "checks replies against remembered turns, no model.")
-  .replace("local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts.", "local peer data: owner-signed private scope, custody, checkpoints, signed receipts.")
+  .replace("local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts.", "private local peers: owner-signed scope, custody, checkpoints, signed receipts.")
   .replace("updates itself; a failure keeps the current release.", "self-updates; failure keeps current release.")
   .replace("captures every inbound message before work; uncertain ones are kept.", "captures inbound before work; keeps uncertain messages.")
   .replace("generates the register, rules, glossary and this briefing from declarations.", "declarations build register, rules, glossary and briefing.")

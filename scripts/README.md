@@ -24,7 +24,7 @@ The operator still supplies every real approval; the agent never approves as the
 
 ## Capabilities
 
-- `threadline-default-exchange`: local peer data: owner-signed private scope, custody, checkpoints, signed receipts.
+- `threadline-default-exchange`: private local peers: owner-signed scope, custody, checkpoints, signed receipts.
   Details: sends and receives private peer data through the checkpoint, with owner-signed scope, custody and authenticated receipts; local routes only. See `docs/threadline-default.md`.
 
 - `installed-update-verification`: self-updates; failure keeps current release.
