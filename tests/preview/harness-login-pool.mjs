@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { durablePreviewWrite } from './durable-write.js';
 import { harnessLoginPath } from './harness-user.mjs';
+import { createSigninRepairController, signinRepairAction, signinRepairNotice, validateRepairItems, NO_HEALTHY_LOGIN } from './signin-repair.js';
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const read = path => readFileSync(path, 'utf8');
@@ -231,7 +232,35 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       || !entries.some(entry => entry.profile.reference === event.from)
       || !entries.some(entry => entry.profile.reference === event.to) || event.from === event.to
       || !['provider-limit', 'usage-threshold', 'member-unavailable'].includes(event.reason)) fail('switch history is malformed');
+  validateRepairItems(state.signinRepairs ?? [], entries.map(entry => entry.profile.expectedAccount));
+  if (state.staleSignin !== undefined && (!state.staleSignin || typeof state.staleSignin !== 'object'
+    || Array.isArray(state.staleSignin) || Object.entries(state.staleSignin).some(([index, digest]) =>
+      !entries[index] || typeof digest !== 'string' || !/^[a-f0-9]{64}$/u.test(digest)))) fail('repair evidence is malformed');
   const persist = next => { write(statePath, next); state = next; };
+  const repairKey = item => `login-signin:${identity}:${item.index}:${item.machine}:${item.sequence ?? `legacy-${item.at}`}`;
+  const updateRepair = (item, episode) => (state.signinRepairs ?? []).map(row => repairKey(row) === repairKey(item) ? { ...row, episode } : row);
+  const evidenceFor = entry => JSON.stringify({ hold: state.signedOut?.[entry.index] ?? null,
+    credential: fingerprint(entry), account: matchingUsageAccount(observedUsage(), entry) });
+  const attemptEvidence = new Map();
+  const repairSignins = createSigninRepairController({ now, machine,
+    items: () => state.signinRepairs ?? [],
+    target: item => ({ key: repairKey(item), account: item.account, machine: item.machine, profile: entries[item.index].profile.reference }),
+    save: (item, episode) => {
+      if (!attemptEvidence.has(repairKey(item))) attemptEvidence.set(repairKey(item), evidenceFor(entries[item.index]));
+      persist({ ...state, signinRepairs: updateRepair(item, episode) });
+    },
+    succeed: (item, episode) => {
+      const entry = entries[item.index], before = JSON.parse(attemptEvidence.get(repairKey(item)));
+      // A newer CLI refusal or credential replacement during verification is never cleared.
+      if (JSON.stringify(state.signedOut?.[item.index] ?? null) !== JSON.stringify(before.hold)) {
+        attemptEvidence.delete(repairKey(item)); return;
+      }
+      const signedOut = { ...state.signedOut }; delete signedOut[item.index];
+      const staleSignin = { ...state.staleSignin, [item.index]: hash(before.account) };
+      persist({ ...state, signedOut, staleSignin, signinRepairs: updateRepair(item, episode) });
+      attemptEvidence.delete(repairKey(item));
+    },
+  });
   if (adoptLegacy) persist({ ...state, identity, noticeIdentity: state.noticeIdentity ?? state.identity,
     migrations: [...(state.migrations ?? []), { from: state.identity, to: identity, at: now(),
       reason: 'build-independent ordered login identity; verified predecessor manifest' }] });
@@ -270,6 +299,12 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     for (const entry of released) delete signedOut[entry.index];
     persist({ ...state, signedOut });
   };
+  const needsReauth = (reading, entry) => {
+    const account = matchingUsageAccount(reading, entry);
+    if (account?.status !== 'needs-reauth') return false;
+    // Suppress only the exact observation superseded by this repair, never an undated new one.
+    return state.staleSignin?.[entry.index] !== hash(account);
+  };
   const admitted = (entry, tools, waitOnUnavailable) => {
     if (!configuration.current()) fail('manifest changed; restart with reviewed configuration');
     // Session intake has not dispatched: retain it for the host's ordinary retry.
@@ -300,11 +335,12 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
         persist({ ...state, holds });
       }
     }
-    const signedOut = new Set(entries.filter(entry => matchingUsageAccount(reading, entry)?.status === 'needs-reauth'
+    const signedOut = new Set(entries.filter(entry => needsReauth(reading, entry)
       || state.signedOut?.[entry.index] !== undefined).map(entry => entry.index));
-    const repairs = entries.filter(entry => signedOut.has(entry.index) && !(state.signinRepairs ?? []).some(item => item.index === entry.index));
+    const repairs = entries.filter(entry => signedOut.has(entry.index) && !(state.signinRepairs ?? []).some(item => item.index === entry.index && item.episode?.phase !== 'succeeded'));
     if (repairs.length) persist({ ...state, signinRepairs: [...(state.signinRepairs ?? []),
-      ...repairs.map(entry => ({ index: entry.index, account: entry.profile.expectedAccount, machine, at }))] });
+      ...repairs.map((entry, offset) => ({ index: entry.index, account: entry.profile.expectedAccount, machine, at,
+        sequence: (state.signinRepairs?.length ?? 0) + offset + 1 }))] });
     const limited = index => state.holds[index] && (state.holds[index].resetAt === null || state.holds[index].resetAt > at);
     const source = harnessQuotaReading(reading, entries[current].profile, at, entries[current].usageAccount);
     const pressure = quotaLimit(source, threshold);
@@ -354,6 +390,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
   };
   return Object.freeze({
     select,
+    repairSignins,
     refresh: () => quotaReader?.refresh() ?? Promise.resolve(),
     registerTopic(topic) {
       if (!(state.topicLogins ?? []).includes(topic)) persist({ ...state, topicLogins: [...(state.topicLogins ?? []), topic] });
@@ -379,7 +416,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       try { reading = observedUsage(); } catch { /* A failed quota observation cannot create a limit. */ }
       const resets = [];
       for (const entry of entries) {
-        if (unavailable.has(entry.index) || matchingUsageAccount(reading, entry)?.status === 'needs-reauth'
+        if (unavailable.has(entry.index) || needsReauth(reading, entry)
           || signedOutHeld(entry, at)) continue;
         const quota = harnessQuotaReading(reading, entry.profile, at, entry.usageAccount);
         const limit = quotaLimit(quota, configuration.threshold), held = state.holds[entry.index];
@@ -396,8 +433,8 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     selectSession: current => select('session', current, true),
     readySession: current => select('session', current, true, true),
     signinRepairs: () => (state.signinRepairs ?? []).map(item => ({
-      key: `login-signin:${identity}:${item.index}:${item.machine}`, account: item.account, machine: item.machine,
-      profile: entries[item.index].profile.reference, action: 'desk: run /subscription-signin for this account and machine',
+      key: repairKey(item), account: item.account, machine: item.machine,
+      profile: entries[item.index].profile.reference, action: signinRepairAction(item),
     })),
     observe(entry, result) {
       if (entries[entry?.index] !== entry) fail('observation names an unreviewed login');
@@ -410,18 +447,23 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     observeSignedOut(entry) {
       if (entries[entry?.index] !== entry) fail('observation names an unreviewed login');
       const at = now(), credentialNow = fingerprint(entry);
-      if (signedOutHeld(entry, at)) return;
+      const repairing = (state.signinRepairs ?? []).some(item => item.index === entry.index
+        && ['attempting', 'verifying'].includes(item.episode?.phase));
+      if (signedOutHeld(entry, at) && !repairing) return;
       persist({ ...state, signedOut: { ...state.signedOut, [entry.index]: { observedAt: at,
-        resetAt: at + SIGNED_OUT_HOLD_MAX_MS, credential: credentialNow } } });
+        resetAt: at + SIGNED_OUT_HOLD_MAX_MS, credential: credentialNow,
+        ...(repairing ? { observation: (state.signedOut?.[entry.index]?.observation ?? 0) + 1 } : {}) } } });
     },
     // stale-login-line-1107: a successful switch adds no line to a reply (Rules 87/88): it needs no operator action
     // and is not the task's result. The switch stays in durable history and on the status pull surface.
     // reply-noise-1108: a login dropped from selection while another approved login still serves changes nothing for
     // the person's work (Rules 87/88): it stays in state.exclusions and on the status pull surface. A reply carries one
     // plain line, keyed once per pool, only while no approved login can be used at all; a timed hold is the outage notice's.
-    notices: () => entries.length && entries.every(entry => unavailable.has(entry.index)) ? [{
-      key: `doorway:harness-login:${state.noticeIdentity ?? identity}:none-usable`,
-      line: 'None of my approved model logins can be used right now, so new work will wait until one is working again.' }] : [],
+    notices: () => {
+      const repairs = (state.signinRepairs ?? []).flatMap(item => signinRepairNotice(item, repairKey(item)));
+      return repairs.length ? repairs : entries.length && entries.every(entry => unavailable.has(entry.index)) ? [{
+        key: `doorway:harness-login:${state.noticeIdentity ?? identity}:none-usable`, line: NO_HEALTHY_LOGIN }] : [];
+    },
     status: () => harnessLoginPoolStatus(configuration, state, unavailable, observedUsage, now),
     get state() { return structuredClone(state); },
   });
@@ -447,7 +489,7 @@ export function harnessLoginPoolStatus(configuration, state, unavailable, usage,
   const last = state.switches.at(-1);
   return `Model login pool: using approved login ${state.active + 1} of ${entries.length}. ` + members.join(' | ')
     + (state.handoffAttempts?.at(-1)?.phase === 'prepared' ? ' A continuing-session login move was prepared but is not confirmed.' : '')
-    + (state.signinRepairs?.length ? ` Recorded sign-in repair items: ${state.signinRepairs.map(item => `${item.account} on ${item.machine}; desk /subscription-signin`).join(' | ')}.` : '')
+    + (state.signinRepairs?.length ? ` Recorded sign-in repair items: ${state.signinRepairs.map(item => `${item.account} on ${item.machine}; ${signinRepairAction(item)}`).join(' | ')}.` : '')
     + (last ? ` Last switch: ${last.from} to ${last.to}, ${last.reason}, at ${last.at}.` : ' Last switch: none.');
 }
 
