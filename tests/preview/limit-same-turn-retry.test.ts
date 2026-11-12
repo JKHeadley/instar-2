@@ -35,12 +35,18 @@ function setup(count = 2, maxCalls = 100) {
   let journal = openPreviewJournal(journalPath, key, { kind: 'genesis', bot: '12345678', chat: '-1001234', operator: '7654321', forum: true,
     grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: now + 86400000, maxCalls, maxReplies: 30, maxTurns: 30, maxBytes: 32768, cursor: 0 });
   const calls = [], sent = [], control = { stopped: false, failB: false, crash: false, stopB: false, uncertain: false, override: {}, noEffects: true };
-  const ports = { now: () => now, stopped: () => control.stopped, checkOutbound: () => {},
+  const ports = { now: () => control.at ?? now, stopped: () => control.stopped, checkOutbound: () => {},
     retryCapacity: (id, from, excluded) => { if (control.crash) throw Error('restart boundary'); return pool.retry(id, from, excluded); },
     model: async ({ id }) => {
       const target = journal.view.turns.get(id)?.capacityNextLogin;
       const selected = target ? pool.selected(target, false) : pool.select();
       calls.push(selected.profile.reference);
+      if (control.ack && calls.length === 1) {
+        control.at = now + 8000;
+        journal.append({ kind: 'held-notice-intent', id, text: 'Checking that now.', chat: '-1001234', thread: 3, update: 1,
+          grant: 'grant:preview', acknowledgement: true, acknowledgementMode: 'reaction-or-text', at: control.at });
+        journal.append({ kind: 'held-notice-sent', id, message: 101, acknowledgementPath: 'reaction', at: control.at });
+      }
       if (selected.index > 0 && !control.failB) {
         if (control.stopB) control.stopped = true;
         const reading = readAnswer(capture.answer, { wrapped: 'allow', evidence: [id] });
@@ -133,4 +139,10 @@ it('restart after successor selection but before its reservation never repeats A
 it('rechecks admission on B and does not dispatch a refused login', async () => {
   const f = setup(); f.control.refuseB = true; await f.worker.drain();
   expect(f.calls).toEqual(['login-0']); expect(f.sent).toHaveLength(1); expect(f.sent[0]).toContain('usage limit'); f.journal.close();
+});
+
+it.each([true, false])('a prior reaction preserves one final answer or all-limited notice (B limited=%s)', async failB => {
+  const f = setup(); f.control.ack = true; f.control.failB = failB; await f.worker.drain();
+  expect(f.calls).toEqual(['login-0', 'login-1']); expect(f.sent).toHaveLength(1);
+  expect(f.sent[0]).toContain(failB ? 'usage limit' : '391'); f.journal.close();
 });

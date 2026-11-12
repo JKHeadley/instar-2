@@ -10763,7 +10763,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * No model call; stop and expiry still refuse; an UNKNOWN send is never repeated. */
   const limitedReason = (turn: Turn): LimitedReason | null => {
     if (!turn.accepted || turn.intent !== undefined || turn.limited !== undefined || turn.requestedAction !== undefined
-      || turn.held === 'superseded by edit' || turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined) return null;
+      || turn.held === 'superseded by edit' || (turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined)
+        && !(turn.capacity && turn.capacityLogins && turn.acknowledgementPath === 'reaction')) return null;
     if (turn.held === MODEL_NOT_STARTED_HOLD) return 'worker';
     if (turn.capacity?.retryLogin && ports.retryCapacity) return null; // The ordinary worker must finish its recorded retry decision first.
     if (turn.capacity) return journal.view.order.some(item => item.thread === turn.thread
