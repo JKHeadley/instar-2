@@ -2,15 +2,17 @@
  * 7e4fa298997895086534bb3a315b4746981f897e078ec635028ec3187085209c.
  * Update367056086: worker81127 killed, verified cleanup, no answer/modelState.
  * Update367056089: accepted before restart, later uncertain with eight returned checks.
- * Update367056088: promised commitment1 recoveryHeld; remains open (separate design).
+ * Update367056088: promised commitment1 recoveryHeld; remains open with one interruption notice.
  * Provider accounting prose below is a test control, not a captured model answer. */
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
+import { loopHealth } from './obligations.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { createJournalWorker, openPreviewJournal, pendingUnknownCalls, ModelPending, ModelNotStarted,
-  type PreviewPorts, type CallOutcome, type JournalRecord } from './journal-test-worker.js';
+  commitmentOpen, loopRevisitMs, sendOutcomeCounts, type PreviewPorts, type CallOutcome, type JournalRecord } from './journal-test-worker.js';
 // @ts-expect-error Physical adapter is JavaScript.
 import { toolTurnEligible } from './tool-turn.mjs';
 const genesis = { kind: 'genesis' as const, bot: '8813073094', chat: '7654321', operator: '7654321',
@@ -22,7 +24,7 @@ const account = 'Finished: eight tool checks returned results. Not finished: the
 const update = (id: number) => ({ update_id: id, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
 const idOf = (n: number) => `telegram:${genesis.bot}:update:${n}`;
 function setup(maxCalls = 20, forum = false) {
-  const root = mkdtempSync(join(tmpdir(), 'row-recovery-')), path = join(root, 'journal');
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'row-recovery-'))), path = join(root, 'journal');
   let journal = openPreviewJournal(path, key, { ...genesis, maxCalls, ...(forum ? { forum: true, chat: '-7654321' } : {}) });
   const sent: string[] = [], calls: Parameters<PreviewPorts['model']>[0][] = [];
   const ports: PreviewPorts = { now: () => 1794239921042, stopped: () => false, toolRoute: toolTurnEligible,
@@ -33,6 +35,16 @@ function setup(maxCalls = 20, forum = false) {
       ? { state: 'uncertain' as const } : ports.model(input) }),
     reopen: () => { journal.close(); journal = openPreviewJournal(path, key); },
     close: () => { journal.close(); rmSync(root, { recursive: true, force: true }); } };
+}
+const interruptionNotice = "The work I promised was interrupted, and I can't confirm its outcome yet. I'm keeping it open and will check again for a saved result. I won't repeat work that may already have happened.";
+function deliveredPromise(f: ReturnType<typeof setup>, updateId = 367056088) {
+  const id = idOf(updateId), promise = 'I will compare the issues and send the report.';
+  f.worker().intake([update(updateId)]);
+  f.journal.append({ kind: 'reserve', id, at: f.ports.now() });
+  f.journal.append({ kind: 'answer', id, text: promise, loops: [{ kind: 'deferral', quote: promise, waitsOn: 'nothing' }], at: f.ports.now() });
+  f.journal.append({ kind: 'intent', id, text: promise, loops: [{ kind: 'deferral', quote: promise, waitsOn: 'nothing' }], chat: genesis.chat, update: updateId, grant: genesis.grant, at: f.ports.now() });
+  f.journal.append({ kind: 'sent', id, message: 6610, at: f.ports.now() });
+  return id;
 }
 it('row08 replays uncertain eight-check outcome into one tool-free account, once across restart', async () => {
   const f = setup(); let ordinary = 0;
@@ -126,7 +138,7 @@ it('replays captured summary, Jev, review and delivered/empty reply shapes as ac
     } finally { f.close(); }
   }
 });
-it('row01 retains the recorded uncertain promise shape without fabricating a fulfilled result', async () => {
+it('row01 restart retains the recorded uncertain promise and delivers one interruption notice', async () => {
   const f = setup(), id = idOf(367056088);
   const promise = "Got it, Justin. I'll compare the discussion and linked evidence for the three most recently updated open issues on JKHeadley/instar, give one plausible alternative explanation for each issue, and send you one combined report when it's done. This is a new comparison job, separate from the short summaries I sent at 07:53.";
   try {
@@ -140,7 +152,12 @@ it('row01 retains the recorded uncertain promise shape without fabricating a ful
     f.reopen(); await f.worker().workObligations(); await f.worker().workObligations();
     expect(f.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'uncertain', recoveryHeld: true, attempts: 1 });
     expect(f.journal.view.obligationWork['commitment:0']?.report).toBeUndefined();
-    expect(f.calls).toEqual([]); expect(f.sent).toEqual([]);
+    expect(f.calls).toEqual([]); expect(f.sent).toEqual([interruptionNotice]);
+    expect(commitmentOpen(f.journal.view, 0)).toBe(true);
+    expect(loopHealth(f.journal.view, f.ports.now())).toMatchObject({ recoveryUnknown: 1, state: 'stalled' });
+    expect(f.journal.view.turns.get(id)?.promiseNotice).toMatchObject({ text: interruptionNotice, sent: 6378 });
+    f.journal.compact(); f.reopen(); await f.worker().workObligations(); f.reopen(); await f.worker().workObligations();
+    expect(f.sent).toEqual([interruptionNotice]); expect(f.calls).toEqual([]);
   } finally { f.close(); }
 });
 
@@ -269,3 +286,115 @@ it.each(['missing-parent', 'unreserved-parent', 'original-reservation', 'ordinar
       expect(f.journal.view.callOutcomes.some(row => row.id === operation)).toBe(false);
     } finally { f.close(); }
   });
+
+it.each(['uncertain', 'throw', 'SIGKILL'] as const)('row03 lost worker (%s) tells once without restarting work', async mode => {
+  const f = setup(); let workCalls = 0;
+  f.ports.sessionRoute = () => true;
+  f.ports.sessionWork = async () => { workCalls++;
+    if (mode === 'SIGKILL') {
+      // Real process cut after the promise receipt and durable work reservation. Exact self PID only.
+      const child = spawnSync(process.execPath, ['-e', 'process.kill(process.pid, "SIGKILL")']);
+      expect(child.pid).toBeGreaterThan(0); expect(child.signal).toBe('SIGKILL');
+    }
+    if (mode === 'throw') throw Error('worker SIGKILL');
+    return { state: 'uncertain', detail: 'worker killed', edge: 'unknown', child: null }; };
+  try {
+    deliveredPromise(f); const due = f.ports.now() + loopRevisitMs(f.journal.view);
+    f.ports.now = () => due; const worker = f.worker();
+    await worker.workObligations(); await worker.workObligations();
+    expect(f.sent).toEqual([interruptionNotice]); expect(workCalls).toBe(1);
+    expect(f.journal.view.obligationWork['commitment:0']).toMatchObject({ recoveryHeld: true, outcome: 'uncertain', attempts: 1 });
+    expect(commitmentOpen(f.journal.view, 0)).toBe(true);
+    f.journal.compact(); f.reopen(); await f.worker().workObligations();
+    expect(f.sent).toEqual([interruptionNotice]); expect(workCalls).toBe(1);
+  } finally { f.close(); }
+});
+it.each(['unknown', 'refused', 'receipt-lost'] as const)('a %s interruption notice is never sent again after restart', async mode => {
+  const f = setup(); let sends = 0;
+  try {
+    const id = deliveredPromise(f), slot = f.ports.now();
+    f.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: slot });
+    f.ports.send = async input => { sends++; expect(input.expectedText).toBe(interruptionNotice);
+      expect(f.journal.view.turns.get(id)?.promiseNotice).toBeDefined();
+      if (mode === 'receipt-lost') throw Error('transport accepted but receipt lost');
+      return { kind: mode, reason: 'recorded transport outcome' }; };
+    await f.worker().workObligations(); f.journal.compact(); f.reopen();
+    await f.worker().workObligations(); f.reopen(); await f.worker().workObligations();
+    expect(sends).toBe(1); expect(commitmentOpen(f.journal.view, 0)).toBe(true);
+    const counts = sendOutcomeCounts(f.journal.view);
+    expect(mode === 'refused' ? counts.refused : counts.unknown).toBe(1);
+  } finally { f.close(); }
+});
+it.each(['stop', 'reply-cap', 'closed', 'not-interrupted'] as const)('%s prevents an interruption notice', async mode => {
+  const f = setup();
+  try {
+    deliveredPromise(f); const slot = f.ports.now();
+    if (mode !== 'not-interrupted') {
+      f.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: slot });
+      f.journal.append({ kind: 'obligation-result', obligation: 'commitment:0', slot, outcome: 'uncertain', recoveryHeld: true, at: slot });
+    }
+    if (mode === 'stop') f.ports.stopped = () => true;
+    if (mode === 'reply-cap') f.journal.view.replies = f.journal.view.limits.maxReplies;
+    if (mode === 'closed') f.journal.view.closed.set(0, { id: 0, source: idOf(367056088), quote: 'Work withdrawn' });
+    if (mode === 'not-interrupted') { const due = f.ports.now() + loopRevisitMs(f.journal.view);
+      f.ports.now = () => due; f.ports.sessionRoute = () => true; }
+    if (mode === 'not-interrupted') f.ports.sessionWork = async () => JSON.stringify({ outcome: 'continue', note: 'Still checking the requested issues.' });
+    await f.worker().workObligations().catch(error => { if (mode !== 'stop') throw error; });
+    expect(f.sent).toEqual([]);
+  } finally { f.close(); }
+});
+it('aggregates simultaneous interrupted promises into one notice with no model allowance needed', async () => {
+  const f = setup();
+  try {
+    for (let i = 0; i < 3; i++) {
+      deliveredPromise(f, 367056088 + i); const slot = f.ports.now();
+      f.journal.append({ kind: 'obligation-start', obligation: `commitment:${i}`, slot, session: true, at: slot });
+    }
+    f.journal.view.calls = f.journal.view.limits.maxCalls;
+    await f.worker().workObligations();
+    expect(f.sent).toEqual([interruptionNotice]); expect(f.calls).toEqual([]);
+    expect(f.journal.view.order.every(turn => turn.promiseNotice?.sent === 6378)).toBe(true);
+    f.journal.compact(); f.reopen(); await f.worker().workObligations(); expect(f.sent).toHaveLength(1);
+  } finally { f.close(); }
+});
+
+it.each(['stop', 'closed'] as const)('rechecks %s after awaited notice admission', async mode => {
+  const f = setup(); let attempted = 0, stopped = false;
+  f.ports.stopped = () => stopped;
+  try {
+    const id = deliveredPromise(f), slot = f.ports.now();
+    f.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: slot });
+    f.ports.sendAdmits = true;
+    f.ports.send = async input => {
+      attempted++;
+      expect(f.journal.view.turns.get(id)?.promiseNotice).toBeUndefined();
+      await Promise.resolve();
+      if (mode === 'stop') stopped = true;
+      else f.journal.view.closed.set(0, { id: 0, source: id, quote: 'Work withdrawn' });
+      expect(input.current?.()).toBe(false);
+      return { kind: 'refused', reason: 'cancelled before admission' };
+    };
+    await f.worker().workObligations();
+    expect(attempted).toBe(1); expect(f.journal.view.turns.get(id)?.promiseNotice).toBeUndefined();
+    expect(f.sent).toEqual([]);
+  } finally { f.close(); }
+});
+it('replays captured uncertain worker evidence into the notice path without turning other recorded outputs into completion', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  for (const sample of recorded.negativeOutputs) {
+    const f = setup();
+    try {
+      deliveredPromise(f); const slot = f.ports.now();
+      f.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: slot });
+      f.ports.recoverSessionWork = () => sample.output === null
+        ? { state: 'uncertain', edge: sample.id, child: null, detail: sample.shape }
+        : { state: 'complete', text: sample.output, edge: sample.id, child: 'closed', detail: sample.shape };
+      f.reopen(); await f.worker().workObligations();
+      expect(f.sent, sample.id).toEqual(sample.output === null ? [interruptionNotice] : []);
+      expect(f.journal.view.obligationWork['commitment:0']?.report, sample.id).toBeUndefined();
+      expect(commitmentOpen(f.journal.view, 0), sample.id).toBe(true);
+      f.journal.compact(); f.reopen(); await f.worker().workObligations();
+      expect(f.sent, sample.id).toHaveLength(sample.output === null ? 1 : 0);
+    } finally { f.close(); }
+  }
+});
