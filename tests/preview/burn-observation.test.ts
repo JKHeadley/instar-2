@@ -122,3 +122,18 @@ it.each([false, true])('forum allowance is operator-private; operator-only audie
     expect(snapshot.status).toContain(burnStatus(journal.view, now));
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+it.each([1, 2])('past the reminder end date observation stays alive, preserving a reply slot (allowance %s)', async maxReplies => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'burn-allowance-')));
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, expires: 100, maxCalls: 4, maxReplies });
+  let sends = 0;
+  const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, model: async () => 'unused',
+    send: async () => { sends++; return 1; }, checkOutbound: () => {} });
+  try {
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'work' } }]);
+    journal.append({ kind: 'reserve', id: 'telegram:12345678:update:1', at: 1000 });
+    await worker.observeBurn(); expect(sends).toBe(maxReplies - 1);
+    expect(journal.view.replies).toBe(maxReplies - 1);
+    expect(journal.view.burn?.active).toBe(true);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});

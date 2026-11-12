@@ -44,6 +44,8 @@ Independent review: burn_review inspected the implementation twice. First pass f
 
 Decision: burn-register | Replay register from tested source 2a26069a7; downloaded desk chain/owner rehash changed zero pins. Seven generated register projections are the only publication changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-52-burn-1112-p2-PROGRESS.md
 
+Decision: burn-enddate | Keep observation alive after reminder expiry, matching the base; preserve the final reply slot. Both allowance boundaries tested, reviewer concurred. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-52-burn-1112-p2-PROGRESS.md
+
 simplestRobustRoute: This is the simplest robust route: reuse reservation deltas, encrypted journal projection, minimal polling, signed incident dispatch and existing status/dashboard. New bounded buckets prevent unbounded scan cost; durable episode intent prevents duplicate sends after crash. No throttle, kill, pricing or paid service. Start guards are owner/audience/stop; end guards are normal rate and cap exhaustion; existing caps remain. Real installed live-user proof remains the desk acceptance step, not asserted here.
 80/20: One narrow module and existing wiring, within 250 product lines; targeted tests/direct importers, pinned READY files and required checks only. No full suite or base comparison tree.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

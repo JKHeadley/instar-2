@@ -4205,7 +4205,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       b.active = false;
     } else if (row.action === 'intent') {
       if (!b.active || row.episode !== b.episode || b.notice?.episode === row.episode || !observation.active
-        || view.stop || row.at >= view.expires || view.replies >= view.limits.maxReplies - 1
+        || view.stop || view.replies >= view.limits.maxReplies - 1
         || row.text !== burnNoticeText(view, row.at)) throw Error('preview: burn intent');
       b.notice = { episode: row.episode, text: row.text }; view.replies++; view.speakers.infrastructure++;
     } else if (row.action === 'sent') {
@@ -8861,7 +8861,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const observeBurn = () => burnInFlight ??= sendBurnNotice().finally(() => { burnInFlight = undefined; });
   const sendBurnNotice = async () => {
     const now = ports.now(), observation = burnObservation(journal.view, now);
-    if (halted() || now >= journal.view.expires) return;
+    if (halted()) return;
     if (observation.active !== (journal.view.burn?.active ?? false)) journal.append({ kind: 'burn',
       action: observation.active ? 'open' : 'close', episode: observation.episode + Number(observation.active), at: now });
     const b = journal.view.burn;
@@ -8870,7 +8870,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const episode = b.episode, text = burnNoticeText(journal.view, now), chat = journal.view.genesis.chat, target = `burn:${episode}`;
     ports.checkOutbound(text);
     const provenance = journal.signOutbound('infrastructure', { target, chat, body: text });
-    const current = () => !halted() && ports.now() < journal.view.expires && journal.view.burn?.episode === episode
+    const current = () => !halted() && journal.view.burn?.episode === episode
       && burnObservation(journal.view, ports.now()).active && burnNoticeText(journal.view, ports.now()) === text;
     const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, update: 0, current }, () => {
       journal.append({ kind: 'burn', action: 'intent', episode, text, provenance, at: now });
