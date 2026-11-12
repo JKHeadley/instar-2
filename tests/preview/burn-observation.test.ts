@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { sendOutcomeCounts } from './journal.js';
 import { burnObservation, burnStatus } from './burn-observation.js';
 import { dashboardSnapshot } from './operator-dashboard.js';
 // @ts-expect-error Operator page is JavaScript.
@@ -43,6 +44,7 @@ it('observes real writer reservations and model-call rows: low, burst, restart, 
     expect(html).toContain('180 reserved attempts/hour');
     expect(html).toContain('Allowance may run short within 30 min');
     expect(journal.view.replies).toBe(1);
+    expect(sendOutcomeCounts(journal.view)).toMatchObject({ accepted: 1, refused: 0, unknown: 0 });
     expect(statusReply(journal.view, now, 'UTC')).toContain(burnStatus(journal.view, now));
     journal.close(); journal = openPreviewJournal(path, key);
     await worker().observeBurn(); expect(sent).toHaveLength(1);
@@ -50,10 +52,13 @@ it('observes real writer reservations and model-call rows: low, burst, restart, 
     expect(journal.view.burn?.active).toBe(false); expect(burnObservation(journal.view, now).callsPerHour).toBe(0);
     for (let n = 0; n < 15; n++) call();
     await worker().observeBurn(); expect(sent).toHaveLength(2); expect(journal.view.burn?.episode).toBe(2);
+    journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
+    expect(sendOutcomeCounts(journal.view)).toMatchObject({ accepted: 2, refused: 0, unknown: 0 });
     const result = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
       'tests/preview/journal-agent.mjs', 'status', '--root', root], { encoding: 'utf8', timeout: 20_000,
       env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
-    expect(result.status, result.stderr).toBe(0); expect(JSON.parse(result.stdout).burn).toMatchObject({ recordedActive: true, active: false });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ unknownSends: 0, sendOutcomes: { accepted: 2, refused: 0, unknown: 0 } }); expect(JSON.parse(result.stdout).burn).toMatchObject({ recordedActive: true, active: false });
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -68,8 +73,11 @@ it.each(['unknown', 'refused'] as const)('never repeats a %s notice after restar
     journal.append({ kind: 'reserve', id: 'telegram:12345678:update:1', at: now });
     await w().observeBurn(); expect(sends).toBe(1);
     expect(journal.view.sendOutcomes.at(-1)?.outcome).toBe(outcome);
+    expect(sendOutcomeCounts(journal.view)[outcome]).toBe(1);
+    journal.compact();
     journal.close(); journal = openPreviewJournal(path, key);
     await w().observeBurn(); expect(sends).toBe(1);
+    expect(sendOutcomeCounts(journal.view)[outcome]).toBe(1);
     expect(() => journal.append({ kind: 'burn', action: 'intent', episode: 1, text: 'forged', at: now })).toThrow();
     journal.append({ kind: 'stop', reason: 'operator', at: now });
     await w().observeBurn(); expect(sends).toBe(1);
@@ -135,5 +143,45 @@ it.each([1, 2])('past the reminder end date observation stays alive, preserving 
     await worker.observeBurn(); expect(sends).toBe(maxReplies - 1);
     expect(journal.view.replies).toBe(maxReplies - 1);
     expect(journal.view.burn?.active).toBe(true);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each(['accepted', 'refused', 'unknown', 'crash'] as const)('keeps %s delivery accounting across compaction and another episode', async outcome => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'burn-history-'))), path = join(root, 'journal.encrypted');
+  let journal = openPreviewJournal(path, key, { ...genesis, maxCalls: 4 }), now = 1_000_000, sends = 0;
+  const worker = () => createJournalWorker(journal, { now: () => now, stopped: () => false,
+    model: async () => 'unused', checkOutbound: () => {}, send: async () => {
+      sends++; return outcome === 'accepted' ? sends : { kind: outcome === 'crash' ? 'unknown' : outcome, reason: 'transport result' };
+    } });
+  const reserve = (n: number) => {
+    worker().intake([{ update_id: n, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'work' } }]);
+    journal.append({ kind: 'reserve', id: `telegram:12345678:update:${n}`, at: now });
+  };
+  const expected = { accepted: outcome === 'accepted' ? 2 : 0, refused: outcome === 'refused' ? 2 : 0,
+    unknown: outcome === 'unknown' || outcome === 'crash' ? 2 : 0 };
+  try {
+    for (let episode = 1; episode <= 2; episode++) {
+      reserve(episode);
+      if (outcome === 'crash') {
+        journal.append({ kind: 'burn', action: 'open', episode, at: now });
+        const text = `Infrastructure allowance warning. ${burnStatus(journal.view, now)} You can ask me to pause optional work. Existing limits are unchanged.`;
+        const provenance = journal.signOutbound('infrastructure', { target: `burn:${episode}`, chat: genesis.chat, body: text });
+        journal.append({ kind: 'burn', action: 'intent', episode, text, provenance, at: now });
+      } else await worker().observeBurn();
+      journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
+      await worker().observeBurn();
+      expect(sends).toBe(outcome === 'crash' ? 0 : episode);
+      expect(sendOutcomeCounts(journal.view)[outcome === 'crash' ? 'unknown' : outcome]).toBe(episode);
+      now += 301_000; await worker().observeBurn();
+    }
+    journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
+    expect(sendOutcomeCounts(journal.view)).toMatchObject(expected);
+    const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      'tests/preview/journal-agent.mjs', 'status', '--root', root], { encoding: 'utf8', timeout: 20_000,
+      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+    expect(status.status, status.stderr).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({ unknownSends: expected.unknown, sendOutcomes: expected });
+    if (outcome === 'crash') expect(sendOutcomeCounts(journal.view).unknownReasons).toEqual({ 'no recorded reason': 2 });
+    if (outcome === 'unknown') expect(sendOutcomeCounts(journal.view).unknownReasons).toEqual({ 'transport result': 2 });
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });

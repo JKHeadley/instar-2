@@ -3,6 +3,8 @@
 export interface BurnState {
   historyFrom?: number; buckets: [number, number][]; episode: number; active: boolean;
   notice?: { episode: number; text: string; sent?: number };
+  /** Prior consumed intents and receipts survive replacement of the current episode notice. */
+  priorNotices?: { episode: number; sent?: number }[];
 }
 export interface BurnView { calls: number; limits: { maxCalls: number }; clockFloor: number; burn?: BurnState }
 export const BURN_WINDOW_MS = 300_000, BURN_HORIZON_MINUTES = 30;

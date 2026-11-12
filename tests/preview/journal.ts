@@ -3556,6 +3556,8 @@ export function sendOutcomeCounts(view: JournalView) {
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
   }
   for (const [key, batch] of view.reminders) settle(reminderTarget(view, key, batch), batch.sent);
+  for (const notice of view.burn?.priorNotices ?? []) settle(`burn:${notice.episode}`, notice.sent);
+  if (view.burn?.notice) settle(`burn:${view.burn.notice.episode}`, view.burn.notice.sent);
   return { accepted, refused: refusedItems, unknown, speakers: { ...view.speakers },
     lastRefusal: view.sendOutcomes.filter(item => item.outcome === 'refused').at(-1) ?? null,
     unknownReasons, lastUnknown: view.sendOutcomes.filter(item => item.outcome === 'unknown').at(-1) ?? null };
@@ -4207,6 +4209,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       if (!b.active || row.episode !== b.episode || b.notice?.episode === row.episode || !observation.active
         || view.stop || view.replies >= view.limits.maxReplies - 1
         || row.text !== burnNoticeText(view, row.at)) throw Error('preview: burn intent');
+      if (b.notice) (b.priorNotices ??= []).push({ episode: b.notice.episode, ...(b.notice.sent === undefined ? {} : { sent: b.notice.sent }) });
       b.notice = { episode: row.episode, text: row.text }; view.replies++; view.speakers.infrastructure++;
     } else if (row.action === 'sent') {
       if (b.notice?.episode !== row.episode || b.notice.sent !== undefined || !Number.isSafeInteger(row.message) || row.message! <= 0)
