@@ -35,6 +35,7 @@ export interface CredentialRecord {
   readonly renewal: Readonly<{ standing: 'none'; smallestHumanAction: string }>;
 }
 export interface DueReminder { readonly name: string; readonly identity: string; readonly displayLabel?: string; readonly stage: number;
+  readonly expirySource?: CredentialRecord['expirySource'];
   readonly dueAt: number; readonly expiresAt: number; readonly remaining: string; readonly smallestHumanAction: string }
 
 const context: DecodeContext = { preserved: 'preview:secret-custody', captures: {}, register: {
@@ -64,7 +65,7 @@ export function dueCredentialReminders(records: readonly CredentialRecord[], now
     if (record.expiresAt === null) return [];
     const stage = record.reminders.filter(at => at <= now).length - 1;
     if (stage < 0) return [];
-    return [{ name: record.name, identity: record.identity, displayLabel: credentialDisplayLabel(record), stage, dueAt: record.reminders[stage]!, expiresAt: record.expiresAt,
+    return [{ name: record.name, identity: record.identity, displayLabel: credentialDisplayLabel(record), expirySource: record.expirySource, stage, dueAt: record.reminders[stage]!, expiresAt: record.expiresAt,
       remaining: renderMeasured(liveMeasurement('credential-remaining', credentialDisplayLabel(record), record.expiresAt - now, now)),
       smallestHumanAction: record.renewal.smallestHumanAction }];
   });

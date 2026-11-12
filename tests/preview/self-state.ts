@@ -300,7 +300,7 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     `Held-answer notices attempted: ${String(heldNoticeCount)} (one per held turn; Telegram acceptance is not human receipt).`,
     refused ? `Updates refused (not from the operator's private chat): ${String(refused)}.` : '',
     retrospectiveStatusLine(view, replyContextDigest(view)),
-    `Summaries: ${String(view.summaries.length)}${summaryPending ? ` (${String(summaryPending)} summary call(s) in flight or unknown)` : ''}. Trial ends ${when(view.expires)}.`,
+    `Summaries: ${String(view.summaries.length)}${summaryPending ? ` (${String(summaryPending)} summary call(s) in flight or unknown)` : ''}. Activation record ends ${when(view.expires)}. Nothing stops at that date; you don't need to do anything.`,
     view.stop ? `Permanent stop latched: ${view.stop}.` : '',
     view.genesis.importSource !== undefined ? 'This journal was imported from an earlier preview root; imported turns keep their original content, and their times may be unknown.' : '',
   ];
@@ -333,7 +333,7 @@ export function selfStateBrief(view: JournalView, runs: RunLog, now: number, tim
     `${when(now)} (${timeZone}); today=${today}. Messages today/total: operator=${incoming.today}/${incoming.total}, replies accepted=${delivered.today}/${delivered.total}; today combined=${incoming.today + delivered.today}; edits=${edits}; refused=${refused}. Current reply not sent.`,
     `Remaining: model=${left(view.limits.maxCalls, view.calls)}; replies=${left(view.limits.maxReplies, view.replies)}; updates=${left(view.limits.maxTurns, view.order.length)}.`,
     view.capAuthority === null ? 'Caps not raised.' : `Caps raised: ${redact(view.capAuthority).text}; ${view.capRaisedAt ? when(view.capRaisedAt) : 'time unknown'}.`,
-    view.stop ? `Permanent stop latched: ${view.stop}.` : `Activation: ${credentialDisplayLabel({ kind: 'activation', identity: view.genesis.grant })}; ends ${when(view.expires)}.`,
+    view.stop ? `Permanent stop latched: ${view.stop}.` : `Activation: ${credentialDisplayLabel({ kind: 'activation', identity: view.genesis.grant })}; ends ${when(view.expires)}. Nothing stops at that date; you don't need to do anything.`,
     `Open: holds=${held} (today ${heldToday.count}); requests=${openRequests(view).length}; unknown calls=${unknownCalls}, sends=${unknownSends}; summaries pending=${summaryPending}; corrections=${corrections}.`,
     `Request sends today/total=${requestsToday}/${requestSends.length}; summaries=${view.summaries.length}; memory changes=${view.memory.length}. Details: read-only status.`,
     ...runLines(runs, now, format, current),
@@ -349,7 +349,7 @@ export function selfStateBrief(view: JournalView, runs: RunLog, now: number, tim
     view.capAuthority === null ? 'Caps not raised.'
       : `Caps last raised ${view.capRaisedAt ? when(view.capRaisedAt) : 'at an unrecorded time'} on the authority "${redact(view.capAuthority).text}".`,
     view.stop ? `Permanent stop latched: ${view.stop}.`
-      : `Activation: ${credentialDisplayLabel({ kind: 'activation', identity: view.genesis.grant })}; ends ${when(view.expires)}.`,
+      : `Activation: ${credentialDisplayLabel({ kind: 'activation', identity: view.genesis.grant })}; ends ${when(view.expires)}. Nothing stops at that date; you don't need to do anything.`,
     // One line per owned obligation class; a class with nothing open is named once, so its absence is a stated fact.
     obligations([['held replies', held], ['replies held today', heldToday.count], ['requested actions open', openRequests(view).length],
       ['UNKNOWN model calls', unknownCalls], ['UNKNOWN sends', unknownSends], ['summary calls in flight or unknown', summaryPending],

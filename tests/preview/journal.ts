@@ -593,6 +593,9 @@ export const loginOutageReply = (resetAt: number | null, zone = 'UTC') => "My mo
  * before it onward (also after it, when the runner was down then), on a fixed text with no model call. */
 export const CLOSING_NOTICE_LEAD_MS = 5 * 60_000;
 export const closingNoticeText = (end: number, zone = 'UTC') => `Reminder: this agent's activation record ends at ${localStamp(end, zone)} (${zone}). `
+  + "Nothing stops at that date: the agent keeps reading and answering here. You don't need to do anything.";
+/** The nonblocking wording recorded before activation-reminder-once-1112, replay only. */
+const priorClosingNoticeText = (end: number, zone = 'UTC') => `Reminder: this agent's activation record ends at ${localStamp(end, zone)} (${zone}). `
   + 'The agent keeps reading and answering here after that. Approving a renewed activation record keeps the approval on file current.';
 /** The wording journals recorded before activation-stop-1108, accepted on replay only. */
 const legacyClosingNoticeText = (end: number, zone = 'UTC') => `This agent will stop at ${localStamp(end, zone)} (${zone}) because its activation ends then. `
@@ -4872,6 +4875,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       || view.order.some(item => item.closingNotices?.some(notice => notice.end === row.closing!.end))
       || typeof row.closing.zone !== 'string' || row.closing.zone.length > 64
       || row.text !== closingNoticeText(row.closing.end, row.closing.zone) && row.text !== legacyClosingNoticeText(row.closing.end, row.closing.zone)
+        && row.text !== priorClosingNoticeText(row.closing.end, row.closing.zone)
       || view.stop !== null || row.at < view.expires - CLOSING_NOTICE_LEAD_MS
       || view.replies >= view.limits.maxReplies - 1
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant
@@ -8888,7 +8892,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const now = ports.now();
     if (journal.view.stop || ports.stopped() || now < journal.view.expires - CLOSING_NOTICE_LEAD_MS
       || journal.view.replies >= journal.view.limits.maxReplies - 1
-      || journal.view.order.some(turn => turn.closingNotices?.some(notice => notice.end === journal.view.expires))) return;
+      || journal.view.order.some(turn => turn.closingNotices?.some(notice => notice.end === journal.view.expires)
+        || turn.answerNotices?.some(notice => notice.key.startsWith(`credential:preview-activation:${journal.view.expires}:`)
+          && (turn.intent === undefined || turn.intent.includes(notice.line))))) return;
     const lead = [...journal.view.order].reverse().find(turn => turn.accepted && fromOperator(turn));
     if (!lead) return;
     const end = journal.view.expires, zone = ports.timeZone ?? 'America/Los_Angeles';

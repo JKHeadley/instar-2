@@ -46,9 +46,11 @@ export function remainingText(ms: number): string {
 export const credentialKey = (due: Pick<DueReminder, 'name' | 'expiresAt' | 'stage'>) =>
   `credential:${due.name}:${due.expiresAt}:${due.stage}`;
 
-/** One line per due reminder stage, most urgent (earliest expiry) first. */
+/** Real credential outages escalate. Nonblocking activation ageing stays on status;
+ * the journal's existing closing notice tells it once per end date (Rules 87, 100). */
 export function credentialNotices(due: readonly DueReminder[], now: number): ReplyNotice[] {
-  return [...due].sort((a, b) => a.expiresAt - b.expiresAt || a.name.localeCompare(b.name)).map(item => ({
+  return due.filter(item => item.expirySource !== 'activation-record')
+    .sort((a, b) => a.expiresAt - b.expiresAt || a.name.localeCompare(b.name)).map(item => ({
     key: credentialKey(item),
     line: `Reminder: ${item.displayLabel ?? 'your stored credential'} ${remainingText(item.expiresAt - now)}. `
       + `Smallest step for you: ${item.smallestHumanAction}.` }));

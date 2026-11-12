@@ -137,21 +137,21 @@ const activationFact = (expiry: string): RecordedCredentialFact => ({ name: 'you
 
 it('715673352 replayed: the reviewers read the reply as sent; the review reads the register as recorded facts; a PASS sends it', async () => {
   const { sends, calls, jevTexts, reviewTexts, reviewPackets, turn, release, heldReview, durableIntent } = await replay({ answer: T.answerBody });
-  // The recorded body is unchanged; the runner now adds the plain display label.
-  expect(turn.answer).toBe(T.recordedAnswer.replace(`the credential "preview-activation" (${LABEL})`, 'your activation'));
+  // The recorded body is unchanged; nonblocking activation no longer adds a renewal task.
+  expect(turn.answer).toBe(T.answerBody);
   // Both reviewers ran on the reply exactly as composed: nothing masked or rewritten.
   expect(calls).toMatchObject({ jev: 1, review: 1 });
-  expect(jevTexts[0]).toContain('Reminder: your activation');
+  expect(jevTexts[0]).not.toContain('Reminder: your activation');
   expect(jevTexts[0]).not.toContain(LABEL);
   expect(reviewTexts[0]).toContain(turn.answer!);
   // The full-context review reads the activation record the reminder line came from, as a recorded fact.
   expect(reviewPackets[0]!.candidateReply).toBe(reviewTexts[0]);
   expect(reviewPackets[0]!.credentialRegister).toContainEqual(activationFact('expires in 1 day 19 h'));
-  expect(turn.answer).toContain('expires in 1 day 19 h');
+  expect(turn.answer).not.toContain('Smallest step for you');
   expect(sends).toHaveLength(1);
   expect(sends[0]).not.toBe(T.recordedIntent);
   expect(sends[0]).toContain('The byte count is 25');
-  expect(sends[0]).toContain('Reminder: your activation');
+  expect(sends[0]).not.toContain('Reminder: your activation');
   // The send is exactly the text the reviewers judged.
   expect(sends[0]).toBe(reviewTexts[0]);
   expect(durableIntent).toBe(sends[0]);
@@ -167,15 +167,15 @@ it('the other side: a credential VIOLATION the reviewer still makes holds the wh
   expect(heldReview?.objections).toContain('credential');
 });
 
-it('6232017 replayed (proof room 2): the review reads the record behind the reminder line; a PASS sends the recorded body with the plain reminder', async () => {
+it('6232017 replayed (proof room 2): the review reads the record behind the reminder line; a PASS sends the recorded body without an activation reminder', async () => {
   const { sends, calls, reviewTexts, reviewPackets, turn, heldReview } = await replay({ shape: recorded2, answer: T2.answerBody,
     toolOutput: T2.toolResult });
-  expect(turn.answer).toBe(T2.recordedAnswer.replace(`the credential "preview-activation" (${LABEL})`, 'your activation'));
+  expect(turn.answer).toBe(T2.answerBody);
   expect(calls).toMatchObject({ jev: 1, review: 1 });
-  // The expiry and the renewal step the reply states are exactly the register's recorded entry.
+  // The expiry and renewal facts remain available to the review; they are not appended to this answer.
   const fact = activationFact('expires in 1 day 16 h');
   expect(reviewPackets[0]!.credentialRegister).toContainEqual(fact);
-  expect(turn.answer).toContain(`${fact.expiry}. Smallest step for you: ${fact.renewal.smallestHumanAction}.`);
+  expect(turn.answer).not.toContain('Smallest step for you');
   expect(sends).toEqual([reviewTexts[0]]);
   expect(sends[0]).toContain('The byte count is 25');
   expect(heldReview).toBeUndefined();
@@ -246,7 +246,7 @@ it('the other side: a real secret value from a test SecretRef is withheld on eve
 it('holding a secret does not disturb the label answer: the same replay with a held SecretRef is still sent', async () => {
   const { sends } = await replay({ answer: T.answerBody, holdSecret: true });
   expect(sends).toHaveLength(1);
-  expect(sends[0]).toContain('Reminder: your activation');
+  expect(sends[0]).not.toContain('Reminder: your activation');
   expect(sends[0]).not.toContain('I need to check that answer');
 });
 
@@ -308,7 +308,10 @@ for (const [name, toolOutput] of [['a longer output line', JSON.stringify({ stdo
   ['a nested result', JSON.stringify({ content: [{ type: 'text', text: 'marigold' }] })]] as const) {
   it(`the other side: a mixed finding on a tool-read password is held (${name})`, async () => {
     const { sends, reviewTexts, heldReview, turn } = await replay({ answer: 'The vendor portal password is marigold.',
-      toolOutput, review: violation(MIXED) });
+      toolOutput, review: violation(MIXED),
+      // Historical mixed-finding evidence retains its old line explicitly; new composition never generates it.
+      notice: { key: 'credential:preview-activation:1791232800000:1',
+        line: 'Reminder: your activation expires in 1 day 19 h. Smallest step for you: approve a renewed activation record.' } });
     expect(turn.answer).toContain('Reminder: your activation');
     expect(reviewTexts[0]).toContain('marigold');
     expect(sends).toEqual([HOLDING_REPLY]);
@@ -320,7 +323,7 @@ for (const [name, toolOutput] of [['a longer output line', JSON.stringify({ stdo
 it('the recorded replay with its recorded tool output is still sent: the operator supplied the line the reply repeats', async () => {
   const { sends } = await replay({ answer: T.answerBody, toolOutput: T.toolResult });
   expect(sends).toHaveLength(1);
-  expect(sends[0]).toContain('Reminder: your activation');
+  expect(sends[0]).not.toContain('Reminder: your activation');
   expect(sends[0]).toContain('The byte count is 25');
 });
 

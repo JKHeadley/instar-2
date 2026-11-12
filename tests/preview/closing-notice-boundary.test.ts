@@ -72,11 +72,13 @@ it('past the end date the runner still answers, shows the reminder once, and lat
     expect(f.journal.view.expires).toBe(RENEWED);
   } finally { f.close(); }
 });
-it('replays a journal that recorded the earlier stop wording', () => {
+it.each(['stop', 'nonblocking'])('replays a journal that recorded the earlier %s wording', wording => {
   const f = fixture();
   try {
     const j = f.journal, lead = j.view.order[0]!, at = end - 1;
-    const legacy = `This agent will stop at ${new Date(end).toISOString().slice(0, 16).replace('T', ' ')} (UTC) because its activation ends then. `
+    const legacy = wording === 'nonblocking' ? closingNoticeText(end).split('Nothing stops')[0]!
+      + 'The agent keeps reading and answering here after that. Approving a renewed activation record keeps the approval on file current.'
+      : `This agent will stop at ${new Date(end).toISOString().slice(0, 16).replace('T', ' ')} (UTC) because its activation ends then. `
       + 'After that it cannot read or answer messages here. Its activation must be renewed before it stops; '
       + 'once stopped, this installation refuses renewal.';
     const subject = { target: `closing-notice:${end}:${lead.id}`, chat: j.view.genesis.chat, body: legacy };

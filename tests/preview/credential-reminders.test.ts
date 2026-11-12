@@ -13,26 +13,26 @@ const T0 = 1790000000000, HOUR = 3_600_000, DAY = 24 * HOUR;
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-credential-reminders-')));
 const genesis = () => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
   configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes: 8000, cursor: 0 });
-const ACTION = 'approve a renewed activation record';
+const ACTION = 'supply a renewed sign-in credential';
 
 it('loads an old journal and keeps its delivered reminder spent after adding a display label', async () => {
   const root = origin(), expiresAt = T0 + 7 * DAY;
   try {
-    const custody = activation(root, expiresAt, () => T0);
+    const custody = credential(root, expiresAt, () => T0);
     const prior = custody.records()[0]!;
-    const oldNotice = { key: `credential:preview-activation:${expiresAt}:0`,
-      line: `Reminder: the credential "preview-activation" (activation act-7) expires in 7 days. Smallest step for you: ${ACTION}.` };
+    const oldNotice = { key: `credential:test-login:${expiresAt}:0`,
+      line: `Reminder: the credential "test-login" (credential act-7) expires in 7 days. Smallest step for you: ${ACTION}.` };
     const w = world(root, () => [oldNotice]);
     await w.say('Hello.');
     expect(w.sent[0]).toContain(oldNotice.line);
     w.journal.close();
-    custody.register({ ...prior, displayLabel: 'your activation', recordedAt: T0 + HOUR });
+    custody.register({ ...prior, displayLabel: 'your API key', recordedAt: T0 + HOUR });
     const reopenedCustody = createSecretCustody(root, key, () => T0);
-    expect(reopenedCustody.records()).toEqual([{ ...prior, displayLabel: 'your activation' }]);
+    expect(reopenedCustody.records()).toEqual([{ ...prior, displayLabel: 'your API key' }]);
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key);
     try {
       const due = dueCredentialReminders(reopenedCustody.records(), T0);
-      expect(credentialNotices(due, T0)[0]!.line).toContain('Reminder: your activation');
+      expect(credentialNotices(due, T0)[0]!.line).toContain('Reminder: your API key');
       expect(openReplyNotices(journal.view.order, credentialNotices(due, T0), 'new')).toEqual([]);
       expect(dueWithDelivery(due, journal.view.order)[0]!.delivered?.current).toBe(true);
       expect(journal.view.order[0]!.intent).toContain(oldNotice.line);
@@ -40,10 +40,10 @@ it('loads an old journal and keeps its delivered reminder spent after adding a d
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-function activation(root: string, expiresAt: number, now: () => number) {
+function credential(root: string, expiresAt: number, now: () => number) {
   const custody = createSecretCustody(root, key, now);
-  custody.register({ name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: 'activation act-7',
-    recordedAt: T0, expiresAt, expirySource: 'activation-record', reminders: reminderSchedule(expiresAt),
+  custody.register({ name: 'test-login', kind: 'api-key', custody: 'cli-custody', identity: 'credential act-7',
+    recordedAt: T0, expiresAt, expirySource: 'jwt-exp', reminders: reminderSchedule(expiresAt),
     renewal: { standing: 'none', smallestHumanAction: ACTION } });
   return custody;
 }
@@ -65,17 +65,17 @@ function world(root: string, notices: () => readonly ReplyNotice[], receipt: () 
   return { journal, clock, sent, say };
 }
 
-it('makes the activation reminder due exactly at 7 days before expiry, not 1 ms earlier, and escalates by stage', () => {
+it('makes the credential reminder due exactly at 7 days before expiry, not 1 ms earlier, and escalates by stage', () => {
   const root = origin();
   try {
-    const expiresAt = T0 + 7 * DAY, custody = activation(root, expiresAt, () => T0);
+    const expiresAt = T0 + 7 * DAY, custody = credential(root, expiresAt, () => T0);
     expect(dueCredentialReminders(custody.records(), T0 - 1)).toEqual([]);
     const due = dueCredentialReminders(custody.records(), T0);
-    expect(due).toMatchObject([{ name: 'preview-activation', stage: 0, smallestHumanAction: ACTION }]);
-    expect(credentialNotices(due, T0)).toEqual([{ key: `credential:preview-activation:${expiresAt}:0`,
-      line: `Reminder: your activation expires in 7 days. Smallest step for you: ${ACTION}.` }]);
+    expect(due).toMatchObject([{ name: 'test-login', stage: 0, smallestHumanAction: ACTION }]);
+    expect(credentialNotices(due, T0)).toEqual([{ key: `credential:test-login:${expiresAt}:0`,
+      line: `Reminder: your API key expires in 7 days. Smallest step for you: ${ACTION}.` }]);
     expect(credentialNotices(dueCredentialReminders(custody.records(), expiresAt - 3 * DAY), expiresAt - 3 * DAY)[0]!.key)
-      .toBe(`credential:preview-activation:${expiresAt}:1`);
+      .toBe(`credential:test-login:${expiresAt}:1`);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -91,7 +91,7 @@ it('carries one reminder line on the next answer, never repeats it, and shows th
   const root = origin();
   try {
     const expiresAt = T0 + 7 * DAY;
-    const custody = activation(root, expiresAt, () => w.clock.now);
+    const custody = credential(root, expiresAt, () => w.clock.now);
     const notices = () => credentialNotices(dueCredentialReminders(custody.records(), w.clock.now), w.clock.now);
     const w = world(root, () => [...notices(), { key: 'doorway:1', line: 'Model route check: x/y is stale; send "status" for detail.' }]);
     await w.say('Good morning.');
@@ -109,7 +109,7 @@ it('carries one reminder line on the next answer, never repeats it, and shows th
     expect(w.sent[2]).not.toContain('Model route check');
     // The next stage is a new key: it rides the next answer once.
     w.clock.now = expiresAt - 3 * DAY; await w.say('Still there?');
-    expect(w.sent[3]).toContain('Reminder: your activation expires in 3 days.');
+    expect(w.sent[3]).toContain('Reminder: your API key expires in 3 days.');
     expect(dueWithDelivery(dueCredentialReminders(custody.records(), w.clock.now), w.journal.view.order))
       .toMatchObject([{ stage: 1, delivered: { stage: 1, current: true } }]);
     // Replay rebuilds the same delivery from the durable journal.
@@ -123,18 +123,18 @@ it('carries one reminder line on the next answer, never repeats it, and shows th
 it('starts a renewed credential lifetime undelivered: its next answer carries one reminder, then none, across a restart', async () => {
   const root = origin();
   try {
-    const custody = activation(root, T0 + 7 * DAY, () => w.clock.now);
+    const custody = credential(root, T0 + 7 * DAY, () => w.clock.now);
     const notices = () => credentialNotices(dueCredentialReminders(custody.records(), w.clock.now), w.clock.now);
     const w = world(root, notices);
     await w.say('Hello.');
-    expect(w.sent[0]).toContain('your activation expires in 7 days.');
+    expect(w.sent[0]).toContain('your API key expires in 7 days.');
     // Renewed under the same name with a new expiry; the journal is reopened before the next answer.
     w.clock.now = T0 + DAY;
-    custody.register({ name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: 'activation act-8',
-      recordedAt: w.clock.now, expiresAt: T0 + 8 * DAY, expirySource: 'activation-record', reminders: reminderSchedule(T0 + 8 * DAY),
+    custody.register({ name: 'test-login', kind: 'api-key', custody: 'cli-custody', identity: 'credential act-8',
+      recordedAt: w.clock.now, expiresAt: T0 + 8 * DAY, expirySource: 'jwt-exp', reminders: reminderSchedule(T0 + 8 * DAY),
       renewal: { standing: 'none', smallestHumanAction: ACTION } });
     expect(dueWithDelivery(dueCredentialReminders(custody.records(), w.clock.now), w.journal.view.order))
-      .toMatchObject([{ identity: 'activation act-8', stage: 0, delivered: null }]);
+      .toMatchObject([{ identity: 'credential act-8', stage: 0, delivered: null }]);
     w.journal.close();
     const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
     const clock = w.clock, sent: string[] = [];
@@ -146,10 +146,10 @@ it('starts a renewed credential lifetime undelivered: its next answer carries on
         date: Math.floor(clock.now / 1000) } }]);
       await worker.drain(); clock.now += HOUR;
     }
-    expect(sent[0]).toContain('your activation expires in 7 days.');
+    expect(sent[0]).toContain('your API key expires in 7 days.');
     expect(sent[1]).not.toContain('Reminder:');
     expect(dueWithDelivery(dueCredentialReminders(custody.records(), clock.now), reopened.view.order))
-      .toMatchObject([{ identity: 'activation act-8', stage: 0, delivered: { stage: 0, at: T0 + DAY, current: true } }]);
+      .toMatchObject([{ identity: 'credential act-8', stage: 0, delivered: { stage: 0, at: T0 + DAY, current: true } }]);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -157,7 +157,7 @@ it('starts a renewed credential lifetime undelivered: its next answer carries on
 it('does not repeat a line whose send receipt is unknown, and reports it undelivered', async () => {
   const root = origin();
   try {
-    const custody = activation(root, T0 + 7 * DAY, () => T0);
+    const custody = credential(root, T0 + 7 * DAY, () => T0);
     let answered = false;
     const w = world(root, () => credentialNotices(dueCredentialReminders(custody.records(), w.clock.now), w.clock.now),
       () => { const ok = answered; answered = true; return ok; });
@@ -173,7 +173,7 @@ it('does not repeat a line whose send receipt is unknown, and reports it undeliv
 it('offers nothing when nothing is due', async () => {
   const root = origin();
   try {
-    const custody = activation(root, T0 + 7 * DAY + 1, () => T0);
+    const custody = credential(root, T0 + 7 * DAY + 1, () => T0);
     const w = world(root, () => credentialNotices(dueCredentialReminders(custody.records(), w.clock.now), w.clock.now));
     await w.say('Hello.');
     expect(w.sent[0]).not.toContain('Reminder:');
@@ -198,7 +198,7 @@ it('reports a failing doorway check once per verdict episode, and never a route 
 });
 
 it('accepts a recorded notice only when the answer says it verbatim', () => {
-  const notice = { key: 'credential:preview-activation:0', line: 'Reminder: renew.' };
+  const notice = { key: 'credential:test-login:0', line: 'Reminder: renew.' };
   expect(validAnswerNotices([notice], 'Noted.\n\nReminder: renew.')).toBe(true);
   expect(validAnswerNotices([notice], 'Noted.')).toBe(false);
   expect(validAnswerNotices([notice, notice], 'Reminder: renew.')).toBe(false);
