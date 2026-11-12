@@ -30,7 +30,7 @@ Prompt finding: 9f0106c66027 | protocol-literal | Existing protocol or infrastru
 Prompt finding: bac6ce7485d9 | protocol-literal | Existing protocol or infrastructure wording, unchanged; the fixture tests that wording rather than defining a model decision — fixture-phrase tests/preview/journal.ts <- tests/preview/plain-task-stop.test.ts: "work on your request stopped before a finished answer was available."
 Prompt finding: e8708c7fea24 | protocol-literal | Existing protocol or infrastructure wording, unchanged; the fixture tests that wording rather than defining a model decision — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 
-Subject (13 paths): docs/product-run.md, scripts/product-run.mjs, tests/assembly/production-provider-subscription.test.ts, tests/preview/README.md, tests/preview/default-context-floor.test.ts, tests/preview/default-root-conversation.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-agent.test.ts, tests/preview/journal-migrate.mjs, tests/preview/journal-migrate.test.ts, tests/preview/journal.test.ts, tests/preview/journal.ts, tests/preview/product-run.test.ts
+Subject (14 source paths, plus derived register output): register-source/owner-references/preview.json, docs/product-run.md, scripts/product-run.mjs, tests/assembly/production-provider-subscription.test.ts, tests/preview/README.md, tests/preview/default-context-floor.test.ts, tests/preview/default-root-conversation.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-agent.test.ts, tests/preview/journal-migrate.mjs, tests/preview/journal-migrate.test.ts, tests/preview/journal.test.ts, tests/preview/journal.ts, tests/preview/product-run.test.ts
 
 ## 1.x comparison and measured engineering decisions
 
@@ -90,3 +90,5 @@ existing safety floors remain intact. The implementation follows Rule 116’s si
 Verification limitation: the reviewer ran no tests and did not independently witness live delivery.
 Reported test results support implementation acceptance, not readiness or live completion. Final required
 checks remain the author’s responsibility. The requested subject-list correction is included above.
+
+The preview fixture artifact pin was recomputed with the existing canonical hash function after all 25 journal-agent launcher tests passed; register output is replay-generated from the committed source. No native conformance certificate or governed changelog number is edited.
