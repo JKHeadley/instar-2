@@ -29,12 +29,6 @@ Decision: signin-repair-1112-p2-D4 | validate the shipped runner with a fake phy
 
 Tests: installed-signin-repair.test.ts drives the real installed launcher with only physical provider/Telegram/sign-in IO substituted; signin-repair-notice.test.ts checks action delivery, UNKNOWN, compaction/replay, rollback refusal, aggregation, stop/cap/private audience and delayed admission. Existing lifecycle and custody tests retain both sides of the decision boundaries. No real account, profile or fallback code touched.
 
-## Closing block
-
-simplestRobustRoute: reuse the durable pool controller, existing work cycle, exclusive runner, resource holds and incident sender. A small physical seam remains absent in production. The notice marker prevents a concrete duplicate-send risk on compacted rollback. Quiescence settles old child edges without guessing outcomes. This is the simplest route for the task's fake-helper installed-path proof; it is not real autonomous sign-in completion.
-80/20: the product change is bounded to wiring and notice delivery; no generic browser system, timer, credential store or new authority is introduced.
-VERDICT: author submission for fake-helper wiring review; real-account capability remains unproven
-
 Prompt finding: 105c1569b6bb | protocol-literal | Fixed stopped-installation renewal refusal, unchanged by this notice wiring.
 Prompt finding: 4106b49fff07 | protocol-literal | Existing attempted-work guidance remains unchanged; no phrase-driven intent routing is added.
 Prompt finding: 7ef11b68103f | protocol-literal | Fixed activation-expiry/renewal notice is unchanged; closing boundary tests retain its exact words.
@@ -43,3 +37,9 @@ Prompt finding: 9f0106c66027 | protocol-literal | Existing stopped-work unknown-
 Prompt finding: bac6ce7485d9 | protocol-literal | Existing stopped-work incomplete-answer notice remains unchanged.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label and unknown-source provenance instruction remains unchanged.
 Prompt finding: 849db3a6296a | protocol-literal | Existing deterministic empty-memory response remains unchanged.
+
+## Closing block
+
+simplestRobustRoute: reuse the durable pool controller, existing work cycle, exclusive runner, resource holds and incident sender. A small physical seam remains absent in production. The notice marker prevents a concrete duplicate-send risk on compacted rollback. Quiescence settles old child edges without guessing outcomes. This is the simplest route for the task's fake-helper installed-path proof; it is not real autonomous sign-in completion.
+80/20: the product change is bounded to wiring and notice delivery; no generic browser system, timer, credential store or new authority is introduced.
+VERDICT: author submission for fake-helper wiring review; real-account capability remains unproven
