@@ -1,7 +1,7 @@
 # Capabilities
 
-Register generation: sha256:49b1a4c35f277b0606a9f4f1df6c81e67595186bd2cc4409f27deedb32817eb6
-Source commit: 236f2572dba271b595eb628738d7030b1b87a557
+Register generation: sha256:e8f0cd62a6c3f252846eabed9750690a2ae0b207f7360350a0b773e1ac657b91
+Source commit: 7aab0376f428cdee047bac5da9094d983e974de9
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -12,6 +12,7 @@ Authority: shape-only; entering-force verification required at consumption.
 - preview-conversation: dark; metrics: ["preview.turns.accepted","preview.replies.sent","preview.replies.unknown"]; live proof: unavailable
 - preview-durable-memory: dark; metrics: ["preview.memory.changes","preview.memory.withheld","preview.summaries"]; live proof: unavailable
 - preview-owned-obligations: dark; metrics: ["preview.obligations.open","preview.obligations.oldest-unfinished","preview.blockers.recheck-due"]; live proof: unavailable
+- preview-private-reports: dark; metrics: ["preview.replies.sent","preview.replies.unknown"]; live proof: unavailable
 - preview-requested-actions: dark; metrics: ["preview.requested-actions.requested","preview.requested-actions.sent"]; live proof: unavailable
 - preview-status-command: dark; metrics: ["preview.status.requests"]; live proof: unavailable
 - preview-upcoming-date-mention: dark; metrics: ["preview.dated.mentions"]; live proof: unavailable

@@ -126,8 +126,25 @@ describe('shipped inventory and register (Rules 5, 7, 32, 36, 66, 69, 78, 84)', 
     const availability = (launcher: string) => Object.fromEntries(launchers[launcher].filter(f => f.id.startsWith('preview-')).map(f => [f.id, f.availability]));
     expect(inventory.launchers['tests/preview/agent.mjs']).not.toContain('tests/preview/journal.ts');
     expect(inventory.launchers['tests/preview/journal-agent.mjs']).toContain('tests/preview/journal.ts');
-    expect(Object.values(availability('tests/preview/agent.mjs'))).toEqual(Array(6).fill('not-loaded'));
-    expect(Object.values(availability('tests/preview/journal-agent.mjs'))).toEqual(Array(6).fill('available'));
+    // Private reports are declared beside journal.ts too: sharing the preview directory does not load them.
+    expect(availability('tests/preview/agent.mjs')).toEqual({
+      'preview-conversation': 'not-loaded',
+      'preview-durable-memory': 'not-loaded',
+      'preview-owned-obligations': 'not-loaded',
+      'preview-private-reports': 'not-loaded',
+      'preview-requested-actions': 'not-loaded',
+      'preview-status-command': 'not-loaded',
+      'preview-upcoming-date-mention': 'not-loaded',
+    });
+    expect(availability('tests/preview/journal-agent.mjs')).toEqual({
+      'preview-conversation': 'available',
+      'preview-durable-memory': 'available',
+      'preview-owned-obligations': 'available',
+      'preview-private-reports': 'available',
+      'preview-requested-actions': 'available',
+      'preview-status-command': 'available',
+      'preview-upcoming-date-mention': 'available',
+    });
     // Available in the preview is not graduation: the register status stays dark beside it.
     expect(launchers['tests/preview/journal-agent.mjs'].find(f => f.id === 'preview-durable-memory')).toMatchObject({ availability: 'available', status: 'dark' });
   }, 60_000);

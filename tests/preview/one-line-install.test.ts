@@ -48,13 +48,17 @@ it('declares every package the setup entry loads as a run-time dependency', () =
 });
 
 it('refuses a manifest that declares a loaded package as dev-only (the 2026-10-20 clean-run failure)', () => {
-  const devOnly = { dependencies: {}, devDependencies: { typescript: '~5.9.3', vitest: '~3.2.4' } };
-  expect(undeclared(packagesLoaded(), devOnly)).toEqual(['typescript']);
+  const devOnly = { dependencies: {}, devDependencies: { typescript: '~5.9.3', marked: '17.0.5', vitest: '~3.2.4' } };
+  expect(undeclared(packagesLoaded(), devOnly)).toEqual(['marked', 'typescript']);
+  expect(undeclared(packagesLoaded(), { dependencies: { typescript: '5.9.3' } })).toEqual(['marked']);
+  expect(undeclared(packagesLoaded(), { dependencies: { marked: '17.0.5' } })).toEqual(['typescript']);
 });
 
 it('keeps the lockfile in agreement, so a pinned install provides the same packages', () => {
   const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
   expect(lock.packages[''].dependencies).toEqual(manifest.dependencies);
+  expect(manifest.dependencies.marked).toBe('17.0.5');
+  expect(lock.packages['node_modules/marked'].version).toBe('17.0.5');
   for (const name of Object.keys(manifest.dependencies)) expect(lock.packages[`node_modules/${name}`].dev).toBeUndefined();
 });
 

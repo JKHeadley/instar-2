@@ -330,8 +330,8 @@ export const renderSignIn = (token, enrolled) => document('Sign in', `<main clas
 
 /** The read-only page's sign-in: the operator's existing dashboard PIN, checked by the server that already holds it. It
  * reveals nothing from the agent, runs no script, and its one field is the labeled PIN (the sign-in, never a request). */
-export const renderPinSignIn = (token, notice = null) => document('Sign in', `<main class="panel"><h1>Sign in</h1><p class="purpose">Your dashboard shows your agent's messages, so your dashboard PIN confirms it is you first.</p>
-<form method="post" action="${dashboardPath(token, 'sign-in')}"><label class="label" for="pin">Your dashboard PIN</label>
+export const renderPinSignIn = (token, notice = null, next = '') => document('Sign in', `<main class="panel"><h1>Sign in</h1><p class="purpose">Your dashboard shows your agent's messages, so your dashboard PIN confirms it is you first.</p>
+<form method="post" action="${dashboardPath(token, 'sign-in')}">${next ? `<input type="hidden" name="next" value="${escape(next)}">` : ''}<label class="label" for="pin">Your dashboard PIN</label>
 <input class="field" id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="64" required>
 <button class="button primary" id="signin-pin" type="submit">Sign in</button></form>${notice ? `<p class="note" role="status">${escape(notice)}</p>` : ''}
 <p class="note">This page only shows your agent. Approvals stay where they are answered today.</p></main>`, null);

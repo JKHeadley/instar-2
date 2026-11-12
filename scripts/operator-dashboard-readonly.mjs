@@ -1,3 +1,4 @@
+import { renderPrivateView, PRIVATE_VIEW_CSP } from './private-view.mjs';
 // The operator dashboard, READ-ONLY, served by the agent's own runner (Rules 79, 81; plan #502; tests/preview/README.md
 // "The operator dashboard"). It renders the same views from the same module and the same snapshot as the approval page
 // (scripts/operator-dashboard.mjs), but it has no approval port behind it: it lists open requests with their existing
@@ -74,6 +75,7 @@ export function pinCheckFile(path) {
   };
 }
 
+const reportPath = path => /^\/dashboard\/reports\/[a-f0-9]{64}$/u.test(String(path)) ? String(path) : '';
 const sessionOf = cookie => String(cookie ?? '').split(';').map(part => part.trim().split('='))
   .find(([name]) => name === READ_ONLY_COOKIE)?.[1];
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -82,7 +84,7 @@ const digest = value => createHash('sha256').update(value).digest('hex');
  * `checkPin(pin)` resolves true only for the operator's PIN. A session is a random value held hashed in memory for 30
  * minutes (at most 64); a runner restart signs everyone out. Five failed sign-ins in five minutes pause sign-in, and PIN
  * checks still in flight count against the same five, so overlapping requests never reach the verifier more than five at once. */
-export function createReadOnlyDashboard({ state, checkPin, now = () => Date.now() }) {
+export function createReadOnlyDashboard({ state, checkPin, privateView = () => null, now = () => Date.now() }) {
   check(typeof state === 'function' && typeof checkPin === 'function', 'read-only dashboard needs a state and a PIN check');
   const sessions = new Map(), failures = [];
   let pending = 0; // PIN checks in flight: each holds an admission slot until it settles (Rule 60: bounded concurrent work)
@@ -105,7 +107,7 @@ export function createReadOnlyDashboard({ state, checkPin, now = () => Date.now(
     sessions.set(digest(session), now() + DASHBOARD_BOUNDS.sessionMs);
     return { kind: 'ok', session };
   };
-  return Object.freeze({ state, signedIn, signIn });
+  return Object.freeze({ state, signedIn, signIn, privateView });
 }
 
 const html = (status, body) => ({ status, headers: { ...HEADERS, 'content-type': 'text/html; charset=utf-8' }, body });
@@ -116,7 +118,13 @@ const notFound = () => ({ status: 404, headers: { ...HEADERS, 'content-type': 'a
 export function readOnlyView(dash, { path, cookie }) {
   const parts = String(path).split('?')[0].split('/').filter(Boolean);
   if (parts[0] !== 'dashboard' || parts.length > 3) return notFound();
-  if (!dash.signedIn(cookie)) return html(401, renderPinSignIn(null));
+  if (!dash.signedIn(cookie)) return html(401, renderPinSignIn(null, null, reportPath(String(path).split('?')[0])));
+  if (parts[1] === 'reports') {
+    const report = parts.length === 3 ? dash.privateView(parts[2]) : null;
+    const response = html(report ? 200 : 404, renderPrivateView(report));
+    response.headers['content-security-policy'] = PRIVATE_VIEW_CSP;
+    return response;
+  }
   const view = parts.length === 1 ? 'overview' : parts.slice(1).join('/');
   const known = view === 'overview' || DASHBOARD_VIEWS.some(item => item.path === view) || DETAIL_PATH.test(view);
   return html(known ? 200 : 404, renderDashboard({ token: null, view, state: dash.state(), pending: [], readOnly: true }));
@@ -130,8 +138,8 @@ export async function handleReadOnly(dash, { method, path, body, cookie }) {
   const form = new URLSearchParams(typeof body === 'string' && body.length <= READ_ONLY_LIMITS.bodyBytes ? body : '');
   const result = await dash.signIn(form.get('pin') ?? undefined);
   if (result.kind !== 'ok') return html(result.kind === 'locked' ? 429 : result.kind === 'unavailable' ? 503 : 401,
-    renderPinSignIn(null, NOTICE[result.kind]));
-  return { status: 303, body: '', headers: { ...HEADERS, location: dashboardPath(null),
+    renderPinSignIn(null, NOTICE[result.kind], reportPath(form.get('next'))));
+  return { status: 303, body: '', headers: { ...HEADERS, location: reportPath(form.get('next')) || dashboardPath(null),
     'set-cookie': `${READ_ONLY_COOKIE}=${result.session}; Path=${dashboardPath(null)}; HttpOnly; SameSite=Strict; Max-Age=${DASHBOARD_BOUNDS.sessionMs / 1000}` } };
 }
 

@@ -15,6 +15,8 @@ authority, store or outbound path.
 
 ## Capabilities
 
+- `preview-private-reports`: operator-only pages: {reply:Markdown,privateViewTitle:title (1–256 chars)}; 7 days; host adds dashboard link or phone-unavailable.
+
 The journal runner's capability briefing is generated from these lines and the feature declarations beside the shipped sources; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
 - `fetch-inbound-media`: saves Telegram files under bounded admission; refusals retain the message.
@@ -4598,3 +4600,11 @@ the last. Evidence a gate compares with the run's start therefore stays on the h
 (`tests/setup/host-clock.mjs`): model-provider proofs, the grounding ledger and boot receipts.
 Vitest stamps file windows on the shifted clock, so the process exit row records the shift and
 the gate moves each window back to the host clock before comparing.
+
+## Private report pages (row 90 first slice)
+
+Return `{reply: "complete Markdown report", privateViewTitle: "Title"}` in the ordinary answer contract. The final reviewed reply (including any disclosures) becomes the page body; it is also sent in chat with its generated link. A title is nonblank, one line and at most 256 characters; the page body is at most 20 KiB. The report shares the durable encrypted reply intent, source update, verified operator and conversation owner. Restart reconstructs the page from the journal and retains existing send-claim uniqueness. Expiry closes page access after seven days; history is retained rather than deleted. Missing/expired records answer a plain 404. No files or raw journals are served.
+
+`GET /dashboard/reports/<id>` uses the already-running read-only dashboard PIN session and port. No session returns the sign-in page (401); members/guests have no admission. The PIN binds the configured operator, not arbitrary user-supplied names. This is the explicit team-of-one exception under Rule 123; groups, sharing, members and guests need the owner's signed team record and their own authenticated surface before admission can widen. An ID confers no access. GFM rendering is carried from 1.x PrivateViewer; the existing phone stylesheet is reused, raw HTML is escaped, images and links render as inert text, and CSP sandboxes the response with no external resources.
+
+The runner derives links only from its actual listening socket and configured Tailscale address (`--dashboard-listen 100.64.0.0/10:PORT`, with the existing `--dashboard-pin-check`). Loopback-only, disabled or failed listeners yield the plain phone-unavailable statement, never localhost. The desk must bind the existing dashboard to its host's private Tailscale address, retain its configured PIN verifier, ensure the operator's phone can reach that private network/port, then prove opening the conversation-delivered link after PIN sign-in. A restart requires signing in again. No new listener, public ingress, bearer URL, paid service or phone setup task is introduced by the feature. Multi-machine: content lives with its conversation's durable journal; the existing ownership/replication/send fences apply, and a host without that retained journal cannot serve it. Already-delivered links stay bound to the issuing dashboard address; this slice adds no failover URL rewriting. Public publishing, file editing and members/guests remain the unimplemented remainder of row 90.

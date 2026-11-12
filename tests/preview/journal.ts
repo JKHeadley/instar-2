@@ -1,3 +1,4 @@
+import { createPrivateView, privateViewTitle, privateViewDelivery, type PrivateView } from './private-view.js';
 import { createPromiseStore, recordCommitments, closeCommitment, recordReplyLoop, schedulePromise, promiseRetryDelay as workRetryDelay, COMMITMENT_WAITS_ON } from '../../src/rungraph/promises.js';
 import type { CommitmentNote as CoreCommitmentNote, CommitmentClosure, CommitmentWaitsOn, ReplyLoop } from '../../src/rungraph/promises.js';
 export { COMMITMENT_WAITS_ON, OBLIGATION_FORMAT_RETRIES, OBLIGATION_FORMAT_RETRY_MS } from '../../src/rungraph/promises.js';
@@ -233,7 +234,9 @@ export const replyReviewReserveFor = (maxBytes: number) =>
  * note's header sentence, whose two facts the status-command and register-tooling lines already state. */
 // Includes the answer-provenance instruction; default-context-floor measures both
 // answer and review envelopes, so moving this allowance cannot conceal overflow.
-export const PREVIEW_FIXED_PROMPT_BYTES = 23_459;
+// Row 90: measured summary 23,575 bytes plus the existing 40-byte margin;
+// 23,619 retains 3,013 bytes of default turn headroom (floor remains 3,000).
+export const PREVIEW_FIXED_PROMPT_BYTES = 23_619;
 /** The room a context limit must still leave for the operator's own message and its history once the fixed
  * parts and the reply-review reserve are taken. At the approved 32768 default this was 1563 bytes, and the
  * packet had to drop the obligation guide from the third turn of a fresh root onward -- measured, not
@@ -1257,6 +1260,7 @@ export type JournalRecord =
     notices?: ReplyNotice[];
     /** Model-proposed promises and fulfillments, validated as exact quotes of this answer (Rule 10). */
     promises?: PromiseProposal[]; fulfills?: FulfillmentProposal[];
+    privateViewTitle?: string;
     /** The operator action the model read this verified operator message as asking for (Rules 10, 82). */
     operatorAction?: OperatorActionProposal;
     /** Part 21 §16: the operator's message showed the previous answer here should have remembered this (offered by structure). */
@@ -1331,7 +1335,7 @@ export type JournalRecord =
     recoveryHeld?: true;
     assessment?: BlockerAssessment;
     waitsOn?: 'operator' | 'external'; recheckAt?: number; usage?: ModelUsage; at: number }
-  | { kind: 'intent'; id: string; text: string; correctionDeferred?: true; formatting?: ReplyFormatting; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; promises?: AgentPromise[];
+  | { kind: 'intent'; privateView?: PrivateView; id: string; text: string; correctionDeferred?: true; formatting?: ReplyFormatting; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; promises?: AgentPromise[];
     /** Rules 6, 20-23, 83, 99: obligations the sent reply itself declares, recorded in the same intent. */
     loops?: ReplyLoop[]; blocker?: ProposedBlocker; blockerRechecks?: BlockerRecheck[];
     /** Obligation work results this sent reply delivers; delivery settles the obligation (Rules 8, 92). */
@@ -1588,6 +1592,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   reservedAt?: number;
   /** Obligations the answer proposed; the intent of a reply that says them makes them durable. */
   answerLoops?: ReplyLoop[]; answerBlocker?: ProposedBlocker; answerRechecks?: BlockerRecheck[];
+  privateViewTitle?: string; privateView?: PrivateView;
   answerRejected?: RejectedObligations; answerReports?: string[]; answerCarriedReports?: CarriedReport[]; intentCarriedReports?: CarriedReport[]; answerRejectedReports?: { key: string; text: string; objection: string }[]; answerNotices?: ReplyNotice[];
   /** Validated model proposals from the answer, and the fulfillments recorded with the reply intent. */
   proposedPromises?: PromiseProposal[]; proposedFulfills?: FulfillmentProposal[]; intentFulfills?: number[];
@@ -5366,6 +5371,10 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (row.lastNamedPerson !== undefined && (row.lastNamedPerson.trim() !== row.lastNamedPerson
       || !row.lastNamedPerson || Buffer.byteLength(row.lastNamedPerson) > 100 || !turn.accepted
       || !turn.text.includes(row.lastNamedPerson))) throw Error('preview journal: unsupported person cue');
+    if (row.privateViewTitle !== undefined) {
+      if (!privateViewTitle(row.privateViewTitle)) throw Error('preview journal: invalid private report title');
+      turn.privateViewTitle = row.privateViewTitle;
+    }
     turn.answerAt = row.at;
     turn.answer = row.text; if (row.reason !== undefined) turn.answerReason = row.reason;
     if (row.correction !== undefined) {
@@ -5558,6 +5567,12 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       || row.parts.some(part => typeof part.text !== 'string' || !part.text || (part.formatting === undefined && part.body !== encodeReply(part.text)) || !fitsOneMessage(part.text))))
       throw Error('preview journal: reply parts refused');
     if (row.formatting !== undefined) turn.formatting = structuredClone(row.formatting);
+    if (row.privateView !== undefined) {
+      const expected = createPrivateView(view, turn, turn.privateViewTitle, row.privateView.markdown, row.at);
+      if (!expected || JSON.stringify(expected) !== JSON.stringify(row.privateView) || !row.text.includes(expected.markdown))
+        throw Error('preview journal: private report binding refused');
+      turn.privateView = expected;
+    }
     turn.intent = row.text; turn.intentAt = row.at; turn.intentBody = row.body ?? row.text; view.replies++;
     if (row.parts !== undefined) turn.replyParts = row.parts.map(part => ({ ...part }));
     if (row.correctionDeferred) {
@@ -6249,6 +6264,7 @@ export function concurrentWorkItem(input: { now: number; zone?: string; current:
 }
 
 export interface PreviewPorts {
+  privateDashboardAddress?(): string | null;
   /** Bound independent topic drains; omitted retains the serial compatibility path. */
   topicConcurrency?: number;
   /** Current scoped authority and real group membership, checked afresh before every model or send port. */
@@ -9655,10 +9671,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
               refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false,
               memoryFailure: MemoryFailureProposal | undefined;
+            let reportTitle: string | undefined;
             let selectedReports: unknown[] = [], ownWordReports: CarriedReport[] = [], rejectedReports: { key: string; objection: string }[] = [];
             const heldForgets: MemoryChange[] = [];
             if (output.trim()) try {
-              const parsed = JSON.parse(output) as { reply?: unknown; correction?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
+              const parsed = JSON.parse(output) as { privateViewTitle?: unknown; reply?: unknown; correction?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown; cancelDeliveries?: unknown;
                 directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown; blockerRechecks?: unknown;
                 selectedReports?: unknown; carriedReports?: unknown; rejectedReports?: unknown; promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
@@ -9666,7 +9683,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
+                if (parsed.privateViewTitle !== undefined) {
+                  if (privateViewTitle(parsed.privateViewTitle)) reportTitle = parsed.privateViewTitle;
+                }
                 separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string; decided = true;
+                if (parsed.privateViewTitle !== undefined && reportTitle === undefined)
+                  text += '\n\nI could not create the private report: its title must be 1–256 characters on one line.';
                 if (Array.isArray(parsed.selectedReports)) selectedReports = parsed.selectedReports;
                 ownWordReports = carriedProposals(parsed.carriedReports, replyProse(text));
                 if (Array.isArray(parsed.rejectedReports) && parsed.rejectedReports.every(item => item
@@ -10041,6 +10063,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const rejectedNow: RejectedObligations = { ...obligations.rejected,
               ...(refusedDeclarations ? { fulfills: refusedDeclarations } : {}) };
             journal.append({ kind: 'answer', id: turn.id, text: written,
+              ...(reportTitle === undefined ? {} : { privateViewTitle: reportTitle }),
               ...(text.trim() && typeof answer !== 'string' && answer.contextRecovery === turn.id ? { contextRecovery: turn.id } : {}),
               ...(correction === undefined ? {} : { correction }),
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
@@ -10648,6 +10671,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (shown && !reportedNo && !reply.includes(SHARED_ACCESS_NOTE)) reply = `${reply.trimEnd()}\n\n${approvalDisclosureText(shown)}`;
         // Prepare the canonical text before signing and recording the intent; the original answer stays intact.
         reply = reply.trimEnd();
+        const report = !heldBack && speaker === 'agent' && turn.privateViewTitle !== undefined
+          ? createPrivateView(journal.view, turn, turn.privateViewTitle, reply, ports.now()) : null;
+        if (report) reply += `\n\n${privateViewDelivery(report, ports.privateDashboardAddress?.() ?? null)}`;
+        else if (turn.privateViewTitle !== undefined && !heldBack)
+          reply += '\n\nI could not create that private page. Reports are limited to this operator’s own private conversation and 20 KiB.';
         const split = splitReply(reply, reply.slice(answerEnd));
         if (!split) {
           journal.append({kind:'hold',id:turn.id,reason:'encoded reply size',at:ports.now()}); continue;
@@ -10656,7 +10684,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // renderer version, supplies dispatch and resumed continuation parts (Rules 33, 42, 89).
         const rendered = split.map(text => ({ ...renderTelegramHtml(text), plain: telegramPlainText(text) }));
         const body = rendered[0]!.html;
-        try { for (const text of new Set([encodeReply(reply), ...rendered.flatMap(part => [part.html, part.plain])])) ports.checkOutbound(text); }
+        try { if (report) ports.checkOutbound(`${report.title}\n${report.markdown}`);
+          for (const text of new Set([encodeReply(reply), ...rendered.flatMap(part => [part.html, part.plain])])) ports.checkOutbound(text); }
         catch { journal.append({ kind: 'hold', id: turn.id, reason: 'outbound secret refused', at: ports.now() }); continue; }
         const thread = turn.thread === undefined ? {} : { thread: turn.thread };
         // Review is complete: dispatch owns the reply now. Cancel an unadmitted acknowledgement,
@@ -10665,7 +10694,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         cancelAcknowledgement(turn);
         cancelWorkingProgress(turn);
         await acknowledgementsInFlight.get(turn);
-        const intentAt = ports.now();
+        const intentAt = report?.createdAt ?? ports.now();
         const stopBase = approvalBase(journal.view);
         const approval: ApprovalRequest | undefined = isStopCommand(turn.text) && reply.includes(STOP_CONFIRM_TEXT) && journal.view.stop === null
           ? { id: approvalId(turn.id, 'stop', stopBase), action: 'stop', base: stopBase } : undefined;
@@ -10678,6 +10707,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           provenance: journal.signOutbound(speaker, { target: replyPartTarget(turn.id, index + 2),
             chat: journal.view.genesis.chat, ...thread, body: rendered[index + 1]!.html }) }));
         const admitReply = () => journal.append({ kind: 'intent', id: turn.id, text: reply, body, formatting,
+          ...(report ? { privateView: report } : {}),
           ...(correctionDeferred ? { correctionDeferred: true as const } : {}), chat: journal.view.genesis.chat, ...thread, provenance,
           ...(parts.length ? { parts } : {}),
           ...(approval ? { approval } : {}), ...(offer?.request ? { operatorRequest: offer.request, requestScope: 'action' as const } : {}),

@@ -3,6 +3,14 @@
   "owner": "preview",
   "fixtures": [
     {
+      "id": "PREVIEW-PRIVATE-REPORTS",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/private-view.test.ts",
+        "hash": "sha256:14403db53fb966e1a763de38b4091e7c50dfad5be5d51516792bbe0b64b0870d"
+      }
+    },
+    {
       "id": "PREVIEW-CONVERSATION",
       "stage": "build",
       "artifact": {
