@@ -15,10 +15,10 @@ Undo and recovery: Discard this unlanded branch. After an approved landing, any 
 Multi-machine posture: Deterministic Git comparison on every machine, using full commit and blob identities; no remote mutable state or host-specific exception. No runtime state is introduced.
 Team posture: Repository readers see this proposal under existing repository access. Only the operator approves the waiver and the desk lands it; no member or guest gains access or action authority.
 Layer below: Both complete constitutions at frozen main; the accepted changelog-numbering-design-1109-PROGRESS.md; actual arrays from both parents; Rule 91 renderer/validator; governedVersionErrors and the read-only merge-history guard. Main Rule 39 and Rule 123 and live Rule 72 are preserved byte-for-byte as rows.
-Bug class: deterministic history reconciliation
-Bug evidence: Real parent arrays replayed in tests/register/change-review-git.test.ts, with wrong record/base, changed payload, dropped entry and unauthorized revision neighbors refused.
+Bug class: integration
+Bug evidence: reproducer=tests/register/change-review-git.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory contains sample files only.
-Convergence: none; author submission for operator and independent review.
+Convergence: none
 Prompt review: No model prompts, output parsers or model accept/escalate/refuse decisions change.
 Constitution counterpart: none; this merges previously approved wording without changing obligations. Rule 123's existing counterpart is 1.x 818107de4 (#3046); main's review record is retained.
 Rule 94 waiver: proposed bc95ab494d5c035f750c6efc1379913e2d8b6e46 d3d563cd1c2396a72bf08fc08c7a7740be419ca8

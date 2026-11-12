@@ -185,6 +185,9 @@ describe('the frozen main/live numbering repair (Rules 90/94)', () => {
     expect(check(main, repaired, '')).toEqual([]);
     expect(check(live, repaired)).toEqual([]);
     expect(check(live, repaired, '')).toHaveLength(4);
+    expect(check(live, repaired, `${waiver}\n${waiver}`)).toHaveLength(4);
+    const noMain = r.git('commit-tree', r.git('write-tree'), '-p', live, '-m', 'unmerged fixture');
+    expect(check(live, noMain)).toHaveLength(4);
     expect(check(live, repaired, waiver.replace(main, live))).toHaveLength(4);
     expect(check(live, repaired, waiver, 'reviews/other.md')).toHaveLength(4);
     expect(check(r.git('rev-parse', `${live}^`), repaired).length).toBeGreaterThan(0);
