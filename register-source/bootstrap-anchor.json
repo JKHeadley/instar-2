@@ -1,7 +1,7 @@
 {
   "phase": "converted-unanchored",
   "approvalBasis": "Repository replay publication pin; exact operator approval is recorded in PR/changelog history; replay has no entering-force authority.",
-  "shape": "sha256:25ee29a3eac960ce783f87fe1cd329833c4643cab7cfa7195e44b09d363b688c",
+  "shape": "sha256:5fed389f3c69716128db9d3016de139ad4d955ee5f9ea33589e95a25fb1a6801",
   "documents": {
     "docs/01-the-rules.md": "sha256:eb29230f6bf80e81fc554a017e138899d3337c28d92077b8a44b130c70572de6",
     "docs/02-the-register.md": "sha256:04809a1ce2128b61323a82a260b3550dbb3b5bb8852716cc604aaacb9ef78012",
