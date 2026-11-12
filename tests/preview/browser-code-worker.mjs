@@ -25,14 +25,16 @@ lines.on('line', async line => {
     return;
   }
   if (!message.start) return;
+  let invoked = false;
   try {
     const api = await connection.initializePlaywright();
     const pages = api._preLaunchedBrowser().contexts().flatMap(context => context.pages());
     const page = pages[message.page];
     const tool = tools.browserTools.find(tool => tool.schema.name === 'browser_run_code_unsafe');
     const content = [];
-    await tool.handle({ ensureTab: async () => ({ page, modalStates: () => [], context: { onUnhandledRejection: () => () => {} }, waitForCompletion: fn => fn() }) },
+    invoked = true;
+    await tool.handle({ ensureTab: async () => ({ page, modalStates: () => [], context: { onUnhandledRejection: fn => { process.on('unhandledRejection', fn); return () => process.off('unhandledRejection', fn); } }, waitForCompletion: fn => fn() }) },
       { code: message.code }, { addCode() {}, addTextResult: text => content.push({ type: 'text', text }) });
     send({ result: { content } });
-  } catch { send({ result: { isError: true, content: [{ type: 'text', text: 'Confined browser code refused' }] } }); }
+  } catch (error) { send({ result: { isError: true, execution: invoked ? 'handler' : 'setup', content: [{ type: 'text', text: String(error?.message ?? error) }] } }); }
 });

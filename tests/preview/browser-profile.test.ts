@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, chmodSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, existsSync, chmodSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
@@ -22,9 +22,15 @@ import { admitToolCallEffect } from './tool-admission.mjs';
 // @ts-expect-error shipped default
 import { DEFAULT_MCP } from '../../scripts/mcp-setup.mjs';
 const configuredMcp = { ...DEFAULT_MCP, mcpServers: { playwright: { ...DEFAULT_MCP.mcpServers.playwright, args: [...DEFAULT_MCP.mcpServers.playwright.args, '--caps', 'vision'] } } };
-const cleanup: (() => Promise<unknown> | void)[] = [];
-afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); });
-const fresh = () => { const root = realpathSync(mkdtempSync(join(tmpdir(), 'profile-proof-'))); cleanup.push(() => rmSync(root, { recursive: true, force: true })); return root; };
+const cleanup: (() => Promise<unknown> | void)[] = [], directories: string[] = [];
+async function drainCleanup(closers: (() => Promise<unknown> | void)[], roots: string[]) {
+  const results = await Promise.allSettled(closers.reverse().map(close => Promise.resolve().then(close)));
+  for (const root of roots.reverse()) rmSync(root, { recursive: true, force: true });
+  const failure = results.find(result => result.status === 'rejected');
+  if (failure?.status === 'rejected') throw failure.reason;
+}
+afterEach(() => drainCleanup(cleanup.splice(0), directories.splice(0)));
+const fresh = () => { const root = realpathSync(mkdtempSync(join(tmpdir(), 'profile-proof-'))); directories.push(root); return root; };
 const enroll = (root: string, origin: string) => {
   const row = { id: 'agent-browser', identity: 'local-agent', service: 'fake-site', ownership: 'agent', purpose: 'browsing',
     userDataDir: join(root, 'browser-profiles', 'agent-browser'), origins: [origin, origin.replace('127.0.0.1', 'localhost')] };
@@ -229,6 +235,11 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   expect(credentialEscaped, 'the sink must not receive the profile credential').toBe(false);
   expect(egress).toMatchObject({ status: 'refused', reason: 'output-secret-check' });
   expect(escaped).toBe(1);
+  const fileCode = join(row.userDataDir, 'code.mjs');
+  writeFileSync(fileCode, 'async () => "file code works"');
+  expect(await worker.call('browser_run_code_unsafe', { filename: 'code.mjs' })).toMatchObject({ status: 'observed' });
+  const outsideCode = join(fresh(), 'outside-code.mjs'); writeFileSync(outsideCode, 'async () => "outside"');
+  expect(await worker.call('browser_run_code_unsafe', { filename: outsideCode })).toMatchObject({ status: 'refused' });
   const reveal = await worker.call('browser_run_code_unsafe', { code: 'async (page) => (await page.context().cookies()).map(cookie => cookie.value)' });
   expect(reveal).toMatchObject({ status: 'refused', reason: 'output-secret-check' });
   expect(JSON.stringify(reveal).includes(secret)).toBe(false);
@@ -311,4 +322,19 @@ it('bounds first-call capacity waiting and releases a late reservation after sto
   releaseHold({ release: async () => { released++; } });
   expect((await result).status).toBe('refused'); expect(released).toBe(1);
   await browser.close();
+});
+
+it('closes independent resources together, then removes their directories even on a close failure', async () => {
+  const root = fresh(), started: number[] = [];
+  let release = () => {};
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const closing = drainCleanup([1, 2].map(id => async () => { started.push(id); await pending; }), [root]);
+  try {
+    await Promise.resolve();
+    expect(started.sort()).toEqual([1, 2]); expect(existsSync(root)).toBe(true);
+  } finally { release(); await closing; }
+  expect(existsSync(root)).toBe(false);
+  const failedRoot = fresh();
+  await expect(drainCleanup([async () => { throw Error('close failed'); }], [failedRoot])).rejects.toThrow('close failed');
+  expect(existsSync(failedRoot)).toBe(false);
 });

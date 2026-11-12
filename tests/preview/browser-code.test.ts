@@ -12,8 +12,9 @@ it('confines arbitrary code while retaining ordinary fetch and refusing cookie e
   const secret = randomBytes(32).toString('hex');
   const privateRoot = mkdtempSync(join(tmpdir(), 'browser-custody-proof-')), guardedFile = join(privateRoot, 'custodian-policy');
   writeFileSync(guardedFile, 'untouched');
-  const bodies: string[] = [];
+  const bodies: string[] = [], connections: string[] = [];
   const sink = createServer(async (req, res) => {
+    connections.push(req.headers.connection ?? '');
     if (req.url === '/redirect') { res.writeHead(302, { location: '/destination' }); res.end(); return; }
     if (req.url === '/destination') { res.end('redirected'); return; }
     let body = ''; for await (const chunk of req) body += chunk;
@@ -71,6 +72,7 @@ it('confines arbitrary code while retaining ordinary fetch and refusing cookie e
       await fetch('${url}', {method:'POST',body:value}); return 'done'; }`);
     expect(escaped.isError).toBe(true); expect(refusal).toBe('output-secret-check');
     expect(bodies).toEqual(['ordinary']);
+    expect(connections.length).toBeGreaterThan(0); expect(connections.every(value => value === 'close')).toBe(true);
   } finally { rmSync(privateRoot, { recursive: true, force: true }); await browser.close(); await new Promise<void>(resolve => sink.close(() => resolve())); }
 }, 30000);
 
@@ -83,7 +85,7 @@ it('replays recorded summary, Jev, review and delivered/empty shapes through the
       const result = await runProfileCode({ context, page, code: row.raw, clear: () => true, allowed: () => false,
         capture: async () => {}, protect: async () => {}, refused: () => {} });
       expect(result.isError, row.id).toBe(true);
-      expect(result.content[0].text, row.id).toBe('Confined browser code refused');
+      expect(result.execution, row.id).toBe('handler');
     }
   } finally { await browser.close(); }
 }, 30000);

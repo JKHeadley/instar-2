@@ -131,7 +131,7 @@ async function requestNetwork(request, body, signal, clear, redirects = 0) {
   if (!clear(request.url) || !clear(JSON.stringify(request.headers))) throw Error('credential egress');
   const response = await new Promise((resolve, reject) => {
     const transport = url.protocol === 'https:' ? https : http;
-    const out = transport.request(url, { method: request.method, headers: Object.fromEntries(request.headers), signal }, answer => {
+    const out = transport.request(url, { method: request.method, headers: Object.fromEntries(request.headers), signal, agent: false }, answer => {
       const parts = []; let bytes = 0;
       answer.on('data', part => { bytes += part.length; if (bytes > 1024 * 1024) out.destroy(Error('response bound')); else parts.push(part); });
       answer.on('error', reject);

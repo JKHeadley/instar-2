@@ -273,7 +273,7 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
         const tab = await backend._context.ensureTab();
         await tab.waitForCompletion(async () => {
           output = await runProfileCode({ context, page: tab.page,
-            code: input.filename ? readFileSync(input.filename, 'utf8') : input.code,
+            code: input.filename ? readFileSync(await backend._context.workspaceFile(input.filename, initial.userDataDir), 'utf8') : input.code,
             clear: text => !redact(text).count && !secretMaterialIn(text, [...held]), allowed, protect: protectCode, capture,
             refused: reason => { refusal = reason; } });
         });
