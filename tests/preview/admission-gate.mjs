@@ -311,7 +311,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     state(claim) {
       const state = claims.get(claim);
       return state ? { calls: state.calls, refused: state.refused, refusalReason: state.refusalReason, closed: state.closed,
-        uncertainEffects: state.effects.size, toolPreparations: state.toolPreparations,
+        uncertainEffects: state.effects.size, toolPreparations: state.toolPreparations, children: state.delegations.size,
         openDelegations: [...state.delegations.values()].filter(row => row.open).map(row => row.edge) } : null;
     },
     /** Marks a still-open child edge settled by its parent (the parent closes it, never this server). */

@@ -127,9 +127,14 @@ export function subscriptionExchange(result: { code: number | null; limited: boo
  * settled at zero and never released. */
 export function usageReconciliation(view: { calls: number; tokenCalls: readonly { input: number; output: number;
   observedInput: boolean; observedOutput: boolean }[]; tokenCurrent: ReadonlyMap<string, number>;
-  callOutcomeCounts: ReadonlyMap<string, number> }) {
+  callOutcomeCounts: ReadonlyMap<string, number>; toolTurns?: { reservedCalls: number; releasedCalls?: number;
+    settledCalls?: number; certifiedReserved?: number } }) {
   const open = [...view.tokenCurrent.values()].map(index => view.tokenCalls[index]).filter(call => call !== undefined);
-  return { reservedCalls: view.calls, physicalOutcomes: view.callOutcomeCounts.get('total') ?? 0,
+  return { reservedCalls: view.calls + (view.toolTurns?.releasedCalls ?? 0),
+    settledCalls: view.toolTurns?.releasedCalls ?? 0, chargedCalls: view.calls,
+    provenToolCalls: view.toolTurns?.settledCalls ?? 0,
+    heldUnknownToolCalls: (view.toolTurns?.reservedCalls ?? 0) - (view.toolTurns?.certifiedReserved ?? 0),
+    physicalOutcomes: view.callOutcomeCounts.get('total') ?? 0,
     reportedCalls: view.tokenCalls.filter(call => call.observedInput && call.observedOutput).length,
     openCommitments: { calls: open.length, reservedInputTokens: open.reduce((sum, call) => sum + (call.observedInput ? 0 : call.input), 0),
       reservedOutputTokens: open.reduce((sum, call) => sum + (call.observedOutput ? 0 : call.output), 0) },

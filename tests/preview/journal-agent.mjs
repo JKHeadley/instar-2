@@ -2689,7 +2689,7 @@ async function main() {
     // becomes a durable child edge first, and each consequential tool passes the effect owner, which decides it by the
     // effect doorway's four tests under the installation's current effect policy (read at each decision, so a policy
     // withdrawn or unreadable mid-step refuses), exactly as an unchecked tool turn's hook does.
-    if (sessionSetup !== null || doorway.toolTurn?.harness) {
+    if (sessionSetup !== null || doorway.toolTurn?.harness || toolsActive()) {
       const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null || !active() || sessionAccountsChanged();
       const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
       gate = await createAdmissionGate({

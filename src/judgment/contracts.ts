@@ -155,7 +155,7 @@ export interface ProviderObservation {
   readonly usage: { readonly inputTokens: number | null; readonly outputTokens: number | null; readonly charge: number | null;
     /** Answer-cap quantity after validated thinking exclusion; outputTokens retains total accounting. Absent means use total. */
     readonly answerTokens?: number;
-    readonly source: string; readonly inputComplete?: true };
+    readonly source: string; readonly inputComplete?: true; readonly modelCalls?: number };
   readonly retryBlocked: boolean;
   /** Absent observations retain their legacy settlement meaning but cannot be used as answers. */
   readonly responseEvidence?: ProviderResponseEvidence;

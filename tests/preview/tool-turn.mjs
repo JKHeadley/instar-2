@@ -849,6 +849,7 @@ function traceRow({ id, attempt, trace, egress, authority, ended, redactText, wo
       exitTest: 'returns its final message as the subagent tool result', placement: 'in the turn\'s harness process on this machine',
       transport: 'claude-code Agent tool',
       resultDestination: edge.parentAgent ? `the tool result of subagent ${edge.parentAgent}` : 'the parent turn\'s tool result', cancellation: 'ends with the turn\'s process group',
+      ...(edge.terminal ? { terminal: edge.terminal } : {}), retired: edge.retired === true,
       state: edge.state === 'returned' ? 'returned' : ended, result: edge.result === null ? null : redactText(edge.result) })),
     workspaceBytes: workspace === null ? null : workspaceBytes(workspace), ...extra, at };
 }
@@ -878,7 +879,7 @@ export function reconcileToolTurns({ journal, root, redactText, now }) {
 /**
  * One tool turn, as the runner runs it (Part Thirteen §9, docs/17-harness-adapters). Its whole liability, every model turn the policy
  * allows beyond the answer's own reserved attempt, is reserved against the operator's call cap before
- * dispatch and retained (MF4). A short allowance, or a packet the longer tool system prompt would overflow,
+ * dispatch and retained until a complete settlement certificate (MF4). A short allowance, or a packet the longer tool system prompt would overflow,
  * answers this turn without tools (`fallback`), recorded. The reservation is durable before anything is
  * allocated or launched, so a crash leaves it open and visible. The hook's trace is journaled after the
  * turn whatever its outcome; a tool result with no admitted call before it (a tool that ran past the hook)
@@ -949,15 +950,17 @@ export async function runToolTurn(options) {
   const used = kept && (journal.view.toolTurns?.workspaces ?? []).includes(space.key);
   const quotes = kept ? forgottenQuotes(journal.view) : [];
   // Rule 114: the edge's authority and budget share are durable before dispatch, with the turn's whole liability.
-  journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, calls: extra + children * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns + (recoveringResume ? 1 : 0),
+  journal.append({ kind: 'tool-turn', phase: 'reserved', settlementVersion: 1, id, attempt, calls: extra + children * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns + (recoveringResume ? 1 : 0),
     delegation: { children, turnsEach: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, type: SUBSCRIPTION_SUBAGENT_TYPE, authority },
     ...(mcp ? { mcp: { servers: Object.keys(mcp.servers), reads: mcp.reads.length, digest: mcp.digest } } : {}),
     workspace: { key: space.key, kept }, at: now() });
+  const allowance = SUBSCRIPTION_TOOL_LIMITS.maxTurns + children * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns;
+  const priorOutcome = journal.view.callOutcomes.at(-1);
   let turn = null, result, failure = null, plan = null, volume = null, notice = '', closeSecrets = null, checkpoint = null, claim = null, gated = null;
   try {
     // A harness with no model-call limit of its own runs only through the checkpoint: no checkpoint, no tool turn.
     if (admission.harness && !gate) throw Error('preview: this tool turn needs the host admission checkpoint');
-    if (admission.harness) claim = `tool-turn-${createHash('sha256').update(id, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
+    if (gate) claim = `tool-turn-${createHash('sha256').update(id, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
     turn = prepareToolTurn({ root, operation: id, attempt, operations, effectPolicy, irreversibleTerm, children, mcp, scratch,
       volume: kept ? space : null, authority, admission, ...(claim ? { gate: gate.base(claim) } : {}),
       ...(harness ? { harness: { user: harness.user, runner: harness.runner, hookScript: harness.hookScript,
@@ -965,9 +968,9 @@ export async function runToolTurn(options) {
     if (claim) {
       // The turn's own edge: the parent its delegations hang from (its durable record is the journal's reserved row).
       const openedAt = now();
-      gate.open(claim, { framework: 'codex-cli', allowance: SUBSCRIPTION_TOOL_LIMITS.maxTurns, edge: { type: 'SessionWorkEdge', schemaVersion: 1,
+      gate.open(claim, { framework: admission.harness ? 'codex-cli' : 'claude-code', allowance, edge: { type: 'SessionWorkEdge', schemaVersion: 1,
         id: `tool-turn:${id}:${attempt}`, parent: id, child: `tool-turn:${id}`, scope: turn.workspace, owner, authority: 'the reviewed tools activation',
-        budget: { steps: 1, deadline: openedAt + SUBSCRIPTION_TOOL_LIMITS.timeout, maxResultBytes: 16384, calls: SUBSCRIPTION_TOOL_LIMITS.maxTurns, tokens: null },
+        budget: { steps: 1, deadline: openedAt + SUBSCRIPTION_TOOL_LIMITS.timeout, maxResultBytes: 16384, calls: allowance, tokens: null },
         exitTest: 'the turn returned one admitted answer', placement: `machine:${owner}`, transport: 'codex exec on this machine',
         resultDestination: `answer of ${id}`, openedAt } });
     }
@@ -1032,8 +1035,17 @@ export async function runToolTurn(options) {
     } catch { /* an unwritten record leaves the open one: the next turn rotates it as interrupted */ }
     ending = { ended: ending, transcriptBytes };
   }
+  const physical = journal.view.callOutcomes.at(-1);
+  const cleanup = physical !== priorOutcome && physical?.id === id && physical.outcome.exitCode === 0
+    && physical.outcome.localLimit === null && physical.outcome.isError === false
+    && physical.outcome.resources?.cleanup === 'verified' && physical.outcome.resources.census === 'complete'
+    && physical.outcome.resources.leakedDescendants === 0 && physical.outcome.resources.allocation?.state === 'returned';
   journal.append(traceRow({ id, attempt, trace, egress: egressRecord, authority, ended, redactText, workspace: turn ? turn.workspace : null, at: now(),
-    extra: { ...(volume ? { volume } : {}),
+    extra: { terminal: { state: !failure && !stopped() && !recoveringResume && !gated?.refused
+        && !result?.failureClass && !result?.recoveryHeld ? result?.state ?? 'uncertain' : 'uncertain', usage: result?.usage },
+      retirement: { closed: gated?.closed === true, openDelegations: gated?.openDelegations.length ?? -1,
+        children: trace.children.length <= SUBSCRIPTION_TOOL_LIMITS.maxChildren && trace.calls.length <= 64 ? gated?.children ?? -1 : -1,
+        cleanup: cleanup && gated?.uncertainEffects === 0 }, ...(volume ? { volume } : {}),
       // Which identity the harness ran as: its own user (an unavailable one never reaches a turn; launches are held).
       ...(harness ? { harness: { user: harness.user } } : {}),
       ...(plan ? { session: { id: plan.id, mode: plan.resume ? 'resume' : 'new', reason: plan.reason, turn: plan.turn,
@@ -1070,6 +1082,8 @@ export async function runToolTurn(options) {
     && trace.calls.length === 0 && trace.children.length === 0 && !stopped() && toolTurnFits(journal.view, 1)) {
     return runToolTurn({ ...options, recoveringResume: true });
   }
+  const proven = journal.view.toolTurns?.settlements?.[`${id}#${attempt}`]?.proven;
+  if (proven !== undefined) journal.append({ kind: 'tool-turn', phase: 'settled', id, attempt, calls: proven, at: now() });
   return { result, turn, trace, session: plan };
 }
 
@@ -1103,5 +1117,7 @@ export function toolStatusLines(view, enabled, off = null, gated = false) {
       + 'gone and it started again empty (the journal still holds every answer and tool trace).'] : []),
     ...(stats.reconciledFiles ? [`Workspace kept in step with memory: ${stats.reconciledFiles} files had a forgotten or corrected statement removed.`] : []),
     ...(stats.reconcileIncomplete ? [`Workspace check against memory unfinished on ${stats.reconcileIncomplete} turns (files that could not be changed `
-      + 'automatically, kept intact, or a part not yet checked); the agent was told which, and the check repeats each turn until it completes.'] : [])];
+      + 'automatically, kept intact, or a part not yet checked); the agent was told which, and the check repeats each turn until it completes.'] : []),
+    `Tool call capacity: ${stats.reservedCalls} reserved, ${stats.releasedCalls ?? 0} settled unused, `
+      + `${stats.settledCalls ?? 0} proven calls, ${stats.reservedCalls - (stats.certifiedReserved ?? 0)} still held as unknown.`];
 }
