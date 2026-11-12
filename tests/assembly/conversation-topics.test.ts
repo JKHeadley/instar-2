@@ -430,22 +430,23 @@ it('four busy topics all receive workers when measured headroom exists', async (
   f.held.clear(); await Promise.all(runs); await f.port.close();
 });
 
-// Rule 15. The real waits this replaces: update 969390685 was refused 156 times over 18 minutes, 969390684 10 times.
-it('with no worker live a refused headroom sample still starts the first worker, and decides the next one', async () => {
-  const f = fixture(8, 6, 16, 600000); let sampled = 0;
-  Object.assign(f.config, { capacity: async () => { sampled++; return { admit: false, memoryPressure: false }; } });
-  expect(await f.port.run(f.request('7:a'))).toMatchObject({ state: 'complete' });
-  expect(f.launches).toHaveLength(1); expect(sampled).toBe(0);
+// Rule 15: verified operator priority replaces the old first-worker-only exemption.
+it('verified operator work is admitted while background work waits even with no worker live', async () => {
+  const f = fixture(8, 6, 16, 600000); const sampled: boolean[] = [];
+  Object.assign(f.config, { operatorRequested: (operation: string) => operation === '7:a',
+    capacity: async (operator = false) => { sampled.push(operator); return { admit: operator, memoryPressure: false }; } });
   expect(await f.port.run(f.request('8:a'))).toMatchObject({ state: 'queued' });
-  expect(f.launches).toHaveLength(1); expect(sampled).toBeGreaterThan(0);
+  expect(f.launches).toHaveLength(0);
+  expect(await f.port.run(f.request('7:a'))).toMatchObject({ state: 'complete' });
+  expect(f.launches).toHaveLength(1); expect(sampled).toEqual([false, true]);
   expect(f.state().topics['8']!.inputs[0]).toMatchObject({ state: 'queued', delivery: null, attempts: 0 });
   await f.port.close();
 });
 
 it('low CPU headroom preserves an additional worker\'s input queued, then drains without resubmission', async () => {
-  const f = fixture(8, 6, 16, 600000); let room = false;
+  const f = fixture(8, 6, 16, 600000); let room = true;
   Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: false }) });
-  await f.port.run(f.request('9:resident'));
+  await f.port.run(f.request('9:resident')); room = false;
   expect(await f.port.run(f.request('7:a'))).toMatchObject({ state: 'queued' });
   expect(f.state().topics['7']!.inputs[0]).toMatchObject({ state: 'queued', delivery: null, attempts: 0 });
   expect(f.launches).toHaveLength(1);
@@ -529,9 +530,9 @@ it('capacity is measured after a busy slot wait and queued input drains when it 
 const recordedCapacityShapes = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
   otherShapes: { kind: string; id: string; raw: string }[] };
 it.each(recordedCapacityShapes.otherShapes)('capacity wait preserves recorded $kind ($id) before dispatch', async sample => {
-  const f = fixture(8, 6, 16, 600000); let room = false;
+  const f = fixture(8, 6, 16, 600000); let room = true;
   Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: false }) });
-  await f.port.run(f.request('9:resident'));
+  await f.port.run(f.request('9:resident')); room = false;
   const request = { ...f.request('7:recorded'), context: JSON.stringify({ recorded: sample.raw }) };
   expect(await f.port.run(request)).toMatchObject({ state: 'queued' });
   expect(f.state().topics['7']!.inputs[0]!.request).toEqual(request);
@@ -542,7 +543,7 @@ it.each(recordedCapacityShapes.otherShapes)('capacity wait preserves recorded $k
 });
 
 it.each(recordedCapacityShapes.otherShapes)('capacity recovery preserves topic-local grounding for recorded $kind ($id)', async sample => {
-  const f = fixture(8, 6, 16, 600000); let room = false;
+  const f = fixture(8, 6, 16, 600000); let room = true;
   const snapshots: { topic: string; text: string }[] = [];
   const topicConfig: NonNullable<ConversationTopicsConfig['topicConfig']> = topic => ({
     io: f.config.io, resources: f.config.resources, authorized: f.config.authorized,
@@ -555,7 +556,7 @@ it.each(recordedCapacityShapes.otherShapes)('capacity recovery preserves topic-l
     },
   });
   Object.assign(f.config, { topicConfig, capacity: async () => ({ admit: room, memoryPressure: false }) });
-  await f.port.run(f.request('9:resident')); snapshots.length = 0;
+  await f.port.run(f.request('9:resident')); room = false; snapshots.length = 0;
   for (const topic of ['7', '8']) {
     const request = { ...f.request(`${topic}:recorded`), context: JSON.stringify({ topic, recorded: sample.raw }) };
     expect(await f.port.run(request)).toMatchObject({ state: 'queued' });
@@ -615,8 +616,8 @@ it.each([false, true])('physical lease wait rechecks headroom (retry=%s)', async
 
 it('an unreadable post-admission capacity sample releases the unused lease', async () => {
   const f = fixture(8, 6, 16, 600000);
-  Object.assign(f.config, { capacity: async () => { throw Error('measurement unavailable'); } });
   await f.port.run(f.request('9:resident'));
+  Object.assign(f.config, { capacity: async () => { throw Error('measurement unavailable'); } });
   expect(await f.port.run(f.request('7:a'))).toMatchObject({ state: 'uncertain' });
   expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
   expect(f.counts().live).toBe(1); await f.port.close(); expect(f.counts().live).toBe(0);
@@ -912,4 +913,75 @@ it.each(['stop', 'grant'] as const)('never renews an elapsed lifetime across the
   await f.port.run(f.request('main:b')).catch(() => {});
   expect(f.state().allowanceEpoch).toBeUndefined();
   expect(f.delivered).toHaveLength(1);
+});
+
+// The injected timer is the production retry seam: no ordinary-lane maintenance or new input.
+it.each([true, false])('memory holds operator=%s, shows age/reason and retries within two seconds', async operator => {
+  const f = fixture(8, 6, 16, 600000); let pressure = true;
+  const timers = new Map<number, { run: () => void; ms: number }>(); let serial = 0;
+  Object.assign(f.config, { operatorRequested: () => operator,
+    capacity: async () => ({ admit: !pressure, memoryPressure: pressure, reason: pressure ? 'available memory below reserve' : '' }),
+    after: (ms: number, run: () => void) => { const id = ++serial; timers.set(id, { ms, run }); return () => { timers.delete(id); }; } });
+  const request = f.request('7:held');
+  expect(await f.port.run(request)).toMatchObject({ state: 'queued' });
+  expect(f.launches).toHaveLength(0); expect(f.counts().live).toBe(0);
+  const original = structuredClone(f.state().topics['7']!.inputs[0]);
+  expect(f.port.idleCleanupStatus?.().join()).toContain('available memory below reserve; held 0s; retry offered every 2s');
+  f.advance(2000); expect(f.port.idleCleanupStatus?.().join()).toContain('held 2s');
+  const first = [...timers.values()][0]!; expect(first.ms).toBe(2000); timers.clear(); first.run();
+  await until(() => timers.size === 1);
+  expect(f.state().topics['7']!.inputs[0]).toEqual(original);
+  pressure = false; f.advance(2000); const second = [...timers.values()][0]!; timers.clear(); second.run();
+  await until(() => f.delivered.length === 1);
+  expect(await f.port.collect(request.operation)).toMatchObject({ outcome: { state: 'complete' } });
+  expect(f.port.idleCleanupStatus?.()).toEqual([]); expect(timers.size).toBe(0);
+  expect(f.delivered).toHaveLength(1); await f.port.close();
+});
+
+it.each(['stop', 'revoke', 'deadline', 'close'])('a held retry cannot cross %s', async end => {
+  const f = fixture(8, 6, 16, 600000); let run: (() => void) | undefined, cancels = 0;
+  Object.assign(f.config, { capacity: async () => ({ admit: false, memoryPressure: true }),
+    after: (_ms: number, retry: () => void) => { run = retry; return () => { cancels++; }; } });
+  expect(await f.port.run(f.request('7:held'))).toMatchObject({ state: 'queued' });
+  if (end === 'stop') f.stop(); else if (end === 'revoke') f.revoke();
+  else if (end === 'deadline') f.advance(9999999999999); else await f.port.close();
+  run!(); await tick(); expect(f.launches).toHaveLength(0);
+  if (end === 'close') expect(cancels).toBe(1); else await f.port.close();
+});
+
+it('an operator behind background input earns the shared worker without reordering durable intake', async () => {
+  const f = fixture(8, 6, 16, 600000);
+  Object.assign(f.config, { operatorRequested: (operation: string) => operation === '7:operator',
+    capacity: async (operator = false) => ({ admit: operator, memoryPressure: false }) });
+  expect(await f.port.run(f.request('7:background'))).toMatchObject({ state: 'queued' });
+  expect(await f.port.run(f.request('7:operator'))).toMatchObject({ state: 'complete' });
+  expect(f.state().topics['7']!.inputs.map(input => input.request.operation)).toEqual(['7:background', '7:operator']);
+  expect(f.state().topics['7']!.inputs.every(input => input.state === 'settled')).toBe(true);
+  expect(f.launches).toHaveLength(1); await f.port.close();
+});
+
+it('ordinary maintenance cannot postpone an already scheduled retry', async () => {
+  const f = fixture(8, 6, 16, 600000); const timers: (() => void)[] = [];
+  Object.assign(f.config, { capacity: async () => ({ admit: false, memoryPressure: true }),
+    after: (_ms: number, retry: () => void) => { timers.push(retry); return () => {}; } });
+  await f.port.run(f.request('7:held'));
+  for (let i = 0; i < 3; i++) { f.advance(500); await f.port.maintain(); }
+  expect(timers).toHaveLength(1); expect(f.port.idleCleanupStatus?.().join()).toContain('held 1s');
+  await f.port.close();
+});
+
+it('a held topic reopens through its existing factory after another topic renews the allowance', async () => {
+  const f = fixture(8, 2, 16, 600000); let room = false; const timers = new Map<number, () => void>(); let serial = 0;
+  Object.assign(f.config, { operatorRequested: (operation: string) => !operation.startsWith('7:'),
+    capacity: async (operator = false) => ({ admit: operator || room, memoryPressure: false }),
+    after: (_ms: number, retry: () => void) => { const id = ++serial; timers.set(id, retry); return () => { timers.delete(id); }; } });
+  expect(await f.port.run(f.request('7:held'))).toMatchObject({ state: 'queued' });
+  await f.port.run(f.request('9:a')); await f.port.run(f.request('9:b'));
+  expect(await f.port.run(f.request('8:new-epoch'))).toMatchObject({ state: 'complete' });
+  expect(f.state().allowanceEpoch).toBe(1);
+  expect(timers.size).toBe(1); room = true; f.advance(2000);
+  const retry = [...timers.values()][0]!; timers.clear(); retry();
+  await until(() => f.delivered.length === 4);
+  expect(await f.port.collect('7:held')).toMatchObject({ outcome: { state: 'complete' } });
+  expect(timers.size).toBe(0); await f.port.close();
 });

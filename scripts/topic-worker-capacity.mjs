@@ -25,22 +25,27 @@ export function createTopicWorkerCapacity(limits, io = { cpus, availableMemory, 
   let reported = '';
   // A refused worker otherwise waits with nothing in any record. Only changes are written.
   const report = line => { if (line !== reported) { reported = line; if (line) note(line); } };
-  return async () => {
+  return async (operatorRequested = false) => {
     try {
-      const before = sample(); await io.wait(100); const after = sample();
-      const total = after.total - before.total, idle = after.idle - before.idle;
       const free = await io.availableMemory(), memory = io.totalmem();
       const memoryKnown = Number.isFinite(free) && Number.isFinite(memory) && memory > 0 && free >= 0 && free <= memory;
       const memoryPressure = memoryKnown && (free < limits.minFreeMemoryBytes || free / memory < limits.minFreeMemoryFraction);
-      const cpuKnown = total > 0 && idle >= 0 && idle <= total;
-      const cpuRoom = cpuKnown && 100 * idle / total >= limits.minCpuIdlePercent;
-      report(!memoryKnown || !cpuKnown ? 'worker capacity refused: unknown measurement'
-        : memoryPressure ? 'worker capacity refused: available memory below reserve'
-          : !cpuRoom ? 'worker capacity refused: CPU idle below floor' : '');
-      return { admit: memoryKnown && !memoryPressure && cpuRoom, memoryPressure };
+      let cpuKnown = true, cpuRoom = true;
+      // Rules 14/15: CPU is never an admission condition for the verified person's work.
+      // 1.x load-assess.sh uses a full second, not a noisy 100-ms snapshot.
+      if (!operatorRequested && memoryKnown && !memoryPressure) {
+        const before = sample(); await io.wait(1000); const after = sample();
+        const total = after.total - before.total, idle = after.idle - before.idle;
+        cpuKnown = total > 0 && idle >= 0 && idle <= total;
+        cpuRoom = cpuKnown && 100 * idle / total >= limits.minCpuIdlePercent;
+      }
+      const reason = !memoryKnown || !cpuKnown ? 'unknown measurement'
+        : memoryPressure ? 'available memory below reserve' : !cpuRoom ? 'CPU idle below floor' : '';
+      report(reason ? `worker capacity refused: ${reason}` : '');
+      return { admit: memoryKnown && !memoryPressure && cpuRoom, memoryPressure, reason };
     } catch {
       report('worker capacity refused: unknown measurement');
-      return { admit: false, memoryPressure: false };
+      return { admit: false, memoryPressure: false, reason: 'unknown measurement' };
     }
   };
 }
