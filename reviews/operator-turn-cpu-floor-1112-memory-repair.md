@@ -26,8 +26,8 @@ Decision: operator-turn-cpu-floor-1112-memory-repair | Preserve exactly the firs
 
 M1 supersedes the earlier review's intentional unknown-memory hold for the first operator worker; that behavior violated Rules 15/95. Real sampler NaN and throwing-memory cases fail before this predicate and complete afterward. Tests also retain additional-worker, background, measured-pressure, unavailable physical lease, revoked grant and stop boundaries. These are admission fixtures, not a claim of live Studio acceptance.
 
+Independent second pass: review_m1 concurred after static review of the predicate, sampler and adjacent host guard; no blocking concern. The sampler reports a refusal recommendation; the coordinator owns the bounded first-operator exception. Assembly documentation now states this distinction. No live acceptance claimed.
+
 simplestRobustRoute: This is the simplest route: one predicate at existing serialized admission, after physical lease acquisition, admits only the last verified operator worker on unavailable telemetry. No new service, scheduler, reserve, state or semantic judgment. Existing durable intake, authority, spend, stop, lifetime and resource checkpoints continue to enforce the floors.
 80/20: One source predicate and targeted regression tests; portable static gates here, full gate and native acceptance on Studio.
 VERDICT: author submission; independent gate remains with the desk
-
-Independent second pass: review_m1 concurred after static review of the predicate, sampler and adjacent host guard; no blocking concern. The sampler reports a refusal recommendation; the coordinator owns the bounded first-operator exception. Assembly documentation now states this distinction. No live acceptance claimed.
