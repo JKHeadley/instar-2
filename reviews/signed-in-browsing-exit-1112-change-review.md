@@ -4,7 +4,7 @@ Subject base: a3ad2fe8805cdcb3fa259e9a04b48913930d9134
 Review state: open
 Reviewed content: none
 Outcome: replace stored-value substring inventory with structural export projection and existing effect-doorway destination admission. Ordinary cookie/storage values no longer prevent reading. Keep the configured catalog and per-call code tool.
-Affected rules: 1, 4, 18, 32, 34, 35, 36, 42, 49, 55, 57, 60, 63, 70, 74, 95, 100, 101, 102, 103, 111, 113, 116, 123
+Affected rules: 1, 4, 7, 18, 32, 34, 35, 36, 42, 49, 55, 57, 60, 63, 70, 74, 95, 100, 101, 102, 103, 111, 113, 116, 123
 Affected floors: secrets — export source projection before worker/model/journal; spend cap — existing effect owner and bounded transport, no provider calls; stop — existing current-claim checks, deadlines and child teardown; no duplicate sends — existing prepared effect identity, current destination grant and durable outcome; durable intake — existing journal owner unchanged.
 Operator questions: none
 Suggested tier: critical
@@ -25,6 +25,8 @@ Decision: signed-browser-exit-destination | Bind each code network effect to cur
 Decision: signed-browser-exit-transport | Confine browser network to a bounded destination-gated host proxy; HTTP hooks alone demonstrably miss WebRTC. Require native confinement and preserve configured catalog. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/signed-in-browsing-exit-1112-PROGRESS.md
 Decision: signed-browser-exit-evidence | Turn fourth-review HAR/realistic cases into regressions, independently assert encoded exit denial and granted-once behavior, and mutation-test the host exit gate. Native confinement remains a Studio check. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/signed-in-browsing-exit-1112-PROGRESS.md
 Prompt review: no model-output grammar or instruction change. Existing browser-profile recorded fixture replays retain real summary, uncertain summary, Jev undecided/uncertain, reply-review and delivered/empty-candidate shapes from retrospective-duty-followup-train-1-2026-10-08.json: updates 715672480, 715672483, 715672482, 969389570, 969389923, 715672479 and 715672550. These are data, not authority; an empty candidate is not claimed delivered.
+
+Store declaration: declare the machine-local temporary browser launcher with deletes growth and no agent memory; no persistent authority is introduced.
 
 Trace follow-up: defensive review identified the pinned Browser.stopTracing artifact and CDP Tracing.dataCollected event; both are now structurally projected and exercised against real pinned protocol, including positive event delivery.
 
