@@ -1,0 +1,232 @@
+{
+  "sourceRevision": "d1823a36e8b0a3c155dbc723dd6aebc0666e9934",
+  "host": "M5 Pro",
+  "node": "24.15.0",
+  "date": "2026-11-12",
+  "productChanges": 0,
+  "fixtureBytes": {
+    "1600": 62959584,
+    "3200": 125926383
+  },
+  "isolated1600": [
+    {
+      "i": 0,
+      "returncode": 0,
+      "wall": 2.8018969998229295,
+      "cpu": 3.1849119999999997,
+      "stdoutBytes": 34970,
+      "stdoutSha256": "828c379c06225fde5bb5208873e8a6a7819a1695b27c123ae42b14d52913b860",
+      "processProfile": {
+        "startupCPU": {
+          "user": 645140,
+          "system": 102292
+        },
+        "phases": {
+          "read": 8419,
+          "decrypt": 40736,
+          "frameJSON": 477473,
+          "decode": 1439645,
+          "decompress": 898675,
+          "snapshotParse": 430617,
+          "restore": 1748
+        },
+        "totalCPU": {
+          "user": 2668952,
+          "system": 476312
+        }
+      }
+    },
+    {
+      "i": 1,
+      "returncode": 0,
+      "wall": 2.7336593330837786,
+      "cpu": 3.084014,
+      "stdoutBytes": 34970,
+      "stdoutSha256": "9e37709fa6b4026400bb471a61e3dbad7e5a43300eabfbe1702c6b0745d96b26",
+      "processProfile": {
+        "startupCPU": {
+          "user": 620300,
+          "system": 95440
+        },
+        "phases": {
+          "read": 7952,
+          "decrypt": 44197,
+          "frameJSON": 471908,
+          "decode": 1427644,
+          "decompress": 888275,
+          "snapshotParse": 410894,
+          "restore": 1554
+        },
+        "totalCPU": {
+          "user": 2580882,
+          "system": 464872
+        }
+      }
+    },
+    {
+      "i": 2,
+      "returncode": 0,
+      "wall": 2.8340272090863436,
+      "cpu": 3.2124490000000003,
+      "stdoutBytes": 34970,
+      "stdoutSha256": "fe81ebf732b4faef1a5e75a4cf95b6ac2a1111cee034be1a97024c7b01f74491",
+      "processProfile": {
+        "startupCPU": {
+          "user": 689031,
+          "system": 106433
+        },
+        "phases": {
+          "read": 8209,
+          "decrypt": 62939,
+          "frameJSON": 488470,
+          "decode": 1428715,
+          "decompress": 854080,
+          "snapshotParse": 460450,
+          "restore": 1851
+        },
+        "totalCPU": {
+          "user": 2701344,
+          "system": 479606
+        }
+      }
+    }
+  ],
+  "isolated3200": [
+    {
+      "i": 0,
+      "returncode": 0,
+      "wall": 4.942075292114168,
+      "cpu": 5.6478,
+      "stdoutBytes": 34970,
+      "stdoutSha256": "1058de615d55839dc05f56fc9387efbf705bc8ce80a33831892f22e7a09b0546",
+      "processProfile": {
+        "startupCPU": {
+          "user": 643607,
+          "system": 101225
+        },
+        "phases": {
+          "read": 31571,
+          "decrypt": 89333,
+          "frameJSON": 958447,
+          "decode": 2984057,
+          "decompress": 1893796,
+          "snapshotParse": 817792,
+          "restore": 2209
+        },
+        "totalCPU": {
+          "user": 4763825,
+          "system": 825404
+        }
+      }
+    },
+    {
+      "i": 1,
+      "returncode": 0,
+      "wall": 4.568283041007817,
+      "cpu": 5.240691,
+      "stdoutBytes": 34970,
+      "stdoutSha256": "8bfabdd98d31e5c2b30e2f6c06f0a9f43136696caff0b812030a2b56d5f21dcb",
+      "processProfile": {
+        "startupCPU": {
+          "user": 597634,
+          "system": 90708
+        },
+        "phases": {
+          "read": 30188,
+          "decrypt": 76727,
+          "frameJSON": 905868,
+          "decode": 2760216,
+          "decompress": 1739331,
+          "snapshotParse": 779274,
+          "restore": 2307
+        },
+        "totalCPU": {
+          "user": 4417220,
+          "system": 765643
+        }
+      }
+    },
+    {
+      "i": 2,
+      "returncode": 0,
+      "wall": 4.507609624881297,
+      "cpu": 5.203725,
+      "stdoutBytes": 34970,
+      "stdoutSha256": "60c8b0224ef581bea0c5b54a7eff689ffd6fb938eb4e76a0fd6176968863209d",
+      "processProfile": {
+        "startupCPU": {
+          "user": 660039,
+          "system": 101822
+        },
+        "phases": {
+          "read": 33381,
+          "decrypt": 92592,
+          "frameJSON": 853807,
+          "decode": 2742238,
+          "decompress": 1757816,
+          "snapshotParse": 682526,
+          "restore": 1732
+        },
+        "totalCPU": {
+          "user": 4387103,
+          "system": 768524
+        }
+      }
+    }
+  ],
+  "plain1600": [
+    {
+      "i": 0,
+      "returncode": 0,
+      "wall": 2.3314733328297734,
+      "cpu": 2.633149,
+      "stdoutBytes": 34970,
+      "stdoutSha256": "d46ca4d8ef3cabe7b43f9149effaf8714b3e7517de6eeb39ea481bbd50dbfc08"
+    },
+    {
+      "i": 1,
+      "returncode": 0,
+      "wall": 2.7109579171519727,
+      "cpu": 3.072974,
+      "stdoutBytes": 34970,
+      "stdoutSha256": "b436038c785328e20b859231237056032a7f6974263b1168b4003da2eabc8f05"
+    },
+    {
+      "i": 2,
+      "returncode": 0,
+      "wall": 2.7920538750477135,
+      "cpu": 3.151992999999999,
+      "stdoutBytes": 34970,
+      "stdoutSha256": "38dd4aa9203e66dc3a7fe0429dd6fbdf514df192658199aeffb176c7ab962f97"
+    }
+  ],
+  "uncached1600": [
+    {
+      "i": 0,
+      "returncode": 0,
+      "wall": 3.923522708006203,
+      "cpu": 6.097424999999999,
+      "stdoutBytes": 34970,
+      "stdoutSha256": "d468ec7b22ea49649c66d49640d6f0ccbcae7bab68062bf8d6e8a4145cd89c21",
+      "processProfile": {
+        "startupCPU": {
+          "user": 3956903,
+          "system": 146237
+        },
+        "phases": {
+          "read": 6829,
+          "decrypt": 30027,
+          "frameJSON": 382858,
+          "decode": 1147026,
+          "decompress": 717871,
+          "snapshotParse": 370231,
+          "restore": 1577
+        },
+        "totalCPU": {
+          "user": 5608997,
+          "system": 453022
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+# Change review — status cost profile and storage decision
+
+Subject base: d1823a36e8b0a3c155dbc723dd6aebc0666e9934
+Review state: open
+Reviewed content: none
+Outcome: Preserve a reproducible writer-generated 60 MB status profile and measurement-control evidence; stop before the stored-state change required to remove history-size dependence. The requested performance fix is not implemented.
+Affected rules: 26, 34, 49, 51, 60, 70, 74, 101, 111, 113, 116, 123; purpose Rule 2
+Affected floors: secrets — only synthetic fixture data/key; spend cap — no model calls; stop — no runtime change; no duplicate sends — no dispatch change; durable intake — no writer, frame, replay or retention change.
+Operator questions: none
+Suggested tier: ordinary
+Declared tier: ordinary
+Tier rationale: Diagnostic artifacts and a test of measurement equivalence only; zero product lines changed.
+Side effects: The explicitly invoked generator creates approximately 63 MB of compacted synthetic history plus an uncompacted copy in a fresh temporary root. The profiler instruments emitted source in memory and emits timings to stderr. Tests run only on temporary roots. No live journal is read or written.
+Undo and recovery: Remove these diagnostic artifacts; remove their named temporary fixture roots after collecting evidence. No production state migration or rollback is needed.
+Multi-machine posture: Profiling is local to the builder machine. The journal remains the existing shared authenticated history; no new production cache, authority or replication state. Studio measurements cannot be inferred from M5 numbers.
+Team posture: Diagnostic input is synthetic and local. Existing status visibility and operator authority are unchanged; no member, guest or sharing surface is added.
+Layer below: Read the constitution in full. Inspected openPreviewJournal/decodeRow, snapshotOf/restoreSnapshot/verifyPendingEvidence, journalJsonChunks/parseJournalJson, the content-addressed TS loader and the complete status report. Existing compaction frames contain both view and retained evidence under one snapshot digest; retained bodies must be decoded to verify that digest. Existing scanner optimization 6f90d0c20 already uses native quoted-string search. Plain and instrumented CLI stdout is compared with identical external clocks on fresh, appended, compacted and torn-tail journals; both leave journal bytes unchanged.
+Bug class: none
+Bug evidence: none; this is diagnosis, not a completed repair
+Hook bypass: none; core.hooksPath unset and the resolved common hooks directory contains only sample hooks.
+Convergence: none
+Prompt review: No model prompt, output interpretation, accept/escalate/refuse or model selection changes. Synthetic model-call records are inert history for the profiler, not live model replay evidence.
+
+1.x comparison: Fetched and searched actual JKHeadley/instar main db3ed6d3052cfcc24888b6c8bc86086abcfc2987, including src/, docs/specs/ and git history. src/commands/status.ts calls /health; src/server/routes.ts:5711 reads cached current session state; src/messaging/TelegramAdapter.ts:1656 returns its in-memory ingress cursor and :6029-6060 reads/writes a small atomic offset file. History inspected: 3f1740078, e45d9428a, 9cf7c3d35, 991345b6b. docs/specs/CODEX-TEST-WORKER-INTERRUPTION-AND-CONTROL-PLANE-RESILIENCE-SPEC.md requires bounded side-effect-free health; docs/specs/CARTOGRAPHER-SWEEP-EVENTLOOP-SAFETY.md requires visible snapshot freshness. Reuse candidate: current-state reads independent of history. Mismatch: 2.0 status is a comprehensive offline projection, not a cursor/health-only endpoint, so copying the offset file cannot preserve its answer. No 1.x code is ported in this diagnostic submission. ONEX-LESSONS.md was absent from searched tracked trees and rg file searches of local instar-1/instar-2 repositories; Studio evidence was not supplied.
+
+Decision: STATUS-COST-1112-STOP | Respect the task's stop-before-stored-state-change boundary. Reader micro-optimizations reduce constants but cannot remove traversal of the authenticated retained-history snapshot. Propose a writer-published, encrypted projection checkpoint tied to the journal generation and checked against its tail on every status read, replaying the append suffix and falling back to the full reader on any mismatch. Estimated 150–250 product lines plus 150–250 test lines, subject to design review; not implemented. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-read-cost-1112-build-report.md
+
+Profile: M5 Pro, Node 24.15.0, same worktree, warm loader cache. Before any source change, a 63,123,826-byte random channel-item journal took 0.916–1.226 CPU seconds, so byte count alone did not reproduce the symptom. A second fixture of 1600 model-call records, generated and compacted through the existing writer, produced 62,959,584 encrypted bytes and took 2.755/2.762/3.282 CPU seconds. No product changes were then made. Isolated repeat: 3.185/3.084/3.212 CPU seconds; startup 0.747/0.716/0.796; file read 0.008 each; frame decode 1.440/1.428/1.429 (including decompression 0.899/0.888/0.854 and frame JSON 0.478/0.472/0.489); snapshot JSON parse 0.431/0.411/0.461; restore 0.002. There is no ordinary-row replay after this snapshot. Residual CPU includes base64/digest checks, GC and report construction. A 3200-record, 125,926,383-byte fixture took 5.648/5.241/5.204 seconds, with decode 2.984/2.760/2.742 and snapshot parse 0.818/0.779/0.683. Measurements are diagnostic, not a claimed reproduction of the live Studio's 7.8–10.8 CPU seconds.
+
+Controls: Uninstrumented 63 MB status took 2.633/3.073/3.152 CPU seconds. With INSTAR_SLICE_TS_CACHE=off, one run took 6.097 CPU seconds, of which startup was 4.103 seconds. Thus disabled/unusable loader caching is a separate substantial startup cost; the existing content-verified cache already removes it in normal warm reads. Raw measurements are committed in tests/preview/status-read-cost/measurements.json.
+
+simplestRobustRoute: The required outcome combines unchanged full status with sub-three-second CPU and cost independent of retained history. Existing storage has no separately readable authenticated current-state projection. The simplest candidate follows 1.x's current-state-read shape using a writer-owned checkpoint with tail verification and full-read fallback; status remains read-only. Publishing or trusting an unverified sidecar, dropping retained-history authentication, or changing status fields would not meet the floors. This submission stops before adding that stored state, exactly as the task requires. No autonomous completion or performance improvement is claimed.
+80/20: Keep the measured cause and reusable reproduction; do not build a new storage mechanism outside the instructed boundary.
+VERDICT: diagnostic author submission; performance goal remains blocked pending the stored-state decision. Independent desk review required.
