@@ -73,16 +73,21 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   await new Promise<void>(resolve => outside.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => outside.close(() => resolve())));
   const escape = `http://127.0.0.1:${(outside.address() as { port: number }).port}`;
-  let writes = 0; const authenticatedRequests: boolean[] = [];
+  let writes = 0, preparedAtWrite = false, observedBeforeWrite = false; const authenticatedRequests: boolean[] = [];
   const server = createServer((req, res) => {
     const authenticated = req.headers.cookie === `session=${secret}`; authenticatedRequests.push(authenticated);
     if (req.url === '/new-token') { res.setHeader('Content-Type', 'text/html'); res.end(`<body>${displayedToken}</body>`); return; }
     if (req.url === '/escape') { res.writeHead(302, { Location: escape }); res.end(); return; }
     if (req.url === '/same-site') { res.writeHead(302, { Location: '/' }); res.end(); return; }
+    if (req.url === '/override') { res.setHeader('Content-Type', 'text/html'); res.end('<h1>Override attempt</h1><script>fetch("/", {headers:{"X-HTTP-Method-Override":"POST"}})</script>'); return; }
     if (req.url === '/idb-leak') { res.setHeader('Content-Type', 'text/html'); res.end('<body><script>const r=indexedDB.open("authdb");r.onsuccess=()=>{const q=r.result.transaction("auth").objectStore("auth").get("credential");q.onsuccess=()=>{document.body.innerHTML="<p>Leak ready</p><p></p>";document.body.lastChild.textContent=q.result;};};</script>'); return; }
-    if (req.method === 'POST') { writes++; res.end('Write accepted'); return; }
+    if (req.method === 'POST' || req.headers['x-http-method-override'] === 'POST') {
+      const preparation = rows.find(row => row.state === 'prepared' && row.cause?.includes('bodyDigest'));
+      preparedAtWrite = Boolean(preparation); observedBeforeWrite = rows.some(row => row.id === preparation?.id && row.state === 'observed');
+      writes++; res.setHeader('Content-Type', 'text/html'); res.end('<h1>Write accepted</h1><form method="post"><button>Save</button></form>'); return;
+    }
     res.setHeader('Content-Type', 'text/html');
-    res.end(authenticated ? `<h1>Signed-in workspace</h1><form method="post"><button>Save</button></form>${req.url === '/leak' ? secret : ''}` : '<h1>LOGIN</h1>');
+    res.end(authenticated ? `<h1>Signed-in workspace</h1><select autofocus size="3"><option selected>First</option><option>Second</option><option>Third</option></select><form method="post"><button>Save</button></form>${req.url === '/leak' ? secret : ''}` : '<h1>LOGIN</h1>');
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => server.close(() => resolve())));
@@ -105,11 +110,12 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   await persisted.close();
   let stopped = false, grant = false;
   const rows: { id: string; state?: string; cause?: string }[] = [], pids: number[] = [];
-  const target = 'mcp__playwright__browser_click';
+  const target = 'mcp__playwright__browser_click', keyTarget = 'mcp__playwright__browser_press_key';
   const expiresAt = Date.now() + 90000;
   const policy = () => ({ type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [],
-    registered: [{ effect: 'tool:mcp', target, consequence: 'data', reversibility: 'reversible', reach: 'agent', costUsd: 0, source: 'operator:proof' }],
-    grants: grant ? [{ id: 'write', browserProfile: row.id, effect: 'tool:mcp', target, approves: ['scope'], source: 'operator:proof', custodian: 'owner', recovery: 'withdraw', expiresAt }] : [] });
+    registered: [target, keyTarget].map(tool => ({ effect: 'tool:mcp', target: tool, consequence: 'data',
+      reversibility: 'reversible', reach: 'agent', costUsd: 0, source: 'operator:proof' })),
+    grants: grant ? [target, keyTarget].map(tool => ({ id: tool, browserProfile: row.id, effect: 'tool:mcp', target: tool, approves: ['scope'], source: 'operator:proof', custodian: 'owner', recovery: 'withdraw', expiresAt })) : [] });
   const append = (record: { id: string; state?: string; cause?: string }) => { rows.push(record); };
   const effects = createToolEffectOwner({ append, stopped: () => stopped, now: Date.now, prepared: (id: string) => rows.some(row => row.id === id),
     decide: (tool: string, input: unknown) => admitSessionConnector({ tool, input, config: { operations: [], effectPolicy: policy() },
@@ -148,10 +154,16 @@ it('real worker CLI reads the named signed-in page, refuses ungranted writes and
   expect((await worker.call('browser_type', { selector: 'textarea', text: secret })).status).toBe('refused'); expect(rows.length).toBe(beforeSecret);
   expect((await worker.call('browser_navigate', { url: `${origin}/same-site` })).status).toBe('observed');
   expect((await worker.call('browser_navigate', { url: `${origin}/escape` })).status).toBe('refused'); expect(escaped).toBe(0);
+  await worker.call('browser_navigate', { url: `${origin}/override` }); expect(writes).toBe(0);
   expect((await worker.call('browser_navigate', { url: origin })).status).toBe('observed');
   grant = true;
+  expect(await worker.call('browser_press_key', { key: 'ArrowDown', browserEffect: { method: 'POST', url: origin, bodyDigest: `sha256:${'0'.repeat(64)}` } })).toMatchObject({ status: 'refused', reason: 'profile-tool-scope' });
+  expect(await worker.call('browser_press_key', { key: 'ArrowDown' })).toMatchObject({ status: 'observed' });
+  expect(await worker.call('browser_press_key', { key: 'ArrowDown' })).toMatchObject({ status: 'observed', text: expect.stringContaining('option "Third" [selected]') });
   expect(await worker.call('browser_click', { selector: 'button' })).toMatchObject({ status: 'observed' }); expect(writes).toBe(1);
+  expect(preparedAtWrite).toBe(true); expect(observedBeforeWrite).toBe(false);
   expect(await worker.call('browser_click', { selector: 'button' })).toMatchObject({ status: 'refused' }); expect(writes).toBe(1);
+  expect(rows.filter(row => row.state === 'prepared' && row.cause?.includes('bodyDigest'))).toHaveLength(1);
   expect(await worker.call('browser_navigate', { url: `${origin}/leak` })).toMatchObject({ status: 'refused', reason: 'output-secret-check' });
   await worker.call('browser_navigate', { url: `${origin}/idb-leak` });
   const leaked = await worker.call('browser_wait_for', { text: 'Leak ready' });

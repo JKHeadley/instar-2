@@ -56,7 +56,8 @@ export function admitSessionConnector({ tool, input, config, mcp, enabled, now, 
   if (!tool.startsWith('mcp__')) return decide(tool, input, config, now);
   if (tool !== 'mcp__owner_github__observe' && (!mcp || !Object.keys(mcp.servers).some(name => tool.startsWith(`mcp__${name}__`))))
     return { admitted: false, reason: 'connector is outside the currently granted account set' };
-  const reads = mcp?.browserProfile ? mcp.reads.filter(tool => !tool.startsWith('mcp__playwright__') || ['browser_navigate', 'browser_snapshot', 'browser_wait_for', 'browser_tabs'].some(name => tool === `mcp__playwright__${name}`)) : mcp?.reads ?? [];
+  const networkEffect = mcp?.browserProfile && tool.startsWith('mcp__playwright__') && input?.browserEffect;
+  const reads = mcp?.browserProfile ? mcp.reads.filter(read => (!networkEffect || read !== tool) && (!read.startsWith('mcp__playwright__') || ['browser_navigate', 'browser_snapshot', 'browser_wait_for', 'browser_tabs'].some(name => read === `mcp__playwright__${name}`))) : mcp?.reads ?? [];
   const current = { ...config, mcpReads: reads, operations: enabled ? [...config.operations, 'tool:mcp'] : config.operations.filter(operation => operation !== 'tool:mcp') };
   const writing = mcp?.browserProfile && tool.startsWith('mcp__playwright__') && !reads.includes(tool);
   if (writing) {
@@ -65,7 +66,21 @@ export function admitSessionConnector({ tool, input, config, mcp, enabled, now, 
     if (!grants.some(grant => grant.target === tool && grant.browserProfile === mcp.browserProfile.id && grant.approves.includes('scope')))
       return { admitted: false, reason: 'signed-in writes require a current grant naming the tool and browserProfile (Rules 18/57)' };
   }
-  const verdict = { ...decide(tool, input, current, now), ...(writing ? { consequential: true } : {}) };
+  // Only the host browser emits this envelope, at the actual HTTP write boundary.
+  // UI reversibility cannot make an external request reversible. Retain all other
+  // cost, scope and sensitive-matter tests and the same exact tool/profile grant.
+  if (networkEffect) {
+    const policy = decodeEffectPolicy(config.effectPolicy);
+    const classification = classifyEffect({ effect: 'tool:mcp', target: tool }, policy, { now });
+    const registered = policy.registered.find(row => row.effect === 'tool:mcp' && (!row.target || row.target === tool));
+    current.effectPolicy = { ...policy, registered: [{ ...classification.profile, costUsd: classification.costUsd,
+      source: 'host:browser-request', ...registered, effect: 'tool:mcp', target: tool, reversibility: 'irreversible' },
+    ...policy.registered.filter(row => row !== registered)] };
+  }
+  // Profile scope is additional authority, not a replacement for the doorway's
+  // registered reversibility. Ordinary UI calls keep their distinct call identity;
+  // consequential effects retain the owner's stable never-twice identity.
+  const verdict = decide(tool, input, current, now);
   // The full input, policy and decision accompany the already durable parent authority and bounds.
   // The checkpoint checks held secrets before this record can be written.
   return { ...verdict, localCause: JSON.stringify({ tool, input, configuration: current,

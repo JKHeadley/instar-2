@@ -39,6 +39,13 @@ scope, plus the existing source/custodian/recovery and optional expiry fields.
 Existing effect registration, resource and sensitive-matter tests still apply.
 A read-list entry cannot turn a click into an ordinary read. The exact profile and
 policy accompany durable preparation, and an uncertain write is never retried.
+An exact profile grant does not change the doorway's registered reversibility:
+separate reversible UI calls retain separate call identities; registered
+consequential effects retain stable duplicate protection before dispatch. An actual
+non-GET/HEAD request also passes the existing effect owner before network dispatch,
+with the current tool/profile grant, URL, method and body digest. Its preparation
+is irreversible even when the UI operation that triggered it is reversible.
+Workers cannot submit the host's network-effect envelope as a UI tool argument.
 
 Only the primary page is observed. Other frame/page requests and WebSockets are
 refused. Main-page requests, including redirects, are intercepted before dispatch

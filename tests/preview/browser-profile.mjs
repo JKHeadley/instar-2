@@ -31,6 +31,13 @@ export const profileTools = Object.entries(definitions).map(([name, fields]) => 
     required: fields, additionalProperties: false } }));
 export function profileRequest(name, input) {
   const keys = definitions[name];
+  if (input?.browserEffect) {
+    const { browserEffect, ...operation } = input;
+    return profileRequest(name, operation) && Object.keys(browserEffect).sort().join(',') === 'bodyDigest,method,url'
+      && /^[A-Z]{1,16}$/u.test(browserEffect.method) && !['GET', 'HEAD'].includes(browserEffect.method)
+      && typeof browserEffect.url === 'string' && browserEffect.url.length <= 2048
+      && /^sha256:[a-f0-9]{64}$/u.test(browserEffect.bodyDigest);
+  }
   return Boolean(keys && input && typeof input === 'object' && !Array.isArray(input)
     && Object.keys(input).sort().join(',') === [...keys].sort().join(',')
     && keys.every(key => typeof input[key] === 'string' && input[key].length <= 2048)
@@ -64,7 +71,21 @@ export function createProfileBrowser({ binding, hold, check, call, deadline, sto
       await slot.attach({ pid: child.pid, cwd: row.userDataDir });
       createInterface({ input: child.stdout }).on('line', line => {
         if (Buffer.byteLength(line) > 65536) { void close(); return; }
-        try { const row = JSON.parse(line); pending.get(row.id)?.(row.result); pending.delete(row.id); } catch { void close(); }
+        try {
+          const row = JSON.parse(line);
+          if (row.effect) {
+            let admitted = false;
+            const adapter = Object.assign(() => new Promise(resolve => {
+              admitted = true; pending.set(`effect:${row.effect}`, resolve);
+              child.stdin.write(`${JSON.stringify({ effect: row.effect, admitted: true })}\n`);
+            }), { binding });
+            void call(`browser-effect:${row.effect}`, `mcp__playwright__${row.tool}`, row.input, adapter)
+              .then(() => { if (!admitted) child.stdin.write(`${JSON.stringify({ effect: row.effect, admitted: false })}\n`); })
+              .catch(() => { void close(); });
+          } else if (row.effectDone) {
+            pending.get(`effect:${row.effectDone}`)?.({ status: row.status }); pending.delete(`effect:${row.effectDone}`);
+          } else { pending.get(row.id)?.(row.result); pending.delete(row.id); }
+        } catch { void close(); }
       });
     }
     if (closed || stopped() || operationStopped()) return profileRefused('browser-stopped');
@@ -82,7 +103,8 @@ export function createProfileBrowser({ binding, hold, check, call, deadline, sto
   return { close, async request(id, input) {
     if (closed || busy || stopped() || now() >= deadline) return profileRefused('closed-stopped-or-busy');
     if (input?.method === 'tools/list') return { status: 'observed', tools: profileTools };
-    if (!profileRequest(input?.name, input?.arguments)) return profileRefused('profile-tool-scope');
+    // Network effect envelopes are host-owned; the worker may only request UI tools.
+    if (input?.arguments?.browserEffect !== undefined || !profileRequest(input?.name, input?.arguments)) return profileRefused('profile-tool-scope');
     busy = true;
     try {
       // The effect owner sees the actual tool arguments, never a worker-supplied grant.
@@ -97,8 +119,26 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
   register('../../scripts/slice-ts-loader.mjs', import.meta.url);
   const { secretMaterialIn } = await import('./reply-check.js');
   const { redact } = await import('../../src/recall/redact.js');
+  const { METHOD_OVERRIDES } = await import('./tool-admission.mjs');
   const root = process.argv[3], name = process.argv[4], initial = readBrowserProfile(root, name);
-  let context, page, writes = false, active = false;
+  let context, page, action, refusal, active = false, effectSequence = 0;
+  const effects = new Map(), networkEffects = new Map();
+  const prepareRequest = (request, networkId) => {
+    const headers = Object.fromEntries(Object.entries(request.headers).map(([key, value]) => [key.toLowerCase(), value]));
+    const methods = [request.method, ...METHOD_OVERRIDES.flatMap(key => String(headers[key] ?? '').split(',').map(value => value.trim().toUpperCase()).filter(Boolean))];
+    const method = methods.find(value => !['GET', 'HEAD'].includes(value));
+    if (!method) return Promise.resolve(true);
+    if (!action) return Promise.resolve(false);
+    const body = request.postData ?? (request.postDataEntries ? JSON.stringify(request.postDataEntries) : request.hasPostData ? null : '');
+    if (body === null || !networkId) return Promise.resolve(false);
+    const effect = ++effectSequence, input = { ...action.input, browserEffect: { method, url: request.url,
+      bodyDigest: `sha256:${createHash('sha256').update(body).digest('hex')}` } };
+    return new Promise(resolve => {
+      effects.set(effect, resolve);
+      networkEffects.set(networkId, [...networkEffects.get(networkId) ?? [], effect]);
+      process.stdout.write(`${JSON.stringify({ effect, tool: action.tool, input })}\n`);
+    });
+  };
   const held = new Set();
   const capture = async () => {
     const state = await context.storageState({ indexedDB: true });
@@ -114,18 +154,26 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
     if (!context) {
       context = await chromium.launchPersistentContext(initial.userDataDir, { headless: true, serviceWorkers: 'block', acceptDownloads: false });
       context.setDefaultTimeout(5000); context.setDefaultNavigationTimeout(10000);
-      await context.route('**/*', route => route.request().frame() === page?.mainFrame() && allowed(route.request().url()) && (writes || ['GET', 'HEAD'].includes(route.request().method())) ? route.continue() : route.abort());
+      await context.route('**/*', route => route.request().frame() === page?.mainFrame() && allowed(route.request().url()) ? route.continue() : route.abort());
       await context.routeWebSocket('**/*', socket => socket.close());
       page = context.pages()[0] ?? await context.newPage();
       const network = await context.newCDPSession(page);
-      network.on('Fetch.requestPaused', event => {
-        const admit = allowed(event.request.url) && (writes || ['GET', 'HEAD'].includes(event.request.method));
-        void network.send(admit ? 'Fetch.continueRequest' : 'Fetch.failRequest', { requestId: event.requestId, ...(admit ? {} : { errorReason: 'BlockedByClient' }) }).catch(() => {});
+      const finished = (event, status) => {
+        for (const effect of networkEffects.get(event.requestId) ?? []) process.stdout.write(`${JSON.stringify({ effectDone: effect, status })}\n`);
+        networkEffects.delete(event.requestId);
+      };
+      network.on('Network.loadingFinished', event => finished(event, 'observed'));
+      network.on('Network.loadingFailed', event => finished(event, 'unavailable'));
+      await network.send('Network.enable');
+      network.on('Fetch.requestPaused', async event => {
+        const admit = allowed(event.request.url) && await prepareRequest(event.request, event.networkId);
+        if (!admit) refusal = 'network-effect-or-scope';
+        await network.send(admit ? 'Fetch.continueRequest' : 'Fetch.failRequest', { requestId: event.requestId, ...(admit ? {} : { errorReason: 'BlockedByClient' }) }).catch(() => {});
       });
       await network.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
     }
     await capture();
-    writes = !['browser_navigate', 'browser_snapshot', 'browser_wait_for', 'browser_tabs'].includes(tool);
+    action = { tool, input }; refusal = null;
     try {
       if (tool === 'browser_navigate') await page.goto(input.url);
       else if (tool === 'browser_click') await page.locator(input.selector).click();
@@ -133,15 +181,19 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
       else if (tool === 'browser_hover') await page.locator(input.selector).hover();
       else if (tool === 'browser_press_key') await page.keyboard.press(input.key);
       else if (tool === 'browser_wait_for') await page.getByText(input.text, { exact: true }).waitFor();
+      if (refusal) return profileRefused(refusal);
       if (!allowed(page.url())) return profileRefused('site-scope');
       const result = { status: 'observed', url: page.url(), text: await page.locator('body').ariaSnapshot() };
       await capture();
       return redact(JSON.stringify(result)).count || secretMaterialIn(JSON.stringify(result), [...held]) ? profileRefused('output-secret-check') : { ...result, text: result.text.slice(0, 16000) };
-    } finally { writes = false; }
+    } finally { action = null; }
   };
   const lines = createInterface({ input: process.stdin });
   lines.on('line', async line => {
-    if (Buffer.byteLength(line) > 8192 || active) return;
+    if (Buffer.byteLength(line) > 8192) return;
+    let message; try { message = JSON.parse(line); } catch { return; }
+    if (message.effect) { effects.get(message.effect)?.(message.admitted === true); effects.delete(message.effect); return; }
+    if (active) return;
     active = true;
     let row, result;
     try { row = JSON.parse(line); result = await execute(row.name, row.input); } catch { result = profileRefused('browser-unavailable'); }
