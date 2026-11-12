@@ -1,0 +1,54 @@
+{
+  "source": "login-swap-roomproof-1112-evidence/per-call-evidence.json and journal-evidence-records.json",
+  "updates": [
+    367056327,
+    367056328
+  ],
+  "limited": {
+    "id": "telegram:8813073094:update:367056327",
+    "role": "model",
+    "at": 1794483526193,
+    "atUTC": "2026-11-12T11:38:46.193000+00:00",
+    "sessionId": "44820832-0e62-46cb-ba4c-dbe4d34be07b",
+    "transcripts": {
+      "sagemind-justin": [],
+      "sagemind-dawn": []
+    },
+    "exitCode": 1,
+    "apiErrorStatus": 429,
+    "result": "You've hit your weekly limit · resets 1pm (America/Los_Angeles)",
+    "outputTokens": 0,
+    "login": "sagemind-justin",
+    "authorityEvidence": "preview-harness-profile-sagemind-justin-v1-activation sha256:e0b6c0336b8502c10dca47a1ccc66d5929f48c4c1977ec9b312f44e15c986e64",
+    "reservedAt": 1794483520959
+  },
+  "answer": "{\"reasoning\":\"Simple arithmetic, so no tools were needed. 19 × 21 = (20−1)(20+1) = 400 − 1 = 399. The earlier question, 17 × 23 (turn 367056327), still shows as pending with an unknown outcome, so I answer it too: (20−3)(20+3) = 400 − 9 = 391. The message has no preferences, facts, dates or people to save.\",\"reply\":{\"answer\":\"19 × 21 = 399.\\n\\nThe trick is that both numbers sit the same distance from 20: (20 − 1)(20 + 1) = 20² − 1² = 400 − 1 = 399.\\n\\nI don't think my answer to your last question got through, so here it is: 17 × 23 = 391. It's the same trick: (20 − 3)(20 + 3) = 400 − 9 = 391.\"},\"memory\":[],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+  "trace": {
+    "kind": "tool-turn",
+    "phase": "trace",
+    "id": "telegram:8813073094:update:367056327",
+    "attempt": 0,
+    "consistent": true,
+    "calls": [],
+    "edges": [],
+    "workspaceBytes": 0,
+    "volume": {
+      "lost": false,
+      "reconciled": 0
+    },
+    "harness": {
+      "user": "_instarharness"
+    },
+    "session": {
+      "id": "44820832-0e62-46cb-ba4c-dbe4d34be07b",
+      "mode": "new",
+      "reason": "new",
+      "turn": 1,
+      "kept": false,
+      "ended": "the answer did not complete",
+      "transcriptBytes": 96727
+    },
+    "at": 1794483526382
+  },
+  "review": "{\"model\":\"jev-1.13.0\",\"answers\":{\"raw_path\":{\"type\":\"noul\",\"noul\":0.01},\"cli_command\":{\"type\":\"noul\",\"noul\":0.06},\"config_key\":{\"type\":\"noul\",\"noul\":0.03},\"credential\":{\"type\":\"noul\",\"noul\":0.04},\"api_endpoint\":{\"type\":\"noul\",\"noul\":0.02},\"quits_on_self\":{\"type\":\"noul\",\"noul\":0.33},\"claims_blocked\":{\"type\":\"noul\",\"noul\":0.19},\"parks_on_user\":{\"type\":\"noul\",\"noul\":0.64},\"defers_work\":{\"type\":\"noul\",\"noul\":0.18},\"unrecorded_blocker\":{\"type\":\"noul\",\"noul\":0.6}},\"usage\":{\"input_tokens\":916,\"output_tokens\":184}}"
+}

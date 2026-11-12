@@ -107,3 +107,22 @@ not understand them must not delete or reinterpret them as a fresh allowance.
 The desk owns native host conformance and live acceptance. Disposable-host tests
 cover concurrent topics, prepared-move crash recovery, capacity waits, duplicate
 input, selection floors, copying and the shipped configuration's topic binding.
+
+A one-shot answer that receives a typed provider quota rejection can continue on
+another admitted login in the same turn. Its journal capacity hold must prove zero
+complete input tokens, zero output tokens and no tool effects. A tool turn also
+requires a consistent, empty tool/child trace; a native turn must have made only
+one model call. Partial output, uncertain usage, earlier tool work, format retries
+and replacements never qualify. The failed login keeps its durable hold. Reactive
+selection retains ordinary admission and hard cutoff holds without imposing the
+proactive move's extra headroom margin; missing telemetry cannot invent a limit.
+
+The journal records the rejected call before selecting a successor, records each
+login tried, then takes a new spend reservation. The existing five prepared moves
+per ten minutes also bounds these retries. Restart after the recorded failure
+continues the same intake; an uncertain dispatch remains non-repeatable. Stop,
+ownership, disclosure and send uniqueness still use their existing checkpoints.
+An answer from the successor produces one reply with no limit notice. If no
+admitted successor can run, the existing notice uses the pool's earliest known
+reset. The non-additive capacity-retry journal frame requires a compatible reader
+for rollback; an older reader refuses instead of misreading its reservation.

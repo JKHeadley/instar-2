@@ -1790,7 +1790,12 @@ async function main() {
     const loginRuntimes = new Map();
     const sessionLoginObservations = new Map();
     let loginPool = null;
-    const selectLogin = tools => loginPool ? loginPool.select(tools) : loginConfiguration.entries[0];
+    const selectLogin = (tools, id) => {
+      const target = journal.view.turns.get(id)?.capacityNextLogin;
+      const selected = target ? loginPool?.selected(target, tools) : loginPool ? loginPool.select(tools) : loginConfiguration.entries[0];
+      if (!selected) throw new ModelNotStarted();
+      return selected;
+    };
     // The CLI's own signed-out report holds that login for the next selection (harness-login-pool.mjs).
     const observeSignIn = (entry, io) => observeHarnessSignIn(loginPool, entry, io);
     // Plan #473: why a Claude Code tool turn is refused for its identity (null: a harness user is configured, or the
@@ -1952,7 +1957,7 @@ async function main() {
       assertLiveJudgment(judgment, 'preview-subscription');
       if (shared !== null && !await peerHolds()) throw Error('preview: activation stopped');
       if (!selectedLogin) await loginPool?.refresh();
-      const selected = selectedLogin ?? selectLogin(Boolean(toolTurn));
+      const selected = selectedLogin ?? selectLogin(Boolean(toolTurn), id);
       const route = modelRoute(id, toolTurn, selected), start = performance.now();
       const inputRef = judgment === 'answer' && journal.view.turns.get(id)?.prompt === prepared
         ? `${journal.view.turns.get(id)?.promptKind ?? 'reserve'}:${id}` : undefined;
@@ -1970,7 +1975,9 @@ async function main() {
         latencyMs: performance.now() - start, usage: result.usage ? { inputTokens: result.usage.inputTokens ?? null,
           outputTokens: result.usage.outputTokens ?? null, charge: null } : null });
       loginPool?.observe(selected, result);
-      return result;
+      const outage = result.failure?.failureClass === 'limit' ? loginPool?.outage() : null;
+      return { ...result, limitedLogin: selected.profile.reference, noToolEffects: !toolTurn && !result.bytes,
+        ...(outage?.resetAt ? { failure: { ...result.failure, resetHint: null, resetAt: outage.resetAt } } : {}) };
     };
     const callJev = async (judgment, state, questions, timeoutMs = 2000, occurrence, admission) => {
       const admit = async () => {
@@ -2061,7 +2068,8 @@ async function main() {
       if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage, ...providerFailure,
         ...(result.failure?.failureClass === 'limit' && result.usage?.inputTokens === 0 && result.usage.inputComplete === true
           && result.usage.outputTokens === 0 && result.usage.charge === null
-          ? { capacity: { resetHint: result.failure.resetHint, resetAt: result.failure.resetAt } } : {}) };
+          ? { capacity: { resetHint: result.failure.resetHint, resetAt: result.failure.resetAt,
+            ...(result.noToolEffects && !result.bytes ? { retryLogin: result.limitedLogin } : {}) }, limitedLogin: !result.bytes ? result.limitedLogin : undefined } : {}) };
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
       if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       const role = roleOf(id);
@@ -2088,11 +2096,11 @@ async function main() {
     // Part Thirteen §9 (docs/17-harness-adapters): an eligible answer or work step runs as one scoped-tool turn (tool-turn.mjs runToolTurn).
     const invokeTools = async (prepared, id) => {
       await loginPool?.refresh();
-      const selected = selectLogin(true), profile = selected.profile;
+      const selected = selectLogin(true, id), profile = selected.profile;
       const runtime = loginRuntimes.get(selected.index);
       const turnHarness = runtime?.harness ?? harness;
       const turnActivation = runtime?.toolsRecord ?? toolsRecord;
-      return (await runToolTurn({ journal, root, id, prepared,
+      const completed = await runToolTurn({ journal, root, id, prepared,
       promptLimit: toolPromptLimit(), mcp: readRootMcp(root),
       // Rule 100: an MCP server's SecretRef is opened from this root's custody vault and handed to that server alone.
       resolveSecret: name => createSecretCustody(root, key(), wallNow).resolve(secretRef(name)),
@@ -2113,7 +2121,12 @@ async function main() {
         const answer = mediaNotice => invokeSubscription(withWorkspaceNotice(prepared, [notice, mediaNotice].filter(Boolean).join('\n')), id, undefined, undefined, toolTurn, selected);
         return invokeMediaTurn(id, toolTurn, currentMedia, answer,
           (bytes, source) => protectMediaBytes(bytes, source, custody, heldSecrets));
-      } })).result;
+      } });
+      const { result, trace } = completed;
+      if (result?.capacity && trace?.consistent && trace.calls.length === 0 && trace.children.length === 0
+        && (!result.native || result.native.models === 1))
+        result.capacity.retryLogin = result.limitedLogin;
+      return result;
     };
     const proofLines = () => {
       if (!proofLaunch) return [];
@@ -2236,6 +2249,7 @@ async function main() {
       installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
       // limit-notice-1020: read when host custody queues a turn, so an outage of every reviewed login is told once.
       loginCapacity: () => loginPool?.outage() ?? null,
+      retryCapacity: (id, from, excluded) => loginPool?.retry(id, from, excluded, toolsActive() && toolTurnEligible(id)) ?? null,
       // Rules 8, 56, 100: due credential reminder stages and a failing doorway check ride the next answer as one line.
       // An unreadable registry or map offers nothing here; status reports it (credentials.error, doorways.fresh).
       replyNotices: turn => {

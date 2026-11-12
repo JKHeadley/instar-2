@@ -685,16 +685,17 @@ it.each([{ email: 'synthetic@example.invalid' }, { authMethod: 'claude.ai' }, { 
     expect(f.commands().some(row => row.args.includes('--print'))).toBe(false);
 });
 
-it.each(['capture', 'session-incident'])('preserves the zero-token capacity refusal from the physical CLI (%s)', async kind => {
+it.each(['capture', 'session-incident', 'login-swap-1112'])('preserves the zero-token capacity refusal from the physical CLI (%s)', async kind => {
   const captured = readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8');
   // Exact weekly capture, plus the operator-recorded session wording in that captured envelope.
+  const measured = JSON.parse(readFileSync(new URL('../preview/fixtures/login-swap-1112.json', import.meta.url), 'utf8'));
   const terminal = kind === 'capture' ? captured : JSON.stringify({ ...JSON.parse(captured),
-    result: "You've hit your session limit · resets 6pm (America/Los_Angeles)" });
+    result: kind === 'login-swap-1112' ? measured.limited.result : "You've hit your session limit · resets 6pm (America/Los_Angeles)" });
   const f = fixture({ terminal });
   const route = value(createClaudeCodeSubscriptionRoute(f.input));
   const result = await route.invoke('{"exact":"question"}', f.bounds);
   expect(result).toMatchObject({ state: 'rejected', bytes: null, failure: { failureClass: 'limit',
-    resetHint: kind === 'capture' ? null : '6:00pm' }, usage: { inputTokens: 0, inputComplete: true, outputTokens: 0, charge: null } });
+    resetHint: kind === 'capture' ? null : kind === 'login-swap-1112' ? '1:00pm' : '6:00pm' }, usage: { inputTokens: 0, inputComplete: true, outputTokens: 0, charge: null } });
   expect(f.commands()).toHaveLength(3); // Version/auth and one launched model attempt.
 });
 

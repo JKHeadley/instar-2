@@ -836,3 +836,21 @@ it('reply-noise-1108: with no approved login usable, one plain line with no numb
   const sent = [{ id: 'sent', intent: `Done.\n\n${notices[0].line}`, answerNotices: notices, sent: 2 }];
   expect(openReplyNotices(sent, createHarnessLoginPool({ ...f.settings, unavailable: new Map([[0, 'x'], [1, 'y']]) }).notices(), 'next')).toEqual([]);
 });
+
+it.each(['missing', 'above-proactive-margin'])('reactive quota retry retains ordinary destination capacity with %s telemetry', kind => {
+  const f = fixture(), reading = capacity(f);
+  reading.accounts[1].lastQuota.fiveHour.utilizationPct = 80;
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => kind === 'missing' ? null : reading });
+  const a = pool.select(); pool.observe(a, limit);
+  expect(pool.retry('turn', a.profile.reference, [a.profile.reference])).toBe('serving-b');
+  expect(pool.selected('serving-b', false)?.profile.reference).toBe('serving-b');
+  expect(pool.state.handoffAttempts).toHaveLength(1);
+  expect(createHarnessLoginPool({ ...f.settings, usage: () => null }).state.holds[0].reason).toBe('provider-limit');
+});
+
+it('a recorded failure retried after its reset still records the reactive cause and excludes the failed login', () => {
+  const f = fixture(), a = f.pool.select();
+  f.pool.observe(a, { failure: { failureClass: 'limit', resetAt: f.clock.at + 1 } }); f.clock.at += 2;
+  expect(f.pool.retry('turn', a.profile.reference, [a.profile.reference])).toBe('serving-b');
+  expect(createHarnessLoginPool(f.settings).state.switches.at(-1).reason).toBe('provider-limit');
+});

@@ -1,5 +1,5 @@
 // Runner-local selection among explicitly reviewed profiles. Ported from 1.x SubscriptionPool's
-// account/config-home selection: never rewrite a shared credential slot and never retry a call.
+// account/config-home selection: never rewrite a shared credential slot with bounded, recorded no-effect quota retries.
 // Tokens remain in harness-user custody. This module consumes the adapter's typed failure only.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -280,7 +280,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     }
     return entry;
   };
-  const select = (tools = false, current = state.active, requireRoom = false, onlyCurrent = false) => {
+  const select = (tools = false, current = state.active, requireRoom = false, onlyCurrent = false, excluded = [], reactive = false) => {
     const at = now();
     releaseSignedOut(at);
     let reading = null;
@@ -310,14 +310,14 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     const pressure = quotaLimit(source, threshold);
     const reason = limited(current) ? state.holds[current].reason : pressure?.reason;
     const usable = !limited(current) && !unavailable.has(current) && !signedOut.has(current);
-    if (usable && !pressure) {
-      if (onlyCurrent && !capacityWindows(source)?.every(window => window.utilizationPct <= Math.max(0, threshold - 15))) return null;
+    if (usable && !excluded.includes(entries[current].profile.reference) && (!pressure || reactive)) {
+      if (onlyCurrent && !reactive && !capacityWindows(source)?.every(window => window.utilizationPct <= Math.max(0, threshold - 15))) return null;
       return admitted(entries[current], tools, requireRoom);
     }
     if (onlyCurrent) return null;
     // A login that cannot serve at all (excluded or signed out) moves as member-unavailable, whatever quota cause
     // it also carries: the usage-threshold headroom brake below is for a login that could still serve.
-    const moveReason = unavailable.has(current) || signedOut.has(current) ? 'member-unavailable' : reason;
+    const moveReason = reactive ? 'provider-limit' : unavailable.has(current) || signedOut.has(current) ? 'member-unavailable' : reason;
     // 1.x QuotaAwareScheduler: drain usable headroom before its soonest reset.
     // Fresh, complete windows are mandatory for a proactive destination (QuotaTracker).
     const candidates = entries.filter(entry => entry.index !== current).map(entry => {
@@ -328,8 +328,8 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       return { index: entry.index, quota, utilization, score: windows ? (100 - utilization) / hours : -1 };
     }).sort((a, b) => b.score - a.score || a.index - b.index);
     for (const { index, quota, utilization } of candidates) {
-      if (limited(index) || unavailable.has(index) || signedOut.has(index)) continue;
-      if (requireRoom && !capacityWindows(quota)?.every(window => window.utilizationPct <= Math.max(0, threshold - 15))) continue;
+      if (excluded.includes(entries[index].profile.reference) || limited(index) || unavailable.has(index) || signedOut.has(index)) continue;
+      if (requireRoom && !reactive && !capacityWindows(quota)?.every(window => window.utilizationPct <= Math.max(0, threshold - 15))) continue;
       // 1.x SwapAntiThrash target-headroom brake. Durable cutoff/provider holds and
       // the existing five-attempt cap prevent reversals without a new swap ledger.
       if (moveReason === 'usage-threshold'
@@ -354,6 +354,18 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
   };
   return Object.freeze({
     select,
+    retry(id, from, excluded, tools = false) {
+      const current = entries.find(entry => entry.profile.reference === from);
+      if (!current || !state.holds[current.index]) return null;
+      const next = select(tools, current.index, true, false, excluded, true);
+      if (!next || excluded.includes(next.profile.reference)) return null;
+      this.recordHandoff({ id: `quota-retry:${id}:${excluded.length}`, from, to: next.profile.reference });
+      return next.profile.reference;
+    },
+    selected(reference, tools) {
+      const entry = entries.find(item => item.profile.reference === reference);
+      return entry ? select(tools, entry.index, false, true, [], true) : null;
+    },
     refresh: () => quotaReader?.refresh() ?? Promise.resolve(),
     registerTopic(topic) {
       if (!(state.topicLogins ?? []).includes(topic)) persist({ ...state, topicLogins: [...(state.topicLogins ?? []), topic] });

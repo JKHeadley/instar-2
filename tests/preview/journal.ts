@@ -607,9 +607,10 @@ export const loginOutageOpen = (view: JournalView) => {
     .map(turn => turn.answerAt ?? -Infinity));
   return notice > answered;
 };
-export type ModelCapacity = { resetHint: string | null; resetAt: number | null };
+export type ModelCapacity = { resetHint: string | null; resetAt: number | null; retryLogin?: string };
 const validCapacity = (value: ModelCapacity) => (value.resetHint === null || /^(?:[1-9]|1[0-2]):[0-5][0-9](?:am|pm)$/.test(value.resetHint))
-  && (value.resetAt === null || Number.isSafeInteger(value.resetAt) && value.resetAt >= 0);
+  && (value.resetAt === null || Number.isSafeInteger(value.resetAt) && value.resetAt >= 0)
+  && (value.retryLogin === undefined || boundedText(value.retryLogin, 1, 256));
 export const modelCapacityReply = (capacity: ModelCapacity, zone = 'UTC') => {
   const reset = capacity.resetHint?.replace(':00', '')
     ?? (capacity.resetAt === null ? null : `${localStamp(capacity.resetAt, zone)} (${zone})`);
@@ -1126,7 +1127,8 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 6;
+// capacity-retry changes reservation meaning: deliberately non-additive, so older readers refuse it.
+export const JOURNAL_GENERATION = 7;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1140,7 +1142,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
 export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
-  'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
+  'approval-decision', 'approval-request', 'capacity-retry', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'attribution-check', 'attribution-reserve', 'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
   'legacy-call', 'legacy-reply', 'limited-intent', 'limited-sent', 'lookup', 'meaning-index', 'media-claim', 'media-custody',
@@ -1306,6 +1308,7 @@ export type JournalRecord =
    * the same cap, and the packet the second call saw replaces the first as the turn's prompt and grounding. */
   | { kind: 'lookup'; id: string; words: string[]; found: string[]; prompt?: string; grounding?: ReplyGrounding; packetDropped?: PacketDrop[];
     usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'capacity-retry'; id: string; from: string; to: string | null; at: number }
   | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass?: 'malformed'; undecided?: true; prompt?: string; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   /** The one replacement of an answer call that ended at the local timeout (docs/09: a replacement takes separate
    * capacity). The timed-out call stays UNKNOWN and charged; the replacement is reserved under the same cap. */
@@ -1390,7 +1393,7 @@ export type JournalRecord =
   | { kind: 'reminder-grant'; reference: string; trial: string; surface: 'telegram-private-chat';
     scope: 'initiated-dated-reminders'; custodian: string; recovery: 'unknown-never-retry'; at: number }
   | { kind: 'hold'; id: string; reason: string; at: number;
-    /** Launched quota refusal: meter the attempt, retain intake, ask for a resend. */
+    /** Launched quota refusal: meter it, retain intake, and carry exact effect-free retry evidence when available. */
     capacity?: ModelCapacity & { usage: ModelUsage };
     /** Host proved this answer invocation never dispatched; restore its unused reservation and carried corrections. */
     unusedModel?: { corrections: string[]; toolCalls?: number } }
@@ -1566,6 +1569,8 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   /** The limited answer covering this message (`lead` names the turn that carries the send). */
   limited?: { text: string; at: number; lead: string; reason: LimitedReason }; limitedSent?: number;
   capacity?: ModelCapacity & { episode: string; at?: number };
+  capacityLogins?: string[];
+  capacityNextLogin?: string;
   /** The owned minimal-path outage for this preserved message: which required dependency was missing. */
   minimalOutage?: { missing: string[]; at: number };
   /** The capped allowance an `approval-request` row offered to raise (its limited answer carries it otherwise). */
@@ -2173,7 +2178,7 @@ function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalReco
       const kept = idleTimings.get(row); if (kept) evidence.push(kept); continue;
     }
     if (row.kind === 'sentinel' && !sentinels.has(row)) continue;
-    if (row.kind === 'hold' && !row.unusedModel) { if (open.has(row.id)) holds.set(row.id, row); continue; }
+    if (row.kind === 'hold' && !row.unusedModel && !row.capacity) { if (open.has(row.id)) holds.set(row.id, row); continue; }
     if ((row.kind === 'reserve' || row.kind === 'lookup' || row.kind === 'format-retry' || row.kind === 'answer-replace')
       && row.prompt !== undefined && settledPrompt(view.turns.get(row.id)) === row.prompt) {
       // Rule 58: once the answer call is settled, the snapshot turn keeps the exact final answer packet for inspect
@@ -5172,6 +5177,22 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
 
     return;
   }
+  if (row.kind === 'capacity-retry') {
+    // R55/60/61: a recorded no-output/no-effect quota rejection alone releases this
+    // reservation. The next dispatch takes a fresh ordinary spend reservation.
+    const tried = turn.capacityLogins ?? [];
+    if (!turn.capacity?.retryLogin || turn.capacity.retryLogin !== row.from || !turn.reserved
+      || turn.modelState !== 'rejected' || turn.failureClass !== 'capacity' || turn.answer !== undefined
+      || turn.intent !== undefined || turn.limited !== undefined
+      || row.to !== null && (turn.answerRetried || turn.answerReplaced || turn.lookup
+        || tried.length >= 6 || tried.includes(row.to) || row.from === row.to || !boundedText(row.to, 1, 256)))
+      throw Error('preview journal: capacity retry proof or bound');
+    if (row.to === null) { delete turn.capacity.retryLogin; return; }
+    turn.capacityLogins = [...new Set([...tried, row.from, row.to])]; turn.capacityNextLogin = row.to;
+    delete turn.capacity; delete turn.modelState; delete turn.failureClass; delete turn.held; delete turn.heldSince;
+    view.heldTurns.delete(turn); turn.reserved = false;
+    return;
+  }
   if (row.kind === 'format-retry') {
     // Rules 42, 75: the refused first call stays visible (its failure class and usage), and the one re-ask is a
     // counted, token-reserved call under the same cap; it is never repeated and never follows a send.
@@ -5632,7 +5653,8 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
         || row.capacity.usage.inputComplete !== true || row.capacity.usage.charge !== null)
         throw Error('preview journal: capacity refusal order or usage');
       const episode = capacityEpisode(view) ?? turn.id;
-      turn.capacity = { resetHint: row.capacity.resetHint, resetAt: row.capacity.resetAt, episode, at: row.at };
+      turn.capacity = { resetHint: row.capacity.resetHint, resetAt: row.capacity.resetAt,
+        ...(row.capacity.retryLogin === undefined ? {} : { retryLogin: row.capacity.retryLogin }), episode, at: row.at };
       turn.modelState = 'rejected';
       turn.failureClass = 'capacity';
       view.failureClasses.set('capacity', (view.failureClasses.get('capacity') ?? 0) + 1);
@@ -6281,6 +6303,8 @@ export interface PreviewPorts {
    * the result so recovery uses the same answer consumer and grounding. */
   collectModel?(id: string): Promise<{ context: string; prepared: string;
     answer: Awaited<ReturnType<PreviewPorts['model']>> } | null>;
+  /** Select another admitted login after a durably recorded, effect-free quota rejection. */
+  retryCapacity?(id: string, from: string, excluded: readonly string[]): string | null;
   modelBatch?(inputs: readonly Parameters<PreviewPorts['model']>[0][]): Promise<readonly Awaited<ReturnType<PreviewPorts['model']>>[]>;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
     /** Host recovery evidence, never parsed from the model's output. */ contextRecovery?: string;
@@ -9103,7 +9127,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const drainTopic = async (topic: number | string | null) => {
       let blockedEarlier = false;
       const batchDeferred = new Set<string>();
-      for (const turn of journal.view.order) {
+      const retryCapacity = (turn: Turn): boolean => {
+        const from = turn.capacity?.retryLogin, tried = turn.capacityLogins ?? [];
+        if (!from || turn.limited || turn.intent) return false;
+        gate();
+        const eligible = !turn.answerRetried && !turn.answerReplaced && !turn.lookup && tried.length < 6
+          && journal.view.calls < journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0);
+        const to = eligible ? ports.retryCapacity?.(turn.id, from, [...new Set([...tried, from])]) ?? null : null;
+        gate();
+        journal.append({ kind: 'capacity-retry', id: turn.id, from, to, at: ports.now() });
+        return to !== null;
+      };
+      for (let turnIndex = 0; turnIndex < journal.view.order.length; turnIndex++) {
+        const turn = journal.view.order[turnIndex]!;
         if (topic !== null && (turn.thread ?? 'main') !== topic) continue;
         if (!turn.accepted || turn.editOf || turn.sent || turn.intent || batchDeferred.has(turn.id)) continue;
         if ((turn.requestedAction !== undefined) !== due) continue;
@@ -9123,6 +9159,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (turn.held === undefined && !turn.reserved) journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: ports.now() });
           continue;
         }
+        if (turn.capacity) retryCapacity(turn);
         // Like 1.x PendingInjectStore, retain the durable pending state until its
         // successor is recorded. Eligibility to retry is local to this pass; only
         // reserve/intent (or another recorded settlement) clears the projected hold.
@@ -9413,7 +9450,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               blockedEarlier = true; answer = false;
             }
           } else answer = collected?.answer ?? await attempt(waiting[0]!);
-          if (answer === false) continue;
+          if (answer === false) { if (turn.capacity && retryCapacity(turn)) turnIndex--; continue; }
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
           // once more with a runner-authored format reminder in the packet (never in the operator's message),
           // reserved against the same call cap and only while not stopped; a second miss is refused as before.
@@ -10728,6 +10765,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (!turn.accepted || turn.intent !== undefined || turn.limited !== undefined || turn.requestedAction !== undefined
       || turn.held === 'superseded by edit' || turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined) return null;
     if (turn.held === MODEL_NOT_STARTED_HOLD) return 'worker';
+    if (turn.capacity?.retryLogin && ports.retryCapacity) return null; // The ordinary worker must finish its recorded retry decision first.
     if (turn.capacity) return journal.view.order.some(item => item.thread === turn.thread
       && item.capacity?.episode === turn.capacity!.episode && item.limited !== undefined) ? null : 'worker';
     const capped = outsideAllowance(journal.view, turn) ? 'turns' as const : turn.held === 'call cap' ? 'calls' as const
