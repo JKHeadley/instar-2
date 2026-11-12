@@ -64,7 +64,22 @@ const currentChannelNote = (text: string) => compactRecordedNote(text.replace(re
   .replace('keeps a faithfulness-checked rolling summary of earlier turns.',
     'keeps a faithfulness-checked summary of earlier turns.')
   .replace('generates the register, rule book, glossary and this briefing from declarations.',
-    'generates the register, rules, glossary and this briefing from declarations.');
+    'generates the register, rules, glossary and this briefing from declarations.')
+  // train-242: preserve captured bytes; translate only the declared compact summaries and local Threadline addition.
+  .replace('saves inbound Telegram files under bounded admission; refusals keep their message.',
+    'saves Telegram files under bounded admission; refusals retain the message.')
+  .replace('answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.',
+    'answers operator chat/topics; intake encrypts photos, audio and files with text descriptions.')
+  .replace('an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.',
+    'encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts.')
+  .replace('"status" and "how are you doing" are answered from the journal without a model call.',
+    'answers "status" and "how are you doing" from the journal, without a model call.')
+  .replace('an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.',
+    'answers explicit timed requests once, daily or weekdays until cancelled; no new message needed.')
+  .replace('keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.',
+    'keeps instructions, works promises; sends explicitly requested results, else holds them for the next message.')
+  .replace('- generates the register, rules, glossary and this briefing from declarations.',
+    '- generates the register, rules, glossary and this briefing from declarations.\n- local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts.');
 const renderedNote = (text: string) => currentChannelNote(text).replace(`- ${toolsBriefing(0)}`, CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
   .replace(` ${SIGN_OFF}`, '');
 const currentNote = (text: string) => renderedNote(text
@@ -234,7 +249,7 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   const oldRequests = '- preview-requested-actions: an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message.';
   const recurringRequests = '- preview-requested-actions: an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.';
   expect(current.note.split(oldRequests)).toHaveLength(2);
-  expect(note).toContain(compactRecordedNote(recurringRequests));
+  expect(note).toContain(currentChannelNote(recurringRequests));
   const oldGrant = 'checked when made: consequential effects (sending outside this conversation, writing to the network or a third-party account, '
     + 'spending, changing safeguards) go through the effect doorway: one runs once the operator registers and grants it, otherwise it '
     + 'is refused and the refusal names its reason; say so plainly when one is refused. ';
