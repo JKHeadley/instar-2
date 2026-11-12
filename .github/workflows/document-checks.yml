@@ -7,6 +7,11 @@ on:
     types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
+# The event owns the target: PR target head, or the previous pushed head.
+# Missing/zero event boundaries remain an explicit refusal, never an inferred main.
+env:
+  CHANGE_REVIEW_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+  REGISTER_CHANGE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
 jobs:
   checks:
     runs-on: ubuntu-latest
