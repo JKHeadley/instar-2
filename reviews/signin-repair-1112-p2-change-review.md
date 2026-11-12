@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: installed runner offers the existing durable repair controller on its existing work cycle. A substituted physical adapter drives the real ownership, resource reservation, child journal and incident delivery path. The shipped physical adapter is absent; no real sign-in is enabled or claimed.
 Affected rules: 4, 26, 31, 32, 34, 52, 55, 60, 61, 63, 74, 83, 87, 88, 100, 102, 113, 114, 116, 120, 123
-Affected floors: secrets remain behind custody references; the existing child journal reserves call liability before helper dispatch; existing resource ownership holds maintenance capacity; stop and conversation ownership are rechecked throughout; durable intent consumes each notice key even when delivery is unknown; intake is unchanged.
+Affected floors: spend cap is unchanged; no duplicate sends is enforced by durable intent; secrets remain behind custody references; the existing child journal reserves call liability before helper dispatch; existing resource ownership holds maintenance capacity; stop and conversation ownership are rechecked throughout; durable intent consumes each notice key even when delivery is unknown; intake is unchanged.
 Operator questions: none
 Suggested tier: significant
 Declared tier: critical
@@ -34,3 +34,12 @@ Tests: installed-signin-repair.test.ts drives the real installed launcher with o
 simplestRobustRoute: reuse the durable pool controller, existing work cycle, exclusive runner, resource holds and incident sender. A small physical seam remains absent in production. The notice marker prevents a concrete duplicate-send risk on compacted rollback. Quiescence settles old child edges without guessing outcomes. This is the simplest route for the task's fake-helper installed-path proof; it is not real autonomous sign-in completion.
 80/20: the product change is bounded to wiring and notice delivery; no generic browser system, timer, credential store or new authority is introduced.
 VERDICT: author submission for fake-helper wiring review; real-account capability remains unproven
+
+Prompt finding: 105c1569b6bb | protocol-literal | Fixed stopped-installation renewal refusal, unchanged by this notice wiring.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing attempted-work guidance remains unchanged; no phrase-driven intent routing is added.
+Prompt finding: 7ef11b68103f | protocol-literal | Fixed activation-expiry/renewal notice is unchanged; closing boundary tests retain its exact words.
+Prompt finding: 85544c20941f | protocol-literal | Existing durable-intake reassurance is unchanged; no intake promise is added or widened.
+Prompt finding: 9f0106c66027 | protocol-literal | Existing stopped-work unknown-reason notice remains unchanged; no new reason inference is added.
+Prompt finding: bac6ce7485d9 | protocol-literal | Existing stopped-work incomplete-answer notice remains unchanged.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label and unknown-source provenance instruction remains unchanged.
+Prompt finding: 849db3a6296a | protocol-literal | Existing deterministic empty-memory response remains unchanged.
