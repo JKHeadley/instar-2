@@ -1,0 +1,37 @@
+[
+  {
+    "revision": 2,
+    "date": "2026-11-12",
+    "status": "draft",
+    "cause": {
+      "kind": "migration"
+    },
+    "changes": [
+      {
+        "what": "Publish release requirements through existing committed source metadata, retaining the approved shape and conversion anchor. Preserve this specification's governed draft status and record both versions.",
+        "why": "The reviewed no-shape repair changed the draft body; Rule 90/91 requires retaining governance and version history.",
+        "commits": [
+          "25b06e67a21d18a454d3f9188538c4ca99343fda"
+        ],
+        "ref": "reviews/train-240-change-review.md, train-240-review-repair"
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-11-12",
+    "status": "draft",
+    "cause": {
+      "kind": "draft"
+    },
+    "changes": [
+      {
+        "what": "Draft optional release-check rule facts and a deterministic requirements-only emitter.",
+        "why": "Name Rule 117 release obligations separately from run evidence; this draft remained blocked on shape publication.",
+        "commits": [
+          "61db1447a0dd3ee1761b377096b15fc598d59a57"
+        ]
+      }
+    ]
+  }
+]

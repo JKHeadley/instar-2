@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { decodeMeasurement, canonical, schemas } from '../dist/index.js';
 import { generateRegister, generationOf, renderRegister, invariantCoverage, implementedInvariants, decodeCheckRun,
-  decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion, deadlineNotice } from '../dist/register/index.js';
+  requiredReleaseChecks, decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion, deadlineNotice } from '../dist/register/index.js';
 import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, trailingInputs, value, bytes, isDeclarationSource, isActionSource, actionRegistry } from './register-source.mjs';
 import { checkWiring, scanSources } from './check-register-wiring.mjs';
 import { capabilityBriefing, checkShipped } from './register-shipped.mjs';
@@ -195,7 +195,9 @@ export async function run(args, root = process.cwd()) {
   // Documentation, build and package inputs the build consumed (present or absent) are pinned too.
   for (const path of trailingInputs(root, result.input.consumed))
     throw new Error(`P3-NF-01: source pin trails ${path}; commit source changes and regenerate`);
-  const files = { 'register.json': result.outputs.register, 'rules.md': result.outputs.ruleBook, 'glossary.md': result.outputs.glossary,
+  const releaseRequirements = JSON.stringify({ commit, generation: result.generation.id, authority: 'requirements-only',
+    checks: requiredReleaseChecks(result.register, JSON.parse(result.input.sources['register-source/rule-release-checks.json'] ?? '{}')) }, null, 2) + '\n';
+  const files = { 'required-release-checks.json': releaseRequirements, 'register.json': result.outputs.register, 'rules.md': result.outputs.ruleBook, 'glossary.md': result.outputs.glossary,
     'capabilities.md': result.outputs.capabilities, 'capabilities.json': JSON.stringify(result.capabilities, null, 2) + '\n', 'coverage.md': result.outputs.coverage, 'shape.json': bytes(result.register.shape) + '\n',
     'fact-schemas.json': bytes(result.register.shape.factSchemas) + '\n', 'conversion.json': bytes(result.conversion) + '\n',
     ...(result.completion ? { 'completion.json': bytes(result.completion) + '\n' } : {}),
@@ -211,6 +213,7 @@ export async function run(args, root = process.cwd()) {
   // the desk's existing deadline notice reader as a REGISTER-DEADLINE line on stderr (stdout stays the
   // JSON summary); a refusing build's error message carries the same line (see deadlineLines).
   for (const line of result.attention.map(deadlineNotice)) console.error(line);
+  if (args.includes('--required-release-checks')) { process.stdout.write(releaseRequirements); return; }
   console.log(JSON.stringify({ generation: result.generation.id, commit, ...result.metrics, check, authority: 'shape-only', mode,
     ...(result.attention.length ? { attention: result.attention } : {}) }));
 }
