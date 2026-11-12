@@ -7,6 +7,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { tools as playwrightTools } from 'playwright-core/lib/coreBundle';
 import { program } from 'playwright-core/lib/utilsBundle';
+import { runProfileCode } from './browser-code.mjs';
 export function readBrowserProfile(root, name) {
   if (name === undefined) return null;
   const refuse = () => { throw Error('browser profile refused: record an existing agent-owned profile for this installation (Rules 18/100)'); };
@@ -267,12 +268,16 @@ if (process.argv[2] === '--host' && process.argv[1] === fileURLToPath(import.met
     await capture();
     action = { tool, input, completions: [] }; refusal = null; outputHeld = false;
     try {
-      const output = tool === 'browser_run_code_unsafe'
-        ? await (await import('./browser-code.mjs')).runProfileCode({ context, page: backend._context.currentTab().page,
-          code: input.filename ? readFileSync(input.filename, 'utf8') : input.code,
-          clear: text => !redact(text).count && !secretMaterialIn(text, [...held]), allowed, protect: protectCode, capture,
-          refused: reason => { refusal = reason; } })
-        : await backend.callTool(tool, input);
+      let output;
+      if (tool === 'browser_run_code_unsafe') {
+        const tab = await backend._context.ensureTab();
+        await tab.waitForCompletion(async () => {
+          output = await runProfileCode({ context, page: tab.page,
+            code: input.filename ? readFileSync(input.filename, 'utf8') : input.code,
+            clear: text => !redact(text).count && !secretMaterialIn(text, [...held]), allowed, protect: protectCode, capture,
+            refused: reason => { refusal = reason; } });
+        });
+      } else output = await backend.callTool(tool, input);
       await Promise.all(action.completions);
       if (refusal) return profileRefused(refusal);
       const page = backend._context.currentTab()?.page;

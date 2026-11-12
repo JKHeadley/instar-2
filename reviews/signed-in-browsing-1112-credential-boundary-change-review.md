@@ -4,7 +4,7 @@ Subject base: 1f51b95405362340f53277a44e7d5e46a6c68f8f
 Review state: open
 Reviewed content: none
 Outcome: retain the configured code tool and ordinary server-side fetch while preventing arbitrary code from combining raw profile credentials with an unchecked outbound transport or editing its custodian.
-Affected rules: 1, 4, 18, 32, 34, 36, 42, 49, 57, 60, 63, 70, 74, 100, 101, 102, 103, 111, 113, 116, 123
+Affected rules: 1, 4, 7, 18, 32, 34, 36, 42, 49, 57, 60, 63, 70, 74, 100, 101, 102, 103, 111, 113, 116, 123
 Affected floors: secrets — arbitrary code runs under the fixed-worker kernel profile; profile protocol responses and network requests cross host checks outside that process; spend cap — existing whole-operation effect policy and resource ownership, no provider call added; stop — existing claim deadline plus bounded child termination and abortable transport; no duplicate sends — existing durable whole-operation code identity and browser request identity retained; durable intake — existing owned claim and prepared cause still precede dispatch.
 Operator questions: none
 Suggested tier: significant
@@ -14,7 +14,7 @@ Side effects: the original pinned code handler runs with the pinned remote Playw
 Undo and recovery: revert the source repair and replay the register; the previous head has the demonstrated credential escape and must not be treated as safe activation. Withdraw the operation grant through the existing owner while recovering; preserve prepared/uncertain identities. No real profile, enrollment, account or credential was changed.
 Multi-machine posture: deliberately local to the selected profile and its existing claim/resource owner. The confined code child receives neither enrollment files nor profile paths. Another machine still requires its own enrollment and supported confinement. No credential replication or new authority store.
 Team posture: existing verified conversation ownership governs who can request code and receive checked observations. Selection grants no member or guest access; sharing is unchanged. Live member/guest acceptance remains separate desk evidence.
-Layer below: inspected the original pinned runCode handler, VM globals, Playwright Connection/DispatcherConnection, RootDispatcher, PlaywrightDispatcher, BrowserDispatcher and APIRequestContextDispatcher; reused confinedRelease and deploy/macos/fixed-worker/worker.sb. Inspected the existing egress proxy's host HTTP transport and held-secret boundary, current browser capture/interception, resource attachment and effect admission. Real tests run Chromium, the pinned handler, kernel confinement and actual local HTTP transport.
+Layer below: inspected the original pinned runCode handler, VM globals, Playwright Connection/DispatcherConnection, RootDispatcher, PlaywrightDispatcher, BrowserDispatcher and APIRequestContextDispatcher; reused the runtime-pinning/materialization design of confinedRelease and deploy/macos/fixed-worker/worker.sb directly, avoiding an unrelated self-host owner/store dependency. The temporary release is declared as bounded machine-local non-memory state; the original tab creation/completion wrapper is retained. Inspected the existing egress proxy's host HTTP transport and held-secret boundary, current browser capture/interception, resource attachment and effect admission. Real tests run Chromium, the pinned handler, kernel confinement and actual local HTTP transport.
 Bug class: integration
 Bug evidence: reproducer=tests/preview/browser-profile.test.ts
 Hook bypass: none

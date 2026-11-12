@@ -1,6 +1,6 @@
 // Rules 1/4/57/100: arbitrary server code never runs in the profile custodian.
 // The fixed-worker kernel profile protects the host; Playwright's pinned protocol retains its client API.
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { constants, copyFileSync, cpSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -9,7 +9,6 @@ import http from 'node:http';
 import https from 'node:https';
 import { createInterface } from 'node:readline';
 import { inprocess, server } from 'playwright-core/lib/coreBundle';
-import { confinedRelease } from './self-host-harness.mjs';
 
 export async function runProfileCode({ context, page, code, clear, allowed, protect, capture, refused }) {
   if (typeof code !== 'string' || !clear(code)) { refused('output-secret-check'); return { isError: true, content: [] }; }
@@ -17,7 +16,17 @@ export async function runProfileCode({ context, page, code, clear, allowed, prot
   let child, timeout, scope, closed = false, total = 0, sent = 0, requests = 0, active = 0, outgoing = Promise.resolve(), complete = () => {};
   const controller = new AbortController();
   try {
-    const release = confinedRelease(root);
+    // Reuse confinedRelease's runtime pin and the shipped fixed-worker profile without importing unrelated self-host owners.
+    const directory = realpathSync(root), location = join(directory, 'release');
+    const release = { release: location, slot: join(directory, 'slot'), runtime: join(location, 'runtime', 'node'), profile: join(directory, 'worker.sb') };
+    mkdirSync(join(location, 'runtime'), { recursive: true, mode: 0o700 });
+    mkdirSync(join(location, 'bin'), { mode: 0o700 }); mkdirSync(release.slot, { mode: 0o700 });
+    try { linkSync(process.execPath, release.runtime); } catch { copyFileSync(process.execPath, release.runtime, constants.COPYFILE_FICLONE); }
+    const ancestors = [];
+    for (let path = location; path !== '/';) { path = dirname(path); ancestors.push(`(literal "${path}")`); }
+    const profile = readFileSync(new URL('../../deploy/macos/fixed-worker/worker.sb', import.meta.url), 'utf8')
+      .replaceAll('@RELEASE_DIR@', location).replaceAll('@SLOT_DIR@', release.slot);
+    writeFileSync(release.profile, profile + `\n(allow file-read-metadata ${ancestors.join(' ')})\n`);
     // Node's DNS module reads resolver configuration at import. DNS transport, sockets and libinfo stay denied.
     writeFileSync(release.profile, readFileSync(release.profile, 'utf8') + '\n(allow mach-lookup (global-name "com.apple.SystemConfiguration.DNSConfiguration"))\n');
     // Only the pinned runtime/library and fixed worker are readable, never browser files or the host source tree.
@@ -28,7 +37,7 @@ export async function runProfileCode({ context, page, code, clear, allowed, prot
     const implementation = inprocess.playwright._connection.toImpl(context.browser());
     scope = new server.RootDispatcher(dispatch, async parent => new server.PlaywrightDispatcher(parent, implementation.attribution.playwright,
       { preLaunchedBrowser: implementation, sharedBrowser: true, denyLaunch: true }));
-    const finishError = () => ({ isError: true, content: [{ type: 'text', text: 'Confined browser code refused' }] });
+    const finishError = () => ({ isError: true, content: [{ type: 'text', text: 'Confined browser code unavailable' }] });
     const fail = reason => { refused(reason); controller.abort(); complete(finishError()); };
     const write = value => {
       if (closed || !child?.stdin.writable) return;

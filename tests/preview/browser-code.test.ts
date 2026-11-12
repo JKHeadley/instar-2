@@ -83,6 +83,7 @@ it('replays recorded summary, Jev, review and delivered/empty shapes through the
       const result = await runProfileCode({ context, page, code: row.raw, clear: () => true, allowed: () => false,
         capture: async () => {}, protect: async () => {}, refused: () => {} });
       expect(result.isError, row.id).toBe(true);
+      expect(result.content[0].text, row.id).toBe('Confined browser code refused');
     }
   } finally { await browser.close(); }
 }, 30000);
