@@ -1,5 +1,5 @@
-import { getPrivateView } from './private-view.js';
 #!/usr/bin/env node
+import { getPrivateView } from './private-view.js';
 import { createProductUpdater } from '../../scripts/update-product.mjs';
 import { observeUpdateBound } from '../../scripts/update-runner.mjs';
 import { initializeUpdateRuntime } from '../../scripts/update.mjs';

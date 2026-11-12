@@ -239,7 +239,6 @@ export const LITERAL_COPY_INSTRUCTIONS = 'When quoting or copying literal text, 
   + 'Compare every character with the source before answering; do not repeatedly retype the text in reasoning.';
 export const ANSWER_PROTOCOL = [
   LITERAL_COPY_INSTRUCTIONS,
-  'For a private report page of this conversation’s own answer, return JSON {reply:the complete Markdown report,privateViewTitle:a title of 1–256 characters}. The application saves the reviewed reply for seven days and appends its private dashboard link, or plainly says when the phone cannot reach it. Only the verified operator’s private conversation is supported; no members, guests, public publishing or file editing. Never invent a report URL.',
   CLAIM_EVIDENCE_GUIDANCE,
   'For a later-action promise return JSON reply and promises:[{quote:exact reply sentence,when?:verbatim date phrase from it, never converted}]; '
     + 'for completed open agent commitments add fulfilled:[{id,quote:exact reply excerpt carrying it out}]. Conditional or quoted examples are not promises.',

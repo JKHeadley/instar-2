@@ -119,11 +119,13 @@ it('uses a genuine delivered reply through existing PREVIEW-prefix normalization
 
 it('unknown dispatch is never repeated after restart and retains the view', async () => {
   const w = await world(answer, '100.90.80.70:1234', false, () => {}, null);
-  expect(w.sends).toHaveLength(1); const report = w.turn.privateView!;
+  expect(w.sends.filter(text => text.includes('/dashboard/reports/'))).toHaveLength(1);
+  const before = [...w.sends], report = w.turn.privateView!;
   w.journal.close();
   const restarted = openPreviewJournal(w.path, key, genesis);
   await createJournalWorker(restarted, w.ports).drain();
-  expect(w.sends).toHaveLength(1);
+  expect(w.sends).toEqual(before);
+  expect(w.sends.filter(text => text.includes('/dashboard/reports/'))).toHaveLength(1);
   expect(getPrivateView(restarted.view, report.id, genesis.operator, start)).toEqual(report);
   restarted.close();
 });

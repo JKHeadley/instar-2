@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/private-view.test.ts",
-        "hash": "sha256:3863405ab55bf53d7e18050579874b0e3ad7c3b92ed4bf763a0aca4fe411243d"
+        "hash": "sha256:14403db53fb966e1a763de38b4091e7c50dfad5be5d51516792bbe0b64b0870d"
       }
     },
     {
