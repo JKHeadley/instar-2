@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:4aa4adfd7bab8cd312ec31d6eacaead77eefd0e171b6d33ef5a2c6a32fc0243c",
-  "commit": "31f450fd1991e9d98feee8cd707459c1b08d4f39",
+  "generation": "sha256:49b1a4c35f277b0606a9f4f1df6c81e67595186bd2cc4409f27deedb32817eb6",
+  "commit": "236f2572dba271b595eb628738d7030b1b87a557",
   "launchers": {
     "bin/instar2.mjs": [
       {
@@ -9,7 +9,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "saves inbound Telegram files under bounded admission; refusals keep their message."
       },
       {
         "id": "harness-doorway-parity",
@@ -41,7 +41,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -49,7 +49,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -57,7 +57,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -65,7 +65,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -73,7 +73,7 @@
         "module": "tests/preview",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -146,14 +146,6 @@
         "availability": "switched-off",
         "userFacing": true,
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
-      },
-      {
-        "id": "threadline-default-exchange",
-        "status": "live",
-        "module": "scripts",
-        "availability": "available",
-        "userFacing": false,
-        "text": "local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts."
       }
     ],
     "bin/instar-production.mjs": [
@@ -163,7 +155,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "saves inbound Telegram files under bounded admission; refusals keep their message."
       },
       {
         "id": "harness-doorway-parity",
@@ -195,7 +187,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -203,7 +195,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -211,7 +203,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -219,7 +211,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -227,7 +219,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -300,14 +292,6 @@
         "availability": "switched-off",
         "userFacing": true,
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
-      },
-      {
-        "id": "threadline-default-exchange",
-        "status": "live",
-        "module": "scripts",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts."
       }
     ],
     "scripts/host-watch.mjs": [
@@ -317,7 +301,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "saves inbound Telegram files under bounded admission; refusals keep their message."
       },
       {
         "id": "harness-doorway-parity",
@@ -349,7 +333,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -357,7 +341,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -365,7 +349,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -373,7 +357,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -381,7 +365,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -454,14 +438,6 @@
         "availability": "switched-off",
         "userFacing": true,
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
-      },
-      {
-        "id": "threadline-default-exchange",
-        "status": "live",
-        "module": "scripts",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts."
       }
     ],
     "tests/preview/agent.mjs": [
@@ -471,7 +447,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "saves inbound Telegram files under bounded admission; refusals keep their message."
       },
       {
         "id": "harness-doorway-parity",
@@ -503,7 +479,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -511,7 +487,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -519,7 +495,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -527,7 +503,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -535,7 +511,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -608,14 +584,6 @@
         "availability": "switched-off",
         "userFacing": true,
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
-      },
-      {
-        "id": "threadline-default-exchange",
-        "status": "live",
-        "module": "scripts",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts."
       }
     ],
     "tests/preview/conversation-authority-server.mjs": [
@@ -625,7 +593,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "saves inbound Telegram files under bounded admission; refusals keep their message."
       },
       {
         "id": "harness-doorway-parity",
@@ -657,7 +625,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -665,7 +633,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -673,7 +641,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -681,7 +649,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -689,7 +657,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -762,14 +730,6 @@
         "availability": "not-loaded",
         "userFacing": true,
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
-      },
-      {
-        "id": "threadline-default-exchange",
-        "status": "live",
-        "module": "scripts",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts."
       }
     ],
     "tests/preview/journal-agent.mjs": [
@@ -779,7 +739,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "saves Telegram files under bounded admission; refusals retain the message."
+        "text": "saves inbound Telegram files under bounded admission; refusals keep their message."
       },
       {
         "id": "harness-doorway-parity",
@@ -811,7 +771,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers operator chat/topics; intake encrypts photos, audio and files with text descriptions."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -819,7 +779,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "encrypted local messages, summaries and memory survive restarts; operator can correct or forget facts."
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
       },
       {
         "id": "preview-owned-obligations",
@@ -827,7 +787,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "keeps instructions, works promises; sends explicitly requested results, else holds them for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -835,7 +795,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers explicit timed requests once, daily or weekdays until cancelled; no new message needed."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -843,7 +803,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers \"status\" and \"how are you doing\" from the journal, without a model call."
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -916,14 +876,6 @@
         "availability": "switched-off",
         "userFacing": true,
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
-      },
-      {
-        "id": "threadline-default-exchange",
-        "status": "live",
-        "module": "scripts",
-        "availability": "available",
-        "userFacing": false,
-        "text": "local private peer exchange: owner-signed scope, custody, checkpoints and authenticated receipts."
       }
     ]
   }
