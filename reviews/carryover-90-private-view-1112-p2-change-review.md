@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: The answering agent can save this operator's own private-conversation reply as a bounded, seven-day Markdown report. The durable reply includes the report link when the existing dashboard listens on its configured private address; loopback-only operation states that the page exists but cannot yet open from the phone.
 Affected rules: 7, 28, 32, 33, 34, 36, 43, 47, 49, 57, 60, 62, 63, 74, 78, 79, 80, 81, 84, 89, 101, 102, 106, 111, 113, 116, 120, 122, 123; Purpose least revelation and durable cause.
-Affected floors: Secrets are checked on the page title/body before intent and again at HTTP lookup. Spend, stop, durable intake and send uniqueness retain their existing worker and journal gates. No new effect dispatcher or credential is introduced.
+Affected floors: Secrets are checked on the page title/body before intent and again at HTTP lookup. Spend, stop, durable intake and no duplicate sends retain their existing worker and journal gates. No new effect dispatcher or credential is introduced.
 Operator questions: none; the desk authorized option 1 of C90-SIZE-STOP, up to 300 measured changed product lines, and owns private dashboard installation and phone proof.
 Suggested tier: significant
 Declared tier: significant

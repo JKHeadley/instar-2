@@ -1,25 +1,28 @@
-# Row 90 private report view: base research and size gate
+# Row 90 research and authorized private-report continuation
 
 Subject base: d1823a36e8b0a3c155dbc723dd6aebc0666e9934
 Review state: open
 Reviewed content: none
-Outcome: Record the existing authenticated dashboard, the exact 1.x port candidate and the estimated complete slice before implementation. Product changes stop at the task's 150-line size gate; no private report capability is claimed.
-Affected rules: 28, 32, 33, 34, 36, 43, 49, 57, 60, 62, 63, 74, 79, 80, 81, 101, 102, 106, 111, 113, 116, 120, 122, 123; Purpose least revelation.
-Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake are unchanged; this commit contains research only.
-Operator questions: none; the assigned size gate already directs a stop and options above 150 changed product lines.
-Suggested tier: ordinary
-Declared tier: ordinary
-Tier rationale: A research record with zero changed product lines, not an implemented user-facing feature.
-Side effects: No runtime, prompt, parser, source declaration, dependency, credential or installation changes.
-Undo and recovery: Revert this research record; no data migration or runtime recovery is needed.
-Multi-machine posture: Research only. A future view must follow the conversation owner and its durable record; the existing dashboard is a deliberately local projection. No replicated or local store was added.
-Layer below: Existing PIN/session and passkey/session verification, bounded dashboard projection, launcher wiring, journal provenance and durable outbound path; the 1.x view renderer, route, URL signer and middleware.
+Outcome: This record covers the original research and its authorized implementation continuation, as reviewed in carryover-90-private-view-1112-p2-change-review.md. The answering agent can save this operator's own private-conversation reply as a bounded, seven-day Markdown report. The durable reply includes the report link when the existing dashboard listens on its configured private address; loopback-only operation states that the page exists but cannot yet open from the phone.
+Affected rules: 7, 28, 32, 33, 34, 36, 43, 47, 49, 57, 60, 62, 63, 74, 78, 79, 80, 81, 84, 89, 101, 102, 106, 111, 113, 116, 120, 122, 123; Purpose least revelation and durable cause.
+Affected floors: Secrets are checked on the page title/body before intent and again at HTTP lookup. Spend, stop, durable intake and no duplicate sends retain their existing worker and journal gates. No new effect dispatcher or credential is introduced.
+Operator questions: none; the desk authorized option 1 of C90-SIZE-STOP, up to 300 measured changed product lines, and owns private dashboard installation and phone proof.
+Suggested tier: significant
+Declared tier: significant
+Tier rationale: A user-facing private-content surface and model output contract, on existing authentication and durable send machinery.
+Side effects: Adds marked 17.0.5 (the 1.x GFM renderer), optional answer/intent fields, generated capability awareness, and a report-only return path after PIN sign-in. Existing answers without the explicit field create no reports. Report content is also delivered in the ordinary reply so existing promise/fulfillment and disclosure handling stays intact.
+Undo and recovery: Revert the feature commit and regenerate the register; no existing field or store format is replaced. Old readers ignore the optional report fields, retain the original intent and send fence, and stop serving the new route. Restart reconstructs reports from encrypted journal records and invalidates dashboard sessions as before.
+Multi-machine posture: The report is part of the owning conversation's existing durable intent, with source turn/update and operator/chat binding. The existing journal store declaration (preview.journal.openPreviewJournal) applies: local durable operation with one machine; lease-holder working journal replicated and acknowledged before send with an enrolled peer. No independent file store, remote fetch or new routing authority. The URL identifies the issuing dashboard; a host without the retained journal cannot serve the content, and this slice adds no failover URL rewriting.
+Team posture: Explicit team-of-one exception for this first slice: creation requires the verified operator's private conversation, viewing requires that operator's existing dashboard PIN session. A group, member or guest receives no report ownership or shared access. Sharing requires the owner's signed team record and separately authenticated roles; this slice cannot widen access.
+Layer below: Inspected the live-runner dashboard wiring, readOnlyDashboardOf/checkListen private address restriction, PIN verifier/session map, encrypted journal replay and compaction, operatorWriter/verifiedOperatorTurn source binding, final reply review/secret checks, signed intent and send-claim restart behavior; compared the actual 1.x renderer/routes/middleware. The desk supplied one loopback-only live listener; a reachable phone address is not assumed.
 Bug class: none
-Bug evidence: none; feasibility research, with existing dashboard tests as supporting evidence only.
+Bug evidence: Feature carryover with worker/HTTP positive and negative tests, durable restart and recorded-shape replay; not a claim of installed phone acceptance.
 Hook bypass: none
 Convergence: none
-Prompt review: No model-facing changes. No new-path recorded-model replay or live acceptance is claimed.
+Prompt review: The new privateViewTitle field requests a page of the current complete reply. It does not infer user intent from keywords or specify a judge's verdict. Existing recorded summary/uncertain/Jev/review/empty reply outputs do not create pages; an explicit creation envelope around a genuine delivered reply exercises the new path. Independent Astra judgment remains the desk's acceptance step.
 Decision: C90-SIZE-STOP | Stop implementation at the assigned size gate: estimated complete slice 190-260 product lines, excluding tests and documentation; present reuse and prerequisite options. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-90-private-view-1112-build-report.md
+
+Integration continuation: train-239 extends this open record through the reviewed implementation so its checked subject is the implemented feature. The original research below is historical evidence from 42807267ed1e69a0b1238579a39ada8231b1649d: its zero-product and size-stop statements describe that earlier research stage only. The p2 record and canonical p2 report hold the authorized implementation, measurements and limits. Product bytes are unchanged by this record repair.
 
 ## Existing behavior on the requested base
 
@@ -120,6 +123,6 @@ private link, phone rendering, absent/other-person credentials refused, missing/
 refused, and restart/send uniqueness evidence. A model-facing creation contract also requires
 the named genuine recorded-shape replays with update IDs; none is claimed here.
 
-simplestRobustRoute: Port 1.x create/get and markdown presentation through the existing private dashboard session and durable conversation/send machinery. Do not introduce a port, bearer-link substitute, public service or file capability. The complete adaptation is estimated above this task's 150-line gate, so this submission records the finding without a partial implementation.
-80/20: Existing surfaces and the exact 1.x implementation are identified; the explicit size exit condition is reached. Product completion and independent acceptance remain unclaimed.
-VERDICT: author research submission; stopped before implementation under the assigned size gate, awaiting desk scope disposition
+simplestRobustRoute: This is the simplest robust route: port 1.x create/get/GFM onto existing dashboard authentication and durable reply intent. Reusing the final reviewed answer prevents a separate unreviewed body; a seven-day access lifetime and existing answer bounds prevent unbounded serving; source/operator binding prevents cross-person disclosure. Start is an explicit field on an admitted operator answer, end is the durable send intent plus authenticated GET, and limits are the existing stop/spend/secret/send gates plus exact owner/size/expiry checks. The desk's live phone installation/proof remains unclaimed.
+80/20: One bounded create/get slice reuses current ownership, storage, delivery, phone style and authentication. No public publishing, file API, extra port, bearer-link service or sharing machinery was added.
+VERDICT: author submission for independent desk/Astra review; local proofs and remaining installation limits are reported separately
