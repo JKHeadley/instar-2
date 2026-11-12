@@ -159,6 +159,52 @@ describe('coverage and the frozen round (Rules 74, 109)', () => {
   }, 120_000);
 });
 
+describe('the frozen main/live numbering repair (Rules 90/94)', () => {
+  it('accepts main unchanged and only the exact live transition, refusing each nearby history edit', () => {
+    const r = repo();
+    const sourceGit = (...args: string[]) => spawnSync('git', args, { encoding: 'utf8' }).stdout.trim();
+    r.write('.git/objects/info/alternates', resolve(sourceGit('rev-parse', '--git-common-dir'), 'objects') + '\n');
+    const main = 'bc95ab494d5c035f750c6efc1379913e2d8b6e46', live = 'd3d563cd1c2396a72bf08fc08c7a7740be419ca8';
+    const paths = ['01-the-rules', '14-the-assembly', '15-the-operator-surfaces', '17-harness-adapters'].map(n => `docs/${n}.changelog.json`);
+    const blobs = ['0a24ebcf2e4020e7d98346fc0fcef6c6a922dbf4', 'ac6d0724de956bbd1b2fde3b05e9688a3fafe957',
+      '3630347890514b18a9768074b2dd4879ebd0d105', '638c946d6ea6c258aaf59dc3e2c19d9b0c53789e'];
+    const waiver = `Rule 94 waiver: proposed ${main} ${live}`;
+    const check = (base: string, last: string, extra = waiver, path = 'reviews/changelog-numbering-repair-change-review.md') => {
+      const script = `import { governedVersionErrors } from ${JSON.stringify(CHECKER)};
+        import { parseRecord } from ${JSON.stringify(resolve('scripts/change-review.mjs'))};
+        const e = JSON.parse(process.argv[1]); e.record = parseRecord(e.text);
+        console.log(JSON.stringify(governedVersionErrors(e)));`;
+      const out = spawnSync(process.execPath, ['--input-type=module', '-e', script,
+        JSON.stringify({ base, last, path, subject: paths, text: record(base, extra) })], { cwd: r.dir, encoding: 'utf8', env });
+      expect(out.status, out.stderr).toBe(0); return JSON.parse(out.stdout) as string[];
+    };
+    const tree = () => r.git('commit-tree', r.git('write-tree'), '-p', live, '-p', main, '-m', 'fixture merge');
+    r.git('read-tree', live);
+    paths.forEach((p, i) => r.git('update-index', '--add', '--cacheinfo', '100644', blobs[i]!, p));
+    const repaired = tree();
+    expect(check(main, repaired, '')).toEqual([]);
+    expect(check(live, repaired)).toEqual([]);
+    expect(check(live, repaired, '')).toHaveLength(4);
+    expect(check(live, repaired, waiver.replace(main, live))).toHaveLength(4);
+    expect(check(live, repaired, waiver, 'reviews/other.md')).toHaveLength(4);
+    expect(check(r.git('rev-parse', `${live}^`), repaired).length).toBeGreaterThan(0);
+    for (const [index, path] of paths.entries()) {
+      const exact = JSON.parse(sourceGit('show', blobs[index]!));
+      for (const mutate of [
+        (a: typeof exact) => { a[0].changes[0].what += ' altered'; },
+        (a: typeof exact) => { a.splice(0, 1); },
+        (a: typeof exact) => { a[0].revision += 1; },
+      ]) {
+        const altered = structuredClone(exact); mutate(altered);
+        r.write(path, JSON.stringify(altered, null, 2) + '\n');
+        r.git('update-index', '--cacheinfo', '100644', r.git('hash-object', '-w', path), path);
+        expect(check(live, tree()).some(e => e.includes(path))).toBe(true);
+        r.git('update-index', '--cacheinfo', '100644', blobs[index]!, path);
+      }
+    }
+  }, 120_000);
+});
+
 describe('governed documents go through the version chain (Rule 90)', () => {
   const doc = '# G\n\n**Status: approved. Governed.**\n\nThe body.\n';
   const version = (revision: number, what: string, extra: Record<string, unknown> = {}) => ({ revision, date: '2026-09-27', status: 'approved',
