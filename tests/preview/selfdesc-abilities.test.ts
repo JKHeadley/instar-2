@@ -69,14 +69,12 @@ const currentChannelNote = (text: string) => compactRecordedNote(text.replace(re
   // the original notes; they do not certify private reports (covered by private-view.test.ts).
   .replace('- keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.',
     '- keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.\n'
-    + '- operator-only pages (7d): {reply:Markdown,privateViewTitle:title (1–256 chars)}; host adds link or phone-unavailable.')
+    + '- owner-only pages (7d): {reply:Markdown,privateViewTitle:title (1–256 chars)}; host adds link/phone-unavailable.')
   // train-242: preserve captured bytes; translate only the declared compact summaries and local Threadline addition.
   .replace('saves inbound Telegram files under bounded admission; refusals keep their message.',
     'saves Telegram files with bounded admission; keeps refused messages.')
   .replace('answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.',
     'answers operator chat/topics; encrypts inbound media with text descriptions.')
-  .replace('"status" and "how are you doing" are answered from the journal without a model call.',
-    'answers "status" and "how are you doing" from the journal, without a model call.')
   .replace('keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.',
     'keeps instructions, works promises; sends requested results, else holds for next message.')
   .replace('- generates the register, rules, glossary and this briefing from declarations.',

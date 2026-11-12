@@ -15,7 +15,7 @@ authority, store or outbound path.
 
 ## Capabilities
 
-- `preview-private-reports`: operator-only pages (7d): {reply:Markdown,privateViewTitle:title (1–256 chars)}; host adds link or phone-unavailable.
+- `preview-private-reports`: owner-only pages (7d): {reply:Markdown,privateViewTitle:title (1–256 chars)}; host adds link/phone-unavailable.
 
 The journal runner's capability briefing is generated from these lines and the feature declarations beside the shipped sources; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
@@ -25,7 +25,7 @@ The journal runner's capability briefing is generated from these lines and the f
 - `preview-durable-memory`: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.
   Details: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. A later direct statement of the same fact supersedes the earlier value without requiring special correction wording; the shared model guidance distinguishes that update from genuinely unresolved alternatives. The existing source-validated update records the replacement and keeps dated history. It is not production or other-agent memory.
 - Backup availability is shown in the running chat status and operator dashboard using the existing authenticated journal-peer observation. A single-machine installation says `no failover target` and keeps local operation supported. A missing observation is unknown; a stale or incomplete peer copy is unconfirmed. A recent complete acknowledgement is evidence of a backup, not a guarantee of takeover: the conversation authority must still be available. This pull-only line grants no authority and never lowers replication demands.
-- `preview-status-command`: answers "status" and "how are you doing" from the journal, without a model call.
+- `preview-status-command`: "status" and "how are you doing" are answered from the journal without a model call.
   Details: the exact messages status and how are you doing are answered from the durable journal without generating an answer.
 - `preview-upcoming-date-mention`: a saved date within 48 hours can get one short mention in the next reply.
   Details: when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts.
