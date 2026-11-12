@@ -26,6 +26,11 @@ Decision: signed-browser-exit-transport | Confine browser network to a bounded d
 Decision: signed-browser-exit-evidence | Turn fourth-review HAR/realistic cases into regressions, independently assert encoded exit denial and granted-once behavior, and mutation-test the host exit gate. Native confinement remains a Studio check. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/signed-in-browsing-exit-1112-PROGRESS.md
 Prompt review: no model-output grammar or instruction change. Existing browser-profile recorded fixture replays retain real summary, uncertain summary, Jev undecided/uncertain, reply-review and delivered/empty-candidate shapes from retrospective-duty-followup-train-1-2026-10-08.json: updates 715672480, 715672483, 715672482, 969389570, 969389923, 715672479 and 715672550. These are data, not authority; an empty candidate is not claimed delivered.
 
+Measured product diff from subject base: 309 gross lines, 244 additions and 65 deletions, net +179, including the 26-line temporary-store declaration. Runtime modules alone: 283 gross, net +153. Tests, documentation, review and generated output excluded.
+
+Register publication: official replay from 574034b691b8d8417532ac516ace6063ec6c0bdd; generation sha256:752764648b941ad57fdb4e94b597e3af7a2cb382ab18d8c49c52107246708464. No manual source pins, native certificate or changelog edits.
+Deferral: generated/register.json:1 | not-a-deferral=mechanical serialization of existing register facts, not newly deferred behavior
+
 Store declaration: declare the machine-local temporary browser launcher with deletes growth and no agent memory; no persistent authority is introduced.
 
 Trace follow-up: defensive review identified the pinned Browser.stopTracing artifact and CDP Tracing.dataCollected event; both are now structurally projected and exercised against real pinned protocol, including positive event delivery.
