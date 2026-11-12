@@ -24,7 +24,7 @@
       "criticality": "Exact owner signature, private topic share, peer identity, current role grant, full durable cause, known zero-cost operation, claim bounds, ownership, stop and held-secret checks. Peer statements cannot grant authority.",
       "failDirection": "closed",
       "preservesInput": "Existing hook trace retains requests; the encrypted journal retains admitted cause and peer payloads. Failed or unknown dispatch retains its stable preparation and encrypted staging; no automatic resend or deletion.",
-      "inspectedBy": "THREADLINE-DEFAULT-EXCHANGE"
+      "inspectedBy": "PREVIEW-THREADLINE-DEFAULT-EXCHANGE"
     },
     "profile": { "type": "Profile", "schemaVersion": 1, "consequence": "data", "reversibility": "irreversible", "reach": "world", "surface": "none", "repeats": { "kind": "no" } },
     "standards": [4, 28, 42, 66, 95, 98, 103, 123], "holds": []

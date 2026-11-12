@@ -201,6 +201,14 @@
         "path": "tests/preview/resource-census-recovery.test.ts",
         "hash": "sha256:b8cc4fa02d4b6ddcd19f2b8b129bd1ed051bf355e4a69cb151374668d43e7c14"
       }
+    },
+    {
+      "id": "PREVIEW-THREADLINE-DEFAULT-EXCHANGE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/threadline-default.test.ts",
+        "hash": "sha256:d5ff2b2e3443999ac4d27d869cf903535fb7f2af07d8cce81ceed0b35a0dc148"
+      }
     }
   ],
   "probes": [],
