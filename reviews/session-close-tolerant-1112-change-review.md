@@ -30,7 +30,7 @@ Root cause: retire() clears claim (production-conversation-session.ts:271–279)
 
 Snapshot result: snapshotOf at journal.ts:2037 and restoreSnapshot:2066 already preserve activeSessionWork; actual 8 MiB compaction/reopen/close passes unchanged product, and a second close is still refused. No snapshot schema or migration change.
 
-Publication: Native contract passed 10/10 after mechanical renewal to sha256:07561228d25df881bfc62134aeef0ad9a04538e5a42226e7f59ca7fbe2b8472e. Rebuild confirmed the same bytes; register replay uses source commit 25ecc6c8c051e2c923d94bd09d363e910a42c1c7. Product diff is 70 executable lines (55 additions, 15 deletions), plus 2 declaration lines; tests, review and generated publication are measured separately.
+Publication: Native contract passed 10/10 after mechanical renewal to sha256:07561228d25df881bfc62134aeef0ad9a04538e5a42226e7f59ca7fbe2b8472e. Rebuild confirmed the same bytes; register replay uses source commit 23bc19e55565ce32985d0e6c049e28d9d2cb85df. Product diff is 70 executable lines (55 additions, 15 deletions), plus 2 declaration lines; tests, review and generated publication are measured separately.
 
 Validation follow-up: The existing launcher startup-refusal assertion expected the old suppressed stderr; update it to require the requested redacted class/first-line diagnostic and exit cause, retaining its lease-release and single-exit assertions. No executable change.
 
