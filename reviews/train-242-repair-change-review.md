@@ -61,6 +61,8 @@ Concurrent publication: the initial push was rejected because the same branch ad
 Decision: adopt-remote | Keep the already published repair for the same causes, including its simpler briefing-only context remedy, while preserving compatible stronger tests and both histories. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-242-repair-PROGRESS.md
 Incoming evidence: the named remote report returned HTTP 401 and was not retried. The previously absent canonical Studio path now holds an explicitly attributed adoption record derived from the committed review's Decision lines, with remote test/completion evidence labelled unavailable; it is not presented as a copy of the remote report. Local test evidence remains in this task's PROGRESS report.
 
+Register publication: regenerated from merged source 53a2833ed0de33f1d99ab380c8bedfbfc98a7389. Both repair histories and all four carried feature ancestors are retained. Final pushed-head commands and results are recorded in the Studio PROGRESS report.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: adopt the concurrently published briefing-only repair, restored live text, fixture dependencies and roster; retain stronger test assertions without adding runtime machinery. Guards remain exact standing, grounding, finite byte/spend/stop limits and durable unique delivery. No deployed or independent acceptance claim.
