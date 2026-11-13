@@ -8207,7 +8207,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * exactly as before and also clears any floor a previous attempt published (see `historySetAside`). */
   // Rules 55/60/95: bound speculative fitting, then directly try the existing floor.
   // Synchronous work checks elapsed time between candidates; one in-progress candidate
-  // can overrun the deadline. The deterministic history floor shares this search budget.
+  // can overrun the deadline. History floors share the deadline and triggered brake,
+  // but each completed rung leaves the next rung its own candidate allowance.
   const PACKET_SEARCH_MAX_CANDIDATES = 5000, PACKET_SEARCH_BUDGET_MS = 5000;
   const preparedFor = (turn: Turn, includeRecorded = true, setAside = -1,
     budget = { started: performance.now(), tried: 0, limited: false }) => {
@@ -8559,7 +8560,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const cut = yieldSources(bare)[0] ?? bare;
           const guided = floorGuide(cut);
           const floors = guided.length ? guided.slice(reviewReserveWaived ? -2 : -1) : [cut];
-          return floors.map(value => reviewReserveWaived ? withoutSiblingWords(value) ?? value : value);
+          return reviewReserveWaived
+            ? [...floors, ...floors.flatMap(value => withoutSiblingWords(value, true) ?? []),
+              ...floors.flatMap(value => withoutSiblingWords(value) ?? [])] : floors;
         };
         const variants = budget.limited ? floorContext() : ordinaries.flatMap(ordinary => {
           const bare = withoutOffer(ordinary), base = bare ?? ordinary;
@@ -8681,6 +8684,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (!('reason' in attempt)) return attempt;
         if (!carried.length) break;
         setAside = carried[Math.ceil(carried.length / 2) - 1]!.update;
+        // A completed search at an earlier history floor must not spend this floor's count allowance.
+        // Keep the shared wall-clock deadline and any already-triggered brake.
+        budget.tried = 0;
         attempt = preparedFor(turn, true, setAside, budget);
       }
       // The last rung: with every earlier turn set aside, what is left is this message and the parts every turn
@@ -8692,6 +8698,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // update 6230924: smallest prepared prompt 23830 bytes against 23093 left beside the reserve). If even
       // this cannot fit, every variant overflowed on measured bytes and the caller sends the size notice.
       reviewReserveWaived = true;
+      budget.tried = 0;
       return preparedFor(turn, true, setAside, budget);
       // Every other caller passes no floor, which also clears one; this restores it for a path that threw.
     } finally { historySetAside = -1; reviewReserveWaived = false; }
