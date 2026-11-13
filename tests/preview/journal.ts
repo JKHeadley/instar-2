@@ -8187,13 +8187,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   // Dated facts stay in the journal. Only their bounded packet projection yields
   // when a reply or summary needs the bytes; counts disclose even a zero-item view.
-  const datedVariants = (packet: string): string[] => {
+  const datedVariants = (packet: string, floorOnly = false): string[] => {
     const base = JSON.parse(packet) as { dated?: DatedItem[]; moreDated?: number;
       datedPending?: { update: number; message: string }[]; moreDatedPending?: number };
     const dated = base.dated ?? [], pending = base.datedPending ?? [];
     if (!dated.length && !pending.length) return [packet];
     const variants: string[] = [];
-    for (let kept = dated.length + pending.length; kept >= 0; kept--) {
+    for (let kept = floorOnly ? 0 : dated.length + pending.length; kept >= 0; kept--) {
       const dateCount = Math.min(dated.length, kept), pendingCount = Math.min(pending.length, kept - dateCount);
       variants.push(JSON.stringify({ ...base,
         ...(base.dated === undefined ? {} : { dated: dated.slice(0, dateCount),
@@ -8205,7 +8205,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** One preparation attempt at one history floor. `setAside` defaults to no floor, so an ordinary call behaves
    * exactly as before and also clears any floor a previous attempt published (see `historySetAside`). */
-  const preparedFor = (turn: Turn, includeRecorded = true, setAside = -1) => {
+  // Rules 55/60/95: bound speculative fitting, then directly try the existing floor.
+  // Synchronous work checks elapsed time between candidates; one in-progress candidate
+  // can overrun the deadline. The deterministic history floor shares this search budget.
+  const PACKET_SEARCH_MAX_CANDIDATES = 5000, PACKET_SEARCH_BUDGET_MS = 5000;
+  const preparedFor = (turn: Turn, includeRecorded = true, setAside = -1,
+    budget = { started: performance.now(), tried: 0, limited: false }) => {
+    const exhausted = () => !budget.limited && (budget.tried >= PACKET_SEARCH_MAX_CANDIDATES
+      || performance.now() - budget.started >= PACKET_SEARCH_BUDGET_MS);
+    const writer = sessionWriterOf(journal.view, turn), preferenceLineage = preferenceState().lineage;
     historySetAside = setAside;
     const question = redact(turn.text).text;
     // Rules 9, 96, 114: the concurrent owned-work view is read once per preparation, never per packet variant.
@@ -8433,20 +8441,28 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const kept = new Set(optional), dropped: PacketDrop[] = setAside < 0 || !setAsideTurn ? []
         : [{ kind: 'history', source: setAsideTurn.id,
           reason: 'verbatim history yielded last to the byte envelope; the journal keeps these turns and recall reaches them' }];
-      for (let step = 0; step <= dropOrder.length; step++) {
+      if (budget.limited) {
+        kept.clear();
+        dropped.push({ kind: 'preparation-search', source: turn.id,
+          reason: '5000 candidates / 5000 ms search bound reached; existing floor selected' },
+          ...dropOrder.map(item => ({ kind: item.kind, source: item.key, reason: 'packet preparation search budget' })));
+      }
+      for (let step = budget.limited ? dropOrder.length : 0; step <= dropOrder.length; step++) {
+        if (exhausted()) { budget.limited = true; return preparedFor(turn, includeRecorded, setAside, budget); }
         const has = (kind: Optional['kind'], index: number) => optional.some(item => kept.has(item) && item.kind === kind && item.index === index);
         const selectedFacts = facts.filter((_, index) => has('fact', index));
         const flagged = pending.filter((_, index) => has('correction', index));
         const selectedRecall = recalled.filter((_, index) => has('dated', index) || has('recent', index));
         const selectedChannels = channels.filter((_, index) => has('dated', recalled.length + index) || has('recent', recalled.length + index));
-        for (let inventoryCount = inventory ? inventory.items.length : -1; inventoryCount >= -1; inventoryCount--) {
+        for (let inventoryCount = !budget.limited && inventory ? inventory.items.length : -1; inventoryCount >= -1; inventoryCount--) {
           const selectedInventory = inventory && inventoryCount >= 0
             ? { total: inventory.total, items: inventory.items.slice(inventory.items.length - inventoryCount) } : undefined;
           // Memory search varies innermost (searchVariants), so it only ever uses leftover room.
           for (let searchCount = -1; searchCount >= -1; searchCount--) {
             const selectedSearch = undefined;
-            for (let contradictionCount = contradictions.length; contradictionCount >= 0; contradictionCount--) {
-            for (let questionCount = questions.length; questionCount >= 0; questionCount--) {
+            for (let contradictionCount = budget.limited ? 0 : contradictions.length; contradictionCount >= 0; contradictionCount--) {
+            for (let questionCount = budget.limited ? 0 : questions.length; questionCount >= 0; questionCount--) {
+            if (exhausted()) { budget.limited = true; return preparedFor(turn, includeRecorded, setAside, budget); }
             const base = packetFor(before(turn.update), compact, selectedRecall,
               named.filter((_, index) => has('person', index)), open.filter((_, index) => has('commitment', index)),
               turn.thread, false, flagged, selectedChannels, fromOperator(turn), turn, selectedInventory, selectedSearch,
@@ -8458,7 +8474,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           has('candidate', candidates.length + index)).map(item => ({
           id: publicMemoryId(channelMemoryId(item)), sourceKind: 'channel-import' as MemorySourceKind, source: 'channel-import',
           message: clean(redact(item.text).text, true).trim().slice(0, 1000), reply: '' }))];
-        for (const datedBase of datedVariants(base)) {
+        for (const datedBase of datedVariants(base, budget.limited)) {
         const installedUpdate = fromOperator(turn) ? ports.installedUpdate?.() ?? null : null;
         const setAsideBase = (JSON.parse(datedBase) as { historySetAside?: { through: number } }).historySetAside;
         const lost = continuityFrontier({ ...(compact && summary ? { compactedThrough: summary.through } : {}),
@@ -8538,7 +8554,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (!packet.actionFacts.items.length) delete packet.actionFacts;
           return JSON.stringify(packet);
         };
-        const variants = ordinaries.flatMap(ordinary => {
+        const floorContext = () => {
+          const bare = withoutOffer(withoutSummary ?? fullContext) ?? withoutSummary ?? fullContext;
+          const cut = yieldSources(bare)[0] ?? bare;
+          const guided = floorGuide(cut).at(-1) ?? cut;
+          return reviewReserveWaived ? withoutSiblingWords(guided) ?? guided : guided;
+        };
+        const variants = budget.limited ? [floorContext()] : ordinaries.flatMap(ordinary => {
           const bare = withoutOffer(ordinary), base = bare ?? ordinary;
           const cut = yieldSources(base);
           const kept = [ordinary, ...(bare ? [bare] : []), ...cut, ...floorGuide(cut[0] ?? base)];
@@ -8550,6 +8572,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // expose the omission, and accept no selection for text absent from the final packet.
         const reportVariants = function* (value: string) {
           const packet = JSON.parse(value) as { pendingReports?: { items: unknown[] }; pendingReportsOmitted?: number };
+          if (budget.limited) {
+            if (packet.pendingReports) {
+              packet.pendingReportsOmitted = packet.pendingReports.items.length;
+              delete packet.pendingReports;
+            }
+            yield JSON.stringify(packet); return;
+          }
           yield value;
           if (!packet.pendingReports) return;
           const items = packet.pendingReports.items;
@@ -8574,11 +8603,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             yield JSON.stringify(packet);
           }
         };
-        for (const variant of variants) for (const reports of reportVariants(variant)) for (const context of searchVariants(reports)) {
+        for (const variant of variants) for (const reports of reportVariants(variant)) for (const context of budget.limited ? [reports] : searchVariants(reports)) {
+        if (exhausted()) { budget.limited = true; return preparedFor(turn, includeRecorded, setAside, budget); }
+        budget.tried++;
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
           try {
-            const writer = sessionWriterOf(journal.view, turn);
             const prepared = ports.prepareModel?.({ question, context, id: turn.id, ...(writer ? { writer } : {}) });
             if (ports.replyCheck && !reviewReserveWaived && prepared !== undefined
               && Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT)
@@ -8602,7 +8632,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               channelItems: selectedChannels.map(channelMemoryId), corrections: flagged.map(item => item.id),
               memoryChanges: journal.view.memory.flatMap((change, index) => change.mode === 'prefer'
                 || change.mode === 'remember' && !selectedFacts.includes(change)
-                || preferenceState().lineage.has(JSON.stringify([change.source, change.quote]))
+                || preferenceLineage.has(JSON.stringify([change.source, change.quote]))
                 || change.mode === 'correct' && supersededCorrection(change)
                 ? [] : [index]), memoryCandidates: packet.memoryCandidates?.map(item => item.id) ?? [] };
             if ((packet.history?.length ?? 0) !== grounding.history.length || (packet.recalled?.length ?? 0) !== grounding.recalled.length
@@ -8629,7 +8659,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         dropped.push({ kind: next.kind, source: next.key, reason: 'packet or prepared prompt byte envelope' });
       }
     }
-    if (includeRecorded && provenanceCue(turn.text)) return preparedFor(turn, false, setAside);
+    if (includeRecorded && provenanceCue(turn.text)) return preparedFor(turn, false, setAside, budget);
     return { reason: promptFit ? 'prompt overflow' : 'context overflow',
       ...(measuredPromptOverflow && !preparationUnavailable ? { measuredPromptOverflow: true } : {}) };
 
@@ -8642,14 +8672,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * alone. The message itself being too long is the one size refusal left, and it belongs to the message, not to
    * the conversation's length. */
   const preparedWithFloor = (turn: Turn) => {
+    const budget = { started: performance.now(), tried: 0, limited: false };
     try {
-      let setAside = -1, attempt = preparedFor(turn, true, setAside);
+      let setAside = -1, attempt = preparedFor(turn, true, setAside, budget);
       for (;;) {
         const carried = groundingHistory(journal.view, before(turn.update), undefined, { thread: turn.thread }).filter(item => item.update > setAside);
         if (!('reason' in attempt)) return attempt;
         if (!carried.length) break;
         setAside = carried[Math.ceil(carried.length / 2) - 1]!.update;
-        attempt = preparedFor(turn, true, setAside);
+        attempt = preparedFor(turn, true, setAside, budget);
       }
       // The last rung: with every earlier turn set aside, what is left is this message and the parts every turn
       // carries, and no summary or later pass can make those smaller. The reply-review reserve yields here, so
@@ -8660,7 +8691,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // update 6230924: smallest prepared prompt 23830 bytes against 23093 left beside the reserve). If even
       // this cannot fit, every variant overflowed on measured bytes and the caller sends the size notice.
       reviewReserveWaived = true;
-      return preparedFor(turn, true, setAside);
+      return preparedFor(turn, true, setAside, budget);
       // Every other caller passes no floor, which also clears one; this restores it for a path that threw.
     } finally { historySetAside = -1; reviewReserveWaived = false; }
   };
