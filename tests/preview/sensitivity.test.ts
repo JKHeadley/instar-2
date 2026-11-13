@@ -301,7 +301,8 @@ describe('P14-NF-77: a shared audience is released only on a completed review (u
       }
       worker.intake([{ update_id: 2, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'What is my locker code?' } }]);
       if (options.crashAfterReserve) {
-        await expect(worker.drain()).rejects.toThrow('crash after the review reservation');
+        await expect(worker.drain()).resolves.toBeUndefined();
+        expect(journal.view.order.at(-1)?.attempt?.state).toBe('exception');
         journal.close();
         journal = openPreviewJournal(path, key);
         worker = createJournalWorker(journal, ports());

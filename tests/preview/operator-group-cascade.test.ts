@@ -123,7 +123,8 @@ for (const scenario of ['pass', 'shared', 'unsure', 'unavailable', 'restart', 'r
     worker.intake([{ update_id: fixture.update, message: { message_id: 1, chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true },
       from: { id: Number(scope.operator) }, text: fixture.text } }]);
     if (scenario.startsWith('restart')) {
-      await expect(worker.drain()).rejects.toThrow('TEST crash'); journal.close();
+      await expect(worker.drain()).resolves.toBeUndefined();
+      expect(journal.view.order[0]?.attempt?.state).toBe('exception'); journal.close();
       if (scenario === 'restart-shared') verified = false;
       if (scenario === 'restart-reserved') verified = true;
       journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
