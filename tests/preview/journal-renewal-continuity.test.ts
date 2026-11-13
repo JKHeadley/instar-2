@@ -102,7 +102,7 @@ it.each([1, 2])('keeps facts, recall answer, status and expiry through replay an
     expect(replayed.status.journalCapacity).toEqual({ outcome: 'success', capacity: 'none',
       serializedStateBytes: expect.any(Number), lastSnapshotSerializedBytes: null });
     expect(reopened.status.journalCapacity).toMatchObject({ outcome: 'success', capacity: 'applied',
-      serializedStateBytes: replayed.status.journalCapacity.serializedStateBytes, lastSnapshotSerializedBytes: expect.any(Number) });
+      serializedStateBytes: (replayed.status.journalCapacity as { serializedStateBytes: number }).serializedStateBytes, lastSnapshotSerializedBytes: expect.any(Number) });
     expect(content(reopened)).toEqual(content(replayed));
     const again = openPreviewJournal(path, key);
     again.compact(); again.close();
