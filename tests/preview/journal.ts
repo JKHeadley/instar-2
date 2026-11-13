@@ -5934,8 +5934,9 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         const projected = retainedPromptView(view);
         const evidence = retainedEvidence(rows, view);
         // Rules 26/58: a reference is faithful only while its exact input survives retention.
-        const retired = new Map(projected.order.filter(turn => turn.promptRetention).map(turn =>
-          [`${turn.promptKind ?? 'reserve'}:${turn.id}`, turn.promptRetention!.sha256]));
+        const retired = new Map(projected.order.filter(turn => turn.promptRetention).flatMap(turn =>
+          ['reserve', 'lookup', 'format-retry', 'answer-replace'].map(kind =>
+            [`${kind}:${turn.id}`, turn.promptRetention!.sha256])));
         const kept = evidence.map(row => row.kind === 'model-call' && row.input === undefined && row.inputRef !== undefined
           && retired.get(row.inputRef) === row.inputSha256 && !row.inputTransformations?.includes('body-not-retained')
           ? { ...row, replay: 'not-faithful' as const, inputTransformations: [...row.inputTransformations ?? [], 'body-not-retained' as const] }

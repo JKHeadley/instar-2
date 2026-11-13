@@ -28,12 +28,14 @@ const prompt = (n: number) => JSON.stringify({ model: 'recorded-shape', messages
     governingConstraints: { scope: 'inside recorded scope' }, installedUpdate: { to: 'revision:new' },
     history: [{ text: 'x'.repeat(75_000) }], memorySummary: { through: 1, text: 'an old summary clause and unrelated material' },
   } }) }] });
-function add(journal: ReturnType<typeof openPreviewJournal>, n: number, complete = true, thread?: number, checked = true, memory: MemoryChange[] = [], prepared = prompt(n)) {
+function add(journal: ReturnType<typeof openPreviewJournal>, n: number, complete = true, thread?: number, checked = true, memory: MemoryChange[] = [], prepared = prompt(n), retryPrompt?: string) {
   const text = `question ${n}`, raw = JSON.stringify({ update_id: n, message: { chat: { id: 7654321, type: 'private' },
     from: { id: 7654321 }, text } });
   journal.append({ kind: 'intake', id: id(n), update: n, text, raw, accepted: true, cursor: n + 1, at: n * 10,
     ...(thread === undefined ? {} : { thread }) });
   journal.append({ kind: 'reserve', id: id(n), prompt: prepared, at: n * 10 + 1 });
+  if (retryPrompt !== undefined) journal.append({ kind: 'format-retry', id: id(n), role: 'answer', state: 'complete',
+    failureClass: 'malformed', prompt: retryPrompt, at: n * 10 + 1 });
   if (!complete) return;
   journal.append({ kind: 'answer', state: 'complete', id: id(n), text: `answer ${n}`, ...(memory.length ? { memory } : {}), at: n * 10 + 2 });
   journal.append({ kind: 'intent', id: id(n), text: `PREVIEW — answer ${n}`, chat: genesis.chat, update: n, grant: genesis.grant, ...(thread === undefined ? {} : { thread }), at: n * 10 + 3 });
@@ -118,6 +120,26 @@ it('ages real recorded prompts with honest referenced replay while preserving in
       }
     } finally { reopened.close(); }
     console.log(JSON.stringify({ agedRecordedPrompts: prompts.map(row => row.id), recordedOutputs: shapes.otherShapes.map(({ kind, id }) => ({ kind, id })) }));
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+it.each([false, true])('keeps replay honest for earlier attempts sharing the retired input: %s', sameInput => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'prompt-retention-attempt-'))), path = join(root, 'journal.encrypted');
+  const journal = openPreviewJournal(path, key, genesis, undefined, false, 1_000_000_000);
+  try {
+    const first = prompt(1), retry = sameInput ? first : prompt(2);
+    add(journal, 1, true, undefined, true, [], first, retry);
+    for (const [kind, input] of [['reserve', first], ['format-retry', retry]]) journal.append(modelCallRecord({
+      id: `${kind}:${id(1)}`, judgment: 'answer', route: 'preview-subscription', model: 'test', input: input!,
+      inputRef: `${kind}:${id(1)}`, output: 'recorded output', outcome: 'complete', latencyMs: 10, usage: null, at: 16 }));
+    for (let n = 2; n <= 35; n++) add(journal, n);
+    for (let round = 0; round < 2; round++) {
+      journal.compact();
+      const rows = snapshot(path).retained;
+      const calls = rows.filter((row): row is ModelCallRecord => row.kind === 'model-call');
+      expect(calls.map(call => replayEligibility(call).faithful)).toEqual([!sameInput, false]);
+      const earlier = rows.find(row => row.kind === 'reserve' && row.id === id(1)) as { prompt?: string };
+      expect(earlier.prompt).toBe(sameInput ? undefined : first);
+    }
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 it('500 recorded-shape 75KB prompts compact below 4MB, preserve recent bytes and reopen with working old readers', async () => {
