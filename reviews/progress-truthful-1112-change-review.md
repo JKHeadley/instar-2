@@ -35,12 +35,13 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged journal gui
 
 1.x comparison: actual JKHeadley/instar main 648800021a7e584375b5458eefdc0ad72f922640; searched src/, docs/specs/ and git history. AutonomousProgressHeartbeat.ts uses observed output/focus, sparse 25/40/60/90-minute backoff, cap six and one-voice ownership; PresenceProxy.ts uses post-message activity, 20s/120s/300s tiers and bounded 600s rechecks, with LLM summaries. HONEST-PROGRESS-MESSAGING-SPEC.md rejects manufactured narration and stale frames as progress. History inspected: 753857c0e, 7779f8a9a, 8d81ecb24, e1ff0d2d2. Carry evidence, sparse bounds, end guards and unique sends through the existing 2.0 journal; independent 1.x monitors/stores/LLM calls do not fit its unified signed send path. ONEX-LESSONS local cached index /tmp/train242-onex.md, section 2: distinguish live/idle/dead, measure actual session progress, and never treat old throttle/output as current activity. No 1.x runtime code is transplanted because 2.0 already supplies these mechanisms; the defect is discarded observation text and first-note delay.
 
+Register regeneration: scripts/build-register.mjs --commit ea81bc84fcb9debfc90464f00a4709dde2dac6fc --replay refreshed eight generated outputs from committed source. Cached desk rehash/repin scripts changed no owner manifests or inventory bytes; no native certificate or declaration was changed.
+Additional consumer evidence: captured failure-hook records retain their failure outcome; assertions now distinguish a fresh generic session fallback from an active tool claim.
+
 ## Closing block
 
 simplestRobustRoute: reuse the existing admission reader, fresh session observations, progress timer and durable sender. This is the simplest route; no new monitor, model call, store or authority. Optional request evidence makes truthfulness explicit without reinterpreting stored replay. Stable fallback identity prevents repeated generic chatter and cross-turn suppression. Start requires admitted unanswered work and fresh observation; end is answer dispatch/session end/stop/expiry/ownership loss; limits remain reply allowance, four notes, bounded text, freshness and widening cadence. This is a builder submission, not a claim of unattended deployment or live acceptance.
-Register regeneration: scripts/build-register.mjs --commit ea81bc84fcb9debfc90464f00a4709dde2dac6fc --replay refreshed eight generated outputs from committed source. Cached desk rehash/repin scripts changed no owner manifests or inventory bytes; no native certificate or declaration was changed.
 
-Additional consumer evidence: captured failure-hook records retain their failure outcome; assertions now distinguish a fresh generic session fallback from an active tool claim.
 
 80/20: narrow product change with recorded-shape writer tests and direct consumer checks; independent review repaired two concrete gaps, then found no further product defect. Desk owns full native/live gate.
 VERDICT: author submission; independent landing review pending
