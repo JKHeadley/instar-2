@@ -4,7 +4,7 @@ Subject base: e3cb0f08d3a74d70c9e059edbd64fc457492bfff
 Review state: open
 Reviewed content: none
 Outcome: Keep the runner serving when session maintenance refuses a close, preserve that refusal in custody, and record redacted causes for maintenance failures and fatal exits.
-Affected rules: purpose 2; 7, 15, 26, 33, 39, 42, 46, 49, 55, 60, 68, 70, 74, 75, 77, 101, 102, 105, 111, 113, 115, 116, 123
+Affected rules: purpose 2 and least revelation; 4, 7, 15, 26, 33, 39, 42, 46, 49, 55, 60, 68, 70, 74, 75, 77, 101, 102, 105, 111, 113, 115, 116, 123
 Affected floors: secrets — full-message credential and held-secret scrubbing precedes first-line truncation; spend cap — no new reservation, refund or charge; stop — existing stop/ownership/admission checks hold; no duplicate sends — no send path changed or close re-appended; durable intake — custody retained and the ordinary drain continues.
 Operator questions: none
 Suggested tier: critical

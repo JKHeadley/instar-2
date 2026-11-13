@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, PER_RULE_PASS } from './successive-fixture.js';
 import { openPreviewJournal, UNKNOWN_SEND_NOTICE } from './journal.js';
+import { cutoverHarness } from './journal-cutover-harness.mjs';
 
 // The launcher runs on the real clock against a fixed fixture expiry, so a due activation reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride an answer as its own line. The answer itself stays exact,
@@ -429,12 +430,34 @@ it('Rule 35: a test-endpoint composition refuses a production journal before tak
   expect(existsSync(join(root, 'runs.jsonl'))).toBe(false);
 }, 2 * CHILD_TIMEOUT);
 
-it('Rules 2, 42: a launch refused under the writer lease records its scrubbed cause and stderr first line', async () => {
+it.each(['q6W9tY2v', 'ordinary malformed login'])('Rule 4: early startup diagnostics withhold unestablished secret sources (%s)', async value => {
+  // Reviewer reproduction: the real JSON parser includes malformed login bytes in its error.
+  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
+  harness.setUpdates([]);
+  const pool = join(world.directory, 'malformed-login.json');
+  writeFileSync(pool, value);
+  const run = await harness.runLive(1, ['--login-pool', pool], { INSTAR_SECRET_ASTRA_FIXTURE: 'q6W9tY2v' });
+  expect(run.status).toBe(1);
+  const safe = 'Error: diagnostic details withheld (secret sources unavailable)';
+  expect(run.stderr).not.toContain(value);
+  expect(run.stderr).toContain(`preview refused to start or continue: ${safe}`);
+  const log = readFileSync(join(harness.liveRoot, 'runs.jsonl'), 'utf8');
+  expect(log).not.toContain(value);
+  const rows = log.split('\n').filter(Boolean).map(line => JSON.parse(line));
+  expect(rows).toHaveLength(2);
+  expect(rows[1]).toMatchObject({ reason: 'refused before launch', refused: safe, cause: safe });
+  expect(existsSync(join(harness.liveRoot, '.writer', '.boot-lease'))).toBe(false);
+}, 3 * CHILD_TIMEOUT);
+
+it.each([false, true])('Rules 2, 4, 42: a launch refusal respects secret source availability (unreadable=%s)', async unreadable => {
   const world = successiveWorld(), root = join(world.directory, 'refused-launch');
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, { kind: 'genesis', origin: 'test',
     bot: '1001', chat: '2002', operator: '2002', grant: 'grant:refusal', configurationDigest: 'sha256:recorded',
     expires: 9999999999999, maxCalls: 4, maxReplies: 4, maxTurns: 4, maxBytes: 32768, cursor: 0 });
   journal.close();
+  if (unreadable) writeFileSync(join(root, 'mcp.json'), 'q6W9tY2v');
+  const detail = unreadable ? 'Error: diagnostic details withheld (secret sources unavailable)'
+    : 'Error: preview: configuration-digest differs from journal';
   const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
     INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
     INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: 'http://127.0.0.1:9', INSTAR_CONVERSATION_OWNERS: join(world.directory, 'owners') };
@@ -444,16 +467,17 @@ it('Rules 2, 42: a launch refused under the writer lease records its scrubbed ca
     '--expires-at', '9999999999999', '--max-calls', '4', '--max-replies', '4', '--max-turns', '4'],
   { cwd: process.cwd(), timeout: CHILD_TIMEOUT, env });
   expect(run.status).toBe(1);
-  expect(run.stderr).toContain('preview refused to start or continue: Error: preview: configuration-digest differs from journal');
+  expect(run.stderr).toContain(`preview refused to start or continue: ${detail}`);
+  expect(run.stderr).not.toContain('q6W9tY2v');
   expect(run.stderr.match(/^runner exiting: .+$/gm)).toEqual(['runner exiting: refused before launch']);
   expect(run.stderr).not.toMatch(/at main\s*\(/u);
   const rows = readFileSync(join(root, 'runs.jsonl'), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
   expect(rows).toHaveLength(2);
   expect(rows[1]).toEqual({ v: 1, launch: rows[0].launch, exit: expect.any(Number), reason: 'refused before launch',
-    refused: 'Error: preview: configuration-digest differs from journal', cause: 'Error: preview: configuration-digest differs from journal' });
+    refused: detail, cause: detail });
   // The lease is released after the record, so the next launch is not refused as a concurrent boot.
   expect(existsSync(join(root, '.writer', '.boot-lease'))).toBe(false);
   const status = JSON.parse((await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
     'tests/preview/journal-agent.mjs', 'status', '--root', root], { cwd: process.cwd(), env, timeout: CHILD_TIMEOUT })).stdout);
-  expect(status.startupRefusals).toEqual({ count: 1, last: { at: rows[0].launch, reason: 'Error: preview: configuration-digest differs from journal' } });
+  expect(status.startupRefusals).toEqual({ count: 1, last: { at: rows[0].launch, reason: detail } });
 }, 3 * CHILD_TIMEOUT);

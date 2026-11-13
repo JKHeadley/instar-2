@@ -426,7 +426,16 @@ const take = result => { if (result.kind !== 'Success') throw Error(`preview: ad
 const secretRef = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
 // The launcher captures stderr; mirror the durable end reason once, even if cleanup fails.
 let exitReported = false;
-let scrubRunText = text => redact(text).text;
+// Rule 4 / least revelation: diagnostics share the held-secret boundary from the first startup read.
+const environmentSecrets = createHeldSecrets({ environment: () => Object.entries(process.env)
+  .flatMap(([name, value]) => name.startsWith('INSTAR_SECRET_') && value ? [value] : []) });
+environmentSecrets(); // Keep initial values even if startup later changes the environment.
+let diagnosticSecrets = () => ({ ...environmentSecrets(), unavailable: 'startup sources not established' });
+const scrubRunText = text => {
+  const held = diagnosticSecrets();
+  const clean = redact(concealSecretMaterial(text, held.values)).text;
+  return held.unavailable ? 'Error: diagnostic details withheld (secret sources unavailable)' : clean;
+};
 /** A refusal whose fixed text carries no secret, so the operator sees it instead of the suppressed default. */
 class PlainRefusal extends Error {}
 const reportExit = reason => {
@@ -1857,7 +1866,7 @@ async function main() {
     const workerGithubDigest = workerGithubToken
       ? createHash('sha256').update(workerGithubToken, 'utf8').digest('hex') : null;
     const heldSecrets = createHeldSecrets({
-      environment: () => Object.entries(process.env).flatMap(([name, value]) => name.startsWith('INSTAR_SECRET_') && value ? [value] : []),
+      environment: () => environmentSecrets().values,
       ...(workerGithubToken ? { 'worker github': () => [workerGithubToken] } : {}),
       ...custodyHeldSources(custody, () => readRootMcp(root)?.secrets ?? {}),
       // Each member is a separate source: missing secondary custody cannot discard a readable primary value.
@@ -1869,7 +1878,7 @@ async function main() {
         [`harness quota login ${entry.index}`, () => [readHarnessLogin(entry.profile, entry.quotaLogin)]])),
     });
     const heldSecretValues = () => heldSecrets().values;
-    scrubRunText = text => redact(concealSecretMaterial(text, heldSecretValues())).text;
+    diagnosticSecrets = heldSecrets;
     // Plans #446, #451: the register's public entries (names, labels, custody, expiry, renewal standing and step), given
     // to the full-context review as quoted recorded facts. An unreadable register gives none; the review then holds as before.
     const credentialRegister = () => { try { return publicCredentialRegister(custody.records(), heldSecretValues(), wallNow()); } catch { return []; } };
