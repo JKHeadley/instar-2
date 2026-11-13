@@ -20,7 +20,7 @@ Bug evidence: reproducer=tests/preview/obligation-close-and-answer.test.ts
 Hook bypass: none
 Convergence: none
 Prompt review: no train-specific wording. Retain reviewed registry-first context, exact withdrawal provenance, uncertainty and omission disclosure, and no question keyword classifier. Replay captured summary/Jev/reply-review/empty replies; constructed November shapes remain labeled as such. No live-model or private-journal cleanup claim.
-Decision: train-259-M1 | Ordinary merge of exactly a917b2a26a33e6c410d87d19999db6d8e9f560da; fast-forward from exact live base. Member report includes original and repair evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/obligation-close-and-answer-1112-p2-PROGRESS.md
+Decision: train-259-M1 | Ordinary merge of exactly a917b2a26a33e6c410d87d19999db6d8e9f560da; fast-forward from exact live base. Member report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/obligation-close-and-answer-1112-p2-PROGRESS.md includes original and repair evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-259-build-report.md
 Decision: train-259-A | Preserve the entire reviewed member including reconciliation removal and accepted diagnostic withdrawal; no product merge conflict. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-259-build-report.md
 Decision: train-259-B | Keep exact live base ancestry and accepted close tolerance; no main merge or unreviewed newer tip. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-259-build-report.md
 Decision: train-259-C | No genuine product conflict; no member left out. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-259-build-report.md
