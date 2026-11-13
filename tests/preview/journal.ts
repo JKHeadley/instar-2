@@ -204,7 +204,9 @@ export const PREVIEW_REPLY_BOUND_BYTES = 4096;
  * `default-context-floor.test.ts` re-measures the real review prompt and fails if it outgrows this. */
 // Claim-evidence guidance uses 500 bytes of the previously unused review margin;
 // the combined minimum and the 3000-byte operator/history headroom stay unchanged.
-export const REPLY_REVIEW_FIXED_BYTES = 2040;
+// The operator-binding answer instructions add 751 encoded bytes; review does not carry them.
+// Move that measured difference from the review reserve to the answer allowance, preserving total context.
+export const REPLY_REVIEW_FIXED_BYTES = 1289;
 /** The room one turn's prompt must leave beside it for that turn's reply review, derived from the two
  * parts above rather than being a flat quarter of the limit. The flat 8192 it replaces was a quarter of
  * the approved 32768 default, which left 1.5 KiB for the operator's message and all of its history
@@ -233,7 +235,7 @@ export const replyReviewReserveFor = (maxBytes: number) =>
  * note's header sentence, whose two facts the status-command and register-tooling lines already state. */
 // Includes the answer-provenance instruction; default-context-floor measures both
 // answer and review envelopes, so moving this allowance cannot conceal overflow.
-export const PREVIEW_FIXED_PROMPT_BYTES = 23_459;
+export const PREVIEW_FIXED_PROMPT_BYTES = 24_210;
 /** The room a context limit must still leave for the operator's own message and its history once the fixed
  * parts and the reply-review reserve are taken. At the approved 32768 default this was 1563 bytes, and the
  * packet had to drop the obligation guide from the third turn of a fresh root onward -- measured, not
