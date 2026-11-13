@@ -3443,18 +3443,6 @@ async function main() {
 
 try { await main(); } catch (error) {
   reportExit('error (details suppressed)');
-  // Rule 1: only a class identifier and validated code locations may enter this diagnostic.
-  try {
-    const name = error?.constructor?.name;
-    const kind = typeof name === 'string' && /^[A-Za-z][A-Za-z0-9]{0,39}$/.test(name) ? name : 'Error';
-    const locations = String(error?.stack ?? '').split('\n').slice(1).flatMap(line => {
-      const frame = /^\s+at (?:[^()\r\n]+ \(([^()\r\n]+)\)|([^()\s]+))$/.exec(line);
-      const location = frame && /^(?:file:\/\/)?(?:\/[^()\s]*\/)?((?:tests|src)\/[A-Za-z0-9_.\/-]+):([0-9]+):[0-9]+$/.exec(frame[1] ?? frame[2]);
-      return location && !location[1].split('/').some(part => part === '..' || part === '.')
-        ? [`${location[1]}:${location[2]}`] : [];
-    }).slice(0, 8);
-    process.stderr.write(`DIAG-EXIT ${kind}${locations.length ? ` at ${locations.join(' <- ')}` : ''}\n`);
-  } catch { /* diagnostic only */ }
   process.stderr.write(error instanceof AgentPathRefused || error instanceof PlainRefusal ? `${error.message}\n`
     : 'preview refused to start or continue; details suppressed\n');
   process.exitCode = 1;
