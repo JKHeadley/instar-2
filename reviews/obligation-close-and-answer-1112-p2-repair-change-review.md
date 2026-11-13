@@ -22,6 +22,15 @@ Convergence: none
 Prompt review: no prompt or parser changes; inherited finding dispositions in the original review still apply. This repair tests journal projection, without claiming live model wording or new recorded model-shape replay.
 Decision: obligation-close-and-answer-remove-unproved-reconciliation | Take the review-authorized removal route because ordinary receipt replay already closes the demonstrated supported history. Retain successful and UNKNOWN receipt neighbors, and assert two reopens preserve their distinct closure states without appending bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/obligation-close-and-answer-1112-p2-PROGRESS.md
 
+Prompt finding: 105c1569b6bb | protocol-literal | Unchanged terminal-stop protocol explanation; the fixture checks the emitted notice, not a phrase used to infer operator intent.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged tool-free evidence instruction in OBLIGATION_DECISION; the fixture checks which capability guidance was delivered. It does not prescribe the judgment about a user request.
+Prompt finding: 7ef11b68103f | protocol-literal | Unchanged activation-expiry notice describing a recorded lifetime boundary; the fixture verifies that deterministic status text.
+Prompt finding: 85544c20941f | protocol-literal | Unchanged login-outage notice and its exact protocol validator. This promises retained intake, not a keyword test of the operator message.
+Prompt finding: 9f0106c66027 | protocol-literal | Unchanged UNKNOWN-answer notice describes the recorded interrupted attempt and no-replay floor; it does not classify natural-language meaning.
+Prompt finding: bac6ce7485d9 | protocol-literal | Unchanged fixed stopped-work notice, selected from recorded execution state; the fixture checks its truthful wording.
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged provenance instruction requires source labels and uncertainty disclosure for every recall answer; no expected substantive answer is supplied.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged empty-memory rendering and its own protocol recognition, selected from the actual projected memory population; no lexical absence inference is added.
+
 Verification: typecheck and build exit 0; the focused obligation-close-and-answer file passes 6/6 on both ambient Node 24.15.0 and the certified installed Node 24.14.1. Architecture passes with the certified runtime. Register replay from source commit 87d54b4ddc82f6c48dcb51fc9c7f57820fbcef68 refreshes eight generated artifacts (308 entries, 123 rules), without owner-manifest, declaration, certificate or hand-edited pin changes. Full-suite and live evidence remain the Studio gate.
 
 simplestRobustRoute: use existing receipt projection to settle delivered promises and preserve unknown delivery, inventory and sourced operator withdrawal; remove the redundant experimental closure protocol instead of inventing a recovery history or adding machinery. No tool, framework, session, network, delegation or persistence capability is narrowed to enforce a safeguard.
