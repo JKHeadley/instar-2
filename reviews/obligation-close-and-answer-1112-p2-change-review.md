@@ -43,6 +43,8 @@ Train-249 contains work-repair-uncertain-1112: the final repair admits physical 
 
 Base ordinary-withdrawal reproducer fails with closure undefined; repaired writer test passes. New tests cover accepted/unknown delivery, operator withdrawal/invented quote, 10 scheduled +1 waiting in the actual answer packet, bounded omissions, replay and refusal of unsupported reconciliation. Existing tests cover question closures, full/split receipts, cadence, directives, blockers, uncertain tool work and captured model formats. The deterministic answer consumer proves the record reaches the packet and can compose the supplied count; it is not a live-model guarantee. Full live/pipeline evidence remains the independent desk's gate.
 
+Measured product diff: 94 added + 5 removed = 99 changed lines across journal.ts, obligations.ts and journal-agent.mjs. Tests, review and generated register publication are separate. Register replay generated eight artifacts from source commit ac7fc553058d09ee8e32b09fd4e8c9b7da8380cb; no declarations, authority grants or conformance certificates changed.
+
 simplestRobustRoute: this is the simplest robust route: project the existing journal into the packet, keep the existing send/receipt settlement, and widen the exact withdrawal admission. The requested opt-in reconciliation only appends independently checkable evidence; no new model, matching heuristic, store, watcher or send path. Unknown work stays owned and visible. No unattended live-model completion claim is made.
 80/20: fewer than 200 changed product lines, reusing lifecycle and status projections; targeted writer-path and context-floor checks rather than a new workflow engine.
 VERDICT: author submission; independent desk/Astra review pending
