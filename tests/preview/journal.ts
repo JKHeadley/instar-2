@@ -5959,7 +5959,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         boundary?.('compact:after-fsync');
         const check = openPreviewJournal(temp, key, undefined, undefined, true, compactBytes);
         try {
-          if (projectionDigest(check.view) !== projectionDigest(projected))
+          if (projectionDigest(check.view) !== projectionDigest(retainedPromptView(view)))
             throw Error('preview journal: snapshot projection differs');
         } finally { check.close(); }
         boundary?.('compact:after-verify');
