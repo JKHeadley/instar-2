@@ -6567,7 +6567,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** A byte-held turn's preparation is costly near its bound (live 2026-09-29: about 22 s of synchronous work,
    * so the concurrent long poll's own timer judged every poll failed and the runner exited). It is prepared
    * again only once a summary or a cap raise could make it fit, or after HELD_REPREPARE_MS. */
-  let heldPrepared: { id: string; key: string; at: number } | undefined;
+  const heldPrepared = new Map<string, { key: string; at: number }>();
   const heldFitKey = () => `${String(journal.view.summaries.length)}:${String(journal.view.limits.maxBytes)}`;
   const unknownSince = new Map([...journal.view.summaryReservations].map(([through, at]) =>
     [through, ports.elapsed ? elapsed() : at]));
@@ -9139,6 +9139,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (working) throw Error('preview journal: second worker refused');
     working = true; workingSince = ports.now();
     try {
+      // Keep cooldowns only for still-pending turns, including across journal compaction.
+      for (const id of heldPrepared.keys()) {
+        const turn = journal.view.turns.get(id);
+        if (!turn?.held || turn.sent || turn.intent || turn.reserved) heldPrepared.delete(id);
+      }
       // Rebuild every pending intake timer before serial answer work can await the first turn.
       for (const turn of journal.view.order) startAcknowledgement(turn);
       // One fresh read per pass decides which turns may proceed; the model and send ports still re-read their own.
@@ -9243,7 +9248,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (currentHold()?.startsWith('summary unavailable:') || currentHold() === 'prompt overflow' || currentHold() === 'context overflow') {
           const key = heldFitKey(), repair = !turn.selfRepairAttempted && selfRepairRequests(journal.view).has(`reply:${turn.id}`);
           if (repair) journal.append({ kind: 'hold', id: turn.id, reason: turn.held!, selfRepairAttempt: true, at: ports.now() });
-          if (heldPrepared?.id === turn.id && heldPrepared.key === key && elapsed() - heldPrepared.at < HELD_REPREPARE_MS
+          const prepared = heldPrepared.get(turn.id);
+          if (prepared?.key === key && elapsed() - prepared.at < HELD_REPREPARE_MS
             && !repair) {
             // Nothing that could make it fit has changed: only the summary pass may release it.
             await summarizeIfNeeded(true);
@@ -9342,10 +9348,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ? `summary unavailable: ${selected.reason}` : selected.reason;
             if (turn.held !== reason) journal.append({kind:'hold',id:turn.id,reason,at:ports.now()});
             // The unchanged hold is already durable; do not rewrite it or reset its age.
-            heldPrepared = { id: turn.id, key: heldFitKey(), at: elapsed() };
+            heldPrepared.set(turn.id, { key: heldFitKey(), at: elapsed() });
             continue;
           }
           if (!('reason' in selected)) {
+          heldPrepared.delete(turn.id);
           if (!collected && journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
           }

@@ -9,7 +9,7 @@ import { createJournalWorker, openPreviewJournal, selfRepairOptions, obligationS
 // All state below goes through the actual durable writer, never projection mutation.
 const T0 = 1_794_519_000_000, DAY = 86_400_000, key = new Uint8Array(32).fill(42);
 const id = (n: number) => `telegram:12345678:update:${n}`;
-function world(options: { failRepair?: boolean; cap?: number; unknownWork?: boolean; stopped?: boolean; cancel?: boolean; expire?: boolean; sameTime?: boolean } = {}) {
+function world(options: { failRepair?: boolean; secondHeld?: boolean; cap?: number; unknownWork?: boolean; stopped?: boolean; cancel?: boolean; expire?: boolean; sameTime?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'self-repair-')), path = join(root, 'journal');
   const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
     grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: T0 + 10 * DAY,
@@ -35,11 +35,15 @@ function world(options: { failRepair?: boolean; cap?: number; unknownWork?: bool
   intake(3, 'An operation whose outcome is unknown.');
   journal.append({ kind: 'reserve', id: id(3), at: clock.now });
   journal.append({ kind: 'hold', id: id(3), reason: 'reply check unavailable', at: clock.now });
+  if (options.secondHeld) {
+    intake(30, "A second held question.");
+    journal.append({ kind: "hold", id: id(30), reason: "prompt overflow", at: clock.now });
+  }
   if (!options.sameTime) clock.now += 1000;
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => clock.stop,
     prepareModel: input => {
       preparations.push(input.id);
-      if (input.id === id(2) && (options.failRepair || !journal.view.order.some(turn => turn.selfRepairs?.length)))
+      if (input.id === id(30) || input.id === id(2) && (options.failRepair || !journal.view.order.some(turn => turn.selfRepairs?.length)))
         throw Error('prompt too large');
       return input.context;
     }, model: async input => {
@@ -92,11 +96,22 @@ it('retains unknown work without re-queue or repeat', async () => {
 });
 
 it('a failed held preparation consumes its single accelerated attempt and stays held', async () => {
-  const w = world({ failRepair: true });
-  try { await w.ask(4);
+  const w = world({ failRepair: true, secondHeld: true });
+  try {
+    await w.worker.drain();
+    const heldCounts = () => [2, 30].map(n => w.preparations.filter(call => call === id(n)).length);
+    const beforeRequest = heldCounts();
+    expect(beforeRequest.every(count => count > 0)).toBe(true);
+    await w.worker.drain();
+    expect(heldCounts()).toEqual(beforeRequest);
+    await w.ask(4);
+    expect(heldCounts()[0]).toBeGreaterThan(beforeRequest[0]!);
+    expect(heldCounts()[1]).toBe(beforeRequest[1]);
     const afterRepair = w.preparations.filter(call => call === id(2)).length;
+    const afterBoth = heldCounts();
     await w.worker.drain(); await w.ask(5);
     expect(w.preparations.filter(call => call === id(2))).toHaveLength(afterRepair);
+    expect(heldCounts()).toEqual(afterBoth);
     expect(w.journal.view.turns.get(id(2))!.selfRepairAttempted).toBe(true);
     expect(w.journal.view.turns.get(id(2))!.held).toContain('prompt overflow');
     expect(w.calls).not.toContain(id(2));
@@ -192,5 +207,25 @@ it('equal clock readings retain one pending work acceleration across replay, the
     await w.ask(5);
     expect(w.calls.filter(call => call.startsWith('obligation:'))).toHaveLength(1);
     expect(w.journal.view.turns.get(id(5))!.selfRepairs).toBeUndefined();
+  } finally { w.close(); }
+});
+
+it('retries both preparation-held turns only when their cooldown expires', async () => {
+  const w = world({ failRepair: true, secondHeld: true });
+  try {
+    await w.worker.drain();
+    const counts = () => [2, 30].map(n => w.preparations.filter(call => call === id(n)).length);
+    const initial = counts();
+    w.journal.compact();
+    w.clock.now += 5 * 60_000 - 1;
+    await w.worker.drain();
+    expect(counts()).toEqual(initial);
+    w.clock.now++;
+    await w.worker.drain();
+    expect(counts()[0]).toBeGreaterThan(initial[0]!);
+    expect(counts()[1]).toBeGreaterThan(initial[1]!);
+    const retried = counts();
+    await w.worker.drain();
+    expect(counts()).toEqual(retried);
   } finally { w.close(); }
 });
