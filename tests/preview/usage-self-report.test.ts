@@ -41,7 +41,7 @@ it('carries recorded-shape measured and unknown usage in both packet forms, with
         expect(packet).toContain('answer 11765/4706, 33700/3370, 2690, 337');
       }
       expect(packet).not.toContain('17482 of 40000 used');
-      expect(packet.match(/Billed charge unknown/g)).toHaveLength(1);
+      expect(packet.match(compact ? /Bill unknown/g : /Billed charge unknown/g)).toHaveLength(1);
       expect(selfState(journal.view, { launches: [], unreadable: 0 }, 1000, 'UTC')).toContain('337 calls with unknown usage');
     }
     const id = journal.view.order[0]!.id;

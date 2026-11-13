@@ -849,8 +849,8 @@ it('briefs six neutral logins, current holds and reset times without disclosing 
   const pool = createHarnessLoginPool(f.settings), text = pool.brief();
   expect(text).toContain('6 logins, 4 usable');
   expect(text).toContain(new Date(firstReset).toISOString().slice(0, 10));
-  expect(text).toContain(`2=${new Date(firstReset).toISOString().slice(11, 19).replace(/:00$/, '')}`);
-  expect(text).toContain(`5=${new Date(secondReset).toISOString().slice(11, 19).replace(/:00$/, '')}`);
+  expect(text).toContain(`2=${new Date(firstReset).toISOString().slice(0, 19).replace(/:00$/, '')}`);
+  expect(text).toContain(`5=${new Date(secondReset).toISOString().slice(0, 19).replace(/:00$/, '')}`);
   expect(text).toContain('no hold: 1,3,4,6');
   expect(text).toContain('Work can continue');
   expect(text).not.toMatch(/private-|@|\/profile\//);
@@ -879,6 +879,6 @@ it('brief agrees with current recovery evidence and combines competing reset bou
   pool.select(); // The selection owner durably clears the recovered hold.
   pool.observe(f.configuration.entries[0], { failure: { failureClass: 'limit', resetAt: f.clock.at + 1000 } });
   reading.accounts[0].lastQuota.fiveHour.utilizationPct = 100;
-  expect(pool.brief()).toContain(`1=${reading.accounts[0].lastQuota.fiveHour.resetsAt.slice(11, 19)}`);
+  expect(pool.brief()).toContain(`1=${reading.accounts[0].lastQuota.fiveHour.resetsAt.slice(0, 19)}`);
   expect(pool.brief()).toContain('2 logins, 1 usable');
 });

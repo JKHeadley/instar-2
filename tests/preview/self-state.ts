@@ -285,8 +285,8 @@ export function usageBrief(view: JournalView, compact = false): string {
   });
   if (compact) return `Calls: reported=${r.reportedCalls}, unknown usage=${totals.reduce((n, t) => n + t.unknownCalls, 0)}. `
     + (r.reservedCalls !== r.chargedCalls || view.toolTurns ? `gross reserved=${r.reservedCalls}, released unused=${r.settledCalls}, tool proven/unknown=${r.provenToolCalls}/${r.heldUnknownToolCalls}. ` : '')
-    + `Cap held=${r.chargedCalls}/${view.limits.maxCalls} (includes reserves, not usage). `
-    + `Tokens(in/out measured,reserved;calls,unknown;others=0): ${kinds.join('; ')}. Billed charge unknown.`;
+    + `Cap held=${r.chargedCalls}/${view.limits.maxCalls} (not usage). `
+    + `Tokens(in/out measured,reserved;calls,unknown;others=0): ${kinds.join('; ')}. Bill unknown.`;
   return `Usage for this installation: ${r.reportedCalls} calls with complete reported usage; ${totals.reduce((n, t) => n + t.unknownCalls, 0)} calls with unknown usage. `
     + `${r.reservedCalls} gross reserved; ${r.settledCalls} unused call reservations released; ${r.provenToolCalls} proven tool model calls; ${r.heldUnknownToolCalls} tool-call reservations still unknown. `
     + `Call allowance: ${r.chargedCalls}/${view.limits.maxCalls} held against cap (includes reservations, not attempts used); ${Math.max(0, view.limits.maxCalls - r.chargedCalls)} left. `
@@ -353,11 +353,11 @@ export function selfStateBrief(view: JournalView, runs: RunLog, now: number, tim
     `Replies ${view.replies}/${view.limits.maxReplies}; updates ${view.order.length}/${view.limits.maxTurns}.`,
     view.capAuthority === null ? 'Caps not raised.' : `Caps raised: ${redact(view.capAuthority).text}; ${view.capRaisedAt ? when(view.capRaisedAt) : 'time unknown'}.`,
     view.stop ? `Permanent stop latched: ${view.stop}.` : `Activation: ${credentialDisplayLabel({ kind: 'activation', identity: view.genesis.grant })}; ends ${when(view.expires)}.`,
-    `Counts (unlisted=0): ${JSON.stringify(Object.fromEntries(Object.entries({ edits, refused, held, heldToday: heldToday.count,
+    `Counts (else=0): ${JSON.stringify(Object.fromEntries(Object.entries({ edits, refused, held, heldToday: heldToday.count,
       openRequests: openRequests(view).length, unansweredCalls: unknownCalls, unknownSends, pendingSummaries: summaryPending,
       memoryCorrections: corrections, requestSendsToday: requestsToday, requestSends: requestSends.length,
       summaries: view.summaries.length, memoryEdits: view.memory.length, unreadableRuns: runs.unreadable }).filter(([, n]) => n)))}.`,
-    `Runs ${runs.launches.length}; current start ${current === undefined ? 'unknown' : when(current)}; prior ${JSON.stringify(runs.launches.filter(r => r.at !== current).slice(-1).map(r => [when(r.at), r.exit === undefined ? 'end unknown' : when(r.exit), r.reason ?? 'unknown']))}.`,
+    `Runs ${runs.launches.length}; start ${current === undefined ? 'unknown' : when(current)}; prior ${JSON.stringify(runs.launches.filter(r => r.at !== current).slice(-1).map(r => [when(r.at), r.exit === undefined ? 'end unknown' : when(r.exit), r.reason ?? 'unknown']))}.`,
   ].join('\n');
   return [
     `As of ${when(now)} (${timeZone}; "today" is ${today}).`,
