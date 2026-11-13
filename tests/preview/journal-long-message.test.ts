@@ -186,9 +186,11 @@ it.each(['before:intent', 'after:intent'])('recovers a too-long notice at %s wit
     let sends = 0;
     const first = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async () => { throw Error('model must not run'); },
-      send: async () => { sends++; return 7; }, checkOutbound: () => {} });
+      send: async input => { if (input.expectedText === TOO_LONG_INPUT_NOTICE) sends++; return 7; }, checkOutbound: () => {} });
     first.intake([update(1, 'x'.repeat(4097))]);
-    await expect(first.drain()).rejects.toThrow('simulated crash');
+    await expect(first.drain()).resolves.toBeUndefined();
+    expect(journal.view.order[0]?.attempt?.state).toBe('exception');
+    expect(journal.view.order[0]?.deliveryNotice?.sent).toBe(boundary === 'before:intent' ? 7 : undefined);
     journal.close();
     const replay = openPreviewJournal(path, key);
     const resumed = createJournalWorker(replay, { now: () => 1001, stopped: () => false,
@@ -196,7 +198,7 @@ it.each(['before:intent', 'after:intent'])('recovers a too-long notice at %s wit
       send: async ({ text }) => { expect(text).toBe(TOO_LONG_INPUT_NOTICE); sends++; return 8; }, checkOutbound: () => {} });
     await resumed.drain();
     expect(sends).toBe(boundary === 'before:intent' ? 1 : 0);
-    expect(replay.view.replies).toBe(1);
+    expect(replay.view.replies).toBe(boundary === 'before:intent' ? 2 : 1); // before-effect failure adds one notice; reserved intent stays UNKNOWN
     expect(replay.view.order[0]?.sent).toBe(boundary === 'before:intent' ? 8 : undefined);
     replay.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }

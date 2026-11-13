@@ -369,7 +369,8 @@ it.each([
     const worker = createJournalWorker(first, ports(first, true));
     worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
       text: 'How much do I owe on the electricity bill?' } }]);
-    if (crashAt) await expect(worker.drain()).rejects.toThrow('crash'); else await worker.drain();
+    await worker.drain();
+    if (crashAt) expect(first.view.order[0]?.attempt?.state).toBe('exception');
     first.close();
     // Replay (and recovery after the crash) never repeats a paid call and never sends the revision.
     const journal = openPreviewJournal(path, key);
@@ -410,7 +411,8 @@ it('never repeats an interrupted revision: restart releases the original with it
         revise: async () => { throw Error('revision not reached'); } } });
     worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
       from: { id: 7654321 }, text: 'hello' } }]);
-    await expect(worker.drain()).rejects.toThrow('crash');
+    await worker.drain();
+    expect(first.view.order[0]?.attempt?.state).toBe('exception');
     first.close();
     const second = openPreviewJournal(path, key);
     const sends: string[] = [];
@@ -705,7 +707,8 @@ it('escalates an interrupted Jev check without repeating Jev after restart', asy
         escalate: async () => { throw Error('must not reach fallback'); } } });
     worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
       from: { id: 7654321 }, text: 'hello' } }]);
-    await expect(worker.drain()).rejects.toThrow('crash');
+    await worker.drain();
+    expect(first.view.order[0]?.attempt?.state).toBe('exception');
     first.close();
     const second = openPreviewJournal(path, key);
     let sent = '', reviewed = 0;
@@ -791,7 +794,8 @@ it('does not repeat an interrupted paid review and releases the candidate once w
         escalate: async () => { throw Error('review not reached'); } } });
     worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
       from: { id: 7654321 }, text: 'hello' } }]);
-    await expect(worker.drain()).rejects.toThrow('crash');
+    await worker.drain();
+    expect(first.view.order[0]?.attempt?.state).toBe('exception');
     first.close();
     const second = openPreviewJournal(path, key);
     const sent: string[] = [];
@@ -1099,7 +1103,8 @@ async function flow(options: Flow, crashAt?: string) {
     const first = openPreviewJournal(path, key, genesis, crashAt === undefined ? undefined : stage => { if (stage === crashAt) throw Error('crash'); });
     const worker = createJournalWorker(first, ports(true));
     worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'what is the email notification setting called?' } }]);
-    if (crashAt) await expect(worker.drain()).rejects.toThrow('crash'); else await worker.drain();
+    await worker.drain();
+    if (crashAt) expect(first.view.order[0]?.attempt?.state).toBe('exception');
     first.close();
     // Restart: nothing paid and nothing sent is ever dispatched twice.
     const journal = openPreviewJournal(path, key);

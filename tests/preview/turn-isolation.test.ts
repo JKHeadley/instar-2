@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
@@ -43,7 +43,10 @@ it('a refused housekeeping record must not escape the runner minimal boundary', 
     let failure: unknown;
     const logs: string[] = [];
     const worker = createJournalWorker(f.journal, defaults({ isolationLog: line => logs.push(line) }));
-    try { await untilStopped(() => worker.housekeeping('session-maintenance', step), () => false); } catch (error) { failure = error; }
+    const runner = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
+    const maintenance = runner.match(/if \(conversationSession\) \{\n([\s\S]*?)\n        \}/g)!.find(block => block.includes('port.maintain'))!;
+    const runMaintenance = new Function('worker', 'sessionWork', `return (async () => { const conversationSession = true; ${maintenance} })();`);
+    try { await untilStopped(() => runMaintenance(worker, { select() {}, port: { maintain: step } }), () => false); } catch (error) { failure = error; }
     console.log(JSON.stringify({ case: 'housekeeping', failure: failure instanceof Error ? failure.message : null,
       calls: f.journal.view.calls, intact: f.journal.view.stop === null }));
     expect(failure).toBeUndefined();
@@ -207,5 +210,20 @@ it('an unknown failure notice is not repeated after compaction and restart', asy
     const reopened = openPreviewJournal(f.path, f.key);
     try { const next = createJournalWorker(reopened, ports); await next.drain(); await next.drain(); expect(sends).toBe(1); }
     finally { reopened.close(); }
+  } finally { f.close(); }
+});
+
+const recordedShapes = (JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
+  otherShapes: { kind: string; id: string; raw: string }[] }).otherShapes;
+it.each(recordedShapes)('contains preparation failure with recorded $kind ($id) in the actual packet', async shape => {
+  const f = world(); let captured = '';
+  try {
+    const worker = createJournalWorker(f.journal, defaults({ sources: [{ source: shape.kind, id: shape.id, text: shape.raw }],
+      prepareModel: input => { captured = input.context; return JSON.stringify(input); },
+      preparePacket: prepare => { prepare(); throw Error('recorded-shape boundary refusal'); } }));
+    worker.intake([update(1)]); await worker.drain();
+    expect(JSON.parse(captured).sources).toContainEqual(expect.objectContaining({ id: shape.id, text: shape.raw }));
+    expect(f.journal.view.order[0]!.attempt!.state).toBe('exception');
+    expect(f.journal.view.order[0]!.deliveryNotice?.sent).toBe(1);
   } finally { f.close(); }
 });

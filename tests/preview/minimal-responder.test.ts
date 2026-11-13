@@ -493,28 +493,29 @@ it('a stop challenge for another subject or principal is refused at the journal,
   journal.close();
 }));
 
-it('a failed ordinary worker leaves the minimal path answering at once, and a later ordinary pass recovers (ordinary-worker cut)', () => withRoot(async path => {
-  // Eleven §5's first fault class: the ordinary conversation worker fails outright while every minimal
-  // prerequisite holds. The minimal path answers below every cap without waiting, and a stop still latches.
+it('a failed ordinary turn is contained with one notice, recovers on a later pass, and cannot strand stop', () => withRoot(async path => {
+  // A source callback failure belongs to its turn; a later pass may recover and the stop remains reachable.
+  const failureNotice = "I couldn't complete this request because an internal step failed; you can ask again.";
   const sends: Marked[] = [];
   let lost = true;
   const journal = openPreviewJournal(path, key, genesis({ maxTurns: 60, maxCalls: 60, maxReplies: 60 }));
   const worker = createJournalWorker(journal, { ...ports(() => 1000, [], []), send: marked(sends),
     sources: () => { if (lost) throw Error('ordinary worker lost'); return []; } });
   worker.intake([message(1, 'hello')]);
-  await expect(worker.drain()).rejects.toThrow('ordinary worker lost');
+  await expect(worker.drain()).resolves.toBeUndefined();
   await worker.minimal();
-  expect(sends.map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1)]);
+  expect(sends.map(item => item.text)).toEqual([failureNotice]);
   // The ordinary answer still follows once the ordinary worker recovers; the limited answer is not repeated.
   lost = false;
   await worker.drain(); await worker.minimal();
-  expect(sends.map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1), 'ordinary answer']);
+  expect(sends.map(item => item.text)).toEqual([failureNotice, 'ordinary answer']);
   lost = true;
   worker.intake([message(2, 'still there?'), message(3, '/stop')]);
-  await expect(worker.drain()).rejects.toThrow('ordinary worker lost');
+  await expect(worker.drain()).resolves.toBeUndefined();
   await worker.minimal();
-  expect(sends.slice(2).map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1), `${STOP_CONFIRM_TEXT}`]);
-  worker.intake([press(4, sends.at(-1)!.markup!.inline_keyboard[0]![0]!.callback_data!)]);
+  expect(sends.slice(2).map(item => item.text).sort()).toEqual([failureNotice, STOP_CONFIRM_TEXT].sort());
+  const confirmation = sends.find(item => item.text === STOP_CONFIRM_TEXT)!;
+  worker.intake([press(4, confirmation.markup!.inline_keyboard[0]![0]!.callback_data!)]);
   expect(journal.view.stop).toBe('operator');
   journal.close();
 }));
