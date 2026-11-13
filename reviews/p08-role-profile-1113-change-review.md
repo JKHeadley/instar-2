@@ -37,3 +37,5 @@ simplestRobustRoute: this is the simplest route: version the fixed profile and p
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Validation update: nine new profile tests pass, including provider/reply comparison through the real minimal-path owner; the tool-only policy decoder is deliberately not used for provider-call. Independent reviewer /root/profile_review concurs with the repaired peer and account-off guards.
+
+Generated records: refreshed the eight generated register outputs from committed source 9bf74dcf8257748b394b588a111eb6556f1d7df0. Owner-manifest and grounding-inventory refresh tools found zero pins to change. No acceptance or native conformance declaration was edited.
