@@ -86,7 +86,7 @@ export interface ModelCallRecord { kind: 'model-call'; id: string; judgment: Liv
   /** `faithful` only when the admitted input is held exactly (inline or by durable reference); a redacted or
    * truncated input can be read and graded, never presented as a faithful replay of what the model saw. */
   replay?: 'faithful' | 'not-faithful'; at: number }
-export type ReplayTransformation = 'credential-redacted' | 'truncated';
+export type ReplayTransformation = 'credential-redacted' | 'truncated' | 'body-not-retained';
 
 const MAX_RECORDED_BYTES = 256 * 1024;
 const bounded = (text: string): { text: string; transformations: ReplayTransformation[] } => {

@@ -2071,7 +2071,7 @@ function retainedPromptView(view: JournalView): JournalView {
       const candidate = outer?.packet ?? outer;
       if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) packet = candidate;
     } catch { /* Legacy non-JSON prompts still receive a digest and explicit missing-body marker. */ }
-    const retained: Record<string, unknown> = Object.fromEntries(['audience', 'actionFacts', 'governingConstraints', 'installedUpdate']
+    const retained: Record<string, unknown> = Object.fromEntries(['sources', 'audience', 'actionFacts', 'governingConstraints', 'installedUpdate']
       .filter(key => key in packet).map(key => [key, packet[key]]));
     // Retain only offered clauses later cited by memory audits, not the whole rolling summary.
     const passages = view.memory.filter(change => change.trigger === turn.id).flatMap(change => change.summaryPassages ?? []);
@@ -2231,8 +2231,8 @@ function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalReco
     if (row.kind === 'hold' && !row.unusedModel) { if (open.has(row.id)) holds.set(row.id, row); continue; }
     if ((row.kind === 'reserve' || row.kind === 'lookup' || row.kind === 'format-retry' || row.kind === 'answer-replace')
       && row.prompt !== undefined && settledPrompt(view.turns.get(row.id)) === row.prompt) {
-      // Rule 58: once the answer call is settled, the snapshot turn keeps the exact final answer packet for inspect
-      // and audit. Until then a lookup, re-ask or replacement can still overwrite that projection, so the row keeps
+      // Rule 58: once settled, the snapshot turn keeps the final packet or its disclosed retention projection;
+      // compaction marks calls whose exact input is retired. Until settled, replacement can overwrite the turn, so the row keeps
       // its own prompt. The retained reservation still proves the causal ordering of an UNKNOWN call.
       const stored = { ...row }; delete stored.prompt; evidence.push(stored); continue;
     }
@@ -3648,7 +3648,7 @@ function checkModelCall(row: ModelCallRecord): void {
     || !Number.isSafeInteger(row.latencyMs) || row.latencyMs < 0 || (row.usage === null) !== (row.usageException !== undefined)
     || row.occurrence !== undefined && (typeof row.occurrence !== 'string' || !row.occurrence)
     || [row.inputTransformations, row.outputTransformations].some(list => list !== undefined && (!Array.isArray(list)
-      || list.some(item => item !== 'credential-redacted' && item !== 'truncated')))
+      || list.some(item => item !== 'credential-redacted' && item !== 'truncated' && item !== 'body-not-retained')))
     || row.replay !== undefined && (row.replay !== (row.inputTransformations?.length ? 'not-faithful' : 'faithful')
       || row.inputTransformations === undefined || row.outputTransformations === undefined))
     throw Error('preview journal: model call record refused');
@@ -5931,9 +5931,16 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
           if (row.kind !== 'genesis' && row.kind !== 'snapshot-start' && row.kind !== 'snapshot-chunk') rows.push(row);
           at = decoded.end;
         }
-        const kept = retainedEvidence(rows, view);
-        verifyPendingEvidence(kept, view);
         const projected = retainedPromptView(view);
+        const evidence = retainedEvidence(rows, view);
+        // Rules 26/58: a reference is faithful only while its exact input survives retention.
+        const retired = new Map(projected.order.filter(turn => turn.promptRetention).map(turn =>
+          [`${turn.promptKind ?? 'reserve'}:${turn.id}`, turn.promptRetention!.sha256]));
+        const kept = evidence.map(row => row.kind === 'model-call' && row.input === undefined && row.inputRef !== undefined
+          && retired.get(row.inputRef) === row.inputSha256 && !row.inputTransformations?.includes('body-not-retained')
+          ? { ...row, replay: 'not-faithful' as const, inputTransformations: [...row.inputTransformations ?? [], 'body-not-retained' as const] }
+          : row);
+        verifyPendingEvidence(kept, view);
         const snapshot = snapshotOf(projected, kept), hash = createHash('sha256');
         let bytes = 0;
         for (const chunk of journalJsonChunks(snapshot)) { hash.update(chunk); bytes += chunk.length; }

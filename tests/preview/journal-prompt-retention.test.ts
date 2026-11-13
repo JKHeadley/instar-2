@@ -1,11 +1,14 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
+import { createDecipheriv, createHash } from 'node:crypto';
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { openPreviewJournal, durableProjection, serializedStateBytes, PROMPT_RETENTION_TURNS, settledConstraintWording,
-  type JournalView, type BlockerNote, type MemoryChange } from './journal.js';
+  type JournalView, type JournalRecord, type BlockerNote, type MemoryChange } from './journal.js';
+import { deskStatusSource } from './briefing.js';
+import { modelCallRecord, replayEligibility, type ModelCallRecord } from './model-call-boundary.js';
 import { retrospectivePopulation, type RetroResult } from './retrospective.js';
 import { replyReviewContext, sharedAudience } from './reply-check.js';
 import { auditActiveMemory } from './journal-audit.mjs';
@@ -25,12 +28,12 @@ const prompt = (n: number) => JSON.stringify({ model: 'recorded-shape', messages
     governingConstraints: { scope: 'inside recorded scope' }, installedUpdate: { to: 'revision:new' },
     history: [{ text: 'x'.repeat(75_000) }], memorySummary: { through: 1, text: 'an old summary clause and unrelated material' },
   } }) }] });
-function add(journal: ReturnType<typeof openPreviewJournal>, n: number, complete = true, thread?: number, checked = true, memory: MemoryChange[] = []) {
+function add(journal: ReturnType<typeof openPreviewJournal>, n: number, complete = true, thread?: number, checked = true, memory: MemoryChange[] = [], prepared = prompt(n)) {
   const text = `question ${n}`, raw = JSON.stringify({ update_id: n, message: { chat: { id: 7654321, type: 'private' },
     from: { id: 7654321 }, text } });
   journal.append({ kind: 'intake', id: id(n), update: n, text, raw, accepted: true, cursor: n + 1, at: n * 10,
     ...(thread === undefined ? {} : { thread }) });
-  journal.append({ kind: 'reserve', id: id(n), prompt: prompt(n), at: n * 10 + 1 });
+  journal.append({ kind: 'reserve', id: id(n), prompt: prepared, at: n * 10 + 1 });
   if (!complete) return;
   journal.append({ kind: 'answer', state: 'complete', id: id(n), text: `answer ${n}`, ...(memory.length ? { memory } : {}), at: n * 10 + 2 });
   journal.append({ kind: 'intent', id: id(n), text: `PREVIEW — answer ${n}`, chat: genesis.chat, update: n, grant: genesis.grant, ...(thread === undefined ? {} : { thread }), at: n * 10 + 3 });
@@ -38,6 +41,85 @@ function add(journal: ReturnType<typeof openPreviewJournal>, n: number, complete
   if (checked) journal.append({ kind: 'coherence', id: id(n), findings: [], at: n * 10 + 5 });
 }
 const bytes = (view: JournalView) => Buffer.byteLength(JSON.stringify(durableProjection(view)));
+function snapshot(path: string): { view: unknown; retained: JournalRecord[] } {
+  const sealed = readFileSync(path), chunks: Buffer[] = [];
+  for (let offset = 0; offset < sealed.length;) {
+    const length = sealed.readUInt32BE(offset), body = sealed.subarray(offset + 4, offset + 4 + length);
+    const decipher = createDecipheriv('aes-256-gcm', key, body.subarray(0, 12));
+    decipher.setAAD(Buffer.from(`preview-journal:${offset}`)); decipher.setAuthTag(body.subarray(12, 28));
+    const plain = Buffer.concat([decipher.update(body.subarray(28)), decipher.final()]);
+    const row = JSON.parse((plain[0] === 1 ? brotliDecompressSync(plain.subarray(1)) : plain).toString());
+    if (row.kind === 'snapshot-chunk') chunks.push(Buffer.from(row.data, 'base64'));
+    offset += 4 + length;
+  }
+  return JSON.parse(Buffer.concat(chunks).toString());
+}
+it('preserves a superseded desk report and provenance in the complete encrypted snapshot', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'prompt-retention-source-'))), path = join(root, 'journal.encrypted');
+  const journal = openPreviewJournal(path, key, genesis, undefined, false, 1_000_000_000);
+  const report = 'Unique measurement: cobalt trial completed 23 deliveries with 0 duplicates.';
+  const source = deskStatusSource({ text: report, modifiedAt: 1000 }, 1001, '/desk/status.md');
+  const prepared = JSON.parse(prompt(1));
+  prepared.messages[1].content = JSON.stringify({ packet: { ...packetOf(prompt(1)), sources: [source] } });
+  try {
+    add(journal, 1, true, undefined, true, [], JSON.stringify(prepared));
+    for (let n = 2; n <= 35; n++) add(journal, n);
+    journal.compact();
+    expect(journal.view.turns.get(id(1))!.promptRetention).toBeDefined();
+    expect(packetOf(journal.view.turns.get(id(1))!.prompt!).sources).toEqual([source]);
+    expect(JSON.stringify(snapshot(path))).toContain(report);
+    journal.close();
+    const reopened = openPreviewJournal(path, key, undefined, undefined, true);
+    try { expect(packetOf(reopened.view.turns.get(id(1))!.prompt!).sources).toEqual([source]); }
+    finally { reopened.close(); }
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+it('ages real recorded prompts with honest referenced replay while preserving inline and recent inputs', () => {
+  const capture = JSON.parse(gunzipSync(readFileSync(new URL('./fixtures/twosession-1015.json.gz', import.meta.url))).toString()) as { rows: JournalRecord[] };
+  const prompts = capture.rows.filter((row): row is Extract<JournalRecord, { kind: 'reserve' }> => row.kind === 'reserve' && typeof row.prompt === 'string');
+  expect(prompts).toHaveLength(6);
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'prompt-retention-replay-'))), path = join(root, 'journal.encrypted');
+  const journal = openPreviewJournal(path, key, genesis, undefined, false, 1_000_000_000);
+  const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
+  const calls: ModelCallRecord[] = [];
+  try {
+    for (let n = 1; n <= 40; n++) {
+      const input = prompts[n - 1]?.prompt ?? prompt(n);
+      add(journal, n, true, undefined, true, [], input);
+      for (const inline of [false, true]) {
+        const call = modelCallRecord({ id: `${id(n)}:${inline}`, judgment: 'answer', route: 'preview-subscription', model: 'recorded-shape',
+          input, ...(inline ? {} : { inputRef: `reserve:${id(n)}` }), occurrence: id(n), output: shapes.otherShapes[n - 1]?.raw ?? `answer ${n}`, outcome: 'complete',
+          latencyMs: 10, usage: { inputTokens: 23, outputTokens: 7, charge: null }, at: n * 10 + 6 });
+        expect(replayEligibility(call).faithful).toBe(true);
+        calls.push(call); journal.append(call);
+      }
+    }
+    for (let round = 0; round < 2; round++) {
+      journal.compact();
+      const retained = snapshot(path).retained.filter((row): row is ModelCallRecord => row.kind === 'model-call');
+      expect(retained).toHaveLength(calls.length);
+      for (const [index, call] of retained.entries()) {
+        const original = calls[index]!, turn = journal.view.turns.get(original.occurrence!)!;
+        const retired = call.input === undefined && turn.promptRetention !== undefined;
+        expect(replayEligibility(call).faithful).toBe(!retired);
+        if (retired) expect(replayEligibility(call).reason).toContain('body-not-retained');
+        expect(call).toMatchObject({ inputSha256: original.inputSha256, output: original.output, usage: original.usage,
+          outcome: original.outcome, latencyMs: original.latencyMs, occurrence: original.occurrence });
+      }
+    }
+    journal.close();
+    const reopened = openPreviewJournal(path, key, undefined, undefined, true);
+    try {
+      for (const [index, recorded] of prompts.entries()) {
+        const turn = reopened.view.turns.get(id(index + 1))!;
+        expect(turn.promptRetention?.sha256).toBe(createHash('sha256').update(recorded.prompt!).digest('hex'));
+        expect(packetOf(turn.prompt!).sources).toEqual(packetOf(recorded.prompt!).sources);
+        expect(packetOf(turn.prompt!).audience).toEqual(packetOf(recorded.prompt!).audience);
+      }
+    } finally { reopened.close(); }
+    console.log(JSON.stringify({ agedRecordedPrompts: prompts.map(row => row.id), recordedOutputs: shapes.otherShapes.map(({ kind, id }) => ({ kind, id })) }));
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
 it('500 recorded-shape 75KB prompts compact below 4MB, preserve recent bytes and reopen with working old readers', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'prompt-retention-'))), path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, genesis, undefined, false, 1_000_000_000);
