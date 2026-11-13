@@ -3170,8 +3170,7 @@ async function main() {
       sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
         if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
         if (conversationSession) {
-          try { sessionWork?.select?.(); } catch { /* unchanged grant bytes keep authorization closed; custody remains */ }
-          await sessionWork?.port.maintain();
+          await worker.housekeeping('session-maintenance', async () => { sessionWork?.select?.(); await sessionWork?.port.maintain(); });
         }
         await worker.drain();
         // Finished, explicitly requested results share this withdrawal-aware due point with dated requests.

@@ -1126,7 +1126,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 6;
+export const JOURNAL_GENERATION = 7;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1139,7 +1139,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['turn-attempt', 'housekeeping-failed', 'send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'attribution-check', 'attribution-reserve', 'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1157,7 +1157,14 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refu
   'summary-failed', 'summary-faithfulness', 'summary-faithfulness-reserve', 'summary-integrity-reserve',
   'summary-reserve', 'summary-review-reserve', 'summary-uncertain', 'tool-turn', 'waiting']);
 
+export const TURN_FAILURE_LIMIT = 3;
+const TURN_FAILURE_NOTICE = "I couldn't complete this request because an internal step failed; you can ask again.";
+type AttemptState = 'started' | 'ended' | 'exception' | 'interrupted' | 'preparation-bound';
+class IsolationRecordError extends Error {}
+class PreparationBoundError extends Error {}
 export type JournalRecord =
+  | { kind: 'turn-attempt'; id: string; attempt: number; state: AttemptState; at: number }
+  | { kind: 'housekeeping-failed'; step: 'session-maintenance' | 'minimal'; reason: 'exception'; at: number }
   | PhaseTiming
   // Non-additive: an older writer must not discard the no-repeat expectation.
   | { kind: 'media-claim'; id: string; digest: string; at: number }
@@ -1521,6 +1528,8 @@ function workingProgressAt(view: JournalView, turn: Turn, bounded = true, rateWa
     + (ordinal === 0 ? 0 : ordinal === 1 ? 180_000 : ordinal === 2 ? 300_000 : 600_000));
 }
 export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: { at: number; sent?: number }; id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
+  attempt?: { number: number; state: AttemptState; failures: number };
+  parked?: string;
   contextRecovery?: string;
   media?: MediaCustodyResult;
   /** Expected causal prefix, retained before the first media request. */
@@ -3477,7 +3486,13 @@ export function sendOutcomeOf(view: JournalView, target: string, sent: number | 
   return recorded?.outcome === 'refused' ? { kind: 'refused', reason: recorded.reason } : { kind: 'unknown', reason: recorded?.reason ?? null };
 }
 /** A failed or unknown answer keeps its original intent fenced. Its separate content-free notice may start once. */
+const failedBeforeEffect = (turn: Turn) => !turn.reserved && !turn.intent && !turn.sent && (turn.attempt?.failures ?? 0) > 0;
+function deliveryNoticeText(view: JournalView, turns: Turn[]): string {
+  return turns.every(failedBeforeEffect) ? TURN_FAILURE_NOTICE
+    : turns.every(turn => replyOutcomeOf(view, turn).outcome.kind === 'refused') ? REFUSED_SEND_NOTICE : UNKNOWN_SEND_NOTICE;
+}
 function needsDeliveryNotice(view: JournalView, turn: Turn): boolean {
+  if (turn.accepted && !turn.editOf && !turn.deliveryNotice && !isStopCommand(turn.text) && failedBeforeEffect(turn)) return true;
   if (!turn.accepted || turn.editOf || turn.groupedInto || turn.intent === undefined || turn.answer === undefined || turn.deliveryNotice) return false;
   const whole = replyOutcomeOf(view, turn);
   return whole.started && whole.outcome.kind !== 'accepted';
@@ -4097,6 +4112,11 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       throw Error('preview journal: format refusal order');
     prepared.refusal = row.response;
     return;
+  }
+  if (row.kind === 'housekeeping-failed') {
+    if (!['session-maintenance', 'minimal'].includes(row.step) || row.reason !== 'exception')
+      throw Error('preview journal: housekeeping failure shape');
+    operatorEvent(view, row.at, view.cursor, `housekeeping ${row.step}: ${row.reason}`); return;
   }
   if (row.kind === 'phase-timing') {
     checkPhaseTiming(row);
@@ -4816,6 +4836,17 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   }
   const turn = view.turns.get(row.id);
   if (!turn) throw Error('preview journal: orphan effect');
+  if (row.kind === 'turn-attempt') {
+    const prior = turn.attempt;
+    if (!turn.accepted || !Number.isSafeInteger(row.attempt) || row.attempt < 1
+      || !['started', 'ended', 'exception', 'interrupted', 'preparation-bound'].includes(row.state)
+      || (row.state === 'started' ? prior?.state === 'started' || row.attempt !== (prior?.number ?? 0) + 1 || !!turn.parked
+        : prior?.state !== 'started' || row.attempt !== prior.number)) throw Error('preview journal: attempt order');
+    const failures = (prior?.failures ?? 0) + (row.state === 'started' || row.state === 'ended' ? 0 : 1);
+    turn.attempt = { number: row.attempt, state: row.state, failures };
+    if (failures >= TURN_FAILURE_LIMIT) turn.parked = row.state;
+    return;
+  }
   if (row.kind === 'operator-yes') { decideOperatorRequest(view, turn, row); return; }
   // A continuation part starts only after the message before it was accepted, once; its receipt follows its start.
   if (row.kind === 'reply-part-start' || row.kind === 'reply-part-sent') {
@@ -4950,8 +4981,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     const covered = [turn, ...(row.covers ?? []).map(id => view.turns.get(id))];
     // deliveryUnknown is the historical discriminator for the durable delivery-notice slot.
     // Keep it readable; the exact retained outcomes determine the wording, never the marker.
-    const text = covered.every(item => item && replyOutcomeOf(view, item).outcome.kind === 'refused')
-      ? REFUSED_SEND_NOTICE : UNKNOWN_SEND_NOTICE;
+    const text = deliveryNoticeText(view, covered.filter((item): item is Turn => !!item));
     if (row.deliveryUnknown !== true || row.acknowledgement !== undefined || row.text !== text
       || view.stop !== null || view.replies >= view.limits.maxReplies
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
@@ -6225,6 +6255,7 @@ export function concurrentWorkItem(input: { now: number; zone?: string; current:
 }
 
 export interface PreviewPorts {
+  isolationLog?(line: string): void;
   /** Bound independent topic drains; omitted retains the serial compatibility path. */
   topicConcurrency?: number;
   /** Current scoped authority and real group membership, checked afresh before every model or send port. */
@@ -6372,6 +6403,31 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // Every host of this worker inherits the floor, not only the shipped CLI. A snapshot without
   // its current disclosure resolver is readable for audit but cannot leave through a model or send.
   const original = ports;
+  const attemptActive = new Set<Turn>();
+  const isolationLog = (id: string, state: string) => (ports.isolationLog ?? console.error)(`turn-isolation ${id} ${state}`);
+  const recordAttempt = (turn: Turn, state: AttemptState) => {
+    try { journal.append({ kind: 'turn-attempt', id: turn.id,
+      attempt: state === 'started' ? (turn.attempt?.number ?? 0) + 1 : turn.attempt!.number, state, at: ports.now() }); }
+    catch (cause) { attemptActive.delete(turn); throw new IsolationRecordError('attempt record failed', { cause }); }
+    if (state === 'started') attemptActive.add(turn); else attemptActive.delete(turn);
+  };
+  const failAttempt = (turn: Turn, error: unknown) => {
+    if (error instanceof IsolationRecordError) throw error;
+    if (halted()) { recordAttempt(turn, 'ended'); throw error; }
+    const state = error instanceof PreparationBoundError ? 'preparation-bound' : 'exception';
+    recordAttempt(turn, state); isolationLog(turn.id, state);
+  };
+  // A fresh worker owns recovery; read-only inspection never changes a journal.
+  if (!journal.readOnly) for (const turn of journal.view.order) if (turn.attempt?.state === 'started') {
+    recordAttempt(turn, 'interrupted'); isolationLog(turn.id, 'interrupted');
+  }
+  const housekeeping = async (step: 'session-maintenance' | 'minimal', run: () => unknown) => {
+    try { await run(); } catch (error) {
+      if (error instanceof IsolationRecordError || error instanceof Error && error.message === 'preview stopped') throw error;
+      journal.append({ kind: 'housekeeping-failed', step, reason: 'exception', at: ports.now() });
+      isolationLog(step, 'exception');
+    }
+  };
   const recordTiming = createPhaseTimingRecorder(journal.append);
   let operatorOnlyVerified = false;
   const privateMemory = () => !!journal.view.groupCarry || journal.view.genesis.forum === true
@@ -8699,7 +8755,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // this cannot fit, every variant overflowed on measured bytes and the caller sends the size notice.
       reviewReserveWaived = true;
       budget.tried = 0;
-      return preparedFor(turn, true, setAside, budget);
+      const floor = preparedFor(turn, true, setAside, budget);
+      if (budget.limited && 'reason' in floor) throw new PreparationBoundError();
+      return floor;
       // Every other caller passes no floor, which also clears one; this restores it for a path that threw.
     } finally { historySetAside = -1; reviewReserveWaived = false; }
   };
@@ -8767,7 +8825,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (inFlight) return inFlight;
     if (halted()) return Promise.resolve();
     const current = () => acknowledgementTimers.has(turn) && !halted() && turn.intent === undefined
-      && turn.held === undefined && turn.limited === undefined
+      && turn.held === undefined && turn.limited === undefined && !failedBeforeEffect(turn)
       && (turn.heldNoticeIntent !== undefined || journal.view.replies < journal.view.limits.maxReplies - 1);
     if (!fromOperator(turn) || turn.requestedAction || turn.editOf || !current()
       || turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined
@@ -8798,7 +8856,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return job;
   };
   const progressDue = (turn: Turn) => !halted() && fromOperator(turn) && !turn.requestedAction && !turn.editOf
-    && !turn.reserved && !turn.intent && !turn.waitingProgress && !outsideAllowance(journal.view, turn)
+    && !turn.reserved && !turn.intent && !turn.waitingProgress && !failedBeforeEffect(turn) && !outsideAllowance(journal.view, turn)
     && journal.view.replies < journal.view.limits.maxReplies - 1
     && journal.view.order.slice(0, journal.view.order.indexOf(turn)).some(item => item.thread === turn.thread
       && item.accepted && item.reserved && item.intent === undefined);
@@ -8974,9 +9032,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (halted() || journal.view.replies >= journal.view.limits.maxReplies) return;
       if (!needsDeliveryNotice(journal.view, turn) || !await disclosure()) continue;
       const covers = journal.view.order.filter(item => item !== turn && item.thread === turn.thread
-        && needsDeliveryNotice(journal.view, item)).map(item => item.id);
-      const text = [turn, ...covers.map(id => journal.view.turns.get(id)!)].every(item =>
-        replyOutcomeOf(journal.view, item).outcome.kind === 'refused') ? REFUSED_SEND_NOTICE : UNKNOWN_SEND_NOTICE;
+        && failedBeforeEffect(item) === failedBeforeEffect(turn) && needsDeliveryNotice(journal.view, item)).map(item => item.id);
+      const text = deliveryNoticeText(journal.view, [turn, ...covers.map(id => journal.view.turns.get(id)!)]);
       const chat = journal.view.genesis.chat, target = `delivery-notice:${turn.id}`;
       const thread = turn.thread === undefined ? {} : { thread: turn.thread };
       ports.checkOutbound(text);
@@ -9145,7 +9202,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       for (const turn of journal.view.order) {
         if (topic !== null && (turn.thread ?? 'main') !== topic) continue;
         if (!turn.accepted || turn.editOf || turn.sent || turn.intent || batchDeferred.has(turn.id)) continue;
-        if ((turn.requestedAction !== undefined) !== due) continue;
+        if ((turn.requestedAction !== undefined) !== due || turn.parked) continue;
+        if (!attemptActive.has(turn)) recordAttempt(turn, 'started');
+        let attemptFailed = false;
+        try {
         // Past the ordinary turn allowance only the minimal responder answers (Rule 15).
         if (outsideAllowance(journal.view, turn)) continue;
         if (actionBlocked(turn)) continue;
@@ -9409,11 +9469,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (!collected && ports.modelBatch && !due && !turn.answerRetried) {
             for (const pending of journal.view.order.slice(journal.view.order.indexOf(turn) + 1)) {
               if (pending.thread !== turn.thread || !pending.accepted || pending.editOf || pending.sent || pending.intent) continue;
+              if (pending.parked) continue;
               if (pending.reserved || pending.answer !== undefined || pending.requestedAction || pending.held
                 || pending.noticeClass || outsideAllowance(journal.view, pending) || actionBlocked(pending)
                 || isStopCommand(pending.text) || isStatusCommand(pending.text) || pendingMemory()
                 || journal.view.order.some(item => item.accepted && item.editOf === pending.id)
                 || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0) || waiting.length >= 64) break;
+              recordAttempt(pending, 'started');
+              try {
               const inbound = JSON.parse(pending.raw) as TelegramUpdate;
               if (telegramInboundMedia(inbound.edited_message ?? inbound.message)) break;
               const packet = await prepareRecall(() => preparedFor(pending));
@@ -9424,6 +9487,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 packetLimit: journal.view.limits.maxBytes, maxInputTokens: journal.view.limits.maxBytes,
                 maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
               waiting.push({ id: pending.id, question: packet.question, context: packet.context, prepared: packet.prepared });
+              } catch (error) { failAttempt(pending, error); batchDeferred.add(pending.id); }
             }
           }
           let answer: Answer | false;
@@ -10715,6 +10779,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         } catch { /* exact intent stays UNKNOWN */ }
         // The rest of a split reply follows at once, before any later reply.
         if (parts.length) await sendReplyParts(turn);
+        } catch (error) { attemptFailed = true; failAttempt(turn, error); }
+        finally { if (!attemptFailed) recordAttempt(turn, 'ended'); }
       }
       };
       if (concurrency === 1) await drainTopic(null);
@@ -10754,6 +10820,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         for (const cancel of progressTimers.values()) cancel();
         progressTimers.clear();
         wakeTopicDrain = null;
+        // Batch members skipped by specialised pending/not-started handling ended this pass deferred.
+        for (const turn of attemptActive) recordAttempt(turn, 'ended');
         acknowledgementsInFlight.clear();
         for (const turn of acknowledgementTimers.keys()) cancelAcknowledgement(turn);
         working = false;
@@ -10764,8 +10832,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * answer gets one prompt, limited, truthful reply from the reserve, grouped per conversation.
    * No model call; stop and expiry still refuse; an UNKNOWN send is never repeated. */
   const limitedReason = (turn: Turn): LimitedReason | null => {
+    if (failedBeforeEffect(turn) && !isStopCommand(turn.text)) return null; // Failure notice owns the response, never the brake.
     if (!turn.accepted || turn.intent !== undefined || turn.limited !== undefined || turn.requestedAction !== undefined
       || turn.held === 'superseded by edit' || turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined) return null;
+    if (failedBeforeEffect(turn) && isStopCommand(turn.text)) return 'worker';
     if (turn.held === MODEL_NOT_STARTED_HOLD) return 'worker';
     if (turn.capacity) return journal.view.order.some(item => item.thread === turn.thread
       && item.capacity?.episode === turn.capacity!.episode && item.limited !== undefined) ? null : 'worker';
@@ -12759,7 +12829,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** The minimal path's own step, run by the host between polls without waiting on an ordinary drain
    * that may be blocked on a model: confirmed stops, verified raises, then limited answers (Rule 15). */
-  const minimal = async () => { gate(); completeApprovals(); if (journal.view.stop !== null) return; ensureStopChallenge();
+  const minimal = () => housekeeping('minimal', async () => { gate(); completeApprovals(); if (journal.view.stop !== null) return; ensureStopChallenge();
     // Rules 4/15/77: review must not delay intake or the limited responder. The ordinary drain
     // awaits this same promise for final-send ordering and propagates any failure.
     for (const turn of acknowledgementTimers.keys()) void acknowledgeReply(turn).catch(() => {});
@@ -12767,8 +12837,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // concurrent drain send the same stop confirmation. It never waits on an ordinary model, so the warning is not delayed.
     await answerLimited();
     await noticeClosing();
-    await pollReviewRequests(); await issueRetractRequest(); };
-  return { attributionOfNote, intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
+    await pollReviewRequests(); await issueRetractRequest(); });
+  return { housekeeping, attributionOfNote, intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };
