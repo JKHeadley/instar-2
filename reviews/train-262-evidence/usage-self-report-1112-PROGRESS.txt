@@ -1,0 +1,209 @@
+# usage-self-report-1112 progress
+Brief read in full; 22277 bytes, SHA256 084851617a67dfa146e5244c97bf24ec87a97500c19b3147aeb6a55c3b999f5b.
+Base: 6d4ac144179b53eed1fcda07033be08244e548f2; settlement changes read before implementation. Continuation capability enabled=false.
+Step 0 / 1.x FIRST: actual JKHeadley/instar origin/main bd8150b26d65b2e0cc9d861272062a2073e34cee. Read src/monitoring/TokenLedger.ts summary (token categories, missing cache split remains unknown), src/server/routes.ts /tokens/summary (Claude and Codex separate), src/monitoring/QuotaTracker.ts (freshness and unknown quotas), docs/specs/unified-usage-ledger.md (unpriced is not zero, scope and coverage), history f70e04fca / 0868b62cc / 64e1641ee. Reuse measured-versus-unknown reporting and component attribution; SQLite ingestion and API-price estimation do not fit this existing encrypted journal/status. No new store. ONEX-LESSONS.md not present in searched worktree or local .instar paths; prior settlement review quotes sections 2 and 6 (indeterminate is not dead; distinguish activity/counts).
+Step 0 / 2.0: selfStateBrief deliberately excludes tokens and calls stateFacts.left(view.calls) 'used'; journal-agent turnSources always sends that brief, not full status. Status has tokenTotals and usageReconciliation. reserveTokens initially adds bounds to totals; settleTokens replaces only observed dimensions. A truthful packet must label total-with-reservations and separately calculate measured dimensions. Pool status contains profile references and cannot be copied verbatim; use neutral indices, current holds and reset times.
+Rules: 13/75 label measured subjects and unknown counts; 78/84 deliver self-knowledge every turn; 47 rebuilt after compaction; 60 spend cap unchanged; 74 review and reversible presentation-only changes; 113 journal-owned accounting and local configured pool; 123 existing private packet audience, no account identities; 116 reuse status projection, no new model call/store.
+Plan: add shared usage wording to both full/brief state; add neutral pool brief on existing pool and wire turnSources; recorded-shape writer tests and packet assertions, red-before-green; targeted checks and review; commit/push; final report.
+
+Progress: base regression reproduced exact bad packet wording ('17482 of 40000 used') and omission of reported usage. Writer-built 2690-call shape subsequently passed: reported 2353, unknown 337, gross reserved 17482. Fixture yields between groups to avoid blocking test-runner IPC. Typecheck and architecture passed before final compact rendering changes. Read-only review found indefinite-hold recovery/reset aggregation and missing pool text in floor fixture; both addressed. Floor tests revealed required guidance was being crowded out, so compact rendering and repeated-pool-state grouping are being measured without changing caps.
+Decision usage-measurement-subjects: measured dimensions exclude outstanding unobserved reservation bounds; released capacity is not a count of actual calls. Reported calls and unknown usage use existing status definitions.
+Decision usage-neutral-capacity: neutral indices only, use existing freshness/recovery logic, retain unknowns; group identical observations to keep packet size bounded without omitting a login.
+
+Implemented: shared full/compact usage projection in tests/preview/self-state.ts; read-only brief() on tests/preview/harness-login-pool.mjs; existing turnSources injection in tests/preview/journal-agent.mjs. Compact packet labels measured/reserved input/output per kind, reported calls, unknown usage, gross reserved, unused released, proven tool calls, unknown tool reservations, and cap-held capacity. Billed charge is unknown once. No accounting events, caps, shed, raises, replay, stores or provider calls changed. Pool projection reports neutral indices, usable count, holds/reasons/reset UTC dates and times, fresh known quota percentages, sign-in/unavailable observations and unknown quota. Work can continue when any login remains usable; this is model-login capacity, not an assertion that every unrelated workflow dependency is available.
+
+Recorded-shape evidence: brief's 2026-11-12 15:54/15:57 usage observation rebuilt through real journal writer with synthetic update IDs 1..2690: 2353 complete measurements, 337 unknowns and 17482 gross reservations. Reduced per-call token values keep expected arithmetic explicit, rather than claiming the original aggregate included only measurements. Work-kind and partial dimensions exercised independently in journal-cost.test.ts. Certified tool settlement proves 72 released reservations and one actual tool call. The private live journal was not read. Pool six-login shape uses supplied future/expired holds; eight-login floor shape adds fresh quota and distinct resets. Existing credential-self-state recorded summary/review/reply/empty shapes also passed.
+
+Verification so far: typecheck and architecture exit 0. usage-self-report.test.ts final run 1 passed (171 seconds); journal-cost 11 passed, self-state 15 passed, credential-self-state 8 passed. harness-login-pool final 88 passed; initial default-context-floor 6 passed. guidance 24 passed, 1 existing skip. Real self-state-launcher final 1 passed (84 seconds): first launch, restart, raised cap, packet/state consistency and no-pool capacity. Its original 20-second subprocess timeout fired on this host; test-only timeout is now 120 seconds and outer timeout 300 seconds, preserving all behavior assertions. Independent reviewer found no remaining arithmetic/privacy issue; noted that floor proof is specific to tested pool shapes, not a universal bound across arbitrary reasons/dates.
+
+Files beyond three product files: usage-self-report.test.ts (new regression), journal-cost.test.ts (mixed-kind packet), harness-login-pool.test.ts (capacity/recovery/privacy), default-context-floor.test.ts (actual pool text), self-state.test.ts and self-state-launcher.test.ts (consumer assertions), reviews/usage-self-report-1112-change-review.md (review record), generated register outputs (normal generator with explicit committed source). No constitution, authority declaration, cap, release contract or migration changes.
+
+Unrun or host-dependent checks: no full suite per task. Native macOS contract/e2e/integration remain for Studio. The ready-gate-tests.py desk script was absent from searched local .instar paths; task forbids fetching additional Studio files. Ran locally named pinned-context tests instead, with default-root-conversation and summary-cascade-stall included among direct importers. No live deployment or model-behavior guarantee claimed; this proves evidence reaches the model's packet.
+
+Final floor refinement: added a second reset date to the eight-login fixture. It exposed 33 excess fixed prompt bytes. Shared UTC wording, omission of exact-zero seconds, and shorter equivalent message labels restore all six floor assertions without increasing context limits or dropping data. Product diff: 32 added pool lines, 3 added/3 removed launcher lines, 37 added/15 removed self-state lines = 90 changed product lines, below 140.
+
+Change-review host scope: the first scoped check found only missing Studio evidence/report files (3707 Rule 102 and 72 Rule 70 findings in inherited records), with no other categories; this is not a clean check. Final committed review check is being run separately. Never fabricated the Studio paths locally. The desk must copy this report to /Users/dabombstudio/.instar/agents/echo/.instar/lanes/usage-self-report-1112-PROGRESS.md, which every Decision names.
+
+Git publication evidence (after push):
+
+`git status --porcelain`:
+```text
+```
+(empty output: clean)
+
+`git show --stat <pushed sha>`:
+```text
+commit 79f72fb3e2eab37c8bfbd0bb216369c51a3b0b60
+Author: Echo <echo@sagemindai.io>
+Date:   Thu Nov 12 23:04:22 2026 -0800
+
+    chore(usage): publish register for verified self-report sources
+
+ generated/capabilities.json                     | 4 ++--
+ generated/capabilities.md                       | 4 ++--
+ generated/coverage.md                           | 4 ++--
+ generated/glossary.md                           | 4 ++--
+ generated/register.json                         | 2 +-
+ generated/required-release-checks.json          | 4 ++--
+ generated/rules.md                              | 4 ++--
+ generated/source.json                           | 4 ++--
+ reviews/usage-self-report-1112-change-review.md | 1 +
+ 9 files changed, 16 insertions(+), 15 deletions(-)
+```
+
+All pushed work relative to assigned base:
+```text
+ generated/capabilities.json                     |  4 +-
+ generated/capabilities.md                       |  4 +-
+ generated/coverage.md                           |  4 +-
+ generated/glossary.md                           |  4 +-
+ generated/register.json                         |  2 +-
+ generated/required-release-checks.json          |  4 +-
+ generated/rules.md                              |  4 +-
+ generated/source.json                           |  4 +-
+ reviews/usage-self-report-1112-change-review.md | 34 +++++++++++++++
+ tests/preview/default-context-floor.test.ts     | 12 +++++-
+ tests/preview/harness-login-pool.mjs            | 32 ++++++++++++++
+ tests/preview/harness-login-pool.test.ts        | 46 +++++++++++++++++++++
+ tests/preview/journal-agent.mjs                 |  6 +--
+ tests/preview/journal-cost.test.ts              | 12 +++++-
+ tests/preview/self-state-launcher.test.ts       | 30 +++++++-------
+ tests/preview/self-state.test.ts                | 12 +++---
+ tests/preview/self-state.ts                     | 52 ++++++++++++++++-------
+ tests/preview/usage-self-report.test.ts         | 55 +++++++++++++++++++++++++
+ 18 files changed, 266 insertions(+), 55 deletions(-)
+```
+
+Final consumer run: 4 files, 110 tests passed (default-context-floor 6, real self-state-launcher 1, self-state 15, harness-login-pool 88). Includes two distinct reset dates and fresh quota in the floor fixture. Pushed-head pinned-context run: default-context-floor + guidance, 30 passed / 1 existing skip. Register check on pushed head exited 0, generation a78762bc5fce18ad0b6893d116e65ef0519aaa227fe1827659523c71d8b76bda, source 56e74fd87aa83d9bc1ba86c5b4f56198dad39146; architecture passed on pushed head. Typecheck final exited 0. Both committed-range and unstaged diff whitespace checks exited 0.
+Final npm run lint exited 0: architecture passed; wiring issues=[] (68 explicitly reported static-analysis residuals, not a claim of complete enumeration). No source-pin exception needed. Final npm run register:check is the required node scripts/build-register.mjs --check invocation and exited 0. No native conformance declaration was renewed on WSL; the desk owns any required native certificate renewal.
+Additional rule mapping: Rule 26 reads actual journal measurements and current pool observations, not profile labels; Rule 30 uses the existing provider-independent token projection and pool-owned host adapter, with no new harness-name branch; Rule 49 records outcome, scope and floors in the committed review; Rule 101 plain commits/pushes, verified no installed worktree hook, no bypass flags; Rule 102 both named decisions appear above and in the review's Studio report paths; Rule 111 review inspected reserve/settle accounting, status projection, packet assembly and pool recovery one layer below rendering.
+Review-format correction: appended verification notes had displaced the required last-three-line closing block; moved them before the block, then committed and pushed 128dc301398148d4ca99f76462a0a58c1931a307. No product/generated bytes changed. Direct validateRecord on this unit now reports only the two expected Rule 102 missing Studio report references. Full final-head check is rerunning; earlier full checks returned inherited host-only Rule 70/102 evidence absence and did not provide a clean gate verdict.
+
+Final-head mechanical checks: npm run lint and npm run register:check both exited 0 on 128dc301398148d4ca99f76462a0a58c1931a307. Pinned context/guidance rerun: 30 passed, 1 existing skip. Source and generated bytes are unchanged from the fully tested implementation.
+
+Final publication evidence (supersedes earlier head):
+`git status --porcelain`:
+```text
+```
+(empty output: clean)
+
+`git show --stat 128dc301398148d4ca99f76462a0a58c1931a307`:
+```text
+commit 128dc301398148d4ca99f76462a0a58c1931a307
+Author: Echo <echo@sagemindai.io>
+Date:   Thu Nov 12 23:22:34 2026 -0800
+
+    docs(usage): retain required review closing block
+
+ reviews/usage-self-report-1112-change-review.md | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+```
+
+Direct-import suite complete: 30 files; 25 passed, 4 failed, 1 skipped. Tests: 454 passed, 6 failed, 15 skipped; 2 unhandled Vitest RPC timeouts. Elapsed 3130.67 seconds. This was only the 30 direct importers listed in /tmp/usage-other-direct-tests.txt, not a full suite or transitive closure. Raw output: /tmp/usage-direct.log. The shell wrapper printed a tail after Vitest, so its final zero is NOT claimed as a passing test exit; the test result is the failed summary above.
+Host-dependent failures, untouched files (not investigated or repaired, per brief):
+- tests/preview/default-root-conversation.test.ts: two 300-second launcher test timeouts and cleanup hook timeouts, for continued answers through recorded shapes and declaration duty under byte pressure.
+- tests/preview/two-machine-runner.test.ts: the second machine did not reach standby within its wait; other takeover/history cases passed.
+- tests/preview/two-machine-floors.test.ts: the second machine did not reach standby within its wait; both stop-floor cases, unenrolled-history refusal and half-declared posture refusal passed.
+- tests/preview/journal-cutover.test.ts: long-poll overlap/restart exceeded 60 seconds; killed-mid-episode case lacked the expected run record (undefined exit). Unreadable-run-log refusal passed.
+- Two unhandled Vitest reporting RPC timeouts are recorded by the runner; this is not a clean aggregate test result.
+Real-provider cases skipped by the established host split remain for Studio. The direct recorded summary-cascade, overcap settlement, reply review, credential boundary, pool, signed-out login, minimal-path policy, journal awareness, renewal continuity and people-memory consumers passed.
+
+Final change-review check on the stable pushed head: exit 1, solely missing Studio evidence paths. This unit has exactly two expected Rule 102 findings, for usage-measurement-subjects and usage-neutral-capacity; both refer to the same required Studio PROGRESS path. No other unit findings. Whole-history totals are 3709 Rule 102 and 72 Rule 70 missing-evidence findings across 5219 commits / 1542 records. No other error categories. Final scan output: /tmp/usage-change-review-pushed.log. The changed-file prompt scan separately found zero findings before or after this change. This is reviewable builder evidence, not a claim that the Studio gate has passed.
+
+Final status: entire named usage/capacity presentation change is implemented, tested at its packet consumer, committed and pushed. No merge of origin/main, no live deployment, no hook bypass, no stash, no native certificate edit, and no Studio file write. Final working tree is clean; both whitespace checks pass. The 90-line product change remains below the widened 140-line limit.
+
+Studio handoff: copy this report to /Users/dabombstudio/.instar/agents/echo/.instar/lanes/usage-self-report-1112-PROGRESS.md before the desk's Rule 102 check. The desk owns its pinned-list/full/native tests and independent landing verdict. The remote-host charter requests the following native re-pin marker; local architecture reported no R105 error, and no native conformance was asserted from WSL.
+R105-REPIN-NEEDED
+READY 128dc301398148d4ca99f76462a0a58c1931a307
+
+## Pipeline repair
+
+MF1 repaired with reason-grouped full UTC reset timestamps and shorter compact labels. Product rendering diff is 12 changed lines, below the approximately 100-line bound. No model capability or required context field is removed. Shared and independent reset fixtures both pass. Native residue N1 remains explicitly for the desk's combined/native gate.
+
+Files touched beyond the must-fix's explicitly named source paths (one per line):
+- tests/preview/default-context-floor.test.ts — extend named floor fixture with shared/independent dates and all seven reset associations.
+- tests/preview/self-state.ts — shorten fixed compact labels to preserve the 40-byte summary maintenance margin.
+- tests/preview/harness-login-pool.test.ts — assert each login's complete date/time after grouping changes.
+- tests/preview/usage-self-report.test.ts — retain the unknown-billing assertion for the shortened compact label.
+- reviews/usage-self-report-1112-repair-change-review.md — cover both repair commits and record constitutional/1.x comparison, effects and evidence.
+- tests/assembly/production-grounding-inventory.json — delegated desk-repin-chain refreshed inherited src/judgment/contracts.ts support hash.
+- scripts/check-assembly-contracts.mjs — same delegated script refreshed the inventory digest.
+- generated/capabilities.json — mechanical register replay.
+- generated/capabilities.md — mechanical register replay.
+- generated/coverage.md — mechanical register replay.
+- generated/glossary.md — mechanical register replay.
+- generated/register.json — mechanical register replay.
+- generated/required-release-checks.json — mechanical register replay.
+- generated/rules.md — mechanical register replay.
+- generated/source.json — mechanical register replay.
+
+Desk-only records, all under /Users/dabombstudio/.instar/agents/echo/.instar/lanes/:
+- usage-self-report-1112-PROGRESS.md — append this required pipeline repair handoff.
+- usage-self-report-1112-repair-PROGRESS.md — repair research, decisions, evidence and final publication record.
+- usage-self-report-1112-repair-review-draft.md — required change-review draft output.
+- usage-self-report-1112-repair-red.log — exact two-failure MF1 reproduction.
+- usage-self-report-1112-repair-targeted.log — final targeted 118-test result.
+- usage-self-report-1112-repair-recorded.log — captured summary/review/reply shape replay result.
+- usage-self-report-1112-repair-usage.log — recorded usage reconstruction result.
+- usage-self-report-1112-repair-tsc.log — typecheck result.
+- usage-self-report-1112-repair-architecture.log — architecture result.
+- usage-self-report-1112-repair-lint.log — final-head lint result.
+- usage-self-report-1112-repair-register.log — final-head register result.
+- usage-self-report-1112-repair-change-review.log — final-head change-review result.
+
+No .instar file is staged or committed. Hook configuration checked: no core.hooksPath, only sample hooks in the common hooks directory. All commits are plain git commits. Delegated rehash changed no owner manifests; delegated chain and register replay ran normally without manual hash edits. All logs and reports already use Studio-readable absolute paths.
+
+## Final verification and publication
+
+Pushed origin/usage-self-report-1112: 3f10deb3b92544b9b019dcdf37a477e918792717; remote tracking head matches. Repair source commit: 00523ac30c079032c511eb9f5e3327adf402afdd. Final-head npm run lint, npm run register:check, and CHANGE_REVIEW_BASE=128dc301398148d4ca99f76462a0a58c1931a307 node scripts/check-change-review.mjs check all exit 0. The latter reports 5221 commits, 1543 records, 1450 current and check OK; historical prompt debt and advisory tier notes remain explicit, not hidden failures. This repair's significant tier is an author-declared reversible presentation change; the checker suggests critical from its paths. No error or R105 exception remains.
+
+Typecheck exits 0. 120 targeted tests passed across the final targeted run, recorded-shape replay and usage reconstruction (10 unrelated act-first cases were deselected by the exact test-name filter). No full suite was run, per repair direction. N1 remains native gate residue: scratch-volume creation, unresolved stop cleanup and socket-path assertion reproduced at base in the independent review; interrupted physical replay is not passing evidence. Both git diff --check origin/main...HEAD and git diff --check exit 0.
+
+1.x final comparison: retains TokenLedger.ts / QuotaTracker.ts / routes.ts and unified-usage-ledger.md measured-versus-unknown semantics from bd8150b26d65b2e0cc9d861272062a2073e34cee, rechecked at actual local 1.x origin/main ee957c98be8e09cf83285ee6140b20e981d79787. Existing encrypted-journal projection is the fit; no SQLite scanner, pricing estimator or new ledger. The source repair only shortens redundant rendering while preserving per-login UTC dates and required agent awareness.
+
+`git status --porcelain`:
+```text
+```
+Empty output: clean, no modified tracked files.
+
+`git show --stat 3f10deb3b92544b9b019dcdf37a477e918792717`:
+```text
+commit 3f10deb3b92544b9b019dcdf37a477e918792717
+Author: Echo <echo@sagemindai.io>
+Date:   Fri Nov 13 00:00:07 2026 -0800
+
+    chore(usage): replay register for compact capacity rendering
+
+ generated/capabilities.json                            | 4 ++--
+ generated/capabilities.md                              | 4 ++--
+ generated/coverage.md                                  | 4 ++--
+ generated/glossary.md                                  | 4 ++--
+ generated/register.json                                | 2 +-
+ generated/required-release-checks.json                 | 4 ++--
+ generated/rules.md                                     | 4 ++--
+ generated/source.json                                  | 4 ++--
+ reviews/usage-self-report-1112-repair-change-review.md | 2 +-
+ 9 files changed, 16 insertions(+), 16 deletions(-)
+```
+
+Source files are in the preceding pushed commit:
+```text
+commit 00523ac30c079032c511eb9f5e3327adf402afdd
+Author: Echo <echo@sagemindai.io>
+Date:   Thu Nov 12 23:59:40 2026 -0800
+
+    fix(usage): retain context with independent login reset dates
+
+ .../usage-self-report-1112-repair-change-review.md | 31 ++++++++++++++++++++++
+ scripts/check-assembly-contracts.mjs               |  2 +-
+ tests/assembly/production-grounding-inventory.json |  2 +-
+ tests/preview/default-context-floor.test.ts        | 15 ++++++++---
+ tests/preview/harness-login-pool.mjs               |  4 +--
+ tests/preview/harness-login-pool.test.ts           |  6 ++---
+ tests/preview/self-state.ts                        |  8 +++---
+ tests/preview/usage-self-report.test.ts            |  2 +-
+ 8 files changed, 54 insertions(+), 16 deletions(-)
+```
+
+Studio report: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/usage-self-report-1112-repair-PROGRESS.md (already present on Studio). Review submission only; no live deployment, merge or independent acceptance claimed.
+READY 3f10deb3b92544b9b019dcdf37a477e918792717
