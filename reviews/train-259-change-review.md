@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: reviewed changes affect journal answer context and sourced obligation closure; combined writer, consumer and lifecycle verification is required.
-Side effects: inventory carries bounded soonest-first records and honest totals/omissions. Preserve the unit's 152-byte allowance, shorter equivalent commitment guidance, and pressure-fixture adjustment; no train change to guards or timeouts. Preserve accepted diagnostic withdrawal and conformance declaration ancestry.
+Side effects: inventory carries bounded soonest-first records and honest totals/omissions. Preserve the unit's 152-byte allowance, shorter equivalent commitment guidance, and pressure-fixture adjustment; no train change to shipped guards or timeouts. Two inherited packet-priority fixtures are recalibrated for the added fixed inventory: inert x-padding 700 to 600; artificial omission context 4400 to 5000, still requiring omissions and preserving every assertion. Preserve accepted diagnostic withdrawal and conformance declaration ancestry.
 Undo and recovery: revert this train before deployment to the exact subject base; retain journal/receipt history. No new closure event or reconciliation option survives the reviewed repair. Unknown deliveries remain open and cannot be replayed as sends.
 Multi-machine posture: existing shared journal, conversation ownership and receipt uniqueness remain authoritative. No new machine-local state or cross-machine sender.
 Team posture: work inventory remains private to the verified operator or verified operator-only forum audience under existing cleaning/redaction. No grant or sharing expansion; no new member/guest surface.
@@ -39,6 +39,8 @@ Prompt finding: 849db3a6296a | protocol-literal | Unchanged empty-memory renderi
 
 Prompt finding: 0725f0150c56 | quoted-evidence | The existing test quotes the unchanged role/refusal instruction, "use them to answer and act within that role; a tool refusal remains a refusal." This change does not touch that phrase or make it a model decision trigger.
 Prompt finding: 27d7720e7977 | quoted-evidence | The existing test quotes the unchanged context introduction, "this memory and work record". This change does not touch that phrase or make it a model decision trigger.
+
+Decision: train-259-priority-fixtures | Base passes both packet-priority fixtures; reviewed inventory crowds their old artificial byte budgets. Adjust only inert padding/context fixture, retaining every priority, omission, privacy and cap assertion. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-259-build-report.md
 
 Verification: focused member, direct consumer, context, recorded-shape and lifecycle checks plus required register/subscription and pinned-text tests. Exact outcomes and always-sent byte measurements are in the canonical train build report. Full combined gate and independent Astra judgment remain desk work.
 

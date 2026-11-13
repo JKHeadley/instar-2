@@ -105,7 +105,8 @@ it('keeps a nearby dated open item inside the ten-commitment window ahead of old
     const commitments = [];
     for (let id = 1; id <= 12; id++) {
       const quote = id === 1 ? 'Review the permit on 2026-09-29.' : `Remember ordinary item ${id}.`;
-      addTurn(journal, id, `${quote} ${'x'.repeat(700)}`);
+      // Keep ten full commitments in range after adding the bounded work inventory.
+      addTurn(journal, id, `${quote} ${'x'.repeat(600)}`);
       commitments.push({ in: 'message' as const, source: `telegram:12345678:update:${id}`, quote });
     }
     addTurn(journal, 13, `Unrelated history. ${'f'.repeat(15000)}`);
@@ -172,7 +173,7 @@ it('measures packet bytes and non-model p95 at 200, 1000 and 2000 accepted turns
 it('replays packet omissions into status without exposing the omitted text', async () => {
   const path = root();
   try {
-    const journal = openPreviewJournal(join(path, 'journal.encrypted'), key, { ...genesis(20), maxBytes: 4400 }); // cbuild-2: the always-offered summary decision needs room (measured fit 4400; was 4000)
+    const journal = openPreviewJournal(join(path, 'journal.encrypted'), key, { ...genesis(20), maxBytes: 5000 }); // Include fixed work-inventory totals/guidance; still force recorded omissions.
     addTurn(journal, 1, `Keep the studio commitment open. ${'x'.repeat(700)}`);
     addTurn(journal, 2, `Review the permit on 2026-09-29. ${'y'.repeat(700)}`);
     addTurn(journal, 3, `Sam reviewed the studio plan. ${'z'.repeat(700)}`);
