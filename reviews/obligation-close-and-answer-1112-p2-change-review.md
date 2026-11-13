@@ -22,6 +22,15 @@ Prompt review: meaning is judged by the model, never a question keyword gate. Ev
 Decision: obligation-close-and-answer-record-first | Reuse status projections, existing receipt settlement and exact operator withdrawal. Do not reconcile semantic world completion from prose or guesses. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/obligation-close-and-answer-1112-p2-PROGRESS.md
 Decision: obligation-close-and-answer-context | Bound rows and retain totals/omissions; shorten duplicate guidance and measure the fixed floor without weakening existing tests. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/obligation-close-and-answer-1112-p2-PROGRESS.md
 
+Prompt finding: 105c1569b6bb | protocol-literal | Unchanged terminal-stop protocol explanation; the fixture checks the emitted notice, not a phrase used to infer operator intent.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged tool-free evidence instruction in OBLIGATION_DECISION; the fixture checks which capability guidance was delivered. It does not prescribe the judgment about a user request.
+Prompt finding: 7ef11b68103f | protocol-literal | Unchanged activation-expiry notice describing a recorded lifetime boundary; the fixture verifies that deterministic status text.
+Prompt finding: 85544c20941f | protocol-literal | Unchanged login-outage notice and its exact protocol validator. This promises retained intake, not a keyword test of the operator message.
+Prompt finding: 9f0106c66027 | protocol-literal | Unchanged UNKNOWN-answer notice describes the recorded interrupted attempt and no-replay floor; it does not classify natural-language meaning.
+Prompt finding: bac6ce7485d9 | protocol-literal | Unchanged fixed stopped-work notice, selected from recorded execution state; the fixture checks its truthful wording.
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged provenance instruction requires source labels and uncertainty disclosure for every recall answer; no expected substantive answer is supplied.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged empty-memory rendering and its own protocol recognition, selected from the actual projected memory population; no lexical absence inference is added.
+
 Team posture: private to the root's verified operator, or an explicitly verified operator-only forum audience; the new field is withheld otherwise. Existing redaction/correction/forget projection applies to excerpts. This change grants no team sharing or member/guest access. Team-wide cross-root visibility is not inferred from a local packet.
 
 ## Step 0 comparison and diagnosis
