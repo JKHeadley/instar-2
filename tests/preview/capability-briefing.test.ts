@@ -17,7 +17,7 @@ it('delivers every available generated feature, names switched-off ones, and omi
   for (const f of briefed.filter(f => f.availability === 'available')) expect(note.text).toContain(`- ${f.text}`);
   for (const f of briefed.filter(f => f.availability === 'switched-off')) expect(note.text).toMatch(new RegExp(`switched off here[^\\n]*\\b${f.id}\\b`));
   for (const f of briefed.filter(f => f.availability === 'not-loaded')) expect(note.text).not.toContain(f.id);
-  expect(note.text).toContain(`at most ${limits.providerAttempts} model attempts`);
+  expect(note.text).toContain(`At most ${limits.providerAttempts} model attempts`);
   expect(briefed.filter(f => f.availability === 'available' && f.userFacing).map(f => f.id)).toEqual(expect.arrayContaining([
     'preview-conversation', 'preview-durable-memory', 'preview-requested-actions']));
 });
@@ -113,7 +113,7 @@ it('briefs the installation identity with and without the generated register, pr
     expect(text).toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools }));
     expect(text).toContain("You are an Instar 2.0 agent");
     expect(text).not.toMatch(/PREVIEW trial|This trial|Justin/u);
-    expect(text).toContain(`at most ${limits.providerAttempts} model attempts, ending at epoch ms ${limits.expiresAt}`);
+    expect(text).toContain(`At most ${limits.providerAttempts} model attempts. Activation: record-keeping reminder; agent keeps working.`);
     expect(text).toContain('Charges, and unconfirmed calls or deliveries, are recorded unknown.');
     expect(text).toContain('Production safeguards are incomplete.');
     if (tools) {

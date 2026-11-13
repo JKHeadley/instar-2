@@ -5,6 +5,7 @@ import { machineLink } from './coherence-check.js';
  * contextual finding from one batched full-context review. The agent answers every objection once
  * (accept, reject with a reason, or no decision), all inside one shared deadline (Rules 41, 57, 58, 108). */
 import { redact, redactionMark } from '../../src/recall/redact.js';
+import { ACTIVATION_RECORD_ACTION } from './secret-custody.js';
 import { remainingText } from './credential-reminders.js';
 import { taskFields } from './answer-reading.js';
 export const REPLY_RULES = {
@@ -855,11 +856,12 @@ export function publicCredentialRegister(records: readonly PublicCredentialRecor
       record.renewal?.smallestHumanAction ?? ''].map(field => (typeof field === 'string' ? field.trim() : ''));
     if (!fields.every(field => publicLabel(field, held))) return [];
     const [, , kind, custody, standing, smallestHumanAction] = fields as [string, string, string, string, string, string];
-    const expiry = typeof record.expiresAt === 'number' ? remainingText(record.expiresAt - now)
+    const activation = record.custody === 'activation-record';
+    const expiry = activation ? 'record-keeping reminder; the agent keeps working' : typeof record.expiresAt === 'number' ? remainingText(record.expiresAt - now)
       : record.expirySource === 'none' ? 'no fixed expiry' : 'expiry unknown';
     const label = credentialDisplayLabel(record);
     if (!publicLabel(label, held)) return [];
-    return [{ name: label, identity: label, kind, custody, expiry, renewal: { standing, smallestHumanAction } }];
+    return [{ name: label, identity: label, kind, custody, expiry, renewal: { standing, smallestHumanAction: activation ? ACTIVATION_RECORD_ACTION : smallestHumanAction } }];
   });
 }
 

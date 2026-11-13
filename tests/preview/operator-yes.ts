@@ -159,7 +159,7 @@ export function operatorLapseDetail(request: OperatorRequest, _current: { expire
 const requestChange = (request: OperatorRequest, current: { limits: CapLimits; expires: number }) => request.action === 'raise-caps'
   ? KEYS.filter(key => request.limits![key] !== current.limits[key]).map(key =>
     `the ${LIMIT_NAMES[key][0]} allowance from ${current.limits[key]} to ${request.limits![key]} (${request.limits![key] - current.limits[key]} more ${LIMIT_NAMES[key][1]})`).join(' and ')
-  : `this installation's end from ${minute(current.expires)} to ${minute(request.expires!)}`;
+  : `the activation record's reminder date from ${minute(current.expires)} to ${minute(request.expires!)}`;
 /** What the operator reads of a retraction besides its count (plan #389): the first and last listed turn, each
  * already redacted and clipped by the journal, which computes this from its own turns on issue and on replay. */
 export interface RetractRendering { first: { update: number; text: string }; last: { update: number; text: string } }
@@ -202,7 +202,7 @@ export function operatorReviewBodyText(request: OperatorRequest, current: { limi
 export const operatorRequestTarget = (request: OperatorRequest): string => request.action === 'raise-caps'
   ? `set the ${KEYS.map(key => `${LIMIT_NAMES[key][0]} allowance to ${request.limits![key]}`).join(', the ')}`
   : request.action === 'retract-turns' ? `stopped treating ${messages(request.updates!.length)} sent through your account as yours`
-    : `extended this installation's end to ${minute(request.expires!)}`;
+    : `extended the activation record's reminder date to ${minute(request.expires!)}`;
 /** The fixed line the operator receives when a review-approved request completes. Under an operator acceptance of
  * shared account access it carries the disclosure (Purpose, the approval-account exception), written once. */
 export function operatorResultText(request: OperatorRequest, before: { limits: CapLimits; expires: number }, shared: boolean): string {

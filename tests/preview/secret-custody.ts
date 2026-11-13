@@ -21,6 +21,7 @@ import { credentialDisplayLabel } from './credential-display.js';
 import { liveMeasurement, renderMeasured } from './measured.js';
 
 export const VAULT = 'preview';
+export const ACTIVATION_RECORD_ACTION = 'No action needed to keep working; renewal only keeps the approval record current.';
 const HOUR = 60 * 60 * 1000, DAY = 24 * HOUR;
 /** Escalating reminder offsets before a known fixed expiry. */
 export const REMINDER_OFFSETS_MS = Object.freeze([7 * DAY, 3 * DAY, DAY, 6 * HOUR, HOUR]);
@@ -67,7 +68,7 @@ export function dueCredentialReminders(records: readonly CredentialRecord[], now
     if (stage < 0) return [];
     return [{ name: record.name, identity: record.identity, displayLabel: credentialDisplayLabel(record), expirySource: record.expirySource, stage, dueAt: record.reminders[stage]!, expiresAt: record.expiresAt,
       remaining: renderMeasured(liveMeasurement('credential-remaining', credentialDisplayLabel(record), record.expiresAt - now, now)),
-      smallestHumanAction: record.renewal.smallestHumanAction }];
+      smallestHumanAction: record.expirySource === 'activation-record' ? ACTIVATION_RECORD_ACTION : record.renewal.smallestHumanAction }];
   });
 }
 

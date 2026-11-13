@@ -94,7 +94,7 @@ for (const legacy of [false, true]) it(`reopens ${legacy ? 'legacy' : 'current'}
     expect(proposal.kind).toBe('request');
     if (proposal.kind !== 'request') throw Error('renewal proposal refused');
     const text = operatorRequestText(proposal.request, current, null)
-      .replace("this installation's end", legacy ? "this trial's end" : "this installation's end");
+      .replace("the activation record's reminder date", legacy ? "this trial's end" : "this installation's end");
     const intent = { kind: 'intent' as const, id, text, chat: genesis.chat, update: 1, grant: genesis.grant,
       operatorRequest: proposal.request, at: 1003 };
     expect(() => journal.append({ ...intent, text: 'A different request.' })).toThrow('operator request refused');

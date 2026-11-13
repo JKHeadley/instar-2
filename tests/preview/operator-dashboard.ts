@@ -62,7 +62,7 @@ const stamp = (at: number, zone: string) => {
   return `${p.year}-${pad(p.month)}-${pad(p.day)} ${pad(p.hour)}:${pad(p.minute)}`;
 };
 const REQUEST_TITLES: Record<string, string> = { 'raise-caps': "Let me continue past this installation's allowance",
-  'renew-expiry': 'Extend this installation', 'retract-turns': 'Remove test messages from my record' };
+  'renew-expiry': 'Update the activation approval record', 'retract-turns': 'Remove test messages from my record' };
 const REQUEST_STATES: Record<string, string> = { open: 'Waiting for your answer', applied: 'Approved and done',
   'approved, not applied': 'Approved, being applied', superseded: 'Replaced by a newer request', lapsed: 'Expired unanswered',
   'not sent': 'Being prepared' };

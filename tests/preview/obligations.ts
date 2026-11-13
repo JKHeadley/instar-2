@@ -82,7 +82,7 @@ export interface LoopHealth { open: number; byKind: Record<LoopKind, number>; re
 
 /** Forward progress, backlog age and overdue obligations for the existing pull surface (Rules 46, 64, 68, 92, 99).
  * Progress is measured per waiting item: an unrelated reply or a summary never makes a stalled obligation look
- * progressing. An inhibition (stop, expiry, allowance, capacity, hold, missing grant) is shown beside the
+ * progressing. An inhibition (stop, allowance, capacity, hold, missing grant) is shown beside the
  * backlog; it never counts as completion. */
 export function loopHealth(view: JournalView, now: number): LoopHealth {
   const loops = openLoops(view, now);
@@ -121,14 +121,12 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
   const held = oldestTurn?.held !== undefined ? `held: ${oldestTurn.held}` : null;
   const shed = due.length && !obligationCapacity(view)
     ? `model-call capacity reserved for replies (${view.calls} of ${view.limits.maxCalls} calls used)` : null;
-  const inhibition = view.stop ?? (now >= view.expires ? 'trial expired'
-    : view.calls >= view.limits.maxCalls ? 'model-call allowance used'
+  const inhibition = view.stop ?? (view.calls >= view.limits.maxCalls ? 'model-call allowance used'
       : turns.length && view.replies >= view.limits.maxReplies ? 'reply allowance used'
         : [held, shed].filter(reason => reason !== null).join('; ') || null);
   const deliverable = schedule.filter(item => item.awaitingDelivery && owedResultAuthority(view,
     { key: item.key, slot: view.obligationWork[item.key]!.lastSlot })).length;
-  const deliveryHold = view.stop ?? (now >= view.expires ? 'trial expired'
-    : view.replies >= view.limits.maxReplies ? 'reply allowance used'
+  const deliveryHold = view.stop ?? (view.replies >= view.limits.maxReplies ? 'reply allowance used'
       : view.calls >= view.limits.maxCalls ? 'model-call allowance used'
         : view.order.find(turn => turn.requestedAction?.owed && turn.intent === undefined && turn.held)?.held ?? null);
   return { open: loops.length, byKind, revisitDue: loops.filter(loop => loop.revisitDue && loop.kind === 'commitment').length,

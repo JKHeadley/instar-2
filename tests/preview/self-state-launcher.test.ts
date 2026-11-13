@@ -102,7 +102,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(activationLine).not.toContain(record.identity);
     const inventory = JSON.parse(prompt[0].match(/Credentials: (\[.*?\]); connectors:/u)[1]);
     expect(inventory).toContainEqual({ name: record.name, identity: record.identity,
-      custody: 'activation-record', expiry: 'not expired', custodyPresent: null });
+      custody: 'activation-record', expiry: 'record reminder; no stop or renewal needed to keep working', custodyPresent: null });
     expect(prompt.every(text => !text.includes(env.INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN)
       && !text.includes(env.INSTAR_SECRET_PREVIEW_TYPESAFE_KEY)
       && !text.includes(env.INSTAR_SECRET_PREVIEW_STORAGE_KEY))).toBe(true);

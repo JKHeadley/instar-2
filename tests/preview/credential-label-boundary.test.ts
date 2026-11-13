@@ -133,7 +133,7 @@ async function replay(options: Run) {
 const violation = (reason: string) => ({ verdict: 'violation' as const, ruleIds: ['credential' as ReplyRule], reason: `credential: ${reason}`,
   findings: [{ rule: 'credential' as ReplyRule, verdict: 'violation' as const, reason }] });
 const activationFact = (expiry: string): RecordedCredentialFact => ({ name: 'your activation', identity: 'your activation', kind: 'activation',
-  custody: 'activation-record', expiry, renewal: { standing: 'none', smallestHumanAction: 'approve a renewed activation record' } });
+  custody: 'activation-record', expiry: 'record-keeping reminder; the agent keeps working', renewal: { standing: 'none', smallestHumanAction: 'No action needed to keep working; renewal only keeps the approval record current.' } });
 
 it('715673352 replayed: the reviewers read the reply as sent; the review reads the register as recorded facts; a PASS sends it', async () => {
   const { sends, calls, jevTexts, reviewTexts, reviewPackets, turn, release, heldReview, durableIntent } = await replay({ answer: T.answerBody });

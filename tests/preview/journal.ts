@@ -488,7 +488,7 @@ export const PREVIEW_LIVE_GATES = Object.freeze([
   { gate: 'credential shape before send', fails: 'closed', preserves: 'candidate and message; honest notice sent', basis: 'Rule 4 secret floor (shape, not proof of liveness)' },
   { gate: 'credential named by a check (Jev with no review verdict, or a review violation)', fails: 'closed', preserves: 'candidate and message; holding reply sent, or a reply-check hold', basis: 'Rule 86 secrets exception' },
   { gate: 'untracked deferral or unevidenced cannot-do claim (full-context review)', fails: 'closed', preserves: 'candidate, answer and its declared record; when the review names a claim, only the sentences carrying it are removed and the remainder goes out with the removal recorded; the holding reply stands in only when nothing substantive survives, and a reply-check hold when the review could not decide at all', basis: 'Rules 6, 20, 21, 23 (build 4); Rule 86 full-context gate; Rules 4, 77, 95 scope it to the content it named' },
-  { gate: 'operator stop and trial expiry', fails: 'closed', preserves: 'journal and queued input; a stop act on the independent surface stays there until consumed', basis: 'Rule 4 emergency stop; governed expiry; Eleven §4' },
+  { gate: 'operator stop', fails: 'closed', preserves: 'journal and queued input; a stop act on the independent surface stays there until consumed', basis: 'Rule 4 emergency stop; Eleven §4' },
   { gate: 'model call cap', fails: 'closed', preserves: 'held message; limited answer from the reserve', basis: 'Rule 4 spend floor; Rule 15' },
   { gate: 'ordinary reply and turn caps', fails: 'open', preserves: 'input via the minimal reserve', basis: 'Rule 15' },
   { gate: 'minimal reserve bound', fails: 'closed', preserves: 'overflow preserved before the cursor passes it; past the reserve, updates enter a finite waiting store in order and the backlog is scanned for the operator\'s exact /stop first; past that store, messages wait at Telegram', basis: 'Rule 60 finite capacity; Rules 4, 15' },
@@ -694,11 +694,11 @@ export const CHAT_YES_UNAVAILABLE = 'on this setup I can also send messages as y
 /** Rules 10, 82: how the mind proposes one of the two declared operator actions; the runner writes the request. Live
  * 2026-10-03 (update 969390031, plan #362): with no field offered for the end, the model wrote the end the operator named
  * as `requestedEnd`, which the exact reader refuses; the renewal has one reviewed end, so no end field is asked for. */
-export const OPERATOR_ACTION_GUIDANCE = ' If the verified operator asks to raise this trial\'s limits or extend its end, return JSON with reply and operatorAction:{action:"raise-caps",limits:{maxCalls|maxReplies|maxTurns: the number they named, or "step" for the usual increase}} or exactly {action:"renew-expiry"} with no other field (the runner fills in the one reviewed end, whatever end they named). Return operatorAction even while an operatorRequest is shown: operatorRequest is the runner\'s record, never a field you return. The exact request, or why not, is added below your reply for them to approve; introduce it in plain words and never say it is done.';
+export const OPERATOR_ACTION_GUIDANCE = ' If the verified operator asks to raise limits or update the activation reminder date, return JSON with reply and operatorAction:{action:"raise-caps",limits:{maxCalls|maxReplies|maxTurns: the number they named, or "step" for the usual increase}} or exactly {action:"renew-expiry"} with no other field (the runner fills in the reviewed reminder date). Return operatorAction even while an operatorRequest is shown: operatorRequest is the runner\'s record, never a field you return. The exact request, or why not, is added below your reply for them to approve; introduce it in plain words and never say it is done.';
 /** Rule 3 (plan #371): where an explicit-yes route is admissible, proposing the request IS how the change is made. Live
  * 2026-10-03 (update 969390038): the model opened "I still can't raise my own model-call limit ... no authority or tools",
  * then proposed the raise below it. Sent only while a route is admissible, so it never contradicts a why-not. */
-export const OPERATOR_ROUTE_GUIDANCE = ' Proposing it is how you make this change: returning operatorAction opens the exact request, and only their approval applies it. Never say you cannot raise the limits or extend the end, lack the authority or tools, or need standing authorization or an automatic rule; if an earlier reply said so, it was wrong, so say so briefly. Return operatorAction whenever they ask, even if an earlier request lapsed.';
+export const OPERATOR_ROUTE_GUIDANCE = ' Proposing it is how you make this change: returning operatorAction opens the exact request, and only their approval applies it. Never say you cannot raise the limits or update that date, lack the authority or tools, or need standing authorization or an automatic rule; if an earlier reply said so, it was wrong, so say so briefly. Return operatorAction whenever they ask, even if an earlier request lapsed.';
 /** Plan #371: one request per action may be open, so a raise and a renewal can be approved together. */
 export const OTHER_OPERATOR_REQUEST_GUIDANCE = ' otherOperatorRequest is your request for the other action, in the same form, alongside operatorRequest; its state says whether it is still open (approved separately) or approved but not applied yet. Report that state as given.';
 /** When the proposal guidance rides the packet: whenever an explicit-yes source is admissible on this root (an
@@ -890,7 +890,7 @@ export const GOVERNING_CONSTRAINTS = Object.freeze({
   'no-tools': 'no external tools or accounts',
   'operator-authority': 'an approval, credential or policy only the operator holds',
   'spend-allowance': 'recorded call and reply allowances',
-  'operator-stop': 'stop latch and trial expiry',
+  'operator-stop': 'stop latch',
   'secret-custody': 'credentials vaulted, never shown',
 } as const);
 export type GoverningConstraint = keyof typeof GOVERNING_CONSTRAINTS;
@@ -3629,7 +3629,8 @@ function addOperatorRequest(view: JournalView, request: OperatorRequest, carrier
       || !Number.isSafeInteger(review.pullRequest) || review.pullRequest <= 0 || !/^[0-9a-f]{40}$/u.test(review.head))
     || (via === 'retract') !== (request.action === 'retract-turns')
     || request.action === 'retract-turns' && (scope !== 'action' || retractRefusal(view, request.updates!) !== null)
-    || !(text.includes(rendered) || text.includes(rendered.replace("this installation's end", "this trial's end")))
+    || !(text.includes(rendered) || text.includes(rendered.replace("the activation record's reminder date", "this installation's end"))
+      || text.includes(rendered.replace("the activation record's reminder date", "this trial's end")))
     || request.action === 'raise-caps' && (['maxCalls', 'maxReplies', 'maxTurns'] as const).some(key => request.limits![key] < view.limits[key])
     || request.action === 'renew-expiry' && !(request.expires! > view.expires) || scope !== undefined && scope !== 'action')
     throw Error('preview journal: operator request refused');

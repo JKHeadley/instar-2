@@ -64,7 +64,9 @@ const currentChannelNote = (text: string) => compactRecordedNote(text.replace(re
   .replace('keeps a faithfulness-checked rolling summary of earlier turns.',
     'keeps a faithfulness-checked summary of earlier turns.')
   .replace('generates the register, rule book, glossary and this briefing from declarations.',
-    'generates the register, rules, glossary and this briefing from declarations.');
+    'generates the register, rules, glossary and this briefing from declarations.')
+  .replace(/This installation allows at most (\d+) model attempts, ending at epoch ms \d+\. /u,
+    'At most $1 model attempts. Activation: record-keeping reminder; agent keeps working. ');
 const renderedNote = (text: string) => currentChannelNote(text).replace(`- ${toolsBriefing(0)}`, CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
   .replace(` ${SIGN_OFF}`, '');
 const currentNote = (text: string) => renderedNote(text
@@ -264,19 +266,19 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
     const packet = packetOf(run.input);
     expect(packet.sources.find(source => source.id === 'capability-note')!.text).toBe(current.note);
     expect(packet.capabilities).toEqual({ ...previewCapabilities(true), sends: 'bot: replies and requested reminders or summaries' });
-    expect(packet.governingConstraints).toEqual({ ...governingConstraints(true), 'reply-only-grant': 'bot: replies and requested reminders or summaries' });
+    expect(packet.governingConstraints).toEqual({ ...governingConstraints(true), 'reply-only-grant': 'bot: replies and requested reminders or summaries', 'operator-stop': 'stop latch and trial expiry' });
     expect(JSON.parse(run.raw).answer).toBe(run.reply);
     expect(run.judge).toMatchObject({ verdict: 'PASS', rubric: 'k11a-rubric-v2' });
   }
   expect(note).toContain(`Capabilities:`);
   expect(note).toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }));
   expect(note).toContain(TOOLS_LIMITS);
-  expect(note).toContain('at most 1000 model attempts, ending at epoch ms 1791232800000.');
+  expect(note).toContain('At most 1000 model attempts. Activation: record-keeping reminder; agent keeps working.');
   for (const name of ['k11a-worst-input.json', 'k11a-chain-input.json']) {
     const packet = packetOf(JSON.parse(read(name)) as Envelope);
     expect(packet.sources.find(source => source.id === 'capability-note')!.text, name).toBe(replays.note);
     expect(packet.capabilities, name).toEqual({ ...previewCapabilities(true), sends: 'bot: replies and requested reminders or summaries' });
-    expect(packet.governingConstraints, name).toEqual({ ...governingConstraints(true), 'reply-only-grant': 'bot: replies and requested reminders or summaries' });
+    expect(packet.governingConstraints, name).toEqual({ ...governingConstraints(true), 'reply-only-grant': 'bot: replies and requested reminders or summaries', 'operator-stop': 'stop latch and trial expiry' });
     expect(packet.capability, name).toMatch(/^Your capabilities are the capability-note source; describing yourself, give only its items and limits\. /u);
     // The live packet's two walls were settled behind wording this build changed, so neither is offered; the chain's walls
     // were declared by turns re-answered under this build, behind its own constraint keys.

@@ -221,7 +221,7 @@ it('tells the agent and the operator exactly which tools exist and where outward
   expect(capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1, tools: true, mcp: 0 }).text)
     .toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }));
   // The attempt cap and the expiry stay in the note: the note is what the self-description is held to.
-  expect(withTools).toContain('at most 50 model attempts, ending at epoch ms 1.');
+  expect(withTools).toContain('At most 50 model attempts. Activation: record-keeping reminder; agent keeps working.');
   expect(withTools).not.toContain('no tools, browsing, running code');
   const without = capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1 }).text;
   expect(without).toContain('Nothing unlisted is available: no tools, browsing, running code');

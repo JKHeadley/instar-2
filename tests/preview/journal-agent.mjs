@@ -96,7 +96,7 @@ import { reconcileProcessIncarnation } from '../../src/measurement/index.js';
 import { liveMeasurement, measuredTimings, renderMeasured, resourceCompare, resourcePointClaims } from './measured.js';
 import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, standingDoorwayCheck, subscriptionExchange, usageReconciliation, writeDoorwayMap } from './doorway-map.js';
 import { credentialDisplayLabel } from './credential-display.js';
-import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
+import { createSecretCustody, dueCredentialReminders, reminderSchedule, ACTIVATION_RECORD_ACTION } from './secret-custody.js';
 import { createTelegramMediaCustody, journalMediaSource, telegramInboundMedia } from './telegram-media.js';
 import { createLocalTranscriber } from '../../scripts/local-transcriber.mjs';
 import { prepareMediaInput, invokeMediaTurn, protectMediaBytes, openConversationMedia } from './media-understanding.mjs';
@@ -1055,7 +1055,8 @@ async function main() {
           custody.missing = vault.missing([...turns.flatMap(t => t.custody.state === 'stored' ? [t.custody.capture, ...t.custody.secrets] : []),
             ...records.filter(r => r.custody === 'preview-vault').map(r => r.name)]);
           const labels = new Map(records.map(record => [record.name, credentialDisplayLabel(record)]));
-          return { records: records.map(record => ({ ...record, name: labels.get(record.name), identity: labels.get(record.name) })),
+          return { records: records.map(record => ({ ...record, name: labels.get(record.name), identity: labels.get(record.name),
+            renewal: record.expirySource === 'activation-record' ? { ...record.renewal, smallestHumanAction: ACTIVATION_RECORD_ACTION } : record.renewal })),
             due: dueWithDelivery(dueCredentialReminders(records, statusNow), view.view.order)
               .map(item => ({ ...item, name: labels.get(item.name), identity: labels.get(item.name) })), custody,
             intact: custody.failed.length === 0 && custody.missing.length === 0,
@@ -2972,7 +2973,7 @@ async function main() {
       ...loginConfiguration.entries.map(({ profile }) => ({ name: profile.reference, kind: 'subscription-login', custody: 'cli-custody', identity: profile.expectedAccount,
         expiresAt: null, expirySource: 'unknown', smallestHumanAction: 'sign the subscription login back in' })),
       { name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: activation.reference,
-        expiresAt: journal.view.expires, expirySource: 'activation-record', smallestHumanAction: 'approve a renewed activation record' }])
+        expiresAt: journal.view.expires, expirySource: 'activation-record', smallestHumanAction: ACTIVATION_RECORD_ACTION }])
       custody.register({ displayLabel: credentialDisplayLabel(record), name: record.name, kind: record.kind, custody: record.custody, identity: record.identity, recordedAt,
         expiresAt: record.expiresAt, expirySource: record.expirySource, reminders: reminderSchedule(record.expiresAt),
         renewal: { standing: 'none', smallestHumanAction: record.smallestHumanAction } });

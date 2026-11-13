@@ -83,8 +83,8 @@ export function capabilityBriefing(readSource: (path: string) => string,
   // no-tools sentence stays verbatim: the live answer model quotes it
   // as its blocker avenue evidence (fixtures/live-declarations-2026-09-28.json) and journal-awareness pins it.
   // The summaries' share of the attempt cap is the self-state source's ("answers, summaries and reply reviews share
-  // them"), sent with every packet; the expiry stays here because the self-description is judged against this note.
-  const trial = `This installation allows at most ${limits.providerAttempts} model attempts, ending at epoch ms ${limits.expiresAt}. `
+  // them"), sent with every packet; the dated self-state supplies the record reminder date.
+  const trial = `At most ${limits.providerAttempts} model attempts. Activation: record-keeping reminder; agent keeps working. `
     + 'Charges, and unconfirmed calls or deliveries, are recorded unknown. '
     + 'Production safeguards are incomplete.' + (limits.tools ? '' : ' ' + SIGN_OFF);
   const sentence = capabilitySentence(limits);

@@ -387,7 +387,8 @@ export function readSelfAccess(read: SelfAccessReaders) {
   };
   const credentials = collect(read.credentials, record => [record.name, record.identity, record.custody].every(safe),
     record => ({ name: record.name, identity: record.identity, custody: record.custody,
-      expiry: typeof record.expiresAt !== 'number' || !Number.isFinite(record.expiresAt) ? 'unknown'
+      expiry: record.custody === 'activation-record' ? 'record reminder; no stop or renewal needed to keep working'
+        : typeof record.expiresAt !== 'number' || !Number.isFinite(record.expiresAt) ? 'unknown'
         : record.expiresAt <= read.now ? 'expired' : 'not expired',
       custodyPresent: record.custody === 'preview-vault' ? !read.missing([record.name]).includes(record.name) : null }));
   const connectors = collect(() => {
