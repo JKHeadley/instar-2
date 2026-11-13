@@ -1230,7 +1230,7 @@ export type JournalRecord =
   | { kind: 'channel-source-error'; source: 'telegram' | 'slack'; error: string | null; at: number }
   | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; peopleUsed?: number[]; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; maxInputTokens?: number; maxOutputTokens?: number; at: number }
 
-  | { kind: 'answer'; id: string; text: string; correction?: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
+  | { kind: 'answer'; id: string; text: string; selfRepairs?: string[]; correction?: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
     /** Exact input whose host-owned worker recovery produced this answer (Rule 110). */
     contextRecovery?: string;
     memory?: MemoryChange[]; personMerges?: PersonMerge[]; personAttributes?: PersonAttribute[]; memoryPending?: true; memoryUnresolved?: true; closedQuestions?: string[]; dated?: DatedItem[]; datedPending?: true; reminderCancels?: string[];
@@ -1389,7 +1389,7 @@ export type JournalRecord =
   | { kind: 'summary-due'; id: string; grant: string; slot: string; update: number; at: number }
   | { kind: 'reminder-grant'; reference: string; trial: string; surface: 'telegram-private-chat';
     scope: 'initiated-dated-reminders'; custodian: string; recovery: 'unknown-never-retry'; at: number }
-  | { kind: 'hold'; id: string; reason: string; at: number;
+  | { kind: 'hold'; id: string; reason: string; at: number; selfRepairAttempt?: true;
     /** Launched quota refusal: meter the attempt, retain intake, ask for a resend. */
     capacity?: ModelCapacity & { usage: ModelUsage };
     /** Host proved this answer invocation never dispatched; restore its unused reservation and carried corrections. */
@@ -1537,6 +1537,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   toolRouted?: boolean;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
+  selfRepairs?: string[]; selfRepairAttempted?: true;
   reserved: boolean; answerAccount?: true; accountNeeded?: true; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; safetyCeiling?: 'deadline' | 'calls'; toolChecks?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; acknowledgementMode?: 'reaction-or-text'; heldNoticeSent?: number; heldNoticeSentAt?: number; acknowledgementPath?: 'reaction' | 'text'; memoryPending?: true; memoryUnresolved?: true; memoryUndecided?: true; datedPending?: true;
   /** This turn's own answer decided what it withdrew: the keys it cancelled, or none. Rules 57, 93: a
    * recorded decision, including "withdraws none", settles the reminder question this turn opened. */
@@ -2512,7 +2513,36 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
     if (key.startsWith('blocker:') && pendingReport(work) && !items.some(item => item.key === key))
       items.push({ key, kind: 'blocker', id: Number(key.slice(8)), slot: Infinity, inFlight: false,
         awaitingDelivery: attachableReport(work), deliveryUnknown: !attachableReport(work) });
+  const requests = selfRepairRequests(view);
+  for (const item of items) {
+    const at = requests.get(`work:${item.key}`), work = view.obligationWork[item.key];
+    if (at !== undefined && (work?.last ?? -Infinity) < at && !work?.recoveryHeld && work?.outcome !== 'uncertain'
+      && (item.kind === 'blocker' || commitmentWaitsOn(view, item.id) === 'nothing')) item.slot = Math.min(item.slot, at);
+  }
   return items;
+}
+/** Rules 23/55/88: requests are durable answer facts, once per item, not new execution authority. */
+const selfRepairRequests = (view: JournalView) => new Map(view.order.flatMap(turn =>
+  (turn.selfRepairs ?? []).map(key => [key, turn.answerAt!] as const)));
+const repairableHold = (turn: Turn) => !turn.reserved && !turn.intent && !turn.sent &&
+  (turn.held === 'prompt overflow' || turn.held === 'context overflow' || turn.held?.startsWith('summary unavailable:'));
+export function selfRepairOptions(view: JournalView, asking: Turn) {
+  if (!verifiedOperatorTurn(view, asking) || probeTurn(view, asking) || asking.requestedAction) return [];
+  const requested = selfRepairRequests(view);
+  const replies = view.order.filter(turn => turn.update < asking.update && turn.thread === asking.thread
+    && turn.accepted && !turn.sent && (turn.held || turn.modelState === 'uncertain' || turn.intent)).map(turn => ({
+      key: `reply:${turn.id}`, kind: 'held reply', eligible: !!repairableHold(turn) && !requested.has(`reply:${turn.id}`),
+      state: requested.has(`reply:${turn.id}`) ? 'already requested' : turn.reserved || turn.intent ? 'outcome unknown; never repeat' : turn.held! }));
+  const work = obligationSchedule(view).filter(item => {
+    const source = item.kind === 'commitment' ? view.commitments[item.id]?.source : view.blockers[item.id]?.source;
+    return source && view.turns.get(source)?.thread === asking.thread;
+  }).map(item => { const work = view.obligationWork[item.key], key = `work:${item.key}`;
+    return { key, kind: 'unfinished work', eligible: !requested.has(key) && !item.inFlight && !item.awaitingDelivery
+      && !item.deliveryUnknown && Number.isFinite(item.slot) && work?.outcome !== 'uncertain' && !work?.recoveryHeld
+      && (item.kind === 'blocker' || commitmentWaitsOn(view, item.id) === 'nothing'),
+      state: requested.has(key) ? 'already requested' : item.inFlight || work?.outcome === 'uncertain' || item.deliveryUnknown
+        ? 'outcome unknown; never repeat' : work?.outcome ?? 'not started' }; });
+  return [...replies, ...work].sort((a, b) => Number(b.eligible) - Number(a.eligible)).slice(0, 10);
 }
 /** Work steps due now: never one in flight or one whose result still waits to reach the operator.
  * Preserve PromiseBeacon's deadline-directed dispatch under the coalesced wake: declaration order
@@ -5341,6 +5371,13 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
         throw Error('preview journal: result withdrawal refused');
       for (const item of row.deliveryCancels) closeCommitment(view, item);
     }
+    if (row.selfRepairs !== undefined) {
+      const eligible = selfRepairOptions(view, turn).filter(item => item.eligible).map(item => item.key);
+      if (view.stop || row.at >= view.expires || !Array.isArray(row.selfRepairs) || row.selfRepairs.length > 5
+        || new Set(row.selfRepairs).size !== row.selfRepairs.length || row.selfRepairs.some(key => !eligible.includes(key)))
+        throw Error('preview journal: self repair request refused');
+      turn.selfRepairs = row.selfRepairs;
+    }
     settleTokens(view, `answer:${row.id}`, row.usage);
     if (row.lastNamedPerson !== undefined && (row.lastNamedPerson.trim() !== row.lastNamedPerson
       || !row.lastNamedPerson || Buffer.byteLength(row.lastNamedPerson) > 100 || !turn.accepted
@@ -5625,6 +5662,11 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     // As before, this hold supersedes the turn's earlier hold, and the exhausted frontier releases it at once.
     delete turn.held; delete turn.heldSince; view.heldTurns.delete(turn); turn.wasHeld = true;
   } else if (row.kind === 'hold') {
+    if (row.selfRepairAttempt) {
+      if (turn.selfRepairAttempted || !repairableHold(turn) || !selfRepairRequests(view).has(`reply:${turn.id}`))
+        throw Error('preview journal: repeated or unsafe reply repair');
+      turn.selfRepairAttempted = true;
+    }
     if (row.capacity) {
       if (row.reason !== MODEL_CAPACITY_HOLD || row.unusedModel || !turn.reserved || turn.answer !== undefined
         || turn.modelState !== undefined || turn.intent !== undefined || !validCapacity(row.capacity)
@@ -8054,7 +8096,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && (journal.view.genesis.forum !== true || operatorOnlyVerified), String(current ?? 'main'), zone);
     const reportCandidates = awayFor === undefined || !fromOperator(awayFor) || awayFor.requestedAction ? [] : pendingReports(journal.view, { thread: current }).map(item => ({
       ...item, subject: clean(redact(item.subject).text, true), text: clean(redact(item.text).text, true) }));
+    const repairs = awayFor ? selfRepairOptions(journal.view, awayFor) : [];
     const packet = JSON.stringify({ now,
+      ...(repairs.length ? { selfRepair: { items: repairs, instruction: 'When reporting your own stuck items, request eligible repairs now with selfRepairs:[listed key]. This queues one earlier attempt through the existing runner, not completion. Report unknown outcomes without repeating them; already requested items cannot be requested again. Re-check sign-ins with your installed tools. Alarm only for what remains after repair; name what you requested and what you could not repair.' } } : {}),
       ...(reportCandidates.length ? { pendingReports: { guidance: REPORT_SELECTION_GUIDANCE, items: reportCandidates } } : {}), ...(ports.workingActivity ? { progressReplies: {
       cadenceMinutes: [2, 5, 10], thereafterMinutes: 10, maxLines: WORKING_PROGRESS_CAP, silenceMinutes: 2, source: 'fresh advancing admitted work evidence',
       note: 'While your answer is in progress, the host may send a bounded liveness-only line after silence and fresh work evidence. It does not narrate tools or claim progress. Any outbound resets silence; the final answer ends these lines.' } } : {}), clock: { utc: new Date(now).toISOString(), zone, day: localDay,
@@ -9074,7 +9118,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const drainTurns = async (due: boolean) => {
     if (working) throw Error('preview journal: second worker refused');
     try {
+      const repairsBefore = selfRepairRequests(journal.view).size;
       await drainTurnsOnce(due);
+      if (!halted() && selfRepairRequests(journal.view).size > repairsBefore) {
+        await drainTurnsOnce(false);
+        if (!halted()) await workObligations();
+      }
       // Read every queued operator turn (including cancellations) first. A relative request
       // already due at admission needs no new poll or timer; the existing durable due turn
       // keeps stop, caps, UNKNOWN-send handling and restart deduplication intact.
@@ -9191,11 +9240,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           releasedHold = turn.held;
         }
         if (currentHold()?.startsWith('summary unavailable:') || currentHold() === 'prompt overflow' || currentHold() === 'context overflow') {
-          const key = heldFitKey();
-          if (heldPrepared?.id === turn.id && heldPrepared.key === key && elapsed() - heldPrepared.at < HELD_REPREPARE_MS) {
+          const key = heldFitKey(), repair = !turn.selfRepairAttempted && selfRepairRequests(journal.view).has(`reply:${turn.id}`);
+          if (repair) journal.append({ kind: 'hold', id: turn.id, reason: turn.held!, selfRepairAttempt: true, at: ports.now() });
+          if (heldPrepared?.id === turn.id && heldPrepared.key === key && elapsed() - heldPrepared.at < HELD_REPREPARE_MS
+            && !repair) {
             // Nothing that could make it fit has changed: only the summary pass may release it.
             await summarizeIfNeeded(true);
-            if (heldFitKey() === key) break;
+            if (heldFitKey() === key) continue;
           } else if ('reason' in (await prepareRecall(() => preparedFor(turn)))) await summarizeIfNeeded(true);
           releasedHold = turn.held;
         }
@@ -9291,7 +9342,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (turn.held !== reason) journal.append({kind:'hold',id:turn.id,reason,at:ports.now()});
             // The unchanged hold is already durable; do not rewrite it or reset its age.
             heldPrepared = { id: turn.id, key: heldFitKey(), at: elapsed() };
-            break;
+            continue;
           }
           if (!('reason' in selected)) {
           if (!collected && journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
@@ -9615,11 +9666,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               cancelRefusal: 'unlisted' | 'unverified' | undefined,
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
               refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false,
-              memoryFailure: MemoryFailureProposal | undefined;
+              memoryFailure: MemoryFailureProposal | undefined, selfRepairs: string[] = [], refusedRepairs = false;
             let selectedReports: unknown[] = [], ownWordReports: CarriedReport[] = [], rejectedReports: { key: string; objection: string }[] = [];
             const heldForgets: MemoryChange[] = [];
             if (output.trim()) try {
-              const parsed = JSON.parse(output) as { reply?: unknown; correction?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
+              const parsed = JSON.parse(output) as { selfRepairs?: unknown; reply?: unknown; correction?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown; cancelDeliveries?: unknown;
                 directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown; blockerRechecks?: unknown;
                 selectedReports?: unknown; carriedReports?: unknown; rejectedReports?: unknown; promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
@@ -9627,6 +9678,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
+                if (Array.isArray(parsed.selfRepairs)) {
+                  const offered = (JSON.parse(context) as { selfRepair?: { items: { key: string; eligible: boolean }[] } }).selfRepair?.items ?? [];
+                  const eligible = selfRepairOptions(journal.view, turn).filter(item => item.eligible && offered.some(old => old.key === item.key && old.eligible));
+                  refusedRepairs = parsed.selfRepairs.some(key => !eligible.some(item => item.key === key));
+                  selfRepairs = [...new Set(parsed.selfRepairs.filter((key): key is string => typeof key === 'string'
+                    && eligible.some(item => item.key === key)))].slice(0, 5);
+                }
                 separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string; decided = true;
                 if (Array.isArray(parsed.selectedReports)) selectedReports = parsed.selectedReports;
                 ownWordReports = carriedProposals(parsed.carriedReports, replyProse(text));
@@ -9995,13 +10053,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }).filter(item => boundedText(item.objection, 1, 1000)) : [];
             // The claims are decided one last time against the reply exactly as it is written, by the same
             // rule the replay reads it back with; anything the final text no longer carries is counted refused.
+            selfRepairs = selfRepairs.filter(key => !obligations.deliveryCancels?.some(item => key === `work:commitment:${item.id}`));
+            if (refusedRepairs) text += '\n\nI did not repeat items with an unknown outcome, an existing repair request, or no eligible repair.';
+            if (selfRepairs.length && !halted() && ports.now() < journal.view.expires) text += '\n\n' + selfRepairs.map(key => key.startsWith('reply:')
+              ? 'I queued one re-attempt of the held reply.' : 'I re-queued the unfinished work for an earlier attempt.').join(' ');
+            else selfRepairs = [];
             const written = text.trim() ? text : MODEL_FAILURE_REPLY;
             const keptFulfills = text.trim()
               ? fulfills.filter(item => fulfillmentSupported(item, written, journal.view.commitments)) : [];
             const refusedDeclarations = Math.min(AGENT_PROMISE_LIMIT, refusedFulfills + fulfills.length - keptFulfills.length);
             const rejectedNow: RejectedObligations = { ...obligations.rejected,
               ...(refusedDeclarations ? { fulfills: refusedDeclarations } : {}) };
-            journal.append({ kind: 'answer', id: turn.id, text: written,
+            journal.append({ kind: 'answer', id: turn.id, text: written, ...(selfRepairs.length ? { selfRepairs } : {}),
               ...(text.trim() && typeof answer !== 'string' && answer.contextRecovery === turn.id ? { contextRecovery: turn.id } : {}),
               ...(correction === undefined ? {} : { correction }),
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
