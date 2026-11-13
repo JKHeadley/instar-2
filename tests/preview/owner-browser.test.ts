@@ -162,7 +162,7 @@ it('withdrawal during process lookup prevents the next Apple Event, including st
       hold: async () => ({ release: async () => {} }), scrub: (s: string) => s, held: () => 'clear',
       execute: async (command: string) => { calls.push(command); if (reason === 'stop') stop = true;
         if (reason === 'deadline') clock = 100; if (reason === 'binding') current = { ...binding, userDataDir: '/other' }; return table; } });
-    expect((await adapter({ input: { page: 'account-profile' }, stopped: () => stop, deadline: 100, bindingSnapshot: binding })).status).toBe('refused');
+    expect((await adapter({ input: { page: 'account-profile' }, stopped: () => stop, deadline: 100, bindingSnapshot: binding })).status).toBe(reason === 'deadline' ? 'unavailable' : 'refused');
     expect(calls).toEqual(['/bin/ps']);
   }
 });

@@ -95,13 +95,15 @@ export function createOwnerBrowser({ binding, hold, scrub, held, now = Date.now,
     const withdrawn = () => stopped() || now() >= expires;
     const timer = setInterval(() => { if (withdrawn()) controller.abort(); }, 25);
     let slot, noAnswer = false;
+    const exhausted = () => noAnswer ? { status: 'unavailable', reason: 'browser-did-not-answer-in-time' } : { status: 'unavailable' };
+    const ended = () => stopped() ? ownerBrowserRefused('closed-or-stopped') : exhausted();
     const pages = ownerBrowserPages(input), observations = [];
     try {
-      if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
+      if (withdrawn()) return ended();
       const initial = binding();
       if (bindingSnapshot && JSON.stringify(initial) !== JSON.stringify(bindingSnapshot)) return ownerBrowserRefused('profile-withdrawn');
       slot = await hold({ timeout: Math.max(1, expires - now()), stopped: withdrawn });
-      if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
+      if (withdrawn()) return ended();
       if (!slot) return { status: 'unavailable' };
       // Recheck the owner config and exact main process on EVERY evaluation; never frontmost/default fallback.
       for (let attempt = 0; attempt < 40 && !withdrawn(); attempt++) {
@@ -109,10 +111,10 @@ export function createOwnerBrowser({ binding, hold, scrub, held, now = Date.now,
         const table = await execute('/bin/ps', ['-axo', 'pid=,uid=,args='], controller.signal);
         const pid = chromePid(table, initial, uid);
         if (pid === null) return { status: 'unavailable' };
-        if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
+        if (withdrawn()) return ended();
         if (JSON.stringify(binding()) !== JSON.stringify(initial)) return ownerBrowserRefused('profile-withdrawn');
         const raw = await execute('/usr/bin/osascript', ['-l', 'JavaScript', '-e', OWNER_BROWSER_APPLE_EVENT, String(pid), ownerBrowserDom(pages[observations.length])], controller.signal);
-        if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
+        if (stopped()) return ownerBrowserRefused('closed-or-stopped');
         if (JSON.stringify(binding()) !== JSON.stringify(initial)) return ownerBrowserRefused('profile-withdrawn');
         let loading = false;
         noAnswer = typeof raw === 'string' && Buffer.byteLength(raw) <= 4096 && raw.trim() === '';
@@ -122,6 +124,7 @@ export function createOwnerBrowser({ binding, hold, scrub, held, now = Date.now,
           noAnswer ||= typeof raw === 'string' && Buffer.byteLength(raw) <= 4096
             && row !== null && typeof row === 'object' && !Array.isArray(row) && Object.keys(row).length === 0;
         } catch { /* Only empty output is retryable; nonempty malformed replies stay final. */ }
+        if (withdrawn()) return ended();
         if (!loading && !noAnswer) {
           const page = pages[observations.length], result = ownerBrowserObservation(raw, now(), scrub, held, page);
           if (result.status !== 'observed' || input.page) return result;
@@ -129,12 +132,11 @@ export function createOwnerBrowser({ binding, hold, scrub, held, now = Date.now,
           if (observations.length === pages.length) return { status: 'observed', observations };
           continue;
         }
-        if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
+        if (withdrawn()) return ended();
         await wait(Math.min(250, Math.max(0, expires - now())));
       }
-      if (stopped()) return ownerBrowserRefused('closed-or-stopped');
-      return noAnswer ? { status: 'unavailable', reason: 'browser-did-not-answer-in-time' } : { status: 'unavailable' };
-    } catch { return stopped() ? ownerBrowserRefused('closed-or-stopped') : { status: 'unavailable' }; }
+      return ended();
+    } catch { return withdrawn() ? ended() : { status: 'unavailable' }; }
     finally { clearInterval(timer); controller.abort(); try { if (slot) await slot.release(); } finally { busy = false; } }
   };
   return Object.freeze(Object.assign(observe, { binding }));
