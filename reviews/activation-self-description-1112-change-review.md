@@ -28,6 +28,8 @@ Prompt review: Regression probes the actual journal turn packet before, at and a
 
 Independent read-only review found stale briefing commentary, model action guidance and gate labels; corrected all three. Old request replay and malformed neighbor are covered in agentready.test.ts. This is author submission to the desk, not independent Astra compliance or a Studio native proof.
 
+Deferral: generated/register.json:1 | not-a-deferral=mechanical register replay retains existing governed declarations; this change defers no product behavior
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: correct existing renderers and accept the exact earlier request text on replay. No new classifier, stop rule, timer, credential schema or authority. Existing stop, resource caps, secret checks and durable send intent remain the guards.
