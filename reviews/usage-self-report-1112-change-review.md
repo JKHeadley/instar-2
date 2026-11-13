@@ -31,3 +31,4 @@ simplestRobustRoute: This is the simplest robust route: reuse existing journal a
 VERDICT: author submission; independent landing verdict belongs to the desk
 
 Final consumer verification: the real launcher passes across restart and a cap raise; its subprocess timeout is enlarged for this host without weakening assertions. Reset text shares a UTC legend and omits zero seconds; different dates retain separate groups. Generated outputs regenerated from the committed source.
+Register publication: regenerated mechanically from source 56e74fd87aa83d9bc1ba86c5b4f56198dad39146; shape authority only, no conformance declaration changed.
