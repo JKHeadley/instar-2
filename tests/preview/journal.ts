@@ -8558,8 +8558,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Part 21 §16: the memory-failure offer is the lowest-priority guidance, so it yields first: a packet that fit
         // before the offer existed still fits, unchanged, and the report is then simply not offered on that turn.
         const withoutOffer = (value: string) => { const packet = JSON.parse(value) as Record<string, unknown>;
-          if (!('memoryFailureDecision' in packet)) return undefined;
-          delete packet.memoryFailureDecision; delete packet.searchedTurn; return JSON.stringify(packet); };
+          if (!('memoryFailureDecision' in packet) && !('selfRepair' in packet)) return undefined;
+          delete packet.selfRepair; delete packet.memoryFailureDecision; delete packet.searchedTurn; return JSON.stringify(packet); };
         // Sibling words ground every answer route. Only continuing sessions have a separate dispatch
         // refresh; scoped tool turns and text answers rely on this packet (live updates 715676486/488).
         // Keep them through the ordinary evidence/guidance ladder. At the final reachability rung,
