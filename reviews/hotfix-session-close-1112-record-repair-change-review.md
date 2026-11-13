@@ -1,6 +1,6 @@
 # Change review — withdraw the unsafe exit diagnostic
 
-Subject base: 8ff2f5f97afe005e91183cb1e5764b9a1a8957f9
+Subject base: e3cb0f08d3a74d70c9e059edbd64fc457492bfff
 Review state: open
 Reviewed content: none
 Outcome: Retain only the close tolerance in src/assembly/production-conversation-session.ts and its regression test. Restore tests/preview/journal-agent.mjs byte-identically to e3cb0f08 and remove the diagnostic test.
