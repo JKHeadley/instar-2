@@ -382,7 +382,8 @@ it('resumes after durable ended UNKNOWN before notice and never repeats the mode
     const worker = createJournalWorker(first, { now: () => 1000, stopped: () => false,
       model: async () => { calls++; return { state: 'uncertain' }; }, checkOutbound: () => {},
       send: async () => { sends++; return 1; } });
-    worker.intake([update(1)]); await expect(worker.drain()).rejects.toThrow('crash after ended call'); first.close();
+    worker.intake([update(1)]); await expect(worker.drain()).resolves.toBeUndefined();
+    expect(first.view.order[0]?.attempt?.state).toBe('exception'); first.close();
     const second = openPreviewJournal(path, key);
     const resumed = createJournalWorker(second, { now: () => 2000, stopped: () => false,
       model: async () => { calls++; return 'wrong'; }, checkOutbound: () => {},
@@ -538,7 +539,8 @@ it('resumes a durable definite failure after restart and sends exactly once', as
     const worker = createJournalWorker(first, { now: () => 1000, stopped: () => false,
       model: async () => { calls++; return { state: 'complete', failureClass: 'malformed' }; },
       checkOutbound: () => {}, send: async () => { sends++; return 1; } });
-    worker.intake([update(1)]); await expect(worker.drain()).rejects.toThrow('crash after durable failure'); first.close();
+    worker.intake([update(1)]); await expect(worker.drain()).resolves.toBeUndefined();
+    expect(first.view.order[0]?.attempt?.state).toBe('exception'); first.close();
     const second = openPreviewJournal(join(root, 'journal.encrypted'), key);
     const resumed = createJournalWorker(second, { now: () => 2000, stopped: () => false,
       model: async () => { calls++; return 'wrong'; }, checkOutbound: () => {},

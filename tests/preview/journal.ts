@@ -8758,7 +8758,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       reviewReserveWaived = true;
       budget.tried = 0;
       const floor = preparedFor(turn, true, setAside, budget);
-      if (budget.limited && 'reason' in floor) throw new PreparationBoundError();
+      if (attemptActive.has(turn) && budget.limited && 'reason' in floor) throw new PreparationBoundError();
       return floor;
       // Every other caller passes no floor, which also clears one; this restores it for a path that threw.
     } finally { historySetAside = -1; reviewReserveWaived = false; }

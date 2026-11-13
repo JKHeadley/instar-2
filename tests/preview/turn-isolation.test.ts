@@ -146,6 +146,9 @@ it('a checkpoint exhaustion with an unfittable floor fails only that turn', asyn
   const clock = vi.spyOn(performance, 'now').mockImplementation(() => ticks += 6000);
   try {
     const worker = createJournalWorker(f.journal, defaults({ prepareModel: () => { throw Error('unavailable'); } }));
+    const beforeProbe = f.journal.size;
+    expect(worker.probe('diagnostic question')).toHaveProperty('reason');
+    expect(f.journal.size).toBe(beforeProbe);
     worker.intake([update(1)]); await worker.drain();
     expect(f.journal.view.order[0]!.attempt!.state).toBe('preparation-bound');
     expect(f.journal.view.order[0]!.reserved).toBe(false);
