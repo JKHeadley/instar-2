@@ -450,7 +450,8 @@ it('replays an invalid answer decision as pending after interruption at the answ
     worker.intake([update(1, 'My gym locker code is 3310.')]); await worker.drain();
     worker.intake([update(2, 'Please stop remembering my gym locker code.')]);
     interrupt = true;
-    await expect(worker.drain()).rejects.toThrow('simulated process interruption');
+    await expect(worker.drain()).resolves.toBeUndefined();
+    expect(journal.view.order[1]?.attempt?.state).toBe('exception');
     journal.close();
     const reopened = openPreviewJournal(path, key);
     const resumed = createJournalWorker(reopened, ports);
