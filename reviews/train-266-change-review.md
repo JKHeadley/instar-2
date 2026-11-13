@@ -41,7 +41,7 @@ Prompt finding: 849db3a6296a | quoted-evidence | Existing journal prompt phrase 
 Deferral: generated/register.json:1 | not-a-deferral=generated governing material is replayed unchanged in meaning.
 Deferral: tests/preview/journal.ts:10828 | not-a-deferral=describes existing pending/not-started batch outcomes, not postponed implementation.
 
-simplestRobustRoute: one ordinary exact-head merge followed by the existing desk generation chain is the simplest route; no additional runtime machinery. Start guards are exact base and reviewed membership, end guards are targeted consumer evidence, consistent registers and pushed custody. Inherited reservations, stop, ownership, secrecy and cap boundaries remain authoritative. No autonomous shipped-path or live-delivery claim is made.
 Independent review: /root/train_review checked exact ancestry, unchanged reviewed product/test bytes, generated-only metadata delta, evidence checksums, decision destinations and scope/side effects; concurred with no train-specific findings. This is not independent unit or release acceptance.
+simplestRobustRoute: one ordinary exact-head merge followed by the existing desk generation chain is the simplest route; no additional runtime machinery. Start guards are exact base and reviewed membership, end guards are targeted consumer evidence, consistent registers and pushed custody. Inherited reservations, stop, ownership, secrecy and cap boundaries remain authoritative. No autonomous shipped-path or live-delivery claim is made.
 80/20: preserve reviewed behavior and focus train checks on changed tests and named consumers; the desk full gate handles the repository-wide release pass.
 VERDICT: author submission; independent desk review and release approval remain authoritative
