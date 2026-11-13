@@ -20,6 +20,14 @@ Bug evidence: reproducer=tests/preview/progress-truthful.test.ts
 Hook bypass: none; core.hooksPath unset, hooks directory contains samples only.
 Convergence: none
 Prompt review: Preserve the reviewed progressReplies guidance. Replay real recorded summary-writer/uncertain, Jev undecided/unsure, reply-review and delivered-reply shapes through the progress writer. Empty recorded context is not represented as a captured delivered empty Telegram bubble. The message-785 incident uses explicitly constructed tool neighbors.
+Prompt finding: 105c1569b6bb | protocol-literal | Existing unchanged journal guidance or fixed lifecycle notice; this change adds no fixture phrase to a judgment.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing unchanged journal guidance or fixed lifecycle notice; this change adds no fixture phrase to a judgment.
+Prompt finding: 7ef11b68103f | protocol-literal | Existing unchanged journal guidance or fixed lifecycle notice; this change adds no fixture phrase to a judgment.
+Prompt finding: 849db3a6296a | protocol-literal | Existing unchanged journal guidance or fixed lifecycle notice; this change adds no fixture phrase to a judgment.
+Prompt finding: 85544c20941f | protocol-literal | Existing unchanged journal guidance or fixed lifecycle notice; this change adds no fixture phrase to a judgment.
+Prompt finding: 9f0106c66027 | protocol-literal | Existing unchanged journal guidance or fixed lifecycle notice; this change adds no fixture phrase to a judgment.
+Prompt finding: bac6ce7485d9 | protocol-literal | Existing unchanged journal guidance or fixed lifecycle notice; this change adds no fixture phrase to a judgment.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged journal guidance or fixed lifecycle notice; this change adds no fixture phrase to a judgment.
 Decision: train-264-M1 | Ordinary no-ff merge of exact reviewed d812f95a00b7223562aef62746a768f4754ff407; member report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/progress-truthful-1112-PROGRESS.md verified against supplied snapshot SHA256 99d48954dc3b673aedae5b41dea5b8d2dfd0daf21b1b95f9a0e942281b8213f1. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-264-build-report.md
 Decision: train-264-A | Preserve all intended member behavior; clean merge, no changelog changes, generated output regenerated without hand merging. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-264-build-report.md
 Decision: train-264-B | Use supplied separate clean train-264 worktree already at exact live base; no branch moved, main merge, or other train touched. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-264-build-report.md
