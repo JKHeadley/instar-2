@@ -11,8 +11,6 @@ import type { SessionWorkConfig, SessionWorkEdge, SessionWorkEdgeClose, SessionW
 export interface ConversationSessionPort {
   readonly owner: 'part-eight';
   available(): boolean;
-  /** Read-only route evidence for scheduled work; no input is submitted or retried. */
-  hasInput?(operation: string, authority: string): boolean;
   run(request: SessionWorkRequest): Promise<ConversationSessionOutcome>;
   runBatch(requests: readonly SessionWorkRequest[]): Promise<readonly ConversationSessionOutcome[]>;
   /** Collect by the original operation without submitting input or spending again. */
@@ -748,8 +746,6 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       await retiring; return true;
     };
     return Object.freeze({ owner: 'part-eight' as const, available, run, runBatch, collect, close, maintain, reserveCall, noteToolPreparation, retireIdle,
-      hasInput: (operation: string, authority: string) => state.inputs.some(input => input.request.operation === operation
-        && input.request.authority === authority && input.outcome?.state === 'complete'),
       idleCleanupStatus: () => state.idleCleanup?.inhibited
         ? ['Idle cleanup is paused after an unconfirmed closure; capacity release is uncertain and needs repair.']
         : !state.worker && state.idleCleanup?.lastClosure ? [state.idleCleanup.lastClosure.detail] : [] });

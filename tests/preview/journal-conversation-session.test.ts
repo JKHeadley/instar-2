@@ -73,7 +73,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
   let port = value(adapt(config));
   let intercept: ((request: Parameters<typeof port.run>[0]) => ReturnType<typeof port.run>) | undefined;
   const sessionTurnEligible = (id: string, current = true) => Function('journal', 'conversationTurnEligible', 'sessionWork',
-    `return (${host.split('const sessionTurnEligible = ')[1]!.split(';')[0]});`)(journal, conversationTurnEligible,
+    `return (${host.split('const sessionTurnEligible = ')[1]!.split('\n    const scopedTurnEligible')[0]!.trim().replace(/;$/u, '')});`)(journal, conversationTurnEligible,
       { port, authority })(id, current);
   const openModel = () => Function('journal', 'requireGroupDisclosure', 'toolsActive', 'scopedTurnEligible', 'invokeTools',
     'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', 'conversationSession',
@@ -234,12 +234,17 @@ it.each([false, true])('the shipped grant refresh validates changed bytes before
   const route = build(() => bytes, initial, { policy: () => policy, validateActivation: (record: { policy: string }) => {
     seen.push(record); if (record.policy === 'invalid') throw Error('invalid grant');
   } }, (...args: unknown[]) => { presented.push(args[5]); }, (text: string) => text, pool) as { select(): void; active(): boolean; authority(): string };
+  const eligible = Function('journal', 'conversationTurnEligible', 'sessionWork',
+    `return (${host.split('const sessionTurnEligible = ')[1]!.split('\n    const scopedTurnEligible')[0]!.trim().replace(/;$/u, '')});`)(
+      { view: {} }, (_view: unknown, _id: string, authorized: () => boolean) => authorized(),
+      { select: route.select, port: { available: route.active } }) as (id: string) => boolean;
   expect(route.active()).toBe(true); const before = route.authority();
   bytes = JSON.stringify({ reference: 'same-grant', policy: 'new' });
-  expect(route.active()).toBe(false); route.select(); expect(route.active()).toBe(true);
+  expect(route.active()).toBe(false); expect(eligible('requested-action:0')).toBe(true); expect(route.active()).toBe(true);
   expect(route.authority()).not.toBe(before); expect(route.authority()).not.toContain('stale-pool-record');
   bytes = JSON.stringify({ reference: 'same-grant', policy: 'invalid' });
-  expect(() => route.select()).toThrow(/invalid grant/); expect(route.active()).toBe(false);
+  expect(eligible('requested-action:0')).toBe(false);
+  expect(route.active()).toBe(false);
   expect(seen).toHaveLength(2);
   expect(presented).toEqual([policy]);
 });
@@ -1104,14 +1109,27 @@ it('788: all three due turns inherit the recorded session, perform a fresh tool 
   } finally { await f.close(); }
 });
 
-it.each(['plain-source', 'withdrawn-tools', 'changed-authority', 'stop', 'call-cap', 'reply-cap'] as const)(
+it.each(['plain-source', 'renewed-grant'] as const)('788: currently authorized due work uses the session after %s', async change => {
+  const f = fixture(change !== 'plain-source');
+  try {
+    await schedule788(f);
+    if (change === 'plain-source') f.enable(true);
+    else f.authority('renewed-existing-role');
+    expect(f.port.available()).toBe(true);
+    const before = f.counts();
+    f.setTime(at788(0)); await f.worker.sendRequested();
+    expect(f.counts().calls).toBe(change === 'plain-source' ? 1 : 2);
+    expect(f.counts().fallback).toBe(before.fallback);
+    expect(f.state().inputs.some(input => input.request.operation === 'requested-action:0')).toBe(true);
+  } finally { await f.close(); }
+});
+
+it.each(['withdrawn-tools', 'stop', 'call-cap', 'reply-cap'] as const)(
   '788: preserves the %s boundary without granting tools from due text', async boundary => {
-    const f = fixture(boundary !== 'plain-source');
+    const f = fixture();
     try {
       await schedule788(f);
-      if (boundary === 'plain-source') f.enable(true);
       if (boundary === 'withdrawn-tools') f.authorize(false);
-      if (boundary === 'changed-authority') f.authority('different-role');
       if (boundary === 'stop') f.worker.stop('operator');
       if (boundary === 'call-cap') {
         // The writer charges reservations up to the actual configured cap.
@@ -1126,7 +1144,7 @@ it.each(['plain-source', 'withdrawn-tools', 'changed-authority', 'stop', 'call-c
       f.answer(JSON.stringify({ reply: due788.unavailable, memory: [] }));
       f.setTime(at788(0)); await f.worker.sendRequested();
       expect(f.counts().calls).toBe(before.calls);
-      if (boundary === 'plain-source' || boundary === 'withdrawn-tools' || boundary === 'changed-authority') {
+      if (boundary === 'withdrawn-tools') {
         expect(f.counts().fallback).toBe(before.fallback + 1);
         expect(f.sent.at(-1)).toContain(due788.unavailable);
       } else {
@@ -1136,28 +1154,28 @@ it.each(['plain-source', 'withdrawn-tools', 'changed-authority', 'stop', 'call-c
     } finally { await f.close(); }
   });
 
-it('788: scoped due tools require the original policy and MCP set, never a new session grant', async () => {
+it('788: scoped due tools use current authorization without requiring original tool reservations', async () => {
   const f = fixture(false), activation = { reference: 'original-tools', invocationPolicyDigest: 'policy:original' };
   const scopedBody = host.split('const scopedTurnEligible = ')[1]!.split('\n    const modelEnvelope')[0]!;
-  // The real scoped route reads the original reservation, not the due text or a new activation.
-  const eligible = (id: string, current = activation, mcp: object | null = null) => Function(
+  // Execute the real scoped eligibility with current activation; provenance still comes from the journal.
+  const eligible = (id: string, current: typeof activation | null = activation, mcp: object | null = null) => Function(
     'journal', 'requestedToolSources', 'toolTurnEligible', 'toolsRecord', 'readRootMcp', 'root',
     `return (${scopedBody.trim().replace(/;$/u, '')});`)(f.journal, requestedToolSources,
       (value: string) => /^telegram:[0-9]+:update:[0-9]+$/u.test(value), current, () => mcp, '/unused')(id);
   try {
     await schedule788(f);
     const source = f.journal.view.order[0]!;
-    f.journal.append({ kind: 'tool-turn', phase: 'reserved', id: source.id, attempt: 0, calls: 0,
-      delegation: { children: 0, turnsEach: 1, type: 'worker', authority: 'original-tools policy:original' }, at: due788.at });
     f.setTime(at788(0)); await f.worker.sendRequested();
     const due = f.journal.view.order.find(turn => turn.requestedAction)!;
     expect(eligible(due.id)).toBe(true);
-    expect(eligible(due.id, { ...activation, invocationPolicyDigest: 'policy:wider' })).toBe(false);
-    expect(eligible(due.id, activation, { digest: 'new-server' })).toBe(false);
-    expect(conversationTurnEligible(f.journal.view, due.id, id => f.port.hasInput!(id, 'existing-role'))).toBe(false);
+    expect(eligible(due.id, { ...activation, invocationPolicyDigest: 'policy:renewed' })).toBe(true);
+    expect(eligible(due.id, activation, { digest: 'new-server' })).toBe(true);
+    expect(eligible(due.id, null)).toBe(false);
+    expect(conversationTurnEligible(f.journal.view, due.id, () => true)).toBe(true);
+    expect(conversationTurnEligible(f.journal.view, due.id, () => false)).toBe(false);
     expect(eligible('requested-action:invented')).toBe(false);
     f.journal.append({ kind: 'tool-turn', phase: 'refused', id: source.id, reason: 'call cap', at: at788(0) });
-    expect(eligible(due.id)).toBe(false);
+    expect(eligible(due.id)).toBe(true);
     expect(requestedToolSources(f.journal.view, 'summary:969390728')).toEqual([]);
     expect(requestedToolSources(f.journal.view, source.id)).toEqual([]);
   } finally { await f.close(); }

@@ -283,10 +283,6 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     return Object.freeze({ owner: 'part-eight' as const,
       available: () => !stopped && !config.stopped() && config.authorized() && (config.now() < parentDeadline() || lifetimeRenewable()),
       run, runBatch, maintain, close,
-      hasInput: (operation: string, authority: string) => Object.values(state.topics).some(topic => topic.inputs.some(input =>
-        input.request.operation === operation && input.request.authority === authority && input.outcome?.state === 'complete'))
-        || !!state.legacy?.inputs.some(input => input.request.operation === operation
-          && input.request.authority === authority && input.outcome?.state === 'complete'),
       idleCleanupStatus: () => {
         const rows = Object.values(state.topics);
         const lost = rows.filter(row => !row.worker && row.idleCleanup?.lastClosure).length;

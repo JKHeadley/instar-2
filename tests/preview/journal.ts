@@ -3032,11 +3032,11 @@ export const requestedToolSources = (view: JournalView, id: string): Turn[] => {
   });
   return sources.every((source): source is Turn => source !== undefined) ? sources : [];
 };
-/** The host's durable session custody proves the original route, including across runner restarts. */
-export const conversationTurnEligible = (view: JournalView, id: string, inherited: (source: string) => boolean) => {
+/** Verified, non-withdrawn due requests use current authority, independent of their original route. */
+export const conversationTurnEligible = (view: JournalView, id: string, authorized: () => boolean) => {
   if (/^telegram:[0-9]+:update:[0-9]+$/u.test(id)) return true;
   const sources = requestedToolSources(view, id);
-  return sources.length > 0 && sources.every(source => inherited(source.id));
+  return sources.length > 0 && authorized();
 };
 /** Rules 57, 93: a due turn created but not yet sent is withdrawn once any request it carries is cancelled, corrected
  * or forgotten. It is never answered or sent; its other requests fall due again on their own. */

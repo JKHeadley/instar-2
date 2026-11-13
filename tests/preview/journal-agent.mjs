@@ -1926,18 +1926,14 @@ async function main() {
     const toolPromptLimit = () => Math.max(journal.view.limits.maxBytes,
       doorway.policyFor(required(options, 'model'), doorway.toolsFraming ?? doorway.conversationFraming).maxPromptBytes);
     const preparation = toolPreparation(() => toolsActive());
-    const sessionTurnEligible = (id, current = true) => conversationTurnEligible(journal.view, id,
-      source => sessionWork?.port.hasInput?.(source, sessionWork.authority) === true
-        && (!current || sessionWork.port.available()));
-    const scopedTurnEligible = (id, activation = toolsRecord) => {
-      if (toolTurnEligible(id)) return true;
-      const sources = requestedToolSources(journal.view, id);
-      return activation !== null && sources.length > 0 && sources.every(source => {
-        const reserved = journal.toolReservation(source.id);
-        return source.toolRouted === true && reserved?.delegation?.authority === `${activation.reference} ${activation.invocationPolicyDigest}`
-          && (reserved.mcp?.digest ?? null) === (readRootMcp(root)?.digest ?? null);
-      });
-    };
+    const sessionTurnEligible = (id, current = true) => conversationTurnEligible(journal.view, id, () => {
+      if (!current) return true;
+      // Refresh and validate changed grant bytes before deciding whether due work can use them.
+      try { sessionWork?.select?.(); return sessionWork?.port.available() === true; }
+      catch { return false; }
+    });
+    const scopedTurnEligible = (id, activation = toolsRecord) => toolTurnEligible(id)
+      || activation !== null && requestedToolSources(journal.view, id).length > 0;
     const modelEnvelope = input => {
       // Local transcripts use the same source and held-secret boundary as text intake.
       input = prepareMediaInput(input, currentMedia, text => redact(concealSecretMaterial(text, heldSecretValues())).text);
