@@ -4,7 +4,7 @@ Subject base: 47d0dffffc4d0c48bdf190d0c70b1bee27a568d6
 Review state: open
 Reviewed content: none
 Outcome: An interrupted single operator turn with no unsafe tool dispatched gets one fresh live attempt through its existing conversation owner and normal tools. Classified reads remain repeatable without a returned result. Unknown consequential effects retain evidence-only accounting. Existing completed journal replies are never reopened.
-Affected rules: 1, 2, 4, 23, 26, 34, 46, 49, 55, 60, 61, 63, 68, 70, 74, 75, 83, 101, 102, 103, 111, 113, 116, 120, 123
+Affected rules: 1, 2, 4, 23, 26, 34, 46, 49, 55, 60, 61, 63, 68, 70, 74, 75, 83, 101, 102, 103, 111, 113, 115, 116, 120, 123
 Affected floors: secrets — existing held-secret checks and outbound doorway; spend cap — original cumulative allowance and parent deadline, no refunded reservation; stop — guards before retirement, replacement and dispatch; no duplicate sends — original unique journal intent and unknown-effect fence; durable intake — original conversation snapshot and journal intake retained, classification saved before tool dispatch.
 Operator questions: none
 Suggested tier: critical
