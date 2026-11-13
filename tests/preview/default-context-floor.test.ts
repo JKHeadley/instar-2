@@ -1,3 +1,5 @@
+// @ts-ignore -- existing JavaScript host composition.
+import { createHarnessLoginPool } from './harness-login-pool.mjs';
 import { expect, it } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -48,8 +50,16 @@ async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
     // Larger than its cut bound, so the measured shape is the one every answer carries under pressure.
     const desk = { text: `# desk\n${'Preview work remains a supervised private chat trial with a reviewed activation.\n'.repeat(40)}`,
       modifiedAt: now };
+    const entries = Array.from({ length: 8 }, (_, index) => ({ index, profile: { reference: `private-${index}`, expectedAccount: `private-${index}@example.invalid`, configDirectory: `/private/${index}` } }));
+    const pool = createHarnessLoginPool({ configuration: { entries, identity: 'floor-pool', threshold: 95 },
+      statePath: join(root, 'pool.json'), now: () => now, validate: () => {},
+      usage: () => ({ version: 1, accounts: entries.map(e => ({ email: e.profile.expectedAccount, configHome: e.profile.configDirectory,
+        lastQuota: { measuredAt: new Date(now).toISOString(), fiveHour: { utilizationPct: 12, resetsAt: new Date(now + 3600000).toISOString() },
+          sevenDay: { utilizationPct: 34, resetsAt: new Date(now + 86400000).toISOString() } } })) }) });
+    for (const entry of entries.slice(0, 7)) pool.observe(entry,
+      { failure: { failureClass: 'limit', resetAt: now + 86400000 + entry.index * 60000 } });
     const sources = () => [...briefing, disciplineSource(journal.view),
-      selfStateSource(selfStateBrief(journal.view, runs as never, now, 'UTC', now - 60_000, false, true), readSelfAccess({ credentials: () => [],
+      selfStateSource(selfStateBrief(journal.view, runs as never, now, 'UTC', now - 60_000, false, true) + '\n' + pool.brief(), readSelfAccess({ credentials: () => [],
         connectors: () => null, missing: () => [], held: () => [], bot: 'Telegram bot 12345678', now })),
       deskStatusSource(desk, now, DESK_PATH)!];
     let answer: { context: string; prepared: string } | undefined;

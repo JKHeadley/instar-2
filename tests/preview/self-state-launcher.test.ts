@@ -87,7 +87,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     // Rule 15: a reached cap no longer ends the run; the reserve keeps reading until the cycle bound.
     expect(s.launches[0].reason).toBe('cycle limit reached');
     let prompt = readFileSync(prompts, 'utf8').trim().split('\n').map(selfOf);
-    expect(prompt[0]).toContain('That is the first recorded launch');
+    expect(prompt[0]).toContain('Runs 1; current start');
     expect(prompt[0]).toContain('Activation: your activation; ends');
     const record = JSON.parse(readFileSync(join(root, 'credentials.json'), 'utf8')).records
       .find(item => item.kind === 'activation');
@@ -105,11 +105,13 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(prompt.every(text => !text.includes(env.INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN)
       && !text.includes(env.INSTAR_SECRET_PREVIEW_TYPESAFE_KEY)
       && !text.includes(env.INSTAR_SECRET_PREVIEW_STORAGE_KEY))).toBe(true);
-    expect(prompt[0]).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
+    expect(prompt[0]).toMatch(/current start 2026-\d\d-\d\d \d\d:\d\d P[DS]T/u);
     // The burst intake admits every waiting update before reply work, so both are already received.
-    expect(prompt[0]).toContain('Messages today/total: operator=2/2, replies accepted=0/0; today combined=2;');
-    expect(prompt[1]).toContain('operator=2/2, replies accepted=1/1; today combined=3;');
-    expect(prompt[1]).toContain('Remaining: model=1 of 3 used, 2 left;');
+    expect(prompt[0]).toContain('Messages today/total: operator 2/2, accepted replies 0/0;');
+    expect(prompt[1]).toContain('operator 2/2, accepted replies 1/1;');
+    expect(prompt[1]).toContain('Cap held=1/3 (includes reserves, not usage)');
+    expect(prompt[1]).toContain('Tokens(in/out measured,reserved;calls,unknown;others=0):');
+    expect(prompt[1]).toContain('Model login capacity: unknown (no pool configured).');
     expect(readFileSync(prompts, 'utf8').trim().split('\n').every(line =>
       !packetOf(line).sources.some(source => source.id === 'restart-handoff'))).toBe(true);
     // The operator raises caps; run 2 answers a third message and knows its own restart and why.
@@ -129,13 +131,13 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       .toContain('pending turns 0; held items 0; UNKNOWN model outcomes 0; UNKNOWN sends 0; lost-answer notices due 0');
     expect(packetOf(lines[3]).sources.some(source => source.id === 'restart-handoff')).toBe(false);
     const now = prompt[2];
-    expect(now).toContain('Messages today/total: operator=4/4, replies accepted=2/2; today combined=6;');
-    expect(now).toContain('Current reply not sent.');
-    expect(now).toContain('Remaining: model=2 of 6 used, 4 left;');
+    expect(now).toContain('Messages today/total: operator 4/4, accepted replies 2/2;');
+    expect(now).toContain('reply unsent.');
+    expect(now).toContain('Cap held=2/6 (includes reserves, not usage)');
     expect(now).toContain('Caps raised: Justin, offline test;');
-    expect(now).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
-    expect(now).toMatch(/Last restart: 2026-\d\d-\d\d \d\d:\d\d P[DS]T\. The run before it started .* and ended .*: cycle limit reached\./u);
-    expect(now).toContain('Launches recorded: 2');
+    expect(now).toMatch(/current start 2026-\d\d-\d\d \d\d:\d\d P[DS]T/u);
+    expect(now).toMatch(/prior \[\["2026-\d\d-\d\d \d\d:\d\d P[DS]T","2026-\d\d-\d\d \d\d:\d\d P[DS]T","cycle limit reached"\]\]/u);
+    expect(now).toContain('Runs 2;');
     expect(s.launches).toHaveLength(2);
     expect(s.launches[1].reason).toBe('cycle limit reached');
     // Status, read afterwards, agrees on the same restart and includes the fourth reply.

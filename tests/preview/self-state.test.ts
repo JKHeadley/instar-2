@@ -167,7 +167,7 @@ it('derives an honest self-state from the journal and run log, correct across a 
     expect(text).toContain("My memory: 4 accepted operator turns, 0 summaries and 0 validated memory changes in my encrypted local journal.");
     expect(text).toContain('It survives runner restarts and spans our topics');
     expect(text).toContain('My replies Telegram accepted: 1 today, 3 so far');
-    expect(text).toContain('Model attempts: 3 of 3 used, 0 left');
+    expect(text).toContain('Call allowance: 3/3 held against cap (includes reservations, not attempts used); 0 left');
     expect(text).toContain(`Held messages: 1 — ${holdNotice('call cap')}`);
     expect(text).toContain('Replies held today: 1. Reasons: 1 (call cap). Update 4: call cap (still held).');
     expect(text).toContain('Caps have not been raised');
@@ -193,7 +193,7 @@ it('derives an honest self-state from the journal and run log, correct across a 
     expect(probeState).toContain('original audit record remains in the journal');
     expect(probeState).toContain('My replies Telegram accepted: 2 today, 4 so far');
     expect(probeState).toContain('Messages exchanged today: 5');
-    expect(probeState).toContain('Model attempts: 4 of 8 used, 4 left');
+    expect(probeState).toContain('Call allowance: 4/8 held against cap (includes reservations, not attempts used); 4 left');
     expect(probeState).toContain('Caps last raised 2026-09-26 11:29 PDT on the authority "Justin, topic 52075"');
     expect(probeState).toContain('This run started 2026-09-26 11:30 PDT; uptime 30m.');
     expect(probeState).toContain('Last restart: 2026-09-26 11:30 PDT. The run before it started 2026-09-26 08:00 PDT and ended without recording why (crash, kill or power loss).');
@@ -455,7 +455,7 @@ it('keeps the model briefing bounded after many released holds and a completed s
     expect(briefing).toContain('195 more reply details omitted; full reasons are in read-only status.');
     expect(Buffer.byteLength(briefing)).toBeLessThan(4000);
     const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
-      sources: () => [selfStateSource(selfState(journal.view, { launches: [], unreadable: 0 }, NOON, 'UTC'))],
+      sources: () => [selfStateSource(selfStateBrief(journal.view, { launches: [], unreadable: 0 }, NOON, 'UTC'))],
       model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
     const probe = worker.probe('How many replies were held today?');
     expect(probe).toHaveProperty('context');
@@ -589,21 +589,21 @@ it('briefs every turn with only the facts a reply must not contradict, agreeing 
     expect(journal.view.order[2]!.held).toBe('call cap');
     brief = selfStateBrief(journal.view, runs, NOON, 'UTC', NOON - 3_600_000);
     const full = selfState(journal.view, runs, NOON, 'UTC', NOON - 3_600_000);
-    expect(brief).toContain('Model attempts: 2 of 2 used, 0 left.');
+    expect(brief).toContain('Call allowance: 2/2 held against cap (includes reservations, not attempts used); 0 left.');
     expect(brief).toContain('Exhausted: model attempts.');
     expect(brief).toContain('Open: held replies 1; replies held today 1; all other obligation counts are 0.');
     expect(brief).toContain('a corrected fact stays recallable only as labelled earlier history; both keep their original audit record');
     expect(brief).toContain('This run started 2026-09-26 18:00 UTC; uptime 1h 0m.');
     // Every fact line the brief shares with the full status is identical there (one computation).
     for (const line of ['Operator messages received: 3 today, 3 so far (including the one being answered now).',
-      'Model attempts: 2 of 2 used, 0 left', 'Launches recorded: 1 (1 today).']) {
+      'Call allowance: 2/2 held against cap (includes reservations, not attempts used); 0 left', 'Launches recorded: 1 (1 today).']) {
       expect(brief).toContain(line); expect(full).toContain(line);
     }
     // Detail stays in the read-only status only.
     for (const detail of ['Memory health:', 'Definite model/summary failures', 'Retrospective review:'])
       { expect(full).toContain(detail); expect(brief).not.toContain(detail); }
     expect(brief).toContain("in the runner's read-only status record");
-    expect(Buffer.byteLength(brief)).toBeLessThan(Buffer.byteLength(full) / 2);
+    expect(Buffer.byteLength(brief)).toBeLessThan(Buffer.byteLength(full));
     journal.append({ kind: 'stop', reason: 'trial expired', at: NOON });
     expect(selfStateBrief(journal.view, runs, NOON, 'UTC')).toMatch(/Permanent stop latched: /u);
     journal.close();

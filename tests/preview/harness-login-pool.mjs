@@ -422,6 +422,38 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     notices: () => entries.length && entries.every(entry => unavailable.has(entry.index)) ? [{
       key: `doorway:harness-login:${state.noticeIdentity ?? identity}:none-usable`,
       line: 'None of my approved model logins can be used right now, so new work will wait until one is working again.' }] : [],
+    /** Content-free per-turn counterpart of status; no account/profile/path is disclosed. */
+    brief() {
+      const at = now();
+      let reading = null;
+      try { reading = observedUsage(); } catch { /* Unknown readings never imply zero usage. */ }
+      let usable = 0;
+      const groups = new Map();
+      entries.forEach(entry => {
+        const quota = harnessQuotaReading(reading, entry.profile, at, entry.usageAccount);
+        const held = state.holds[entry.index], limit = quotaLimit(quota, configuration.threshold);
+        const recovered = held?.resetAt === null && quota && quota.at > held.observedAt
+          && (held.reason !== 'provider-limit' || quota.windows[0])
+          && capacityWindows(quota)?.every(window => window.utilizationPct < threshold);
+        const holding = held && !recovered && (held.resetAt === null || held.resetAt > at) ? held : limit;
+        const resets = [holding?.resetAt ?? null, limit ? limit.resetAt : at];
+        const reset = resets.includes(null) ? null : Math.max(...resets);
+        const signedOut = signedOutHeld(entry, at) || matchingUsageAccount(reading, entry)?.status === 'needs-reauth';
+        const unavailableNow = unavailable.has(entry.index);
+        if (!holding && !signedOut && !unavailableNow) usable++;
+        const resetText = reset === null ? null : new Date(reset).toISOString().replace('.000Z', 'Z');
+        const reason = unavailableNow ? 'unavailable (recovery unknown)' : signedOut ? 'needs sign-in (recovery unknown)'
+          : holding ? `${holding.reason === 'usage-threshold' ? 'usage threshold' : 'provider limit'}; reset ${resetText === null ? 'unknown' : resetText.slice(0, 10) + ' UTC'} (#=time)` : 'no hold';
+        const detail = `${entry.index + 1}` + (holding && !signedOut && !unavailableNow
+          ? `=${resetText === null ? 'unknown' : resetText.slice(11, -1)}` : '') + (!holding && quota?.windows.some(Boolean)
+          ? ` (5h ${quota.windows[0]?.utilizationPct ?? '?'}%,week ${quota.windows[1]?.utilizationPct ?? '?'}%)` : '');
+        groups.set(reason, [...(groups.get(reason) ?? []), detail]);
+      });
+      const members = [...groups].map(([reason, details]) => `${reason}: ${details.join(',')}`);
+      return `${entries.length} logins, ${usable} usable. `
+        + (usable ? 'Work can continue. ' : 'No usable login; new model work unavailable now. ')
+        + (usable === entries.length ? 'None are currently held or limited. ' : '') + members.join(' | ') + '. Other quotas unknown.';
+    },
     status: () => harnessLoginPoolStatus(configuration, state, unavailable, observedUsage, now),
     get state() { return structuredClone(state); },
   });
