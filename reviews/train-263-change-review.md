@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Integrate the exact reviewed journal prompt retention head while preserving live-base behavior, source knowledge, pending work and honest replay evidence.
 Affected rules: 7, 26, 33, 34, 37, 41, 58, 74, 90, 101, 102, 105, 111, 113, 116, 123
-Affected floors: Secrets remain encrypted/redacted; spend accounting and caps unchanged; stop unchanged; send intents and uniqueness unchanged; original intake preserved.
+Affected floors: Secrets remain encrypted/redacted; spend accounting and caps unchanged; stop unchanged; no duplicate sends — existing send intents and uniqueness unchanged; original intake preserved.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
