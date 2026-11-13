@@ -6,7 +6,7 @@ import { MEMORY_SUPERSESSION, MEMORY_UPDATE_DECISION, MEMORY_LEARNING_POLICY } f
 import { renderTelegramHtml, telegramPlainText, parseRefused } from './telegram-markdown.mjs';
 import { reconcileRunCompletion, type RunCompletionItem } from '../../src/rungraph/index.js';
 import { decideProactiveCompaction } from '../../src/awareness/sentinel.js';
-import { WORKING_PROGRESS_CAP, WORKING_SILENCE_MS, currentWorkingActivity, workingProgressText, workingProgressDue, type WorkingActivity, type WorkingProgress } from './working-progress.js';
+import { WORKING_PROGRESS_CAP, WORKING_FIRST_SILENCE_MS, WORKING_SILENCE_MS, currentWorkingActivity, workingProgressText, workingProgressDue, type WorkingActivity, type WorkingProgress } from './working-progress.js';
 import { admitJev, JEV_ADMISSION_MS } from './reply-check.js';
 import { JOURNAL_JSON_CHUNK_BYTES, JOURNAL_JSON_STRING_BYTES, journalJsonChunks, parseJournalJson } from './journal-json.js';
 import { checkPhaseTiming, createPhaseTimingRecorder, isIdleAudienceTiming, retainedIdleAudienceTimings, type PhaseTiming } from './phase-timing.js';
@@ -1516,7 +1516,7 @@ function workingProgressAt(view: JournalView, turn: Turn, bounded = true, rateWa
   // Later progress retains the ordinary cadence and total reply budget.
   if (rateWait && ordinal === 0) return Math.max(startedAt + 10_000,
     (view.lastOutboundAt?.[String(turn.thread ?? 'main')] ?? turn.at) + 10_000);
-  return Math.max(bounded ? (view.lastOutboundAt?.[String(turn.thread ?? 'main')] ?? turn.at) + WORKING_SILENCE_MS : 0,
+  return Math.max(bounded ? (view.lastOutboundAt?.[String(turn.thread ?? 'main')] ?? turn.at) + (ordinal === 0 ? WORKING_FIRST_SILENCE_MS : WORKING_SILENCE_MS) : 0,
     workingProgressDue(startedAt, ordinal), (prior.at(-1)?.at ?? 0)
     + (ordinal === 0 ? 0 : ordinal === 1 ? 180_000 : ordinal === 2 ? 300_000 : 600_000));
 }
@@ -8056,8 +8056,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...item, subject: clean(redact(item.subject).text, true), text: clean(redact(item.text).text, true) }));
     const packet = JSON.stringify({ now,
       ...(reportCandidates.length ? { pendingReports: { guidance: REPORT_SELECTION_GUIDANCE, items: reportCandidates } } : {}), ...(ports.workingActivity ? { progressReplies: {
-      cadenceMinutes: [2, 5, 10], thereafterMinutes: 10, maxLines: WORKING_PROGRESS_CAP, silenceMinutes: 2, source: 'fresh advancing admitted work evidence',
-      note: 'While your answer is in progress, the host may send a bounded liveness-only line after silence and fresh work evidence. It does not narrate tools or claim progress. Any outbound resets silence; the final answer ends these lines.' } } : {}), clock: { utc: new Date(now).toISOString(), zone, day: localDay,
+      cadenceMinutes: [2, 5, 10], thereafterMinutes: 10, maxLines: WORKING_PROGRESS_CAP, firstSilenceMinutes: 1, silenceMinutes: 2, source: 'fresh advancing admitted work evidence',
+      note: 'While your answer is in progress, the host may quote a freshly observed open tool request, not claim its outcome. Without an observable request it uses a fixed liveness line. The first note is eligible at two minutes with one minute of outbound silence; later notes require two minutes of silence. The final answer ends these lines.' } } : {}), clock: { utc: new Date(now).toISOString(), zone, day: localDay,
       time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
       weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
       ...(resume ? { resume: { previous: turnLabel(journal.view.turns.get(resume.previous)!), elapsedHours: resume.elapsedHours,

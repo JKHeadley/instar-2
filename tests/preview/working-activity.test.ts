@@ -9,7 +9,7 @@ it('prefers the self-written description; completed work is explicit, malformed,
   expect(admissionActivity(pre('a') + post('a'), 0, 'claim')?.text).toBe('Status: latest main-session tool call ended');
   expect(admissionActivity(pre('a', { command: 'npm run build' }) + post('a'), 0, 'claim')?.text).toBe('Status: latest main-session tool call ended');
   expect(admissionActivity(pre('a').replace('allow', 'deny'), 0, 'claim')).toBeNull();
-  expect(admissionActivity(pre('a', {}), 0, 'claim')).toBeNull();
+  expect(admissionActivity(pre('a', {}), 0, 'claim')).toMatchObject({ running: true, text: 'Status: main-session tool has no description' });
   expect(admissionActivity('{bad}\n', 0, 'claim')).toBeNull();
   expect(admissionActivity(null, 0, 'claim')).toBeNull();
 });
@@ -17,12 +17,12 @@ it('a current admission and fresh live observation are both required, scoped to 
   let bytes = pre('old'), now = 1;
   const reader = createWorkingActivities({ read: () => bytes, now: () => now });
   reader.observe('one', 'claim', 'start'); reader.observe('one', 'claim', 'working');
-  expect(reader.current('one')).toBeNull(); // previous turn is never activity for this message
+  expect(reader.current('one')).toMatchObject({ running: false, text: 'Status: no observable main-session tool' }); // previous turn is never activity for this message
   bytes += pre('current'); reader.observe('one', 'claim', 'working'); expect(reader.current('one')?.text).toBe('Status: Run the build');
   expect(reader.current('two')).toBeNull();
   now = 10002; expect(reader.current('one')).toBeNull();
   reader.observe('one', 'claim', 'working'); expect(reader.current('one')?.running).toBe(true);
-  bytes += post('current'); reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toBeNull();
+  bytes += post('current'); reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toMatchObject({ running: false, text: 'Status: no observable main-session tool' });
   bytes += pre('next'); reader.observe('one', null, 'end'); expect(reader.current('one')).toBeNull();
 });
 it('replays real native tool admission bytes from the 2026-10-03 live task, without fabricated activity', () => {
@@ -66,7 +66,7 @@ it('fresh session observations support an open occurrence, but cannot renew comp
   expect(reader.current('one')?.text).toBe('Status: Run the build');
   now = 120001; reader.observe('one', 'claim', 'working');
   expect(reader.current('one')).toMatchObject({ running: true, observedAt: now });
-  bytes += post('a'); expect(reader.current('one')).toBeNull();
+  bytes += post('a'); expect(reader.current('one')).toMatchObject({ running: false, text: 'Status: no observable main-session tool' });
   bytes += pre('b'); reader.observe('one', 'claim', 'working');
   expect(reader.current('one')?.text).toBe('Status: Run the build');
 });
@@ -75,7 +75,7 @@ it('unreadable start establishes a baseline on recovery instead of announcing ol
   const reader = createWorkingActivities({ read: () => bytes, now: () => 1 });
   reader.observe('one', 'claim', 'start');
   bytes = pre('old'); reader.observe('one', 'claim', 'working');
-  expect(reader.current('one')).toBeNull();
+  expect(reader.current('one')).toMatchObject({ running: false, text: 'Status: no observable main-session tool' });
   bytes += pre('new'); reader.observe('one', 'claim', 'working');
   expect(reader.current('one')).not.toBeNull();
 });
@@ -86,7 +86,7 @@ it('a failed observation and recovery do not freshen the same stale step', () =>
   bytes = pre('old') + post('old'); reader.observe('one', 'claim', 'working');
   now = 20000; bytes = null; reader.observe('one', 'claim', 'working');
   bytes = pre('old') + post('old'); reader.observe('one', 'claim', 'working');
-  expect(reader.current('one')).toBeNull();
+  expect(reader.current('one')).toMatchObject({ running: false, text: 'Status: no observable main-session tool' });
 });
 
 it('a clock rollback cannot make future observation current', () => {
@@ -106,7 +106,7 @@ it('completion is reflected without renewing evidence and rollback polls cannot 
   now = 9; reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toBeNull();
   now = 20; reader.observe('one', 'claim', 'working');
   bytes += post('a'); expect(reader.current('one')).toMatchObject({ running: false, observedAt: 10 });
-  now = 10011; reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toBeNull();
+  now = 10011; reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toMatchObject({ running: false, text: 'Status: no observable main-session tool' });
 });
 
 it('an unobserved new step cannot borrow the previous step timestamp', () => {
@@ -115,7 +115,21 @@ it('an unobserved new step cannot borrow the previous step timestamp', () => {
   reader.observe('one', 'claim', 'start');
   bytes = pre('a'); reader.observe('one', 'claim', 'working');
   now = 2; bytes += post('a') + pre('b');
-  expect(reader.current('one')).toBeNull();
+  expect(reader.current('one')).toMatchObject({ running: false, text: 'Status: no observable main-session tool' });
   reader.observe('one', 'claim', 'working');
   expect(reader.current('one')).toMatchObject({ running: true, observedAt: 2 });
+});
+
+
+it('model-only turns sharing a session get distinct fallback identities, never stale liveness', () => {
+  let now = 1;
+  const reader = createWorkingActivities({ read: () => '', now: () => now });
+  reader.observe('first', 'shared-claim', 'start'); reader.observe('first', 'shared-claim', 'working');
+  const first = reader.current('first');
+  expect(first).toMatchObject({ running: false, text: 'Status: no observable main-session tool' });
+  reader.observe('first', null, 'end');
+  reader.observe('second', 'shared-claim', 'start'); reader.observe('second', 'shared-claim', 'working');
+  expect(reader.current('second')?.step).not.toBe(first.step);
+  expect(reader.current('first')).toBeNull();
+  now = 10002; expect(reader.current('second')).toBeNull();
 });

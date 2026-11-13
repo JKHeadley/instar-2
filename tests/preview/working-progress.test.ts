@@ -53,12 +53,12 @@ it.each([1, 2, 3, 4, 5])('1.x inconsistent-firing regression: repeated run %i al
   const f = fixture();
   try {
     await f.enteredPromise;
-    await vi.advanceTimersByTimeAsync(126999); expect(f.progress()).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(119999); expect(f.progress()).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(1); expect(f.progress().map(row => row.text)).toEqual([WORKING_LIVENESS]);
     f.activity('checking test results'); await vi.advanceTimersByTimeAsync(180000);
     f.activity('checking integration results'); await vi.advanceTimersByTimeAsync(300000);
     f.activity('reviewing final diff'); await vi.advanceTimersByTimeAsync(600000);
-    expect(f.progress().map(row => row.at)).toEqual([128000, 308000, 608000, 1208000]);
+    expect(f.progress().map(row => row.at)).toEqual([121000, 301000, 601000, 1201000]);
     expect(f.journal.view.speakers.agent).toBe(0);
     expect(f.journal.view.speakers.infrastructure).toBe(5);
     expect(retrospectiveCases(f.journal.view).filter(row => row.id.startsWith('working-progress:')).every(row => row.meta?.speaker === 'infrastructure')).toBe(true);
@@ -137,7 +137,7 @@ it.each(shapes)('recorded $kind ($id): real activity fires through the new path,
     expect(f.context()).toContain(JSON.stringify(shape.raw));
     expect(JSON.parse(f.context()).progressReplies.cadenceMinutes).toEqual([2, 5, 10]);
     await vi.advanceTimersByTimeAsync(127000);
-    expect(f.progress().map(row => row.text)).toEqual([WORKING_LIVENESS]);
+    expect(f.progress().map(row => row.text)).toEqual(['Tool request in progress: “Write: note.txt”']);
     f.activity(null);
     // Captured empty context is an empty-output control, not evidence of a delivered empty Telegram bubble.
     f.release(shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw)
@@ -214,14 +214,14 @@ it.each(['sibling', 'later intake'])('a real batch shares the slow cadence acros
   const f = fixture({ batch: true });
   try {
     await f.enteredPromise; expect(f.batches.map(inputs => inputs.length)).toEqual([2]);
-    await vi.advanceTimersByTimeAsync(127000);
-    expect(f.progress().map(row => row.at)).toEqual([128000]);
+    await vi.advanceTimersByTimeAsync(120000);
+    expect(f.progress().map(row => row.at)).toEqual([121000]);
     f.activity('next admitted tool'); await vi.advanceTimersByTimeAsync(1000);
     expect(f.progress()).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(178999); expect(f.progress()).toHaveLength(1);
-    await vi.advanceTimersByTimeAsync(1); expect(f.progress().map(row => row.at)).toEqual([128000, 308000]);
+    await vi.advanceTimersByTimeAsync(1); expect(f.progress().map(row => row.at)).toEqual([121000, 301000]);
     f.activity('third admitted tool'); await vi.advanceTimersByTimeAsync(299999); expect(f.progress()).toHaveLength(2);
-    await vi.advanceTimersByTimeAsync(1); expect(f.progress().map(row => row.at)).toEqual([128000, 308000, 608000]);
+    await vi.advanceTimersByTimeAsync(1); expect(f.progress().map(row => row.at)).toEqual([121000, 301000, 601000]);
 
     // Replay the pending batch, including its progress intents, without granting a new allowance.
     f.journal.compact();
@@ -232,10 +232,10 @@ it.each(['sibling', 'later intake'])('a real batch shares the slow cadence acros
       let turn = reopened.view.order[1]!;
       const sibling = reopened.view.order[0]!;
       // Completing the sibling after this intake must not free a fresh progress slot.
-      reopened.append({ kind: 'answer', id: sibling.id, text: 'Done.', at: 608000 });
+      reopened.append({ kind: 'answer', id: sibling.id, text: 'Done.', at: 601000 });
       reopened.append({ kind: 'intent', id: sibling.id, text: 'Done.', chat: reopened.view.genesis.chat,
         update: sibling.update, grant: reopened.view.genesis.grant,
-        provenance: reopened.signOutbound('agent', { target: `reply:${sibling.id}`, chat: reopened.view.genesis.chat, body: 'Done.' }), at: 608000 });
+        provenance: reopened.signOutbound('agent', { target: `reply:${sibling.id}`, chat: reopened.view.genesis.chat, body: 'Done.' }), at: 601000 });
       if (target === 'later intake') {
         createJournalWorker(reopened, { ...f.ports, now: () => 608001 }).intake([
           { ...update, update_id: 3, message: { ...update.message, message_id: 3 } }]);
@@ -256,11 +256,11 @@ it.each(['sibling', 'later intake'])('a real batch shares the slow cadence acros
           workingProgress: { ordinal, step, text, observedAt: at, at }, at });
       };
       expect(() => append(608003, 'too soon after replay')).toThrow('working progress refused');
-      expect(() => append(1207999, 'before shared deadline')).toThrow('working progress refused');
-      expect(() => append(1208000, 'third admitted tool')).toThrow('working progress refused');
-      expect(() => append(1208000, 'wrong speaker', 'agent')).toThrow('working progress refused');
-      expect(() => append(1208000, 'eligible after replay')).not.toThrow();
-      expect(turn.workingProgress?.at(-1)?.at).toBe(1208000);
+      expect(() => append(1200999, 'before shared deadline')).toThrow('working progress refused');
+      expect(() => append(1201000, 'third admitted tool')).toThrow('working progress refused');
+      expect(() => append(1201000, 'wrong speaker', 'agent')).toThrow('working progress refused');
+      expect(() => append(1201000, 'eligible after replay')).not.toThrow();
+      expect(turn.workingProgress?.at(-1)?.at).toBe(1201000);
     } finally { reopened.close(); }
   } finally { f.release('Done.'); await f.drain; f.journal.close(); }
 });
@@ -280,8 +280,8 @@ it('a new answer after the previous answer completed starts its own two-minute c
     const worker = createJournalWorker(f.journal, { ...f.ports, model: async () => { entered(); return busy; } });
     worker.intake([{ ...update, update_id: 3, message: { ...update.message, message_id: 3 } }]);
     drain = worker.drain(); await ready;
-    await vi.advanceTimersByTimeAsync(126999); expect(f.progress()).toHaveLength(1);
-    await vi.advanceTimersByTimeAsync(1); expect(f.progress().map(row => row.at)).toEqual([128000, 255001]);
+    await vi.advanceTimersByTimeAsync(119999); expect(f.progress()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1); expect(f.progress().map(row => row.at)).toEqual([121000, 248001]);
     release('Done again.'); await drain;
   } finally { release?.('Done.'); await drain; f.release('Done.'); await f.drain; f.journal.close(); }
 });
@@ -334,7 +334,7 @@ it('replays advancing recorded worker evidence through the actual reader and sig
     await vi.advanceTimersByTimeAsync(120000);
     bytes = recordedTool; reader.observe('answer', 'recorded-native-task', 'working');
     await vi.advanceTimersByTimeAsync(7000);
-    expect(f.progress().map(row => row.text)).toEqual([WORKING_LIVENESS]);
+    expect(f.progress().map(row => row.text)).toEqual(['Tool request in progress: “Write: note.txt”']);
     await vi.advanceTimersByTimeAsync(180000);
     reader.observe('answer', 'recorded-native-task', 'working');
     expect(reader.current('answer')).toMatchObject({ running: true });
@@ -366,19 +366,21 @@ it('6234450: the recorded 572-second foreground tool gets liveness during work, 
       reader.observe('answer', 'recorded-6234450', 'working');
       await vi.advanceTimersByTimeAsync(Math.min(2000, 1000 + finished - Date.now()));
     }
-    expect(f.progress().map(row => row.text)).toEqual([WORKING_LIVENESS]);
+    expect(f.progress().map(row => row.text)).toEqual([`Tool request in progress: “Bash: ${use.input.description}”`]);
     expect(f.progress()[0]!.at).toBeLessThan(1000 + finished);
     expect(f.progress()[0]!.at).toBeLessThan(131000);
     bytes += ended; reader.observe('answer', 'recorded-6234450', 'working');
-    expect(reader.current('answer')).toBeNull();
+    expect(reader.current('answer')).toMatchObject({ running: false, text: 'Status: no observable main-session tool' });
     await vi.advanceTimersByTimeAsync(300000);
     reader.observe('answer', 'recorded-6234450', 'working');
-    expect(reader.current('answer')).toBeNull();
-    expect(f.progress()).toHaveLength(1);
+    expect(reader.current('answer')).toMatchObject({ running: false, text: 'Status: no observable main-session tool' });
+    expect(f.progress()).toHaveLength(2);
+    expect(f.progress()[1]?.text).toBe(WORKING_LIVENESS);
     reader.observe('answer', null, 'end');
     f.release(JSON.parse(final.input.content).reply.answer); await f.drain;
     await vi.advanceTimersByTimeAsync(1200000);
-    expect(f.progress()).toHaveLength(1);
+    expect(f.progress()).toHaveLength(2);
+    expect(f.progress()[1]?.text).toBe(WORKING_LIVENESS);
     expect(f.sent.at(-1)?.text).toContain('572 seconds');
   } finally { f.release('Done.'); await f.drain; f.journal.close(); }
 });
