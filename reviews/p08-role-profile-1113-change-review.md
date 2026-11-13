@@ -18,7 +18,8 @@ Layer below: resolveInstallationPolicy seal/source/revocation; admitToolEffect e
 Bug class: none
 Bug evidence: base doorway substituted into the positive v2 owner test refuses durability and fails admitted:true; changed doorway passes. No test relies on a real grant or live journal.
 Hook bypass: none; git core.hooksPath is .husky/_, but that directory is absent in this worktree. Plain commits only.
-Convergence: independent review found missing peer and account-off guards; repaired with targeted neighbors; independent reviewer /root/profile_review concurs after both repairs, code inspection only; test results are recorded separately.
+Convergence: none
+Independent review: found missing peer and account-off guards; repaired with targeted neighbors; independent reviewer /root/profile_review concurs after both repairs, code inspection only; test results are recorded separately.
 Decision: p08-versioned-acceptance | v1 is immutable and default; v2 requires exact newly sealed acceptance through the existing owner, rechecked at each new irreversible host decision | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/p08-role-profile-1113-PROGRESS.md
 Decision: p08-host-cause | reuse host effect owner and journal; require exact active parent ancestry and retain full input, current policy, acceptance source and decision before dispatch | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/p08-role-profile-1113-PROGRESS.md
 Decision: p08-no-proxy-bypass | keep v2 descriptor host-only; raw proxy has no full-payload uniqueness owner, so its legacy admission cannot silently widen | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/p08-role-profile-1113-PROGRESS.md

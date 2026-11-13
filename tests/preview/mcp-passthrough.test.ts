@@ -1,6 +1,6 @@
 // @ts-nocheck -- executes the shipped JavaScript composition with disposable roots.
 import { afterEach, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +8,8 @@ import { readRootMcp } from './tool-turn.mjs';
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
 import { prepareSessionConnectors, admitSessionConnector } from './session-connectors.mjs';
 import { admitToolCall, admitToolCallEffect } from './tool-admission.mjs';
+import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
+import { roleProfileDecision } from './role-profile.mjs';
 import { subscriptionConversationPolicy, subscriptionInvocationPolicy } from '../../src/assembly/production-provider.js';
 import { sessionConnectorArgs } from '../../src/assembly/production-session-driver.js';
 
@@ -49,6 +51,9 @@ it.each([false, true])('shipped session admission forwards listed connectors and
     expect(admission.mcpReads).toEqual(configured ? ['mcp__harmless__read'] : []);
     const decision = source.split('effects: createToolEffectOwner({ decide: ')[1].split(',\n          append: appendWork')[0];
     const decisionEnv = { conversationSession, sessionConnectors, admissionConfig: env.admissionConfig,
+      roleProfileDecision, installedProfile: SINGLE_MACHINE_PROFILE, SINGLE_MACHINE_PROFILE,
+      posture: 'single-machine', shared: null, existsSync, join, activation: { trial: 'test' },
+      journal: { view: { genesis: { operator: '7' }, activeSessionWork: {} } },
       readRootMcp, root, accountActions: false, wallNow: env.wallNow, admitSessionConnector, admitToolCallEffect };
     const decide = Function(...Object.keys(decisionEnv), `return ${decision}`)(...Object.values(decisionEnv));
     for (const row of recorded) {
