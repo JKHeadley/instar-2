@@ -3443,8 +3443,6 @@ async function main() {
 
 try { await main(); } catch (error) {
   reportExit('error (details suppressed)');
-  // desk diagnostic 2026-11-12 (live crash loop): name the error class and its first stack lines; the message is redacted.
-  try { process.stderr.write(`DIAG-EXIT ${String(error?.name)}: ${redact(String(error?.message ?? error)).text.split('\n')[0].slice(0, 300)} | ${String(error?.stack ?? '').split('\n').slice(1, 9).map(line => line.trim().replace(/\(file:\/\/.*\/(tests|src)\//, '($1/')).join(' <- ')}\n`); } catch { /* diagnostic only */ }
   process.stderr.write(error instanceof AgentPathRefused || error instanceof PlainRefusal ? `${error.message}\n`
     : 'preview refused to start or continue; details suppressed\n');
   process.exitCode = 1;
