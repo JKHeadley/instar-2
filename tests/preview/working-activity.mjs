@@ -43,11 +43,13 @@ export function admissionActivity(bytes, offset, claim) {
   // A tool name by itself is not a useful account of what is being done.
   const command = typeof input.command === 'string' ? input.command.trim() : '';
   const detail = own || (target ? `${row.tool}: ${target}` : command ? `${row.tool}: ${command}` : '');
-  if (!detail) return null;
+  if (!detail) return { step, text: 'Status: main-session tool has no description', running: true };
   const text = `Status: ${detail.replace(/\s+/gu, ' ')}`;
   // Do not cut a credential before the existing exact outbound wall can inspect it.
   if (text.length > 280) return null;
-  return { step, text, running: true };
+  // Quote the request, not an inferred result. Raw command arguments remain internal.
+  const request = `${row.tool}: ${own || target}`.replace(/\s+/gu, ' ');
+  return { step, text, running: true, ...((own || target) && request.length <= 240 ? { request } : {}) };
 }
 
 export function createWorkingActivities({ read, now }) {
@@ -100,14 +102,19 @@ export function createWorkingActivities({ read, now }) {
       const time = now();
       if (state?.wait && state.wait.observedAt <= time && time - state.wait.observedAt <= 10_000) return state.wait;
       if (!state || state.observedAt === null || state.observedAt > time || time - state.observedAt > 10_000) return null;
-      // An open admitted occurrence plus a fresh session observation supports liveness,
-      // not a claim of productivity. Keep its identity: the send path consumes it once.
-      // Completed work cannot borrow the session heartbeat to become fresh again.
-      if (state.advancedAt === null || state.advancedAt > time || state.offset === null) return null;
-      const activity = admissionActivity(read(state.claim), state.offset, state.claim);
-      if (!activity || activity.step !== state.lastStep) return null;
+      // A fresh session observation supports only liveness when no current tool is
+      // observable. One stable identity per turn prevents repeated generic chatter.
+      if (state.offset === null) return null;
+      const bytes = read(state.claim);
+      if (typeof bytes !== 'string') return null;
+      const fallback = { step: createHash('sha256').update(`liveness:${operation}:${state.claim}:${state.offset}`).digest('hex'),
+        text: 'Status: no observable main-session tool', running: false, observedAt: state.observedAt };
+      if (state.advancedAt === null) return fallback;
+      if (state.advancedAt > time) return null;
+      const activity = admissionActivity(bytes, state.offset, state.claim);
+      if (!activity || activity.step !== state.lastStep) return fallback;
       const observedAt = activity.running ? state.observedAt : state.advancedAt;
-      return time - observedAt <= 10_000 ? { ...activity, observedAt } : null;
+      return time - observedAt <= 10_000 ? { ...activity, observedAt } : fallback;
     },
   };
 }
