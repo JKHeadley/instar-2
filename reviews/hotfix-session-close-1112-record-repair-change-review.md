@@ -34,6 +34,8 @@ The diagnostic line is withdrawn because three reviews demonstrated message-cont
 
 R4 comparison: Re-searched actual JKHeadley/instar local origin/main 700b2a9135623f5eae27ebcf5352d9a6d9135c1b src/, docs/specs/ and history ab26b7ca3; the inherited SqliteRegistry and remote-close comparison still applies, with ONEX-LESSONS sections 2/6 read.
 
+Validation: Session regression passed 219/219 in one plain vitest run; native contract passed 10/10, build and typecheck passed. The existing native renewal reported unchanged composition and made no declaration edit. Register replay at 03d04eed61ee05ebe45ea8fd08646642a4489399 is committed in 8f82b5c2ed2d9c227ff36f5014ccdcaa20f39dcb; lint, architecture, register checks and whitespace checks passed. This record covers that generated-artifact commit. The preview runner matches e3cb0f08 exactly and the close source/test match a5369931 exactly. Final review-check results are in the cited R4 build report.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: retain the existing close tolerance and its positive/negative regression, remove the repeatedly unsafe diagnostic, and use existing native certification and register generation. Entry requires an admitted conversation; completion requires persisted close; unrelated append failures propagate. Stop, reservation, accounting and dispatch limits remain unchanged.
