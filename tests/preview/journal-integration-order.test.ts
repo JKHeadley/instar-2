@@ -40,7 +40,8 @@ it('sends a later loss notice while an earlier ordinary turn is held for a pendi
       send: async (input: { text: string }) => { sends.push(input); return sends.length; }, checkOutbound: () => {} };
     let worker = createJournalWorker(journal, ports as never);
     worker.intake([update(1, 'First question'), update(2, 'Second question')]);
-    await expect(worker.drain()).rejects.toThrow('interrupted');
+    await expect(worker.drain()).resolves.toBeUndefined();
+    expect(journal.view.order[1]?.attempt?.state).toBe('exception');
     expect(journal.view.order[1]?.modelState).toBe('uncertain');
     journal.close();
     journal = openPreviewJournal(path, key);

@@ -151,7 +151,8 @@ for (const outcome of ['fragment', 'coherence-only', 'coherent', 'unavailable', 
     worker.intake([{ update_id: fixture.recorded.update, message: { message_id: 1,
       chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true }, from: { id: Number(scope.operator) }, text: fixture.recorded.text } }]);
     if (crash) {
-      await expect(worker.drain()).rejects.toThrow('TEST crash'); journal.close();
+      await expect(worker.drain()).resolves.toBeUndefined();
+      expect(journal.view.order[0]?.attempt?.state).toBe('exception'); journal.close();
       journal = openPreviewJournal(path, key); worker = make();
     }
     await worker.drain();
