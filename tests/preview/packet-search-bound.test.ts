@@ -4,7 +4,7 @@ import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
-import { createJournalWorker, openPreviewJournal, OBLIGATION_DECISION_FLOOR, pendingReports } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, OBLIGATION_DECISION_FLOOR, pendingReports, retiredResults } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const at = 1_793_160_000_000, key = new Uint8Array(32).fill(83);
@@ -41,27 +41,33 @@ async function seed(journal: ReturnType<typeof openPreviewJournal>) {
     journal.append({ kind: 'obligation-result', obligation: `commitment:${n}`, slot: at,
       ...(n < 49 ? { outcome: 'uncertain' as const, recoveryHeld: true as const }
         : n < 59 ? { outcome: 'waiting' as const, waitsOn: 'external' as const, note: 'Awaiting access check.' }
-          : { outcome: 'report' as const, report: `Access check ${n}: ${'recorded details '.repeat(80)}`.trim() }), at });
+          : { ...(n === 59 ? { completion: [{ id: 'verified', work: 'Check access', state: 'complete' as const, evidence: 'Recorded access check.' }] } : {}), outcome: 'report' as const, report: `Access check ${n}: ${'recorded details '.repeat(80)}`.trim() }), at });
   }
 }
 beforeAll(async () => { fixture = world(); await seed(fixture.journal); fixture.journal.close(); }, 120000);
 afterAll(() => fixture?.close());
 const recordedShapes = (JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] }).otherShapes;
-it.each(['count', 'time', 'history'] as const)('answers at the floor when the preparation %s budget expires', async mode => {
+it.each(['count', 'time', 'history', 'retired-count', 'retired-time'] as const)('answers at the floor when the preparation %s budget expires', async mode => {
   const f = world(true); let tries = 0, elapsed = 0, packet = '', sends = 0;
+  const mixed = mode.startsWith('retired-'), countMode = mode.endsWith('count');
+  const pendingCount = mixed ? 15 : 16;
+  if (mixed) {
+    f.journal.append({ kind: 'results-retired', keys: ['commitment:59'],
+      reason: 'Undelivered finished result retired after five days since its source message; retained for lookup.', at: at + 6 * 86400000 });
+  }
   const clock = vi.spyOn(performance, 'now').mockImplementation(() => elapsed);
   try {
     expect(f.journal.view.commitments).toHaveLength(75);
-    expect(pendingReports(f.journal.view)).toHaveLength(16);
+    expect(pendingReports(f.journal.view)).toHaveLength(pendingCount);
     const worker = createJournalWorker(f.journal, { now: () => at, stopped: () => false,
       sources: recordedShapes.map(shape => ({ source: shape.kind, id: shape.id, text: shape.raw })),
       prepareModel: input => {
         if (input.id.startsWith('summary:')) throw Error('summary unavailable');
         tries++;
-        if (mode !== 'count') elapsed += 1000;
+        if (!countMode) elapsed += 1000;
         const p = JSON.parse(input.context);
         const floor = p.obligationDecision === OBLIGATION_DECISION_FLOOR && !p.memorySummary && !p.pendingReports && !p.memorySearch
-          && !p.memoryCandidates && !(p.recalled?.length) && !(p.commitments?.length) && !(p.people?.length);
+          && !p.retiredResults && !p.memoryCandidates && !(p.recalled?.length) && !(p.commitments?.length) && !(p.people?.length);
         // The probe caps the unfixed reproducer at 5002 attempts so a RED run cannot
         // occupy a worker for minutes. The real canonical envelope is still used.
         if ((!floor || mode === 'history' && p.history.length > 0) && tries <= 5001) throw Error('preview: complete prompt overflow');
@@ -75,22 +81,27 @@ it.each(['count', 'time', 'history'] as const)('answers at the floor when the pr
     const actualMs = Number(process.hrtime.bigint() - started) / 1e6;
     console.log(JSON.stringify({ mode, preparationCalls: tries, drainMs: actualMs, retainedPromptBytes: 411 * 75000 }));
     // Count mode freezes time to prove the independent count brake even on a slow host.
-    if (mode === 'count') expect(tries).toBe(5001);
+    if (countMode) expect(tries).toBe(5001);
     else expect(actualMs).toBeLessThan(5000);
-    expect(tries).toBeLessThanOrEqual(mode === 'count' ? 5001 : mode === 'time' ? 6 : 30);
+    expect(tries).toBeLessThanOrEqual(countMode ? 5001 : mode.endsWith('time') ? 6 : 30);
     const p = JSON.parse(packet);
     expect(p.obligationDecision).toBe(OBLIGATION_DECISION_FLOOR);
     if (mode === 'history') expect(p.history).toEqual([]);
     expect(p.memorySummary).toBeUndefined(); expect(p.pendingReports).toBeUndefined(); expect(p.memorySearch).toBeUndefined();
-    expect(p.pendingReportsOmitted).toBe(16);
+    expect(p.pendingReportsOmitted).toBe(pendingCount);
+    if (mixed) {
+      expect(p.retiredResults).toBeUndefined(); expect(p.retiredResultsOmitted).toBe(1);
+      expect(retiredResults(f.journal.view).map(item => item.text)).toEqual([`Access check 59: ${'recorded details '.repeat(80)}`.trim()]);
+    }
     expect(p.sources.map((source: { text: string }) => source.text)).toEqual(recordedShapes.map(shape => shape.raw));
     expect(sends).toBe(1);
     expect(f.journal.view.order.at(-1)?.packetDropped).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'preparation-search', reason: expect.stringContaining('5000 candidates / 5000 ms') })]));
-    expect(pendingReports(f.journal.view)).toHaveLength(16);
+    expect(pendingReports(f.journal.view)).toHaveLength(pendingCount);
     f.journal.close();
     const replay = openPreviewJournal(f.path, key);
     expect(replay.view.order.at(-1)?.packetDropped).toEqual(f.journal.view.order.at(-1)?.packetDropped);
+    if (mixed) expect(retiredResults(replay.view)).toEqual(retiredResults(f.journal.view));
     replay.close();
   } finally { clock.mockRestore(); f.close(); }
 }, 30000);
