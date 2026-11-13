@@ -191,7 +191,7 @@ it('the floor: no reply is held for size, and the turns it set aside stay recall
       expect(auditPacket(w.journal.view, w.journal.view.turns.get(item.id)!, item.packet).findings).toEqual([]);
     }
     // Rule 110: the first floored reply accounts for the set-aside like a summary frontier, in truthful words: the
-    // grounding names the frontier, the model is told, and the reply actually SENT opens with the disclosure and
+    // grounding names the frontier, the model is told, and the reply actually SENT ends with the disclosure and
     // the real disposition of the last inbound before it.
     const first = w.journal.view.turns.get(floored[0]!.id)!;
     const firstAside = floored[0]!.packet.historySetAside as { through: number };
@@ -199,7 +199,7 @@ it('the floor: no reply is held for size, and the turns it set aside stay recall
     expect(first.grounding?.compactedThrough).toBeUndefined();
     expect(floored[0]!.packet.continuity).toMatchObject({ through: firstAside.through, basis: 'set-aside', state: 'addressed' });
     expect(first.continuity).toMatchObject({ summarizedThrough: firstAside.through, basis: 'set-aside', disposition: 'addressed' });
-    expect(first.intent!.startsWith('Earlier conversation no longer fits in my view; '
+    expect(first.intent!.includes('Earlier conversation no longer fits in my view; '
       + 'it is saved and searchable, but not summarized. Your previous request ')).toBe(true);
     expect(first.intent).not.toMatch(/is now summarized/u);
     const firstContinuity = first.continuity;

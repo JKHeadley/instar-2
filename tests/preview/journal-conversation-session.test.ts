@@ -847,7 +847,7 @@ it.each([false, true])('retains recovery disclosure for the real nested reply, a
     f.answer(recoveredAnswer.output);
     f.intercept(async request => ({ ...await f.port.run(request), contextRecovery: request.operation }));
     f.worker.intake([update(1, 'Which drink did I name?')]); await f.worker.drain();
-    expect(f.sent).toEqual([`${recoveryDisclosure} ${revised ? 'Tea is your preferred drink.' : 'You prefer tea to coffee.'}`]);
+    expect(f.sent).toEqual([`${revised ? 'Tea is your preferred drink.' : 'You prefer tea to coffee.'}\n\n${recoveryDisclosure}`]);
     if (revised) expect(f.journal.view.order[0]!.release).toMatchObject({ revised: true });
     f.journal.compact();
     await f.replay(); expect(f.sent).toHaveLength(1);
@@ -880,7 +880,7 @@ it('retains the disclosed intent across an uncertain send and never sends that a
     f.answer(recoveredAnswer.output);
     f.intercept(async request => ({ ...await f.port.run(request), contextRecovery: request.operation }));
     f.worker.intake([update(1, 'Which drink did I name?')]); await f.worker.drain();
-    expect(attempts[0]).toBe(`${recoveryDisclosure} You prefer tea to coffee.`);
+    expect(attempts[0]).toBe(`You prefer tea to coffee.\n\n${recoveryDisclosure}`);
     await f.restart(); await f.worker.drain();
     expect(attempts.filter(text => text.includes('You prefer tea to coffee.'))).toHaveLength(1);
     expect(f.journal.view.order[0]!.contextRecovery).toBe('telegram:12345678:update:1');
@@ -898,7 +898,7 @@ it.each(shapes.otherShapes)('carries recorded $kind ($id) through recovery and t
     f.worker.intake([update(1, 'Continue the conversation')]); await f.worker.drain();
     expect(f.state().inputs[0]!.request.context).toContain(JSON.stringify(row.raw));
     expect(f.sent).toHaveLength(1);
-    expect(f.sent[0]!.startsWith(recoveryDisclosure)).toBe(!empty);
+    expect(f.sent[0]!.endsWith(recoveryDisclosure)).toBe(!empty);
     await f.replay(); expect(f.sent).toHaveLength(1);
   } finally { await f.close(); }
 });

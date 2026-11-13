@@ -61,6 +61,8 @@ export function statusReply(view: JournalView, now: number, zone: string, extra:
   return [
     `Status (${today}, ${zone})`,
     `Turns today: ${turns}.`,
+    `Earlier conversation summarized through update: ${view.summaries.at(-1)?.through ?? 'none'}.`,
+    `Idle worker cleanup: ${Object.values(view.reapHistory ?? {}).reduce((total, item) => total + item.total, 0)} workers closed; accepted messages kept.`,
     `Held replies: ${held.size ? [...held].map(([reason, count]) => `${count} ${reason}`).join('; ') : 'none'}.`,
     `Pending memory decisions: ${pending.length}${pending.length ? ` (updates ${pending.slice(0, STATUS_PENDING_LISTED).map(turn => turn.update).join(', ')}${
       pending.length > STATUS_PENDING_LISTED ? `, and ${String(pending.length - STATUS_PENDING_LISTED)} later` : ''})` : ''}.`,

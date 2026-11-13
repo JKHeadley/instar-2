@@ -306,7 +306,7 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
   };
   const garden = [...Array.from({ length: 29 }, (_, i) => `Update ${i}: ${'garden '.repeat(240)}`), 'The latest short message.'];
   const errands = [...Array.from({ length: 29 }, (_, i) => `Update ${i}: errands.`), plumber];
-  const disclosure = /^Earlier conversation is now summarized for me\. Your previous request was answered\. /u;
+  const disclosure = /\n\nNote: the earlier part of our conversation is now summarized for me; your last request before that was answered\.$/u;
 
   it('a context reduced to summary-plus-recent is a compaction even while the last message is still verbatim', async () => {
     const { dir, journal, worker, sent } = setup(7000, garden, () => 'Hi!');
@@ -318,11 +318,11 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
       expect(packet.continuity).toEqual({ through: 29, lastInbound: 'telegram:12345678:update:30', state: 'addressed' });
       worker.intake([update(31, 'Hello again')]); await worker.drain();
       expect(sent[0]).toMatch(disclosure);
-      expect(sent[0]!.endsWith(' Hi!')).toBe(true);
+      expect(sent[0]!.startsWith('Hi!\n\n')).toBe(true);
       const turn = journal.view.turns.get('telegram:12345678:update:31')!;
       expect(turn.continuity).toMatchObject({ prePauseInbound: 'telegram:12345678:update:30', summarizedThrough: 29,
         disposition: 'addressed', reference: 'Telegram message 30', grounding: turn.grounding!.packetSha256 });
-      expect(sent[0]!.startsWith(`${turn.continuity!.disclosure} `)).toBe(true);
+      expect(sent[0]!.endsWith(`\n\n${turn.continuity!.disclosure}`)).toBe(true);
       // The next reply owes no sentence: the seam and that message are already disclosed and answered.
       // The packet still tells the model its context is compacted, and the record is still written --
       // silently, so what the reply accounted for stays inspectable.
@@ -348,7 +348,7 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
       worker.intake([update(31, 'Hello again')]); await worker.drain();
       expect(sent).toHaveLength(1);
       expect(sent[0]).not.toMatch(/#\d+|Telegram message \d+/u);
-      expect(sent[0]).toContain('Earlier conversation is now summarized for me. Your previous request was answered.');
+      expect(sent[0]).toContain('Note: the earlier part of our conversation is now summarized for me; your last request before that was answered.');
       expect(journal.view.order.at(-1)!.continuity).toMatchObject({
         prePauseInbound: 'telegram:12345678:update:30', summarizedThrough: 29,
         disposition: 'addressed', reference: 'Telegram message 30' });
@@ -376,13 +376,13 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
   });
 
   it('the disclosure survives a split long answer and a holding reply, and is bound to the text actually sent', async () => {
-    // Plan #466 (w4-statuslen): a long answer is split, not refused; its first message opens with the disclosure.
+    // Plan #466 (w4-statuslen): a long answer is split, not refused; its last message ends with the disclosure.
     const tooLong = setup(7000, errands, () => 'x'.repeat(4100));
     try {
       summarize(tooLong.journal, 30, 'Errands and a plumber quote question.');
       tooLong.worker.intake([update(31, 'Hello again')]); await tooLong.worker.drain();
-      expect(tooLong.sent[0]).toMatch(/^Earlier conversation is now summarized for me\. Your previous request was answered\. x+ \(1\/2\)$/u);
-      expect(tooLong.sent[1]).toMatch(/^\(2\/2\) — x+$/u);
+      expect(tooLong.sent[0]).toMatch(/^x+ \(1\/2\)$/u);
+      expect(tooLong.sent[1]).toMatch(disclosure);
       const turn = tooLong.journal.view.turns.get('telegram:12345678:update:31')!;
       expect(turn.continuity?.replyDigest).toBe(createHash('sha256').update(turn.intent!).digest('hex'));
       tooLong.journal.close();
@@ -467,7 +467,7 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
           expect(account.spoken).not.toBe(false);
           // The UNKNOWN answer is never replayed: three answer attempts plus one separate loss notice.
           expect(sent).toHaveLength(3);
-          expect(sent[2]).toContain('is still open; no finished answer is confirmed.');
+          expect(sent[2]).toContain('is still open: no finished answer to it was confirmed.');
         } else {
           // The neighbour: a delivered reply is answered, and once the episode is disclosed that account stays
           // silent (plan #251), the shape live fill-36 and a6q recorded.
@@ -540,7 +540,7 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
       expect(probe(worker, 'Hello again').continuity).toEqual({ through: 29, lastInbound: id, state: 'pending' });
       worker.intake([update(31, 'Hello again')]); await worker.drain();
       expect(sent[0]).not.toContain('was answered');
-      expect(sent[0]).toMatch(/Your previous request is still open; no finished answer is confirmed\. Hi!$/u);
+      expect(sent[0]).toMatch(/^Hi!\n\nNote: .*your last request before that is still open: no finished answer to it was confirmed\.$/u);
       journal.close();
       const reopened = openPreviewJournal(join(dir, 'journal.encrypted'), key);
       expect(reopened.view.turns.get('telegram:12345678:update:31')!.continuity).toMatchObject({ disposition: 'pending',
@@ -580,7 +580,7 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
       worker.intake([update(31, 'Hello again')]); await worker.drain();
       expect(sent).toHaveLength(1);
       if (failed) {
-        expect(sent[0]).toContain('is still open; no finished answer is confirmed.');
+        expect(sent[0]).toContain('is still open: no finished answer to it was confirmed.');
         expect(sent[0]).not.toContain('was answered');
         expect(journal.view.turns.get(id)).toMatchObject({ memoryPending: true, memoryUndecided: true });
         expect(journal.view.memory).toHaveLength(0);

@@ -1243,7 +1243,7 @@ it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('answers over-
       expect(packet.historySetAside).toEqual({ count: 1, through: 1, note: expect.stringContaining('kept and still searchable') });
       // Rule 110: the sent reply accounts for the set-aside truthfully (kept, unsummarized) and the last inbound's outcome.
       expect(turn.continuity).toMatchObject({ summarizedThrough: 1, basis: 'set-aside', disposition: 'addressed' });
-      expect(turn.intent).toMatch(/^Earlier conversation no longer fits in my view; it is saved and searchable, but not summarized\. /u);
+      expect(turn.intent).toMatch(/\n\nEarlier conversation no longer fits in my view; it is saved and searchable, but not summarized\. /u);
       // The spend floor is unchanged: no extra call is spent to answer with less, and a refused span keeps its
       // second attempt for a later pass rather than being burned here.
       expect(journal.view.calls).toBe(route === 'failed' ? 3 : 2);

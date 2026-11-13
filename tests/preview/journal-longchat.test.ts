@@ -206,10 +206,10 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
       // Said exactly once, by the first reply from a compacted context.
       expect(spoken).toHaveLength(1);
       expect(spoken[0]!.update).toBe(compacted[0]!.update);
-      expect(spoken[0]!.intent!.startsWith(`${spoken[0]!.continuity!.disclosure} `)).toBe(true);
+      expect(spoken[0]!.intent!.endsWith(`\n\n${spoken[0]!.continuity!.disclosure}`)).toBe(true);
       // One seam throughout, so no basis change was owed a second sentence; exactly one went out.
       expect(new Set(compacted.map(turn => turn.continuity!.basis ?? 'summary')).size).toBe(1);
-      expect(sent.filter(text => text.startsWith('Earlier conversation '))).toHaveLength(1);
+      expect(sent.filter(text => text.endsWith(spoken[0]!.continuity!.disclosure))).toHaveLength(1);
       // Each turn's own flag is what the predicate decides from the last sentence actually delivered.
       let delivered: ContinuityAccount | undefined;
       for (const turn of compacted) {
@@ -261,7 +261,7 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
       journal.append({ kind: 'summary', through: 29, text: 'The operator keeps a garden log.', at });
       let worker = createJournalWorker(journal, ports(at + 100_000));
       worker.intake([update(31, 'How is the garden?')]); await worker.drain();
-      expect(sent.at(-1)).toMatch(/^Earlier conversation is now summarized for me\./u);
+      expect(sent.at(-1)).toMatch(/Note: the earlier part of our conversation is now summarized for me; your last request before that was answered\.$/u);
       journal.append({ kind: 'summary-reserve', through: 31, at: at + 1 });
       journal.append({ kind: 'summary', through: 31, text: 'The operator keeps a garden log and asked how it is.', at: at + 1 });
       journal.close();
@@ -272,7 +272,7 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
       expect(resumed.continuity).toMatchObject({ summarizedThrough: 31, prePauseInbound: 'telegram:12345678:update:31',
         disposition: 'addressed' });
       expect(resumed.continuity!.spoken).toBeUndefined();
-      expect(sent.at(-1)).toBe(`${resumed.continuity!.disclosure} Noted.`);
+      expect(sent.at(-1)).toBe(`Noted.\n\n${resumed.continuity!.disclosure}`);
       // The neighbour: the next routine reply of the same run, over the same frontier, stays quiet.
       worker.intake([update(33, 'And the tomatoes?')]); await worker.drain();
       expect(journal.view.turns.get('telegram:12345678:update:33')!.continuity!.spoken).toBe(false);

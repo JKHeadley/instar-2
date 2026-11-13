@@ -435,11 +435,17 @@ export const continuityDisclosure = (label: string, through: number, disposition
   basis: ContinuityBasis = 'summary') =>
   `${continuityHead(through, basis)}${label}${continuityTail(disposition, reference)}`;
 /** Plain surface for every reply; exact prior-message evidence remains in ContinuityAccount. */
-const plainContinuity = (disposition: ContinuityAccount['disposition'], basis: ContinuityBasis) =>
+const legacyPlainContinuity = (disposition: ContinuityAccount['disposition'], basis: ContinuityBasis) =>
   `${basis === 'set-aside' ? 'Earlier conversation no longer fits in my view; it is saved and searchable, but not summarized.'
     : 'Earlier conversation is now summarized for me.'} Your previous request ${disposition === 'addressed'
       ? 'was answered.' : disposition === 'superseded' ? 'was replaced by your later edit.'
         : 'is still open; no finished answer is confirmed.'}`;
+const plainContinuity = (disposition: ContinuityAccount['disposition'], basis: ContinuityBasis) =>
+  basis === 'set-aside' ? legacyPlainContinuity(disposition, basis)
+    : `Note: the earlier part of our conversation is now summarized for me${disposition === 'addressed'
+      ? '; your last request before that was answered.' : disposition === 'superseded'
+        ? '; your last request before that was replaced by your later edit.'
+        : ', and your last request before that is still open: no finished answer to it was confirmed.'}`;
 /** Rule 110: whether this reply says its disclosure out loud, given the last one it actually delivered.
  * `last` is the most recent spoken account whose send Telegram confirmed, absent when none ever was.
  * `unresolved` is true when a spoken disclosure's send stayed UNKNOWN, so the operator may never have
@@ -460,13 +466,16 @@ export const continuitySpoken = (last: SpokenContinuityEvidence & { basis?: 'set
     || account.capture !== last?.capture || account.disposition !== last?.disposition
     || account.reference !== last?.reference || account.basis !== (last?.basis ?? 'summary'));
 /** A turn's sent reply without its Rule 110 disclosure (for measurement of the answer itself).
- * A silently recorded account never prefixed the text, so nothing is stripped from it. */
+ * A silently recorded account added no text. Old journals keep their original prefix. */
 export const replyBody = (turn: { intent?: string; continuity?: ContinuityAccount }) =>
   turn.intent === undefined || !turn.continuity || turn.continuity.spoken === false
-    ? turn.intent : turn.intent.replace(`${turn.continuity.disclosure} `, '');
-/** The reply with the disclosure as its first sentence; strip the marker on older replies. */
+    ? turn.intent : withoutDisclosure(turn.intent, turn.continuity.disclosure);
+/** Strip only the recorded disclosure, whether an old prefix or a new paragraph. */
+const withoutDisclosure = (reply: string, disclosure: string) =>
+  reply.replace(`\n\n${disclosure}`, '').replace(`${disclosure} `, '');
+/** The reply first, disclosure last; strip the marker on older replies. */
 export const withDisclosure = (reply: string, disclosure: string) =>
-  `${disclosure} ${reply.replace(/^PREVIEW — /u, '')}`;
+  `${reply.replace(/^PREVIEW — /u, '').trimEnd()}\n\n${disclosure}`;
 // Ten seconds is the receipt target, not the timer delay. Reserve three seconds for
 // admission, timer jitter and transport (ack-timing-1013 measured 2.127s combined).
 export const REPLY_ACKNOWLEDGEMENT_AFTER_MS = 7_000;
@@ -5557,10 +5566,11 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (row.fulfills !== undefined) turn.intentFulfills = row.fulfills;
     if (row.continuity !== undefined) {
       // The account binds the exact pre-pause capture, the reply's own compacted grounding and the
-      // text actually sent. A spoken account's disclosure is that reply's first sentence; a silent one
-      // (`spoken: false`) records the same accounting and the reply must NOT open with it.
+      // text actually sent. Old journals keep their prefix; new replies end with the disclosure.
+      // A silent account records the same accounting without saying the sentence.
       const account = row.continuity, before = view.turns.get(account.prePauseInbound), frontier = continuityFrontier(turn.grounding);
-      const opens = row.text.replace(/^PREVIEW — /u, '').startsWith(account.disclosure);
+      const spoken = row.text.replace(/^PREVIEW — /u, '').startsWith(account.disclosure)
+        || row.text.endsWith(`\n\n${account.disclosure}`);
       if (!before || before.update >= turn.update || turn.requestedAction || !isJournalUpdate(account.summarizedThrough)
         || account.summarizedThrough >= turn.update || !frontier || frontier.through !== account.summarizedThrough
         || (account.basis ?? 'summary') !== frontier.basis || account.basis !== undefined && account.basis !== 'set-aside'
@@ -5570,8 +5580,9 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
         || !CONTINUITY_DISPOSITIONS.includes(account.disposition) || !account.reference
         || !(account.disclosure.startsWith(continuityHead(account.summarizedThrough, frontier.basis))
           && account.disclosure.endsWith(continuityTail(account.disposition, account.reference))
-          || account.disclosure === plainContinuity(account.disposition, frontier.basis))
-        || opens === (account.spoken === false)
+          || account.disclosure === plainContinuity(account.disposition, frontier.basis)
+          || account.disclosure === legacyPlainContinuity(account.disposition, frontier.basis))
+        || spoken === (account.spoken === false)
         || account.replyDigest !== createHash('sha256').update(row.text).digest('hex'))
         throw Error('preview journal: continuity account refused');
       turn.continuity = account;
@@ -9955,7 +9966,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // optional. Its room is reserved first: only the model's answer body is shortened (marked with …) to keep it,
             // never the runner's own outcome lines after it. Follow-up reports come after it (below).
             const replying = Boolean(text.trim()) && fromOperator(turn) && !probe && !turn.requestedAction;
-            const next = replying ? openReplyNotices(journal.view.order, ports.replyNotices?.(turn.id) ?? [], turn.id)[0] : undefined;
+            const candidates = replying ? (ports.replyNotices?.(turn.id) ?? []).filter(notice => !/^(doorway|reap):/u.test(notice.key)) : [];
+            const next = replying ? openReplyNotices(journal.view.order, candidates, turn.id)[0] : undefined;
             const reserved = next?.key.startsWith('effect:') ? Buffer.byteLength(next.line) + 2 : 0;
             if (reserved && Buffer.byteLength(text) + reserved > 3500) {
               // The runner's lines are bounded (each list names at most three clipped items), so they always fit
@@ -10097,7 +10109,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : memoryReplyFailed && turn.memoryUndecided ? MEMORY_UNDECIDED_REPLY
           : memoryAcknowledgement(turn) ?? (memoryReplyFailed ? 'I reviewed your memory request.'
             : `${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? unknownAnswerNotice(turn)}`);
-        // Rule 110: a reply sent from a compacted context records its continuity account, and opens with the
+        // Rule 110: a reply sent from a compacted context records its continuity account, and ends with the
         // fixed disclosure when that sentence is owed, on whatever text is finally sent (answer, loss, size or
         // holding notice). A silent account changes no text; its record still binds the text actually sent.
         const frontier = continuityFrontier(turn.grounding);
@@ -10364,7 +10376,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 // The draft is revised without its Rule 110 disclosure, which code adds back to the final text, and
                 // without the runner's own result lines, which code attaches again verbatim below.
                 const draft = resultLines.reduce((text, line) => text.replace(line, ''),
-                  continuity?.spoken ? reply.replace(`${continuity.disclosure} `, '') : reply);
+                  continuity?.spoken ? withoutDisclosure(reply, continuity.disclosure) : reply);
                 try { outcome = await ports.replyCheck.revise({ text: concealSecretMaterial(redact(draft).text, heldValues), id: turn.id, originalPrompt,
                   ruleIds: objections.filter(item => item !== BARE_TOPIC_OBJECTION) as ReplyRule[], objections,
                   ...(checkRow?.findings ? { findings: checkRow.findings } : {}),
@@ -10399,7 +10411,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               }
               if (turn.revision?.state === 'complete' && turn.revision.text) {
                 let body = turn.revision.text.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
-                if (continuity && body.startsWith(continuity.disclosure)) body = body.slice(continuity.disclosure.length).trimStart();
+                if (continuity) body = withoutDisclosure(body, continuity.disclosure);
                 const prose = actionHeader === undefined ? disclosed(body) : `${actionHeader}\n${body}`;
                 const candidate = `${prose.trimEnd()}${resultLines.filter(line => !prose.includes(line)
                   && supportedLine(line, prose, [...turn.revision!.carriedReports ?? [], ...turn.answerCarriedReports ?? []])).join('')}`;
@@ -10419,8 +10431,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const named = reviewHoldingFindings(turn, candidateDigest);
               const stripped = (actionHeader === undefined ? reply : reply.slice(actionHeader.length + 1))
                 .replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
-              const body = continuity && stripped.startsWith(continuity.disclosure)
-                ? stripped.slice(continuity.disclosure.length).trimStart() : stripped;
+              const body = continuity ? withoutDisclosure(stripped, continuity.disclosure) : stripped;
               const claims = named.findings.flatMap(finding => namedClaimsIn(finding.reason, body));
               // An own-words marker is set aside while the claims are cut and returns only if its declared words survived.
               const ownLines = carriedLines.map(item => item.line);
@@ -10595,6 +10606,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // (approved only by the operator's explicit yes) or why it cannot be proposed. Never on a held or notice reply.
         const offer = heldBack || resultsOnly || reply === HOLDING_REPLY || turn.answer === undefined ? undefined : await operatorOffer(turn, ports.now());
         // What follows here (the request line and the disclosure) stays whole in the last message of a split reply.
+        // Keep the summary disclosure after every attached result or approval line.
+        const speakContinuity = continuity?.spoken && reply.includes(continuity.disclosure);
+        if (speakContinuity) reply = withoutDisclosure(reply, continuity.disclosure);
         const answerEnd = reply.trimEnd().length;
         if (offer) reply = `${reply.trimEnd()}\n\n${offer.text}`;
         // The approval-account exception: an answer that reports an approval taken under shared account access carries the
@@ -10607,6 +10621,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           && check.candidateDigest === reviewedDigest && check.approvalReport?.request === shown.request.id
           && check.approvalReport.answer === 'no');
         if (shown && !reportedNo && !reply.includes(SHARED_ACCESS_NOTE)) reply = `${reply.trimEnd()}\n\n${approvalDisclosureText(shown)}`;
+        if (speakContinuity) reply = withDisclosure(reply, continuity.disclosure);
         // Prepare the canonical text before signing and recording the intent; the original answer stays intact.
         reply = reply.trimEnd();
         const split = splitReply(reply, reply.slice(answerEnd));

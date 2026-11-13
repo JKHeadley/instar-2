@@ -35,7 +35,7 @@ it.each(['original', 'repaired', 'offload'] as const)('replays the real %s revie
   if (reading) expect(reading.ok).toBe(true);
   const review = reading?.ok ? parseReplyReviewVerdict(reading.value, raw.rules as ReplyRule[])
     : captured.replyChecks[1];
-  const candidate = mode === 'original' ? captured.answer : raw.candidate;
+  const candidate = mode === 'original' ? captured.answer : mode === 'repaired' ? captured.revision.text : raw.candidate;
   const sends: string[] = [], reviews: string[] = [];
   const ports = {
     now: () => captured.at, stopped: () => false,
@@ -71,7 +71,10 @@ it.each(['original', 'repaired', 'offload'] as const)('replays the real %s revie
     expect(sends).toEqual([mode === 'original' ? HOLDING_REPLY : candidate]);
     expect(journal.view.order[0]!.replyChecks?.at(-1)?.verdict).toBe(mode === 'repaired' ? 'pass' : 'violation');
     expect(journal.view.order[0]!.replyChecks?.map(check => check.path)).toEqual(['jev', 'subscription']);
-    if (mode === 'repaired') expect(journal.view.order[0]!.answerNotices).toEqual(notice());
+    if (mode === 'repaired') {
+      expect(journal.view.order[0]!.answerNotices).toBeUndefined();
+      expect(sends[0]).not.toContain('Model route check:');
+    }
     journal.close();
     journal = openPreviewJournal(path, key);
     await createJournalWorker(journal, ports).drain();

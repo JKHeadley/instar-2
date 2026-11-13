@@ -1,6 +1,6 @@
 // Rules 8, 56, 100 on the reply path. A due credential reminder (the escalating schedule
-// secret-custody keeps for a known fixed expiry) and a failing doorway-map check are
-// open loops the operator must hear about. The reply-only grant allows no unsolicited
+// secret-custody keeps for a known fixed expiry) needs action from the operator.
+// Doorway-map health stays on status. The reply-only grant allows no unsolicited
 // send, so each rides the next operator answer as ONE fixed line, the way finished
 // obligation work does. Each line carries a stable key; the journal records the keys an
 // answer carried, so delivery is derived from durable sent replies, never from memory.

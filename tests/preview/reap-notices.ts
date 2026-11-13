@@ -14,8 +14,8 @@ export function recordIdleReap(history: ReapHistory | undefined, edge: SessionWo
   return { ...history, [edge.topic]: { total: (history?.[edge.topic]?.total ?? 0) + 1, last: close.id } };
 }
 
-/** Rules 52/63/87/89: one infrastructure line in this conversation's next answer;
- * no standalone send, other-topic disclosure, transcript text or process details.
+/** Historical bounded cleanup notices; new reply assembly keeps this machinery on status.
+ * Preserve occurrence-range accounting for old replies, without other-topic disclosure.
  * A consumed occurrence-range key covers exactly its batch. The existing
  * send funnel reserves keys for held answers and unknown receipts, even on restart. */
 export function reapNotices(history: ReapHistory | undefined, turns: readonly NoticeTurn[], current: string, topic: string): ReplyNotice[] {

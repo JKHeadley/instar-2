@@ -100,10 +100,10 @@ it('carries one reminder line on the next answer, never repeats it, and shows th
     expect(w.sent[0]).not.toContain('Model route check');
     const due = dueCredentialReminders(custody.records(), w.clock.now);
     expect(dueWithDelivery(due, w.journal.view.order)).toMatchObject([{ stage: 0, delivered: { stage: 0, at: T0, current: true } }]);
-    // The second answer carries the next open line (the doorway), not the same reminder again.
+    // Machinery stays on status; neither the doorway nor the spent reminder rides this answer.
     w.clock.now += HOUR; await w.say('Anything else?');
     expect(w.sent[1]).not.toContain('Reminder:');
-    expect(w.sent[1]).toContain('Model route check');
+    expect(w.sent[1]).not.toContain('Model route check');
     w.clock.now += HOUR; await w.say('Thanks.');
     expect(w.sent[2]).not.toContain('Reminder:');
     expect(w.sent[2]).not.toContain('Model route check');
@@ -264,6 +264,22 @@ it('adds the reminder to a real recorded worker answer through the journal, once
     expect(w.journal.view.order[0]!.intent).toContain(notices()[0]!.line);
     await w.say('Thank you.');
     expect(w.journal.view.order[1]!.intent).not.toContain(notices()[0]!.line);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// Messages 813/814: machinery-only observations must never attach to a new model answer.
+it.each(['doorway', 'reap'])('keeps %s machinery on status while an actionable credential notice still rides the answer', async kind => {
+  const root = origin();
+  const machinery = { key: `${kind}:1`, line: kind === 'doorway'
+    ? 'Model route check: typesafe-jev/jev-1.13.0 is unavailable.'
+    : 'System note: idle cleanup closed 1 worker in this conversation to free capacity.' };
+  const action = { key: 'credential:renew:1', line: 'Please supply your renewed credential.' };
+  try {
+    const w = world(root, () => [machinery, action]);
+    await w.say('how much model usage have you spent');
+    expect(w.sent[0]).toBe(`Noted.\n\n${action.line}`);
+    expect(w.journal.view.order[0]!.answerNotices).toEqual([action]);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

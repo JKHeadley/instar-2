@@ -2236,7 +2236,7 @@ async function main() {
       installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
       // limit-notice-1020: read when host custody queues a turn, so an outage of every reviewed login is told once.
       loginCapacity: () => loginPool?.outage() ?? null,
-      // Rules 8, 56, 100: due credential reminder stages and a failing doorway check ride the next answer as one line.
+      // Rules 8, 87, 100: the journal selects action/result notices; machinery observations stay on status.
       // An unreadable registry or map offers nothing here; status reports it (credentials.error, doorways.fresh).
       replyNotices: turn => {
         const now = wallNow(), notices = [];

@@ -67,9 +67,10 @@ for (const basis of ['summary', 'set-aside'] as const) for (const receipt of [1,
     await worker.drain(); await worker.drain();
     expect(sent).toHaveLength(1); assertPlainStop(sent[0]!);
     expect(sent[0]).toContain(captured.request);
-    expect(sent[0]).toContain(basis === 'summary' ? 'Earlier conversation is now summarized for me.'
+    expect(sent[0]).toContain(basis === 'summary' ? 'Note: the earlier part of our conversation is now summarized for me'
       : 'Earlier conversation no longer fits in my view; it is saved and searchable, but not summarized.');
-    expect(sent[0]).toContain('Your previous request is still open; no finished answer is confirmed.');
+    expect(sent[0]).toContain(basis === 'summary' ? 'your last request before that is still open: no finished answer to it was confirmed.'
+      : 'Your previous request is still open; no finished answer is confirmed.');
     const turn = journal.view.turns.get(current)!;
     expect(turn.answer).toBeUndefined();
     expect(turn.continuity).toMatchObject({ prePauseInbound: before, summarizedThrough: captured.summaryThrough,
@@ -244,7 +245,8 @@ it(`discloses different pending requests with identical stopped-task prose in on
       expect(account).toMatchObject({ prePauseInbound: id(n - 1), summarizedThrough: n - 1, disposition: 'pending' });
       expect(account.spoken).not.toBe(false);
       expect(sent.at(-1)).toContain(account.disclosure);
-      expect(sent.at(-1)).toContain('Your previous request is still open; no finished answer is confirmed.');
+      expect(sent.at(-1)).toContain(basis === 'summary' ? 'your last request before that is still open: no finished answer to it was confirmed.'
+        : 'Your previous request is still open; no finished answer is confirmed.');
       // The same delivered account has nothing new to say, despite its request remaining open.
       expect(continuitySpoken(account, { ...account, basis }, false)).toBe(false);
     }
