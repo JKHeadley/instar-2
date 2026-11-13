@@ -298,3 +298,19 @@ it('mints nothing beyond the exact agent-owned connection and leaves unrelated a
   expect(() => configureTrust(older, 'tighten', operatorRequest({ agentGitHubConnection: connection }))).toThrow('cannot widen');
   expect(readFileSync(path, 'utf8')).toBe(bytes);
 });
+
+it('keeps the no-answer reason in the agent result through the exact-grant effect owner', async () => {
+  let calls = 0;
+  const browser = createOwnerBrowser({ binding: () => ({ userDataDir: '/owned/chrome' }), platform: 'darwin', uid: 501, now: () => 10,
+    hold: async () => ({ release: async () => {} }), scrub: (s: string) => s, held: () => 'clear', wait: async () => {},
+    execute: async (command: string) => {
+      if (command === '/bin/ps') return '81453 501 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=/owned/chrome';
+      calls++; return '{}';
+    } });
+  const w = await world({ browser });
+  expect(await w.gate.observeOwner('claim', 'timeout', input)).toEqual({ status: 'unavailable', reason: 'browser-did-not-answer-in-time' });
+  expect(calls).toBe(40);
+  expect(w.rows.map(row => row.state)).toEqual(['prepared', 'observed']);
+  expect(await w.gate.observeOwner('claim', 'timeout', input)).toMatchObject({ status: 'refused' });
+  expect(calls).toBe(40);
+});

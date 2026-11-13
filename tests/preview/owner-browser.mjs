@@ -94,14 +94,15 @@ export function createOwnerBrowser({ binding, hold, scrub, held, now = Date.now,
     const expires = Math.min(deadline, now() + 15000);
     const withdrawn = () => stopped() || now() >= expires;
     const timer = setInterval(() => { if (withdrawn()) controller.abort(); }, 25);
-    let slot;
+    let slot, noAnswer = false;
     const pages = ownerBrowserPages(input), observations = [];
     try {
       if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
       const initial = binding();
       if (bindingSnapshot && JSON.stringify(initial) !== JSON.stringify(bindingSnapshot)) return ownerBrowserRefused('profile-withdrawn');
       slot = await hold({ timeout: Math.max(1, expires - now()), stopped: withdrawn });
-      if (!slot || withdrawn()) return { status: 'unavailable' };
+      if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
+      if (!slot) return { status: 'unavailable' };
       // Recheck the owner config and exact main process on EVERY evaluation; never frontmost/default fallback.
       for (let attempt = 0; attempt < 40 && !withdrawn(); attempt++) {
         if (JSON.stringify(binding()) !== JSON.stringify(initial)) return ownerBrowserRefused('profile-withdrawn');
@@ -113,18 +114,27 @@ export function createOwnerBrowser({ binding, hold, scrub, held, now = Date.now,
         const raw = await execute('/usr/bin/osascript', ['-l', 'JavaScript', '-e', OWNER_BROWSER_APPLE_EVENT, String(pid), ownerBrowserDom(pages[observations.length])], controller.signal);
         if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
         if (JSON.stringify(binding()) !== JSON.stringify(initial)) return ownerBrowserRefused('profile-withdrawn');
-        let loading = false; try { loading = JSON.parse(raw)?.status === 'loading'; } catch { /* strict parser below refuses */ }
-        if (!loading) {
+        let loading = false;
+        noAnswer = typeof raw === 'string' && Buffer.byteLength(raw) <= 4096 && raw.trim() === '';
+        try {
+          const row = JSON.parse(raw);
+          loading = row?.status === 'loading';
+          noAnswer ||= typeof raw === 'string' && Buffer.byteLength(raw) <= 4096
+            && row !== null && typeof row === 'object' && !Array.isArray(row) && Object.keys(row).length === 0;
+        } catch { /* Only empty output is retryable; nonempty malformed replies stay final. */ }
+        if (!loading && !noAnswer) {
           const page = pages[observations.length], result = ownerBrowserObservation(raw, now(), scrub, held, page);
           if (result.status !== 'observed' || input.page) return result;
           observations.push({ ...result, url: OWNER_BROWSER_PAGES[page] });
           if (observations.length === pages.length) return { status: 'observed', observations };
           continue;
         }
-        await wait(250);
+        if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
+        await wait(Math.min(250, Math.max(0, expires - now())));
       }
-      return { status: 'unavailable' };
-    } catch { return { status: 'unavailable' }; }
+      if (stopped()) return ownerBrowserRefused('closed-or-stopped');
+      return noAnswer ? { status: 'unavailable', reason: 'browser-did-not-answer-in-time' } : { status: 'unavailable' };
+    } catch { return stopped() ? ownerBrowserRefused('closed-or-stopped') : { status: 'unavailable' }; }
     finally { clearInterval(timer); controller.abort(); try { if (slot) await slot.release(); } finally { busy = false; } }
   };
   return Object.freeze(Object.assign(observe, { binding }));
