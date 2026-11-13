@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openPreviewJournal } from './journal-test-worker.js';
@@ -8,7 +8,7 @@ import { usageReconciliation } from './doorway-map.js';
 
 it('carries recorded-shape measured and unknown usage in both packet forms, without calling reserved used', async () => {
   // Reconstruct the supplied 11-12 observation through the real writer; no private live journal access.
-  const root = mkdtempSync(join(tmpdir(), 'usage-self-report-'));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'usage-self-report-')));
   const journal = openPreviewJournal(join(root, 'journal'), new Uint8Array(32).fill(7), {
     kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 40000,

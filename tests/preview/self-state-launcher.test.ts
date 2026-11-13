@@ -87,7 +87,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     // Rule 15: a reached cap no longer ends the run; the reserve keeps reading until the cycle bound.
     expect(s.launches[0].reason).toBe('cycle limit reached');
     let prompt = readFileSync(prompts, 'utf8').trim().split('\n').map(selfOf);
-    expect(prompt[0]).toContain('Runs 1; current start');
+    expect(prompt[0]).toContain('Runs 1; start');
     expect(prompt[0]).toContain('Activation: your activation; ends');
     const record = JSON.parse(readFileSync(join(root, 'credentials.json'), 'utf8')).records
       .find(item => item.kind === 'activation');
@@ -105,11 +105,11 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(prompt.every(text => !text.includes(env.INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN)
       && !text.includes(env.INSTAR_SECRET_PREVIEW_TYPESAFE_KEY)
       && !text.includes(env.INSTAR_SECRET_PREVIEW_STORAGE_KEY))).toBe(true);
-    expect(prompt[0]).toMatch(/current start 2026-\d\d-\d\d \d\d:\d\d P[DS]T/u);
+    expect(prompt[0]).toMatch(/start 2026-\d\d-\d\d \d\d:\d\d P[DS]T/u);
     // The burst intake admits every waiting update before reply work, so both are already received.
     expect(prompt[0]).toContain('Today/total: operator 2/2, replies accepted 0/0;');
     expect(prompt[1]).toContain('operator 2/2, replies accepted 1/1;');
-    expect(prompt[1]).toContain('Cap held=1/3 (includes reserves, not usage)');
+    expect(prompt[1]).toContain('Cap held=1/3 (not usage)');
     expect(prompt[1]).toContain('Tokens(in/out measured,reserved;calls,unknown;others=0):');
     expect(prompt[1]).toContain('Model login capacity: unknown (no pool configured).');
     expect(readFileSync(prompts, 'utf8').trim().split('\n').every(line =>
@@ -133,9 +133,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     const now = prompt[2];
     expect(now).toContain('Today/total: operator 4/4, replies accepted 2/2;');
     expect(now).toContain('this unsent.');
-    expect(now).toContain('Cap held=2/6 (includes reserves, not usage)');
+    expect(now).toContain('Cap held=2/6 (not usage)');
     expect(now).toContain('Caps raised: Justin, offline test;');
-    expect(now).toMatch(/current start 2026-\d\d-\d\d \d\d:\d\d P[DS]T/u);
+    expect(now).toMatch(/start 2026-\d\d-\d\d \d\d:\d\d P[DS]T/u);
     expect(now).toMatch(/prior \[\["2026-\d\d-\d\d \d\d:\d\d P[DS]T","2026-\d\d-\d\d \d\d:\d\d P[DS]T","cycle limit reached"\]\]/u);
     expect(now).toContain('Runs 2;');
     expect(s.launches).toHaveLength(2);
@@ -144,7 +144,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(s.self).toContain('Operator messages received: 4 today, 4 so far');
     expect(s.self).toContain('My replies Telegram accepted: 4 today, 4 so far');
     expect(s.self).toContain('Messages exchanged today: 8');
-    expect(s.self).toContain(now.match(/current start ([^;]*)/u)[1]);
+    expect(s.self).toContain(now.match(/start ([^;]*)/u)[1]);
     expect(s.self).toContain('ended'); // the latest launch has recorded its end
     process.stdout.write(`launcher runs: first=${firstLaunch.toFixed(0)} ms, restarted=${secondLaunch.toFixed(0)} ms\n`);
   } finally { endpoint.kill('SIGTERM'); }
