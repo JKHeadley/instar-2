@@ -8557,10 +8557,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const floorContext = () => {
           const bare = withoutOffer(withoutSummary ?? fullContext) ?? withoutSummary ?? fullContext;
           const cut = yieldSources(bare)[0] ?? bare;
-          const guided = floorGuide(cut).at(-1) ?? cut;
-          return reviewReserveWaived ? withoutSiblingWords(guided) ?? guided : guided;
+          const guided = floorGuide(cut);
+          const floors = guided.length ? guided.slice(reviewReserveWaived ? -2 : -1) : [cut];
+          return floors.map(value => reviewReserveWaived ? withoutSiblingWords(value) ?? value : value);
         };
-        const variants = budget.limited ? [floorContext()] : ordinaries.flatMap(ordinary => {
+        const variants = budget.limited ? floorContext() : ordinaries.flatMap(ordinary => {
           const bare = withoutOffer(ordinary), base = bare ?? ordinary;
           const cut = yieldSources(base);
           const kept = [ordinary, ...(bare ? [bare] : []), ...cut, ...floorGuide(cut[0] ?? base)];
