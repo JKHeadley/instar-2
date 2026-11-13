@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { readFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
@@ -26,6 +26,8 @@ it.each<ReplayCase>([
   ...shapes.otherShapes.map(shape => ({ update: 715676486, limit: 27000, shape })),
 ])('grounds the recorded scoped-tool answer for $update within $limit bytes', async ({ update, limit, shape, verified = true }) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'sibling-replay-')));
+  // Isolate the candidate allowance from host load; the bound suite injects elapsed time.
+  const clock = update === 715676488 ? vi.spyOn(performance, 'now').mockReturnValue(0) : undefined;
   const rows = capture.rows;
   const id = `telegram:8994258214:update:${update}`;
   const index = rows.findIndex(row => row.kind === 'reserve' && row.id === id);
@@ -77,6 +79,9 @@ it.each<ReplayCase>([
       expect(journal.view.turns.get(id)!.sent).toBeDefined();
       expect(journal.view.turns.get(id)!.held).toBeUndefined();
     }
+    if (update === 715676488) expect(createHash('sha256').update(dispatched!).digest('hex')).toBe(limit === 32768
+      ? '2993ad1ffbc6c663b86eb8fa4ef41020041c9a06fb6692dc19bc6eb2f71f4059'
+      : '2dced49a236579b241b7c4a36431a03394fec1749454d749f14a43c0d0f125e1'); // Base 8e402230.
     const packet = packetOf(dispatched!);
     expect(Buffer.byteLength(dispatched!)).toBeLessThanOrEqual(limit);
     expect(packet.audience.conversation).toBe(original.audience.conversation);
@@ -104,5 +109,5 @@ it.each<ReplayCase>([
       state: 'open', ownWords: expect.stringContaining("I will not restart it before 5 pm Pacific tomorrow, October 16, and even after that time, I won't restart it without your explicit go-ahead first.") })]));
     expect(words.items.every((item: { ownWords: string }) => /^when I said it: 2026-10-15 22:0[013] PDT \(reply delivery\); operator input received:/u.test(item.ownWords))).toBe(true);
     expect(words.guidance).toContain('Reconcile your answer');
-  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+  } finally { clock?.mockRestore(); journal.close(); rmSync(root, { recursive: true, force: true }); }
 }, 120000);
