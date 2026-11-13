@@ -51,7 +51,8 @@ async function replay(text: string, metadata: { promises?: unknown; fulfills?: u
     const worker = createJournalWorker(journal, ports);
     worker.intake([{ update_id: 715676157, message: { chat: { id: 7654321, type: 'private' },
       from: { id: 7654321 }, text: 'Please answer the request.' } }]);
-    if (crash) await expect(worker.drain()).rejects.toThrow('crash'); else await worker.drain();
+    await worker.drain();
+    if (crash) expect(journal.view.order.at(-1)?.attempt?.state).toBe('exception');
     journal.close();
     const reopened = openPreviewJournal(path, key);
     try {

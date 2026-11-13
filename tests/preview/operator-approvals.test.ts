@@ -150,7 +150,8 @@ it('declines from the phone without change; a crash after a verified decision le
     { boundary: stage => { if (crash && stage === 'after:approval-decision') { crash = false; throw Error('crash'); } } });
   other.worker.intake([message(1, 'one'), message(2, 'two')]); await other.worker.drain();
   other.surface.operatorActs(challengeOf(other.journal)!.id, 'approve');
-  await expect(other.worker.minimal()).rejects.toThrow('crash');
+  await expect(other.worker.minimal()).resolves.toBeUndefined();
+  expect(other.journal.view.operatorEvents.some(row => row.detail === 'housekeeping minimal: exception')).toBe(true);
   other.journal.close();
   const reopened = openPreviewJournal(path.replace('journal.encrypted', 'crash.encrypted'), key);
   const resumed = createJournalWorker(reopened, { ...other.ports });

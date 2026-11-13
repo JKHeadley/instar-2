@@ -233,7 +233,8 @@ it.each(['cap', 'stop', 'crash'] as const)('preserves the %s floor at the retry 
     worker.intake([{ update_id: 1, message: { message_id: 1, chat: { id: 7654321, type: 'private' },
       from: { id: 7654321 }, text: captured.recorded.text } }]);
     if (mode === 'stop') await expect(worker.drain()).rejects.toThrow('preview stopped');
-    else if (mode === 'crash') await expect(worker.drain()).rejects.toThrow('injected crash');
+    else if (mode === 'crash') { await expect(worker.drain()).resolves.toBeUndefined();
+      expect(journal.view.order[0]?.attempt?.state).toBe('exception'); }
     else await worker.drain();
     expect(calls).toBe(1);
     if (mode === 'cap') { expect(reviews).toBe(1); expect(sends).toBe(1); expect(journal.view.jevChecks).toBe(1); }

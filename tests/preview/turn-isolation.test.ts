@@ -227,3 +227,19 @@ it.each(recordedShapes)('contains preparation failure with recorded $kind ($id) 
     expect(f.journal.view.order[0]!.deliveryNotice?.sent).toBe(1);
   } finally { f.close(); }
 });
+
+it('idle held scans write no attempts; releasing the hold begins work durably', async () => {
+  const f = world();
+  try {
+    const worker = createJournalWorker(f.journal, defaults()); worker.intake([update(1)]);
+    const id = f.journal.view.order[0]!.id;
+    f.journal.append({ kind: 'hold', id, reason: 'awaiting existing review', at });
+    await worker.drain(); const size = f.journal.size;
+    for (let n = 0; n < 20; n++) await worker.drain();
+    expect(f.journal.size).toBe(size); expect(f.journal.view.order[0]!.attempt).toBeUndefined();
+    f.journal.append({ kind: 'hold', id, reason: 'earlier turn pending', at });
+    await worker.drain();
+    expect(f.journal.view.order[0]!.attempt).toEqual({ number: 1, state: 'ended', failures: 0 });
+    expect(f.journal.view.order[0]!.sent).toBe(1);
+  } finally { f.close(); }
+});

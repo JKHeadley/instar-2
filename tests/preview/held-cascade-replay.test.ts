@@ -66,7 +66,8 @@ async function flow(options: Flow) {
     const worker = createJournalWorker(first, ports(true));
     worker.intake([{ update_id: 969389800, message: { chat: options.forum ? { id: -1001234, type: 'supergroup', is_forum: true } : { id: 7654321, type: 'private' }, ...(options.forum ? { message_thread_id: 7 } : {}), from: { id: 7654321 },
       ...(options.media ? { caption: OPERATOR_TEXT, voice: { file_id: 'AwACAgEAAxkBAAIC-voice', file_size: 11520 } } : { text: OPERATOR_TEXT }) } }]);
-    if (options.crashAt) await expect(worker.drain()).rejects.toThrow('crash'); else await worker.drain();
+    await worker.drain();
+    if (options.crashAt) expect(first.view.order[0]?.attempt?.state).toBe('exception');
     // The durable state the cint-L13 build left on the live preview: the same rows, ending in its hold.
     if (options.preHeld) first.append({ kind: 'hold', id: first.view.order[0]!.id, reason: 'reply check unavailable', at: clock.now });
     first.close();

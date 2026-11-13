@@ -6411,9 +6411,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     catch (cause) { attemptActive.delete(turn); throw new IsolationRecordError('attempt record failed', { cause }); }
     if (state === 'started') attemptActive.add(turn); else attemptActive.delete(turn);
   };
+  const beginAttempt = (turn: Turn) => { if (!attemptActive.has(turn)) recordAttempt(turn, 'started'); };
   const failAttempt = (turn: Turn, error: unknown) => {
     if (error instanceof IsolationRecordError) throw error;
-    if (halted()) { recordAttempt(turn, 'ended'); throw error; }
+    if (halted()) { if (attemptActive.has(turn)) recordAttempt(turn, 'ended'); throw error; }
+    beginAttempt(turn);
     const state = error instanceof PreparationBoundError ? 'preparation-bound' : 'exception';
     recordAttempt(turn, state); isolationLog(turn.id, state);
   };
@@ -9203,15 +9205,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (topic !== null && (turn.thread ?? 'main') !== topic) continue;
         if (!turn.accepted || turn.editOf || turn.sent || turn.intent || batchDeferred.has(turn.id)) continue;
         if ((turn.requestedAction !== undefined) !== due || turn.parked) continue;
-        if (!attemptActive.has(turn)) recordAttempt(turn, 'started');
         let attemptFailed = false;
         try {
         // Past the ordinary turn allowance only the minimal responder answers (Rule 15).
         if (outsideAllowance(journal.view, turn)) continue;
         if (actionBlocked(turn)) continue;
         if (journal.view.order.some(item => item.accepted && item.editOf === turn.id)) {
-          if (turn.held !== 'superseded by edit')
-            journal.append({ kind: 'hold', id: turn.id, reason: 'superseded by edit', at: ports.now() });
+          if (turn.held !== 'superseded by edit') { beginAttempt(turn);
+            journal.append({ kind: 'hold', id: turn.id, reason: 'superseded by edit', at: ports.now() }); }
           continue;
         }
         // Least revelation: a carried root without current permission and operator-only audience reserves nothing and
@@ -9219,7 +9220,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (!audienceHolds && !isStopCommand(turn.text)) {
           // limit-notice-1020: a reserved turn's call is already in host custody; disclosure did not stop it,
           // so it is skipped this pass without a disclosure label (a capacity wait is reported as capacity).
-          if (turn.held === undefined && !turn.reserved) journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: ports.now() });
+          if (turn.held === undefined && !turn.reserved) { beginAttempt(turn);
+            journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: ports.now() }); }
           continue;
         }
         // Like 1.x PendingInjectStore, retain the durable pending state until its
@@ -9234,15 +9236,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // correction holds ordinary answers; the burst ordering hold keeps that exemption.
         if (blockedEarlier && turn.modelState !== 'uncertain' && !isStatusCommand(turn.text)
           && turn.noticeClass !== 'too-long-input' && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes) {
-          if (currentHold() !== 'earlier turn pending')
-            journal.append({ kind: 'hold', id: turn.id, reason: 'earlier turn pending', at: ports.now() });
+          if (currentHold() !== 'earlier turn pending') { beginAttempt(turn);
+            journal.append({ kind: 'hold', id: turn.id, reason: 'earlier turn pending', at: ports.now() }); }
           continue;
         }
         gate();
         // Keep the full operator update in the journal, then give an honest bounded
         // reply without spending a model call on input that cannot fit the envelope.
-        if (Buffer.byteLength(turn.text) > journal.view.limits.maxBytes && !turn.noticeClass && !turn.reserved)
-          journal.append({ kind: 'notice', id: turn.id, noticeClass: 'too-long-input', at: ports.now() });
+        if (Buffer.byteLength(turn.text) > journal.view.limits.maxBytes && !turn.noticeClass && !turn.reserved) { beginAttempt(turn);
+          journal.append({ kind: 'notice', id: turn.id, noticeClass: 'too-long-input', at: ports.now() }); }
         if (turn.noticeClass === 'too-long-input' && currentHold()) { releasedHold = turn.held; }
         // A correction is decided before its reply, so an uncertain send cannot
         // let a later answer use the old fact. Intake remains durable if the
@@ -9251,6 +9253,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // even if a later correction still holds ordinary answers.
         if (pendingMemory() && turn.modelState !== 'uncertain' && turn.noticeClass !== 'too-long-input'
           && !isStatusCommand(turn.text)) {
+          beginAttempt(turn);
           settleBehind();
           // A batch can need more than one summary frontier before the edit is
           // reached. Finish each durable prefix before considering later replies.
@@ -9290,6 +9293,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           releasedHold = turn.held;
         }
         if (currentHold()?.startsWith('summary unavailable:') || currentHold() === 'prompt overflow' || currentHold() === 'context overflow') {
+          beginAttempt(turn);
           const key = heldFitKey();
           if (heldPrepared?.id === turn.id && heldPrepared.key === key && elapsed() - heldPrepared.at < HELD_REPREPARE_MS) {
             // Nothing that could make it fit has changed: only the summary pass may release it.
@@ -9307,6 +9311,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (currentHold() && !silentReviewHold) continue;
         // The minimal path already owns this stop (confirmation sent or latched): never a second one.
         if (turn.limited && isStopCommand(turn.text)) continue;
+        beginAttempt(turn);
         gate();
         if (turn.answer === undefined && !turn.reserved && !turn.noticeClass && isStopCommand(turn.text)) {
           const prompt = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet: {
@@ -10780,7 +10785,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // The rest of a split reply follows at once, before any later reply.
         if (parts.length) await sendReplyParts(turn);
         } catch (error) { attemptFailed = true; failAttempt(turn, error); }
-        finally { if (!attemptFailed) recordAttempt(turn, 'ended'); }
+        finally { if (!attemptFailed && attemptActive.has(turn)) recordAttempt(turn, 'ended'); }
       }
       };
       if (concurrency === 1) await drainTopic(null);
