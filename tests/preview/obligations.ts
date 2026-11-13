@@ -52,6 +52,42 @@ export function openLoops(view: JournalView, now: number): OpenLoop[] {
   return loops.sort((a, b) => a.openedAt - b.openedAt || a.id.localeCompare(b.id));
 }
 
+/** Registry-first awareness uses the same population as status; unknown outcomes are never zero work.
+ * The caller applies its existing audience and memory-redaction boundary before rendering. */
+export function workRecords(view: JournalView, now: number, clean: (text: string, source: string) => string) {
+  const schedule = obligationSchedule(view), byKey = new Map(schedule.map(item => [item.key, item]));
+  const loops = openLoops(view, now);
+  const rows = loops.map(loop => {
+    const step = byKey.get(loop.id), work = view.obligationWork[loop.id];
+    const id = Number(loop.id.split(':')[1]);
+    const text = loop.kind === 'commitment' ? view.commitments[id]!.quote
+      : loop.kind === 'directive' ? view.directives[id]!.quote
+        : loop.kind === 'blocker' ? view.blockers[id]!.claim : view.turns.get(loop.source)?.text ?? '';
+    const state = step?.deliveryUnknown ? 'delivery-unknown' : work?.recoveryHeld ? 'recovery-unknown'
+      : step?.awaitingDelivery ? 'awaiting-delivery' : step?.inFlight ? 'in-flight'
+        : step && Number.isFinite(step.slot) && step.slot > now ? 'scheduled' : 'open';
+    return { id: loop.id, source: loop.source, owner: loop.owner, waitsOn: loop.waitsOn,
+      nextAt: step ? Number.isFinite(step.slot) ? step.slot : null : loop.nextAt, state,
+      quote: clean(text, loop.source).slice(0, 160), unverified: true };
+  });
+  // A cleared blocker can still owe delivery of its result, so include the schedule's residual population.
+  for (const step of schedule) if (!rows.some(row => row.id === step.key)) {
+    const note = view.blockers[step.id];
+    if (note) rows.push({ id: step.key, source: note.source, owner: 'agent', waitsOn: 'delivery', nextAt: null,
+      state: step.deliveryUnknown ? 'delivery-unknown' : 'awaiting-delivery', quote: clean(note.claim, note.source).slice(0, 160), unverified: true });
+  }
+  rows.sort((a, b) => (a.nextAt ?? Infinity) - (b.nextAt ?? Infinity) || a.id.localeCompare(b.id));
+  const items: typeof rows = [];
+  for (const row of rows) {
+    if (items.length === 20 || Buffer.byteLength(JSON.stringify([...items, row])) > 6000) break;
+    items.push(row);
+  }
+  const count = (state: string) => rows.filter(row => row.state === state).length;
+  return { open: loops.length, scheduled: count('scheduled'), awaitingDelivery: count('awaiting-delivery'),
+    deliveryUnknown: count('delivery-unknown'), recoveryUnknown: count('recovery-unknown'), items,
+    omitted: rows.length - items.length };
+}
+
 export interface LoopHealth { open: number; byKind: Record<LoopKind, number>; revisitDue: number;
   /** This root's own resurfacing cadence in whole minutes (Rules 8, 92), so a reader never assumes one. */
   revisitMinutes: number;
