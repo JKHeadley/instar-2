@@ -2,8 +2,8 @@
 // The legacy `tests`/`consequential` fields remain the journal and never-twice protocol:
 // irreversible work still uses a stable identity even when it needs no sign-off.
 // `operations` comes from the installation owner, never a role grant. On one machine
-// it remains P-08's fixed provider/Telegram/Slack set; replicated operations must
-// pass the existing effect owner's exact durable-prefix check before dispatch.
+// it retains P-08 v1's fixed set. V2 eligibility comes only from the host's current
+// rolePolicy resolution; the effect owner still records the full cause before dispatch.
 export const SIGN_OFF_TESTS = Object.freeze(['resources', 'irreversibleOutsideRole', 'publicInPersonName', 'widensAuthority', 'policySensitive']);
 export const SIGN_OFF_WORDS = Object.freeze({
   resources: 'it may commit money or a resource above the level the person named',
