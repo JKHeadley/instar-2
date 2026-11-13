@@ -31,12 +31,12 @@ Plain acceptance: accepting single-machine-v2 allows irreversible actions inside
 
 What remains hand-listed: v1's provider-call and ordinary Telegram/Slack replies retain their exact list and digest. V2 has no operation list. Uncheckpointed raw egress retains old behavior because it lacks complete preparation and uniqueness, not because v2 excludes a kind of effect. No forge/network mutation adapter belongs to this prerequisite unit.
 
+Validation update: nine new profile tests pass, including provider/reply comparison through the real minimal-path owner; the tool-only policy decoder is deliberately not used for provider-call. Independent reviewer /root/profile_review concurs with the repaired peer and account-off guards.
+
+Generated records: refreshed the eight generated register outputs from committed source 9bf74dcf8257748b394b588a111eb6556f1d7df0. Owner-manifest and grounding-inventory refresh tools found zero pins to change. No acceptance or native conformance declaration was edited.
+
 ## Closing block
 
 simplestRobustRoute: this is the simplest route: version the fixed profile and parameterize its existing resolver, then use the existing host effect owner and journal for full-cause preparation. The small host wrapper prevents accepting an orphan or substituted parent and prevents stale acceptance from authorizing a new irreversible effect. Start guard: exact sourced sealed acceptance and current role. End-state guard: durable preparation before dispatch, existing uncertain-outcome recovery. Limit guards: existing spend, stop, secret and record bounds. No autonomous-completion or live activation claim.
 80/20: targeted owner and direct consumer tests; independent reviewer concurs with repaired code and side-effects review. Raw proxy is deliberately not given a v2 allow bit without a dispatch owner. Deployment and native contract proofs belong to the Studio gate.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Validation update: nine new profile tests pass, including provider/reply comparison through the real minimal-path owner; the tool-only policy decoder is deliberately not used for provider-call. Independent reviewer /root/profile_review concurs with the repaired peer and account-off guards.
-
-Generated records: refreshed the eight generated register outputs from committed source 9bf74dcf8257748b394b588a111eb6556f1d7df0. Owner-manifest and grounding-inventory refresh tools found zero pins to change. No acceptance or native conformance declaration was edited.
