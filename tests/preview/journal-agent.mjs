@@ -13,6 +13,8 @@ import { prepareSessionConnectors, conversationAccountActions, admitSessionConne
 import { createAudienceTimingObserver, recordPhaseTiming } from './phase-timing.js';
 import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice, reviewResultFailure } from './reply-check.js';
 import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin, observeInstalledSessionLogin } from './installed-harness-logins.mjs';
+import { installSigninRepair } from './installed-signin-repair.mjs';
+import { installedSigninRepairAdapter } from './signin-repair-physical.mjs';
 import { loadHarnessLogins, harnessLoginPoolStatus, createHarnessLoginPool, observeHarnessSessionLimit, observeHarnessSignIn, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
 import { appendGroupCarry } from './group-carry.js';
@@ -48,7 +50,7 @@ import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COV
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom,
   staleAgainst, updateDelivery, updatePacketItem } from './installation.js';
 import { currentActionFacts, bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, ModelNotStarted, createModelLaunchBoundary, capacityAlerts } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, replyCheckCauses, unavailableChecks, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, replyCheckCauses, unavailableChecks, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, requestedToolSources, conversationTurnEligible, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, readSelfAccess, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
@@ -1515,7 +1517,7 @@ async function main() {
   }
   const versionCheck = createSubscriptionVersionCheck();
   let dueWake = null;
-  let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false, startupFailure = null;
+  let journal, worker, signinRepair = null, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false, startupFailure = null;
   let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null, installation = null, installUpdate = null;
   // Rule 15 / Eleven §5: the installed shape's evidence, set once the activation is validated at launch.
   let installationPolicy = { kind: 'refused', reason: 'the activation is not validated yet' }, registerAtLaunch = null;
@@ -1924,13 +1926,21 @@ async function main() {
     const toolPromptLimit = () => Math.max(journal.view.limits.maxBytes,
       doorway.policyFor(required(options, 'model'), doorway.toolsFraming ?? doorway.conversationFraming).maxPromptBytes);
     const preparation = toolPreparation(() => toolsActive());
+    const sessionTurnEligible = (id, current = true) => conversationTurnEligible(journal.view, id, () => {
+      if (!current) return true;
+      // Refresh and validate changed grant bytes before deciding whether due work can use them.
+      try { sessionWork?.select?.(); return sessionWork?.port.available() === true; }
+      catch { return false; }
+    });
+    const scopedTurnEligible = (id, activation = toolsRecord) => toolTurnEligible(id)
+      || activation !== null && requestedToolSources(journal.view, id).length > 0;
     const modelEnvelope = input => {
       // Local transcripts use the same source and held-secret boundary as text intake.
       input = prepareMediaInput(input, currentMedia, text => redact(concealSecretMaterial(text, heldSecretValues())).text);
       const bytes = prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
       // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
       // for the text-only prompt, instead of leaving the turn to fall back to a text-only answer.
-      if (preparation.active() && identityRefusal === null && toolTurnEligible(input.id)
+      if (preparation.active() && identityRefusal === null && scopedTurnEligible(input.id)
         && Buffer.byteLength(bytes) + Buffer.byteLength(doorway.toolTurn?.system ?? SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + TOOL_NOTICE_MAX_BYTES > toolPromptLimit())
         throw Error('preview: complete prompt overflow');
       return bytes;
@@ -2092,6 +2102,7 @@ async function main() {
       const runtime = loginRuntimes.get(selected.index);
       const turnHarness = runtime?.harness ?? harness;
       const turnActivation = runtime?.toolsRecord ?? toolsRecord;
+      if (!scopedTurnEligible(id, turnActivation)) return invokeSubscription(prepared, id);
       return (await runToolTurn({ journal, root, id, prepared,
       promptLimit: toolPromptLimit(), mcp: readRootMcp(root),
       // Rule 100: an MCP server's SecretRef is opened from this root's custody vault and handed to that server alone.
@@ -2214,7 +2225,7 @@ async function main() {
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
       replyReviewTiming: conversationSession ? 'after-send' : 'before-send',
-      toolRoute: id => conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id) ? true : preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
+      toolRoute: id => conversationSession && sessionTurnEligible(id) ? true : preparation.active() && identityRefusal === null && scopedTurnEligible(id) && toolPacketFits(journal.view),
       // Scheduled obligations keep their existing route; continuing operator conversation is selected below.
       // The session route is taken only while its grant holds and the call allowance can hold the
       // step's whole reserved liability on top of the obligation's own start.
@@ -2236,6 +2247,7 @@ async function main() {
       installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
       // limit-notice-1020: read when host custody queues a turn, so an outage of every reviewed login is told once.
       loginCapacity: () => loginPool?.outage() ?? null,
+      signinRepairNotices: () => (loginPool?.notices() ?? []).filter(item => item.key.startsWith('login-signin:')),
       // Rules 8, 56, 100: due credential reminder stages and a failing doorway check ride the next answer as one line.
       // An unreadable registry or map offers nothing here; status reports it (credentials.error, doorways.fresh).
       replyNotices: turn => {
@@ -2245,7 +2257,7 @@ async function main() {
         // Plan #473: an answer whose tool turn was refused for the harness identity says so under it.
         if (turn !== undefined && identityRefusal !== null && (journal.view.toolTurns?.identityRefused ?? []).includes(turn))
           notices.push({ key: `harness:${turn}`, line: harnessRefusedNotice(identityRefusal) });
-        notices.push(...(loginPool?.notices() ?? []));
+        notices.push(...(loginPool?.notices() ?? []).filter(item => !item.key.startsWith('login-signin:')));
         notices.push(...sessionLoginNotices([...sessionLoginObservations.values()], now));
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
         try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
@@ -2273,7 +2285,7 @@ async function main() {
           shape => recordShape(shapesPath, 'answer', 'decision', 'malformed', shape)));
       } } : {}),
       collectModel: async id => {
-        if (!conversationSession || !sessionWork || !/^telegram:[0-9]+:update:[0-9]+$/u.test(id)) return null;
+        if (!conversationSession || !sessionWork || !sessionTurnEligible(id, false)) return null;
         const turn = journal.view.turns.get(id);
         const operation = turn?.promptKind === 'format-retry' ? `${id}:format-retry` : id;
         const saved = await sessionWork.port.collect(operation);
@@ -2284,7 +2296,7 @@ async function main() {
       model: async ({ id, prepared, question, context: packet }) => {
         try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
-        if (conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id)) {
+        if (conversationSession && sessionTurnEligible(id)) {
           // The journal reserves the one format repair before this call. Its exact packet gets
           // a durable child identity; replaying the original bytes still names the original turn.
           // Never relax the host's same-identity request-digest check.
@@ -2294,6 +2306,7 @@ async function main() {
           let outcome;
           try {
             sessionWork?.select?.();
+            if (!sessionTurnEligible(id)) return invokeSubscription(prepared, id);
             if (!sessionWork?.port.available()) throw new ModelNotStarted();
             outcome = await sessionWork.port.run({ operation, question: prepared, context: packet,
               authority: sessionWork.authority });
@@ -2307,7 +2320,7 @@ async function main() {
         }
         const callsBefore = journal.view.modelCalls.total;
         let result;
-        try { result = await modelLaunch.run(() => toolsActive() && toolTurnEligible(id) ? invokeTools(prepared, id) : invokeSubscription(prepared, id)); }
+        try { result = await modelLaunch.run(() => toolsActive() && scopedTurnEligible(id) ? invokeTools(prepared, id) : invokeSubscription(prepared, id)); }
         catch (error) {
           // A resumed tool turn may already have invoked a provider before a later disclosure refusal.
           if (error instanceof ModelDisclosureRefused && journal.view.modelCalls.total !== callsBefore)
@@ -2659,6 +2672,21 @@ async function main() {
         credential: entry => createHash('sha256').update(readHarnessLogin(entry.profile), 'utf8').digest('hex').slice(0, 16),
         previouslyLaunched: () => harnessPoolPreviouslyLaunched(runsPath, [loginConfiguration.identity, ...loginConfiguration.legacyIdentities]),
         validate: (entry, tools) => { const runtime = loginRuntimes.get(entry.index); runtime.check(tools); runtime.harness.current(); } });
+      signinRepair = installSigninRepair({ adapter: installedSigninRepairAdapter({ root }), pool: loginPool,
+        entries: loginConfiguration.entries, machine: 'local', owner: `launch:${ownerClaim.holder.machine}:${ownerClaim.holder.pid}:${ownerClaim.holder.since}`,
+        now: wallNow, stopped: mediaStopped, current: () => active() && loginConfiguration.current(),
+        eligible: entry => loginRuntimes.get(entry.index)?.live(false) === true,
+        hold: bounds => hostResources.hold('maintenance', bounds), journal, authority: activation.reference,
+        helper: target => {
+          for (const candidate of loginConfiguration.entries) {
+            if (candidate.index === target.index) continue;
+            try { const entry = loginPool.select(false, candidate.index, true, true);
+              if (!entry) continue;
+              loginRuntimes.get(entry.index).check(false); loginRuntimes.get(entry.index).harness.current(); return entry;
+            } catch { /* Missing authority/capacity is not proof that all logins are unhealthy. */ }
+          }
+          return 'unavailable';
+        }, recovered: entry => { loginRuntimes.get(entry.index).check(false); unavailable.delete(entry.index); } });
     }
     const effectPolicyPath = options['effect-policy'];
     if (effectPolicyPath !== undefined) {
@@ -2943,7 +2971,7 @@ async function main() {
           topicOf: operation => {
             // A repair inherits only its admitted parent's topic, never its execution identity.
             // The durable one-repair reservation is required; a suffix alone grants nothing.
-            const parent = /^telegram:[0-9]+:update:[0-9]+:format-retry$/u.test(operation)
+            const parent = operation.endsWith(':format-retry')
               ? journal.view.turns.get(operation.slice(0, -':format-retry'.length)) : undefined;
             const turn = journal.view.turns.get(operation)
               ?? (parent?.reserved && parent.answerRetried && parent.promptKind === 'format-retry' ? parent : undefined);
@@ -3165,6 +3193,7 @@ async function main() {
     // the Telegram connection or on an inbound message. Requested result delivery uses the post-poll pass below.
     const workCycle = (requested = false, wake = false) => {
       if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
+      signinRepair?.tick();
       // Work observation shares this cycle but must run while the ordinary work lane is busy.
       if (!journal.readOnly) sentinels.observeWork();
       sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
@@ -3325,6 +3354,7 @@ async function main() {
 
     }
     dueWake.close();
+    await signinRepair?.close();
     // The bounded shutdown awaits (provider timeouts) are progress, not a hang.
     const tailBeat = setInterval(hostBeat, 5000);
     try {
@@ -3432,6 +3462,7 @@ async function main() {
     } finally {
       // A delegated session never outlives the launch that owns it.
       try { if (conversationSession) await sessionWork?.port.close(); else sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
+      await signinRepair?.close();
       if (gate) { gate.closeAll(); await gate.stop(); }
       for (const proxy of stepEgress.values()) await proxy.close();
       stepEgress.clear();

@@ -1126,7 +1126,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 6;
+export const JOURNAL_GENERATION = 7;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1139,7 +1139,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['signin-repair-version', 'send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'attribution-check', 'attribution-reserve', 'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1158,6 +1158,7 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refu
   'summary-reserve', 'summary-review-reserve', 'summary-uncertain', 'tool-turn', 'waiting']);
 
 export type JournalRecord =
+  | { kind: 'signin-repair-version'; at: number }
   | PhaseTiming
   // Non-additive: an older writer must not discard the no-repeat expectation.
   | { kind: 'media-claim'; id: string; digest: string; at: number }
@@ -1270,8 +1271,8 @@ export type JournalRecord =
     /** Other held messages in this conversation the one notice also answers; none gets a second push (P-14). */
     covers?: string[]; acknowledgement?: true; acknowledgementMode?: 'reaction-or-text'; workingProgress?: WorkingProgress; waitingProgress?: true; deliveryUnknown?: true; promiseRecovery?: true;
     /** limit-notice-1020: its own durable slot (`login-outage:<id>`). Non-additive: a reader that skipped it would repeat the notice. */
-    loginOutage?: { resetAt: number | null }; closing?: { end: number; zone: string }; provenance?: OutboundProvenance; at: number }
-  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; promiseRecovery?: true; loginOutage?: true; closing?: number; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
+    signinRepair?: { key: string; notices: ReplyNotice[] }; loginOutage?: { resetAt: number | null }; closing?: { end: number; zone: string }; provenance?: OutboundProvenance; at: number }
+  | { kind: 'held-notice-sent'; id: string; message: number; signinRepair?: string; deliveryUnknown?: true; promiseRecovery?: true; loginOutage?: true; closing?: number; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
 
   // Non-additive: reservations/checks below may follow a sent reply; an older writer must refuse.
   | { kind: 'reply-review-after-send'; id: string; at: number }
@@ -1547,6 +1548,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   promiseNotice?: { lead: string; text: string; at: number; sent?: number };
   /** limit-notice-1020: the one fixed notice that every reviewed login was out of capacity, on the turn host custody queued. */
   loginOutageNotice?: { text: string; at: number; resetAt: number | null; sent?: number };
+  signinRepairNotices?: { key: string; notices: ReplyNotice[]; text: string; at: number; sent?: number }[];
   closingNotices?: { end: number; text: string; at: number; sent?: number }[];
   heldNoticeReviewReserved?: true; heldNoticeReview?: ReplyCheckResult;
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
@@ -1596,7 +1598,8 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
 
 
 export interface TestCopySource { root: string; journal: string; bytes: number; frontier: string }
-export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
+export interface JournalView {
+  signinRepairVersion?: true; genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   /** Highest durable journal timestamp; a later wall-clock rollback cannot reorder frames. */
   clockFloor: number;
   /** Rule 2: the forward frames THIS build skipped, named rather than dropped in silence. It is a
@@ -3018,6 +3021,23 @@ export const requestSource = (view: JournalView, item: Pick<DatedItem, 'source' 
 /** A request by its key, local or carried. */
 export const requestByKey = (view: JournalView, key: string) =>
   view.dated.find(item => datedKey(item) === key) ?? carriedRequests(view).find(item => datedKey(item) === key);
+/** Rules 28/29/57: due text grants nothing. Inherit only from every still-active, locally verified source. */
+export const requestedToolSources = (view: JournalView, id: string): Turn[] => {
+  const turn = view.turns.get(id), due = turn?.requestedAction;
+  if (!turn?.accepted || turn.writer?.kind !== 'system' || !due?.items.length || due.legacy || due.owed
+    || actionWithdrawn(view, turn)) return [];
+  const sources = [...due.items, ...due.overflow ?? []].map(ref => {
+    const item = requestByKey(view, reminderKey(ref)), source = item && view.turns.get(item.source);
+    return source && !source.requestedAction && verifiedOperatorTurn(view, source) ? source : undefined;
+  });
+  return sources.every((source): source is Turn => source !== undefined) ? sources : [];
+};
+/** Verified, non-withdrawn due requests use current authority, independent of their original route. */
+export const conversationTurnEligible = (view: JournalView, id: string, authorized: () => boolean) => {
+  if (/^telegram:[0-9]+:update:[0-9]+$/u.test(id)) return true;
+  const sources = requestedToolSources(view, id);
+  return sources.length > 0 && authorized();
+};
 /** Rules 57, 93: a due turn created but not yet sent is withdrawn once any request it carries is cancelled, corrected
  * or forgotten. It is never answered or sent; its other requests fall due again on their own. */
 export const actionWithdrawn = (view: JournalView, turn: Turn) => {
@@ -3451,6 +3471,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
     return notice?.lead === key ? { sent: notice.sent } : undefined; }
   if (kind === 'login-outage') { const notice = view.turns.get(key)?.loginOutageNotice;
     return notice ? { sent: notice.sent } : undefined; }
+  if (kind === 'signin-repair') { const notice = view.order.flatMap(turn => turn.signinRepairNotices ?? []).find(item => item.key === key);
+    return notice ? { sent: notice.sent } : undefined; }
   if (kind === 'closing-notice') { const notice = view.turns.get(rest.slice(1).join(':'))?.closingNotices?.find(item => item.end === Number(rest[0]));
     return notice ? { sent: notice.sent } : undefined; }
   if (kind === 'held-notice') { const turn = view.turns.get(key);
@@ -3560,6 +3582,7 @@ export function sendOutcomeCounts(view: JournalView) {
     for (const progress of turn.workingProgress ?? []) settle(`working-progress:${progress.ordinal}:${turn.id}`, progress.sent);
     if (turn.waitingProgress) settle(`waiting-progress:${turn.id}`, turn.waitingProgress.sent);
     if (turn.loginOutageNotice) settle(`login-outage:${turn.id}`, turn.loginOutageNotice.sent);
+    for (const notice of turn.signinRepairNotices ?? []) settle(`signin-repair:${notice.key}`, notice.sent);
     for (const notice of turn.closingNotices ?? []) settle(`closing-notice:${notice.end}:${turn.id}`, notice.sent);
     if (turn.heldNoticeIntent !== undefined) settle(`held-notice:${turn.id}`, turn.heldNoticeSent);
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
@@ -3605,6 +3628,7 @@ export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' |
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'limited-intent') return { target: `limited:${row.id}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'intent') return { target: `reply:${row.id}`, chat: row.chat, ...thread, body: row.body ?? row.text };
+  if (row.kind === 'held-notice-intent' && row.signinRepair) return { target: `signin-repair:${row.signinRepair.key}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'held-notice-intent') return { target: `${row.promiseRecovery ? 'promise-notice' : row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.loginOutage ? 'login-outage' : row.closing ? `closing-notice:${row.closing.end}` : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
   return { target: `requested-reminder:${String(row.batch)}`, chat: row.chat, ...thread, body: row.body };
 }
@@ -4090,6 +4114,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   // generic read (`'state' in row`, `'failureClass' in row`) can fold a newer build's frame into this
   // build's counts and silently move the projection digest the two builds compare.
   if (!KNOWN_FRAME_KINDS.has(row.kind)) { admitForwardFrame(view, row); return; }
+  if (row.kind === 'signin-repair-version') { view.signinRepairVersion = true; return; }
   if (row.kind === 'send-format-refused') {
     const prepared = replyFormatting(view, row.target), target = sendTarget(view, row.target);
     if (!prepared || prepared.refusal || !target || target.sent !== undefined
@@ -4866,6 +4891,29 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       || !Number.isSafeInteger(row.message) || row.message <= 0) throw Error('preview journal: promise notice receipt order');
     for (const item of view.order) if (item.promiseNotice?.lead === turn.id) item.promiseNotice.sent = row.message;
     return;
+  }
+  if (row.kind === 'held-notice-intent' && row.signinRepair) {
+    const { key, notices } = row.signinRepair;
+    const spent = new Set(view.order.flatMap(item => (item.signinRepairNotices ?? []).flatMap(note => note.notices.map(n => n.key))));
+    if (!view.signinRepairVersion || !turn.accepted || !operatorWriter(view, turn, true) || view.genesis.forum === true || !!view.groupCarry || view.stop !== null
+      || view.replies >= view.limits.maxReplies - 1 || !/^[a-f0-9]{64}$/u.test(key)
+      || !Array.isArray(notices) || notices.length < 1 || notices.length > 8
+      || key !== createHash('sha256').update(JSON.stringify(notices)).digest('hex')
+      || new Set(notices.map(n => n.key)).size !== notices.length
+      || notices.some(n => !n.key.startsWith('login-signin:') || n.key.length > 512 || typeof n.line !== 'string'
+        || n.line.length > 512 || spent.has(n.key)) || row.text !== notices.map(n => n.line).join('\n')
+      || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant
+      || row.closing || row.workingProgress || row.waitingProgress || row.deliveryUnknown || row.loginOutage
+      || row.promiseRecovery || row.acknowledgement || row.acknowledgementMode || row.covers
+      || !row.provenance || admission === 'new' && row.provenance.speaker !== 'infrastructure')
+      throw Error('preview journal: sign-in repair notice refused');
+    (turn.signinRepairNotices ??= []).push({ key, notices, text: row.text, at: row.at }); view.replies++; return;
+  }
+  if (row.kind === 'held-notice-sent' && row.signinRepair) {
+    const notice = turn.signinRepairNotices?.find(item => item.key === row.signinRepair);
+    if (!notice || notice.sent !== undefined || !Number.isSafeInteger(row.message) || row.message <= 0)
+      throw Error('preview journal: sign-in repair receipt order');
+    notice.sent = row.message; return;
   }
   if (row.kind === 'held-notice-intent' && row.closing) {
     if (!turn.accepted || !operatorWriter(view, turn, true) || row.closing.end !== view.expires
@@ -5961,6 +6009,9 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     const sessionWorkRecords = (): readonly (SessionWorkEdge | SessionWorkEdgeClose)[] =>
       recoveryRecords(row => row.kind === 'session-work').flatMap(row => row.kind === 'session-work'
         && (row.record.type === 'SessionWorkEdge' || row.record.type === 'SessionWorkEdgeClose') ? [row.record] : []);
+    const toolReservation = (id: string) => recoveryRecords(row => row.kind === 'tool-turn' && row.id === id)
+      .filter((row): row is Extract<JournalRecord, { kind: 'tool-turn'; phase: 'reserved' }> =>
+        row.kind === 'tool-turn' && row.phase === 'reserved').at(-1);
     // The ordinary tool-backed obligation uses the same durable checkpoint as its normal return:
     // recorded model output, verified process allocation return, and settled tool/child results.
     const obligationCheckpoint = (id: string): (SessionWorkOutcome & { usage?: ModelUsage }) | null => {
@@ -5988,7 +6039,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         ...(outputs[0]!.usage ? { usage: outputs[0]!.usage! } : {}),
         detail: 'collected recorded output after verified worker closure' };
     };
-    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, get retainedRows() { return retained.length; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter, sessionWorkRecords, obligationCheckpoint,
+    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, get retainedRows() { return retained.length; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter, sessionWorkRecords, toolReservation, obligationCheckpoint,
       close: () => { if (!closed) { closed = true; closeSync(fd); } } };
   } catch (error) { if (!closed) closeSync(fd); throw error; }
 }
@@ -6243,6 +6294,7 @@ export interface PreviewPorts {
   /** Rules 8, 56, 100: due reminder lines (credential expiry stages, a failing doorway check), most urgent first. */
   /** Offered for the answer to turn `turn` (its own effect-doorway refusals ride first). */
   replyNotices?(turn?: string): readonly ReplyNotice[];
+  signinRepairNotices?(): readonly ReplyNotice[];
   /** Plan #442 (Rules 4, 86, 100): the secret values the runner holds (vault and host custody, the harness login, the
    * root's MCP credentials; plan #507: every value once read stays held) for the exact floor on every reply. Read in
    * memory only, never recorded or sent to a model. */
@@ -8912,6 +8964,29 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: turn.id, loginOutage: true, message: outcome.message, at: ports.now() }); }
     catch { /* the notice stays UNKNOWN; never repeated */ }
   };
+  const noticeSigninRepair = async () => {
+    if (halted() || journal.view.genesis.forum === true || journal.view.groupCarry || journal.view.replies >= journal.view.limits.maxReplies - 1) return;
+    // Private owner conversation only; never move account names into a team/group topic.
+    const lead = [...journal.view.order].reverse().find(turn => turn.accepted && fromOperator(turn));
+    if (!lead) return;
+    const spent = new Set(journal.view.order.flatMap(turn => (turn.signinRepairNotices ?? []).flatMap(n => n.notices.map(item => item.key))));
+    const notices = openReplyNotices(journal.view.order, ports.signinRepairNotices?.() ?? [], '').filter(n => !spent.has(n.key)).slice(0, 8);
+    if (!notices.length) return;
+    const text = notices.map(n => n.line).join('\n'), key = createHash('sha256').update(JSON.stringify(notices)).digest('hex');
+    ports.checkOutbound(text);
+    const chat = journal.view.genesis.chat, thread = lead.thread === undefined ? {} : { thread: lead.thread }, target = `signin-repair:${key}`;
+    const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
+    const current = () => !halted() && journal.view.genesis.forum !== true && !journal.view.groupCarry
+      && (spent.has(notices[0]!.key) || journal.view.replies < journal.view.limits.maxReplies - 1)
+      && (spent.has(notices[0]!.key) || notices.every(n => ports.signinRepairNotices?.().some(item => item.key === n.key && item.line === n.line)));
+    const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: lead.update, current }, () => {
+      if (!journal.view.signinRepairVersion) journal.append({ kind: 'signin-repair-version', at: ports.now() });
+      journal.append({ kind: 'held-notice-intent', id: lead.id, signinRepair: { key, notices }, text, chat, ...thread,
+        update: lead.update, grant: journal.view.genesis.grant, provenance, at: ports.now() });
+      notices.forEach(n => spent.add(n.key));
+    });
+    if (outcome.kind === 'accepted') journal.append({ kind: 'held-notice-sent', id: lead.id, signinRepair: key, message: outcome.message, at: ports.now() });
+  };
   /** The activation end is a reminder: the person is told once per end, from the lead window on, with a fixed text and no
    * model call. It goes where they last wrote. Its intent precedes dispatch, so a crash or an UNKNOWN never repeats it. */
   let closingInFlight: Promise<void> | undefined;
@@ -10733,6 +10808,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       });
       await noticeFailedReplies();
       await noticeClosing();
+      await noticeSigninRepair();
       if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
       // held-notice rows still replay; no other held notice is ever pushed.

@@ -202,7 +202,10 @@ measured bound proposal is in the R5 progress handoff.
 it does not advertise continuing-session conformance. `conversation-harness-adapter.ts`
 puts the existing admitted driver behind version 2. The host never selects a vendor.
 `journal-agent.mjs` opts in with `--conversation-session on` and the existing
-reviewed conversation activation; default behavior and scheduled work remain separate.
+reviewed conversation activation. Due dated requests resolve their authenticated,
+non-withdrawn source and use the currently validated grant, including after tools
+are enabled or a grant is renewed. Session activation refresh precedes eligibility;
+ordinary admission, sandbox, effect, stop, allowance and unique-send checks still apply.
 
 `conversation-topics.ts` composes one such host per admitted Telegram topic, including
 one `main` host for the general topic. The runner supplies the topic from the durable
