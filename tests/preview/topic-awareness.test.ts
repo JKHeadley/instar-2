@@ -121,6 +121,11 @@ it('keeps private-chat packet bytes from afa6be39 apart from the reviewed memory
     const guide = recorded.cases[0].memoryDecision as string;
     expect(guide).toContain('Each memory item');
     const historical = JSON.parse(context);
+    // The new journal inventory is checked separately; retain the immutable historical digest for all prior fields.
+    expect(historical.workRecords).toEqual({ open: 0, scheduled: 0, awaitingDelivery: 0,
+      deliveryUnknown: 0, recoveryUnknown: 0, items: [], omitted: 0 });
+    expect(historical.workRecordsGuide).toBeUndefined();
+    delete historical.workRecords;
     historical.memoryDecision = 'Return memory:[] unless the verified operator corrects, forgets or sets reply style. '
       + guide.slice(guide.indexOf('Each memory item'));
     // Restore only the reviewed recall-prose trim, keeping the historical hash

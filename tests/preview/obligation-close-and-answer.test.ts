@@ -56,6 +56,9 @@ for (const mode of ['delivered', 'unknown'] as const) it(`${mode} result keeps r
       const records = workRecords(w.journal.view, w.now(), text => text);
       expect(records.deliveryUnknown).toBe(1);
       expect(records.items[0]).toMatchObject({ state: 'delivery-unknown', unverified: true });
+      await w.say('Is anything waiting to be delivered?');
+      expect(w.packets.at(-1)!.workRecords.deliveryUnknown).toBe(1);
+      expect(w.journal.view.order.at(-1)!.answer).toContain('1 delivery unknown');
       expect(reconcileDeliveredCommitments(w.journal, w.now())).toEqual({ examined: 1, closed: 0 });
       expect(() => w.journal.append({ kind: 'commitment-closed', closure: { id: 0, source: report.boundTo!, quote: report.text }, receipt: 999, at: w.now() })).toThrow('lacks delivery evidence');
     }

@@ -52,6 +52,8 @@ Train-249 contains work-repair-uncertain-1112: the final repair admits physical 
 
 Base ordinary-withdrawal reproducer fails with closure undefined; repaired writer test passes. New tests cover accepted/unknown delivery, operator withdrawal/invented quote, 10 scheduled +1 waiting in the actual answer packet, bounded omissions, replay and refusal of unsupported reconciliation. Existing tests cover question closures, full/split receipts, cadence, directives, blockers, uncertain tool work and captured model formats. The deterministic answer consumer proves the record reaches the packet and can compose the supplied count; it is not a live-model guarantee. Full live/pipeline evidence remains the independent desk's gate.
 
+Historical packet proof: topic-awareness asserts the new empty workRecords population independently and removes only that new field for comparison; its original historical hash is unchanged. The UNKNOWN-delivery test also asks a later delivery-status question and checks the actual packet and composed answer name the unknown.
+
 Pressure-fixture maintenance: default-root-conversation retains every assertion; its inert padding is 512 instead of 1024 bytes to account for the new fixed inventory. Ordinary twenty-turn and captured room-two cases passed unchanged; the focused declaration/reserve case passes at the adjusted pressure (148 seconds).
 
 Measured product diff: 94 added + 5 removed = 99 changed lines across journal.ts, obligations.ts and journal-agent.mjs. Tests, review and generated register publication are separate. Register replay generated eight artifacts from source commit ac7fc553058d09ee8e32b09fd4e8c9b7da8380cb; no declarations, authority grants or conformance certificates changed.
