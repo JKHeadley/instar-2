@@ -470,9 +470,14 @@ export const continuitySpoken = (last: SpokenContinuityEvidence & { basis?: 'set
 export const replyBody = (turn: { intent?: string; continuity?: ContinuityAccount }) =>
   turn.intent === undefined || !turn.continuity || turn.continuity.spoken === false
     ? turn.intent : withoutDisclosure(turn.intent, turn.continuity.disclosure);
-/** Strip only the recorded disclosure, whether an old prefix or a new paragraph. */
-const withoutDisclosure = (reply: string, disclosure: string) =>
-  reply.replace(`\n\n${disclosure}`, '').replace(`${disclosure} `, '');
+/** Remove the appended disclosure, preserving earlier quotations in the answer.
+ * Result lines may follow it; old journals instead carry a leading disclosure. */
+const withoutDisclosure = (reply: string, disclosure: string) => {
+  const paragraph = `\n\n${disclosure}`, boundary = reply.lastIndexOf(paragraph);
+  if (boundary !== -1) return reply.slice(0, boundary) + reply.slice(boundary + paragraph.length);
+  const prefix = `${disclosure} `;
+  return reply.startsWith(prefix) ? reply.slice(prefix.length) : reply;
+};
 /** The reply first, disclosure last; strip the marker on older replies. */
 export const withDisclosure = (reply: string, disclosure: string) =>
   `${reply.replace(/^PREVIEW — /u, '').trimEnd()}\n\n${disclosure}`;

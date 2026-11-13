@@ -67,6 +67,31 @@ it(`969390727 answers first and discloses last when the previous request is ${st
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
+it('preserves an answer quoting the pending disclosure through intent, send and body extraction', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'summary-notice-quote-')), path = join(root, 'journal');
+  const journal = openPreviewJournal(path, key, genesis), sent: string[] = [];
+  const answer = `The notice you asked about reads:\n\n${pending}\n\nIt means the earlier request still needs an answer.`;
+  try {
+    for (const n of [1, 2]) journal.append({ kind: 'intake', id: id(n), update: n,
+      text: n === 1 ? 'Check the earlier commit history.' : 'What does the notice mean?',
+      raw: JSON.stringify({ update_id: n, message: { text: 'What does the notice mean?' } }), accepted: true, cursor: n + 1, at });
+    journal.append({ kind: 'summary-reserve', through: 1, at });
+    journal.append({ kind: 'summary', through: 1, text: 'The earlier request still needs an answer.', at });
+    journal.append({ kind: 'reserve', id: id(2), grounding: { packetSha256: 'quoted-notice', summaryThrough: 1,
+      compactedThrough: 1, history: [], recalled: [], people: [], commitments: [], channelItems: [],
+      corrections: [], memoryChanges: [], memoryCandidates: [] }, at });
+    journal.append({ kind: 'answer', id: id(2), text: answer, state: 'complete', at });
+    await createJournalWorker(journal, { now: () => at, stopped: () => false,
+      model: async () => ({ state: 'uncertain' as const }), checkOutbound: () => {},
+      send: async input => { sent.push(input.expectedText); return 787; } }).drain();
+    const turn = journal.view.turns.get(id(2))!;
+    expect(turn.answer).toBe(answer);
+    expect(turn.intent).toBe(`${answer}\n\n${pending}`);
+    expect(sent).toContain(turn.intent);
+    expect(replyBody(turn)).toBe(answer);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
 it('replays the old prefix and its exact digest without reassembly', () => {
   const root = mkdtempSync(join(tmpdir(), 'summary-notice-old-')), path = join(root, 'journal');
   let journal = openPreviewJournal(path, key, genesis);
