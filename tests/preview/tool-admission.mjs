@@ -272,11 +272,13 @@ export function admitToolCallEffect(tool, input, config, now) {
       consequential: false, admitted: true, disposition: 'ordinary',
       reason: `${accountRead ? 'configured MCP read' : 'network read'} of ${proposal.target}: the effect policy does not name it, so it is an ordinary read; admitted` }
     : admitToolEffect(proposal, config, now));
+  const retryClass = verdict => ({ ...verdict, retrySafe: verdict.admitted && !verdict.consequential
+    && (accountRead || network || tool === 'WebFetch' || tool === 'WebSearch') });
   const refused = verdicts.find(verdict => !verdict.admitted);
-  if (refused || verdicts.length === 1) return refused ?? verdicts[0];
+  if (refused || verdicts.length === 1) return retryClass(refused ?? verdicts[0]);
   const held = verdicts.filter(verdict => verdict.consequential);
-  if (held.length === 0) return { ...verdicts[0], target: verdicts.map(verdict => verdict.target).join(', ').slice(0, 256),
-    reason: verdicts.map(verdict => verdict.reason).join('; ') };
+  if (held.length === 0) return retryClass({ ...verdicts[0], target: verdicts.map(verdict => verdict.target).join(', ').slice(0, 256),
+    reason: verdicts.map(verdict => verdict.reason).join('; ') });
   const grants = [...new Set(held.map(verdict => verdict.grant).filter(Boolean))];
   const classified = verdicts.filter(verdict => verdict.signOff);
   const signOff = Object.fromEntries(SIGN_OFF_TESTS.map(test => [test, classified.some(verdict => verdict.signOff[test])]));

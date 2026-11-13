@@ -2878,7 +2878,7 @@ async function main() {
             }
             gate.open(claim, { framework, allowance: edge.budget.calls, edge,
               ...(conversationSession ? { reserveCall: ordinal => sessionWork.port.reserveCall(claim, ordinal),
-                noteTool: ordinal => sessionWork.port.noteToolPreparation(claim, ordinal) } : {}) }); },
+                noteTool: (ordinal, retrySafe) => sessionWork.port.noteToolPreparation(claim, ordinal, retrySafe) } : {}) }); },
           admissionState: claim => gate.state(claim),
           closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {});
             const connectors = sessionConnectors.get(claim); sessionConnectors.delete(claim);

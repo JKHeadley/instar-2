@@ -390,16 +390,19 @@ names each operation, and the host persists every result in one atomic snapshot.
 then uses the existing journal validation and unique send intent. A lone waiting message
 keeps the original envelope. A closed batch whose result was not yet checkpointed is read
 through the correlated adapter before worker retirement; queued messages still drain after
-restart. An interrupted tool-bearing turn without a correlated completion remains uncertain,
-never automatically repeated as if its effects had not happened.
+restart. An interrupted turn with unknown consequential effects remains uncertain;
+its effects are never blindly repeated.
 Carryover 08 ports 1.x `recoverStuckMessages`: after a host restart, an accepted
 question with no correlated answer is re-run once more by the new host, at most three
 dispatches in all, so it is answered once. The admission checkpoint durably notes each
 tool preparation through `noteToolPreparation` before allowing it (a failed note refuses
-the tool), and the input records that count at dispatch. Re-run requires an unchanged
-count, the old process's child edges all closed, no unknown outward send, remaining
+the tool), including whether its exact adapter classification proves a read, and the input
+records both generations at dispatch. Re-run requires an unchanged unsafe-tool generation, the old process's child edges all closed, no unknown outward send, remaining
 allowance, a single input and no earlier worker or context recovery. Anything else,
-including state without the count, stays uncertain as before.
+including state without classification or a usable legacy count, stays uncertain as before.
+A single interrupted live turn is retried once after confirmed worker retirement and a
+backoff of twice the polling interval, with the original tools and cumulative allowance.
+A second interruption uses the existing honest account and unique reply path.
 
 While a message waits behind a reserved turn, the journal can send one fixed progress line
 after 45 seconds (Rule 87's bounded pace; the unit brief selects the interval). Durable

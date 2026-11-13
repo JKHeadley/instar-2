@@ -22,7 +22,7 @@ export interface ConversationSessionPort {
   reserveCall(claim: string, ordinal: number): void;
   /** Called by the existing admission checkpoint before it allows a tool preparation; a throw refuses the tool.
    * The durable count lets a restarted host prove that a lost turn prepared no tool. */
-  noteToolPreparation?(claim: string, ordinal: number): void;
+  noteToolPreparation?(claim: string, ordinal: number, retrySafe?: boolean): void;
   /** Pull-only availability consequences; never a claim that durable work ended. */
   idleCleanupStatus?(): readonly string[];
   /** Automatic reasons require confirmation and grace; omitted means explicit host lifecycle retirement. */
@@ -41,6 +41,8 @@ export interface ConversationInput {
   /** Exact never-dispatched envelope retained across replacement; not a fresh model prompt. */
   readonly retryDelivery?: ConversationDelivery;
   readonly effectsAtDispatch?: number;
+  /** Checkpoint generation of tools not proven safe to repeat; absent on older hosts. */
+  readonly retryUnsafeAtDispatch?: number;
   /** Durable tool preparations by this claim when the input was dispatched; absent means unknown. */
   readonly toolsAtDispatch?: number;
   /** The retiring claim whose settled process proved this input eligible for one re-run; durable so a cut
@@ -65,6 +67,7 @@ export interface ConversationState {
   readonly spent: number; readonly claimCalls: number;
   /** Tool preparations the admission checkpoint noted for the current claim; absent means unknown. */
   readonly claimTools?: number;
+  readonly claimRetryUnsafe?: number;
   readonly halt?: Readonly<{ reason: 'deadline' | 'calls'; at: number; limit: number }>;
 }
 export interface ConversationSessionStore {
@@ -249,10 +252,11 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       if (state.spent >= config.maxCalls) halt('calls', config.maxCalls);
       persist({ spent: state.spent + 1, claimCalls: ordinal });
     };
-    const noteToolPreparation = (claim: string, ordinal: number) => {
+    const noteToolPreparation = (claim: string, ordinal: number, retrySafe = false) => {
       ensure(state.claim === claim && state.claimTools !== undefined && Number.isSafeInteger(ordinal)
         && ordinal === state.claimTools + 1, 'tool preparation identity or order differs');
-      persist({ claimTools: ordinal });
+      persist({ claimTools: ordinal, ...(state.claimRetryUnsafe === undefined ? {}
+        : { claimRetryUnsafe: state.claimRetryUnsafe + Number(!retrySafe) }) });
     };
     const harvestHalt = async () => {
       // Harvest the exact physical cause before any lifecycle path can discard identity.
@@ -298,6 +302,9 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         });
       } catch { return false; /* Unreadable evidence must not wedge other work or authorize replay. */ }
     };
+    const replayable = (input: ConversationInput) => Number.isSafeInteger(input.retryUnsafeAtDispatch)
+      && state.claimRetryUnsafe !== undefined ? input.retryUnsafeAtDispatch === state.claimRetryUnsafe
+      : state.claimTools !== undefined && input.toolsAtDispatch === state.claimTools;
     const recover = async () => {
       if (recovered) return;
       await harvestHalt();
@@ -338,7 +345,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       }
       // Carryover 08, 1.x recoverStuckMessages: a question accepted by the lost process with no answer is
       // re-run by this host, bounded by the same three dispatch attempts. 2.0 keeps its no-duplicate floor:
-      // only a single, never-recovered input whose claim durably noted no tool since dispatch and whose
+      // only a single, never-recovered input whose claim durably noted no unsafe tool since dispatch and whose
       // process left no open child work. The outward-send and allowance checks follow retirement.
       // The claim-bound evidence is recorded on the input before retirement clears the claim, so a host cut after
       // that durable retirement still finds it. The tool count is rechecked after confirmed closure below.
@@ -346,8 +353,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       const eligible = state.inputs.filter(input => settledProcess && !input.rerunFor
         && (input.state === 'accepted' || input.state === 'dispatching') && input.delivery?.claim === state.claim
         && (input.batch ?? [input.request.operation]).length === 1 && input.attempts < 3
-        && !input.workerRecovery && !input.contextRecovery && state.claimTools !== undefined
-        && input.toolsAtDispatch === state.claimTools).map(input => input.request.operation);
+        && !input.workerRecovery && !input.contextRecovery && replayable(input)).map(input => input.request.operation);
       if (eligible.length > 0) persist({ inputs: state.inputs.map(item => eligible.includes(item.request.operation)
         ? { ...item, rerunFor: state.claim! } : item) });
       await retire();
@@ -364,7 +370,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         if (unsent) update(input.request.operation, { state: 'queued', delivery: null, retryDelivery: input.delivery!, cursor: 0, reply: null, rerunFor: null,
           retryAt: config.now() + config.pollMs * 2 ** input.attempts });
         else if (typeof input.rerunFor === 'string' && input.rerunFor === input.delivery?.claim && input.attempts < 3
-          && state.claimTools !== undefined && input.toolsAtDispatch === state.claimTools
+          && replayable(input)
           && config.contextRecoveryAllowed?.() === true && state.spent < config.maxCalls)
           update(input.request.operation, { state: 'queued', delivery: null, cursor: 0, reply: null, rerunFor: null, retryAt: config.now() });
         else settle(input.request.operation, outcome('host restarted with an unresolved turn; no automatic replay'));
@@ -377,7 +383,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       const now = config.now(), epoch = state.epoch + 1;
       const claim = `conversation-${slug(config.conversation)}-${epoch}`;
       const incarnation = `${config.incarnation}:${epoch}`;
-      persist({ epoch, claim, incarnation, close: null, claimCalls: 0, claimTools: 0, authority: request.authority, deadline: Math.min(now + config.deadlineMs, parentDeadline(), restore?.deadline ?? Infinity), turns: 0 });
+      persist({ epoch, claim, incarnation, close: null, claimCalls: 0, claimTools: 0, claimRetryUnsafe: 0, authority: request.authority, deadline: Math.min(now + config.deadlineMs, parentDeadline(), restore?.deadline ?? Infinity), turns: 0 });
       if (!state.edge) {
         const edge: SessionWorkEdge = freeze({ type: 'SessionWorkEdge', schemaVersion: 1, id: `${claim}:edge`, parent: config.parent,
           child: claim, scope: config.workingScope, owner: config.owner, authority: request.authority,
@@ -414,12 +420,39 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       return true;
     };
     const work = async (waiting: readonly string[]) => {
-      let ids = waiting;
+      let ids = waiting, retryBlocked = false;
       let inputFiles: Awaited<ReturnType<NonNullable<ConversationSessionConfig['prepareInputFiles']>>> | undefined;
       const id = waiting[0]!;
       const updateBatch = (patch: Partial<ConversationInput>) => persist({ inputs: state.inputs.map(input =>
         ids.includes(input.request.operation) ? { ...input, ...patch } : input) });
       const settleBatch = (result: SessionWorkOutcome) => updateBatch({ state: 'settled', outcome: result });
+      // Carry the pending request through the existing owner, never through the tool-free accounting prompt.
+      // One new attempt, after confirmed retirement; unknown effects, custody or classification stay closed.
+      const retryInterrupted = async (): Promise<boolean> => {
+        const input = row(id), claim = state.claim;
+        if (retryBlocked || input.state !== 'accepted' || ids.length !== 1 || input.attempts >= 2
+          || input.workerRecovery || input.contextRecovery || !claim || state.halt) return false;
+        const safe = () => {
+          const admission = config.io.admissionState(claim);
+          return admission !== null && !admission.refused && admission.openDelegations.length === 0
+            && (Number.isSafeInteger(input.retryUnsafeAtDispatch)
+              ? admission.retryUnsafeTools === input.retryUnsafeAtDispatch
+              : Number.isSafeInteger(input.effectsAtDispatch) && admission.toolPreparations === input.effectsAtDispatch
+                && admission.uncertainEffects === 0);
+        };
+        guard();
+        if (!safe() || config.contextRecoveryAllowed?.() !== true || config.now() >= state.deadline
+          || calls() >= config.maxCalls) return false;
+        updateBatch({ workerRecovery: 'restoring' }); // durable bound before retirement can be interrupted
+        await retire(); guard();
+        if (!safe() || config.contextRecoveryAllowed?.() !== true || config.now() >= state.deadline
+          || calls() >= config.maxCalls) return false;
+        const delay = config.pollMs * 2 ** input.attempts;
+        updateBatch({ state: 'queued', delivery: null, cursor: 0, reply: null, outcome: null,
+          workerRecovery: 'continued', retryAt: config.now() + delay });
+        await config.io.wait(delay);
+        return true;
+      };
       try {
         ensure(!closing && !config.stopped() && config.authorized(), 'conversation stopped or grant unavailable');
         if (config.prepareTurn && !await config.prepareTurn({ claim: state.claim, retire })) return false;
@@ -478,7 +511,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         let delivery: ConversationDelivery = { ...state.worker!, operation: id, text, digest: digest(text),
           resultPath: path, maxBytes: config.maxResultBytes };
         updateBatch({ state: 'dispatching', delivery, batch: ids, ...(admission.toolPreparations === undefined ? {} : { effectsAtDispatch: admission.toolPreparations }),
-          ...(state.claimTools === undefined ? {} : { toolsAtDispatch: state.claimTools }), attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
+          ...(state.claimTools === undefined ? {} : { toolsAtDispatch: state.claimTools }),
+          ...(admission.retryUnsafeTools === undefined ? {} : { retryUnsafeAtDispatch: admission.retryUnsafeTools }), attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
         for (const operation of ids) config.workingActivity?.(operation, state.claim, 'start');
         const accepted = await adapter.deliver(delivery);
         if (accepted.state === 'busy-not-dispatched' || accepted.state === 'refused-not-dispatched') {
@@ -495,6 +529,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           ensure(!admission?.refused, 'model call reservation unavailable; no ceiling established');
           ensure(admission !== null, 'conversation allowance refused or unreadable');
           const batch = await adapter.observe({ ...state.worker!, delivery, cursor: row(id).cursor, limit: 16 });
+          retryBlocked = !batch.complete || batch.cursor < row(id).cursor || batch.observations.some(event => event.kind === 'paused');
           ensure(batch.complete && batch.cursor >= row(id).cursor, 'observation gap requires reconciliation');
           const exit = batch.observations.find(event => event.kind === 'exit');
           if (exit?.kind === 'exit') {
@@ -558,6 +593,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           // Outcome and cursor move together: a restart cannot consume turn-end while losing its reply.
           if (ended) {
             ensure(admission.openDelegations.length === 0, 'turn ended with pending child work');
+            if ((!completed || !reply?.trim()) && await retryInterrupted()) return true;
             const result: SessionWorkOutcome = completed && reply?.trim()
               ? { state: 'complete', text: reply, detail: 'correlated reply and turn end', ...(row(id).contextRecovery ? { contextRecovery: id } : {}), edge: state.edge!.id, child: state.worker!.launch }
               : outcome('turn ended without a complete reply');
@@ -572,6 +608,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           await config.io.wait(config.pollMs);
         }
       } catch (error) {
+        try { if (await retryInterrupted()) return true; } catch { /* stop, unknown custody or failed closure: account honestly */ }
         settleBatch(outcome(error instanceof Error ? error.message : 'conversation failed'));
         try { await retire(); } catch { /* retained worker and claim require reconciliation */ } return false;
       } finally {

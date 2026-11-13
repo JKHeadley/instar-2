@@ -147,7 +147,7 @@ export interface SessionWorkIO {
   prepareAdmission(claim: string, edge: SessionWorkEdge): void | Promise<void>;
   /** Exact checkpoint cause and child edges still open. Older untyped refusals remain
    * uncertain; only `calls` proves exhaustion. Null when unread. */
-  admissionState(claim: string): Readonly<{ refused: boolean; uncertainEffects?: number; toolPreparations?: number; refusalReason?: 'calls' | 'reservation-unavailable' | null; openDelegations: readonly SessionWorkEdge[] }> | null;
+  admissionState(claim: string): Readonly<{ refused: boolean; uncertainEffects?: number; toolPreparations?: number; retryUnsafeTools?: number; refusalReason?: 'calls' | 'reservation-unavailable' | null; openDelegations: readonly SessionWorkEdge[] }> | null;
   /** Closes the claim at the checkpoint: no further model call or admission of the child passes. */
   closeAdmission(claim: string): void;
   /** Resolves after at least `ms`, without blocking the host's timers. */

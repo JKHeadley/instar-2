@@ -22,7 +22,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import { nestedSessionWorkClose, nestedSessionWorkEdge, nestedSessionWorkFailure, sessionWorkEffect } from '../../src/assembly/production-session-work.js';
-import { doorwayRecord, HELD_CHECK_MAX_BYTES, heldRefusal } from './tool-admission.mjs';
+import { doorwayRecord, HELD_CHECK_MAX_BYTES, heldRefusal, CODEX_NETWORK_READ_TOOLS } from './tool-admission.mjs';
 
 /** Where each harness's model calls go after admission: fixed, so this server can never be used to reach anything else. */
 export const MODEL_UPSTREAMS = Object.freeze({ 'claude-code': Object.freeze({ host: 'api.anthropic.com', port: 443, secure: true }),
@@ -32,6 +32,8 @@ const UNCOUNTED = Object.freeze([/^\/v1\/messages\/count_tokens(?:\?|$)/u]);
 const claimPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/u;
 const MAX_ADMIT_BYTES = HELD_CHECK_MAX_BYTES * 2 + 65536;
 /** Delegation tools whose return is the new child's handle, never its result (Codex 0.156.1, recorded 2026-10-03). */
+// Exact adapter semantics, never a classification of the user's request or shell text.
+const REPLAYABLE_READS = new Set(['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch', ...CODEX_NETWORK_READ_TOOLS]);
 const ASYNC_SPAWN_TOOLS = Object.freeze(['spawn_agent', 'collaborationspawn_agent']);
 /** A tool excerpt as the hook sends it (JSON text, possibly of a JSON string): its value, unwrapped; null if unreadable. */
 const unwrap = text => { let value = text; for (let depth = 0; depth < 3 && typeof value === 'string'; depth++) {
@@ -67,7 +69,7 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
       const verdict = decide(tool, input, parent);
       return verdict.admitted === true && (cause === undefined || verdict.localCause === cause);
     } catch { return false; } },
-    admit({ parent, tool, input, call, ownerCause }) {
+    admit({ parent, tool, input, call, ownerCause, beforeDispatch }) {
       const operation = toolOperation(tool);
       let verdict;
       try { verdict = decide(tool, input, parent); } catch (error) { return { admitted: false, reason: `effect owner: the effect doorway could not decide (${String(error?.message ?? error)}); refused` }; }
@@ -79,12 +81,12 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
       const payload = digest(canonical(input));
       const identity = digest(`${parent.child}\n${operation}\n${payload}${verdict.consequential ? '' : `\n${String(call)}`}`);
       if (prepared(identity)) return { admitted: false, reason: `effect owner: ${operation} with this exact input was already prepared (${identity}); never sent twice`, doorway };
-      try { append(sessionWorkEffect({ id: identity, edge: parent.id, operation, digest: payload, state: 'prepared', detail: 'admitted for dispatch', at: now(),
+      try { beforeDispatch?.(verdict.retrySafe === true); append(sessionWorkEffect({ id: identity, edge: parent.id, operation, digest: payload, state: 'prepared', detail: 'admitted for dispatch', at: now(),
         ...(parent.topic === undefined ? {} : { topic: parent.topic, source: digest(parent.child), subject: payload }),
         ...(verdict.localCause === undefined ? {} : { cause: ownerCause === undefined ? verdict.localCause
           : JSON.stringify({ authorization: JSON.parse(verdict.localCause), ownerBrowser: ownerCause }) }) })); }
       catch { return { admitted: false, reason: 'effect owner: the request could not be recorded before dispatch', doorway }; }
-      return { admitted: true, reason: `${verdict.reason}; effect owner: ${operation} prepared as ${identity}`, identity, operation, digest: payload, doorway, localCause: verdict.localCause };
+      return { admitted: true, reason: `${verdict.reason}; effect owner: ${operation} prepared as ${identity}`, identity, operation, digest: payload, doorway, retrySafe: verdict.retrySafe === true, localCause: verdict.localCause };
     },
     observed({ parent, identity, operation, digest: payload, resultBytes }) {
       append(sessionWorkEffect({ id: identity, edge: parent.id, operation, digest: payload, state: 'observed',
@@ -108,14 +110,15 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
 
   // Carryover 08: the host durably notes each tool preparation before it is allowed, so a restarted host can
   // prove a lost turn prepared nothing. An upper bound: a later refusal never lowers it. A failed note refuses.
-  const noteTool = state => { if (state.noteTool) { state.noteTool(state.noted + 1); state.noted += 1; } };
+  const noteTool = (state, retrySafe = false) => { if (state.noteTool) { state.noteTool(state.noted + 1, retrySafe); state.noted += 1; }
+    state.retryUnsafeTools += Number(!retrySafe); };
   const admit = (state, call) => {
     const tool = String(call.tool_name ?? ''), id = String(call.tool_use_id ?? '');
     if (!/^[A-Za-z0-9._:-]{1,200}$/u.test(id)) return { decision: 'deny', reason: 'admission: exact tool call identity required' };
     if (call.kind === 'tool') {
       // Even an ordinary local write or shell command can be unfinished at a context wall.
       // The owner must not restore a packet prepared before any such work began.
-      try { noteTool(state); } catch { return { decision: 'deny', reason: 'admission: the tool preparation could not be recorded' }; }
+      try { noteTool(state, REPLAYABLE_READS.has(tool)); } catch { return { decision: 'deny', reason: 'admission: the tool preparation could not be recorded' }; }
       state.toolPreparations++;
       return { decision: 'allow', reason: 'admission: the step is open and no stop is held' };
     }
@@ -176,7 +179,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       }
       if (state.delegations.has(id)) return { decision: 'deny', reason: 'admission: this delegation was already admitted' };
       const edge = nestedSessionWorkEdge(state.edge, { id, tool }, now());
-      try { append(edge); } catch { return { decision: 'deny', reason: 'admission: the delegation edge could not be recorded' }; }
+      try { noteTool(state); append(edge); } catch { return { decision: 'deny', reason: 'admission: the delegation edge could not be recorded' }; }
       state.delegations.set(id, { edge, open: true, async: false, handles: [] });
       return { decision: 'allow', reason: `delegation recorded as ${edge.id}: the subagent's calls and tools pass this same checkpoint` };
     }
@@ -196,12 +199,12 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       if (state.effects.has(id)) return { decision: 'deny', reason: 'admission: this effect was already admitted' };
       const outward = held ? held(JSON.stringify(call.tool_input ?? null)) : 'clear';
       if (outward !== 'clear') return { decision: 'deny', reason: 'effect request failed the held-secret check' };
-      try { noteTool(state); } catch { return { decision: 'deny', reason: 'admission: the tool preparation could not be recorded' }; }
-      const verdict = effects.admit({ parent: state.edge, tool, input: call.tool_input ?? null, call: id });
+      const verdict = effects.admit({ parent: state.edge, tool, input: call.tool_input ?? null, call: id,
+        beforeDispatch: retrySafe => noteTool(state, retrySafe) });
       const record = verdict.doorway ? { doorway: verdict.doorway } : {};
       if (!verdict.admitted) return { decision: 'deny', reason: verdict.reason, ...record };
       state.toolPreparations++;
-      state.effects.set(id, { identity: verdict.identity, operation: verdict.operation, digest: verdict.digest });
+      state.effects.set(id, { identity: verdict.identity, operation: verdict.operation, digest: verdict.digest, retrySafe: verdict.retrySafe });
       return { decision: 'allow', reason: verdict.reason, ...record };
     }
     return { decision: 'deny', reason: 'admission: unknown admission kind' };
@@ -282,7 +285,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       try { bindingSnapshot = ownerBrowser.binding(); } catch { return { status: 'unavailable' }; }
       // Set before any await. The effect owner's durable identity also survives a process restart.
       state.ownerReads.add(call);
-      try { noteTool(state); } catch { return ownerBrowserRefused('preparation-refused'); }
+      try { noteTool(state, true); } catch { return ownerBrowserRefused('preparation-refused'); }
       const prepared = effects.admit({ parent: state.edge, tool: OWNER_BROWSER_TOOL, input, call, ownerCause: bindingSnapshot });
       if (!prepared.admitted) return ownerBrowserRefused('preparation-refused');
       cause = prepared.localCause;
@@ -303,7 +306,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     open(claim, { framework, allowance, edge, reserveCall, noteTool: note }) {
       if (!claimPattern.test(claim) || !upstreams[framework] || !Number.isSafeInteger(allowance) || allowance < 1 || !edge?.id)
         throw Error('admission gate: claim, framework, allowance and edge required');
-      claims.set(claim, { framework, allowance, edge, reserveCall, noteTool: note, noted: 0, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), ownerReads: new Set(), toolPreparations: 0 });
+      claims.set(claim, { framework, allowance, edge, reserveCall, noteTool: note, noted: 0, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), ownerReads: new Set(), toolPreparations: 0, retryUnsafeTools: 0 });
     },
     /** Closes a claim: no further call or admission passes. Returns its final state. */
     close(claim) { const state = claims.get(claim); if (state) state.closed = true; return this.state(claim); },
@@ -311,7 +314,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     state(claim) {
       const state = claims.get(claim);
       return state ? { calls: state.calls, refused: state.refused, refusalReason: state.refusalReason, closed: state.closed,
-        uncertainEffects: state.effects.size, toolPreparations: state.toolPreparations,
+        uncertainEffects: state.effects.size, toolPreparations: state.toolPreparations, retryUnsafeTools: [...state.effects.values()].some(effect => !effect.retrySafe && !effect.ownerRead) ? undefined : state.retryUnsafeTools,
         openDelegations: [...state.delegations.values()].filter(row => row.open).map(row => row.edge) } : null;
     },
     /** Marks a still-open child edge settled by its parent (the parent closes it, never this server). */
