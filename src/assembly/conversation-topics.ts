@@ -17,7 +17,10 @@ export interface ConversationTopicsState {
 export interface ConversationTopicsConfig extends Omit<ConversationSessionConfig, 'store' | 'createAdapter'> {
   readonly topicConfig?: (topic: string) => Pick<ConversationSessionConfig, 'io' | 'resources' | 'authorized' | 'currentAuthority' | 'createAdapter' | 'prepareTurn'>;
   /** Host measurements, injected: no ambient host I/O in the coordinator. */
-  readonly capacity?: () => Promise<Readonly<{ admit: boolean; memoryPressure: boolean }>>;
+  readonly capacity?: (operatorRequested?: boolean) => Promise<Readonly<{ admit: boolean; memoryPressure: boolean; reason?: string }>>;
+  /** Verified durable provenance, never a caller-supplied request flag. */
+  readonly operatorRequested?: (operation: string) => boolean;
+  readonly after?: (ms: number, retry: () => void) => () => void;
   readonly maxSessions: number;
   readonly idleMs: number;
   readonly topicOf: (operation: string) => string;
@@ -70,6 +73,31 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     const touched = new Map<string, number>();
     let stopped = false, recovered = false;
     let admission = Promise.resolve();
+    const held = new Map<string, { reason: string; since: number; cancel?: () => void }>();
+    const clearHeld = (topic: string) => { held.get(topic)?.cancel?.(); held.delete(topic); };
+    const hold = (topic: string, reason: string) => {
+      const prior = held.get(topic);
+      if (prior) { prior.reason = reason; if (prior.cancel) return; }
+      const row: { reason: string; since: number; cancel?: () => void } = { reason, since: prior?.since ?? config.now() }; held.set(topic, row);
+      // One disposable timer per durable queue. No provider call, no retry storm, no new work identity.
+      if (config.after) row.cancel = config.after(2000, () => {
+        delete row.cancel;
+        if (held.get(topic) !== row) return;
+        if (stopped || config.stopped() || !config.authorized() || config.now() >= parentDeadline()) return;
+        if (renewing || busy.get(topic)) { hold(topic, row.reason); return; }
+        busy.set(topic, 1);
+        void Promise.resolve().then(() => hostFor(topic).maintain()).catch(() => { row.reason = 'retry failed; input retained'; })
+          .finally(() => {
+            busy.set(topic, busy.get(topic)! - 1);
+            if (held.get(topic) === row) {
+              const saved = state.topics[topic];
+              if (saved && !saved.worker && !saved.halt && !saved.close && saved.inputs.some(input => input.state === 'queued')) hold(topic, row.reason);
+              else clearHeld(topic);
+            }
+            notify();
+          });
+      });
+    };
     const cleanupInhibited = () => Object.values(state.topics).some(row => row.idleCleanup?.inhibited);
     const idleCandidates = () => (cleanupInhibited() ? [] : [...active])
       .filter(key => !busy.get(key)).sort((a, b) => (touched.get(a) ?? 0) - (touched.get(b) ?? 0));
@@ -133,22 +161,27 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
               // another work family using it). Reclaim one idle topic and retry once.
               if (await reclaim()) lease = await resources.admit();
             }
-            if (!lease) return null;
+            if (!lease) { hold(topic, 'resource lease unavailable'); return null; }
             // Physical admission can wait too. Measure after its final retry,
             // before this lease becomes a worker. Resident turns keep their context.
-            // Rule 15: headroom decides additional workers. With none live, the agent stays
-            // reachable; the resource owner's physical ceilings above still hold.
-            if (config.capacity && active.size > 0) {
+            // Measured memory pressure remains a floor; unavailable telemetry must not
+            // strand the only verified operator worker (Rules 15/95).
+            if (config.capacity) {
               let admitted = false;
               try {
-                let room = await config.capacity();
-                if (room.memoryPressure && await reclaim()) room = await config.capacity();
-                admitted = room.admit;
+                const operatorRequested = state.topics[topic]?.inputs.some(row => row.state !== 'settled'
+                  && config.operatorRequested?.(row.request.operation) === true) ?? false;
+                let room = await config.capacity(operatorRequested);
+                if (room.memoryPressure && await reclaim()) room = await config.capacity(operatorRequested);
+                admitted = room.admit || (operatorRequested && active.size === 0
+                  && !room.memoryPressure && room.reason === 'unknown measurement');
+                if (!admitted) hold(topic, room.reason ?? (room.memoryPressure ? 'available memory below reserve' : 'host capacity unavailable'));
               } finally {
                 if (!admitted) ensure(await lease.release(), 'unlaunched resource release unconfirmed');
               }
               if (!admitted) return null;
             }
+            clearHeld(topic);
             const held = lease;
             active.add(topic);
             return { attach: held.attach, release: async () => {
@@ -252,7 +285,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       if (config.stopped() || config.now() >= parentDeadline() && !lifetimeRenewable()) { await close(); return; }
       await renewIfIdle();
       for (const topic of Object.keys(state.topics)) hostFor(topic);
-      const pressured = config.capacity && (await config.capacity()).memoryPressure;
+      const pressured = config.capacity && (await config.capacity(true)).memoryPressure;
       if (pressured) await reclaim();
       // A queued worker needs a slot or resource lease. Its admission below owns
       // pressure assessment; ordinary expiry must not reset that confirmation.
@@ -276,7 +309,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       await Promise.all([...hosts].filter(([topic]) => state.topics[topic]?.inputs.some(input => input.state === 'queued')).map(maintainHost));
     };
     const close = async () => {
-      stopped = true; notify(); await renewing; await recover();
+      stopped = true; for (const topic of held.keys()) clearHeld(topic); notify(); await renewing; await recover();
       const results = await Promise.all([...hosts.values()].map(host => host.close()));
       return results.find(row => row?.state === 'uncertain') ?? results.find(row => row !== null) ?? null;
     };
@@ -287,7 +320,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
         const rows = Object.values(state.topics);
         const lost = rows.filter(row => !row.worker && row.idleCleanup?.lastClosure).length;
         const inhibited = rows.some(row => row.idleCleanup?.inhibited);
-        return [...(lost ? [`Idle cleanup: ${lost} warm worker(s) closed; the next message needs a worker start. Conversation history and accepted messages are retained.`] : []),
+        return [...[...held.values()].map(row => `Worker waiting: ${row.reason}; held ${Math.max(0, Math.floor((config.now() - row.since) / 1000))}s; retry offered every 2s while authorized; resource limits still apply.`), ...(lost ? [`Idle cleanup: ${lost} warm worker(s) closed; the next message needs a worker start. Conversation history and accepted messages are retained.`] : []),
           ...(inhibited ? ['Idle cleanup is paused after an unconfirmed closure; capacity release is uncertain and needs repair.'] : [])];
       },
       collect: async (operation: string) => {
