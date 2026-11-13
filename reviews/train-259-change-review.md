@@ -37,6 +37,9 @@ Prompt finding: bac6ce7485d9 | protocol-literal | Unchanged fixed stopped-work n
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged provenance instruction requires source labels and uncertainty disclosure for every recall answer; no expected substantive answer is supplied.
 Prompt finding: 849db3a6296a | protocol-literal | Unchanged empty-memory rendering and its own protocol recognition, selected from the actual projected memory population; no lexical absence inference is added.
 
+Prompt finding: 0725f0150c56 | quoted-evidence | The existing test quotes the unchanged role/refusal instruction, "use them to answer and act within that role; a tool refusal remains a refusal." This change does not touch that phrase or make it a model decision trigger.
+Prompt finding: 27d7720e7977 | quoted-evidence | The existing test quotes the unchanged context introduction, "this memory and work record". This change does not touch that phrase or make it a model decision trigger.
+
 Verification: focused member, direct consumer, context, recorded-shape and lifecycle checks plus required register/subscription and pinned-text tests. Exact outcomes and always-sent byte measurements are in the canonical train build report. Full combined gate and independent Astra judgment remain desk work.
 
 simplestRobustRoute: this is the simplest robust route: ordinary merge of the complete reviewed head, canonical generated replay and focused verification. No new mechanism, semantic closure heuristic, scheduler, send or model doorway; existing start, authority, whole-receipt, stop and resource guards remain. No autonomous live completion claim.
