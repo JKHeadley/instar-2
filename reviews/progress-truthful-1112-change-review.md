@@ -38,7 +38,7 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged journal gui
 ## Closing block
 
 simplestRobustRoute: reuse the existing admission reader, fresh session observations, progress timer and durable sender. This is the simplest route; no new monitor, model call, store or authority. Optional request evidence makes truthfulness explicit without reinterpreting stored replay. Stable fallback identity prevents repeated generic chatter and cross-turn suppression. Start requires admitted unanswered work and fresh observation; end is answer dispatch/session end/stop/expiry/ownership loss; limits remain reply allowance, four notes, bounded text, freshness and widening cadence. This is a builder submission, not a claim of unattended deployment or live acceptance.
-Register regeneration: scripts/build-register.mjs --commit 0f0bc16395502cbc70a2746c203f663e944e729f --replay refreshed eight generated outputs from committed source. Cached desk rehash/repin scripts changed no owner manifests or inventory bytes; no native certificate or declaration was changed.
+Register regeneration: scripts/build-register.mjs --commit ea81bc84fcb9debfc90464f00a4709dde2dac6fc --replay refreshed eight generated outputs from committed source. Cached desk rehash/repin scripts changed no owner manifests or inventory bytes; no native certificate or declaration was changed.
 
 Additional consumer evidence: captured failure-hook records retain their failure outcome; assertions now distinguish a fresh generic session fallback from an active tool claim.
 
