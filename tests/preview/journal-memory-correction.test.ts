@@ -263,7 +263,7 @@ function world(root: string, malformedMemory: false | 'missing' | 'invalid' | 'u
           request?.includes('4412') ? item.message.includes('My gym locker code is 3310')
             : item.message.includes('my gym locker code is 4412') || item.message.includes('My gym locker code is 3310'));
         const replies = (packet.memoryCandidates ?? []).filter((item: { reply?: string }) =>
-          item.reply?.endsWith(request?.includes('4412') ? 'Your gym locker code is 3310.' : 'Your gym locker code is 4412.'))
+          item.reply?.includes(request?.includes('4412') ? 'Your gym locker code is 3310.' : 'Your gym locker code is 4412.'))
           .map((item: { id: string }) => item.id);
         const memory = request && candidate ? [request.includes('4412')
           ? { mode: 'correct', source: candidate.id, quote: 'My gym locker code is 3310',
