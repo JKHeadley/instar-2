@@ -1,3 +1,5 @@
+// @ts-ignore -- existing JavaScript host composition.
+import { createHarnessLoginPool } from './harness-login-pool.mjs';
 import { expect, it } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -32,7 +34,7 @@ const DESK_PATH = '/offline/desk-status.md';
 
 /** One fresh root, one ordinary operator turn, the real briefing from this checkout, reply review wired
  * and the concurrent-work row a live runner always sends. Returns what the provider would receive. */
-async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
+async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0, independentResets = true) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-default-floor-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '12345678',
@@ -48,8 +50,23 @@ async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
     // Larger than its cut bound, so the measured shape is the one every answer carries under pressure.
     const desk = { text: `# desk\n${'Preview work remains a supervised private chat trial with a reviewed activation.\n'.repeat(40)}`,
       modifiedAt: now };
+    const entries = Array.from({ length: 8 }, (_, index) => ({ index, profile: { reference: `private-${index}`, expectedAccount: `private-${index}@example.invalid`, configDirectory: `/private/${index}` } }));
+    const pool = createHarnessLoginPool({ configuration: { entries, identity: 'floor-pool', threshold: 95 },
+      statePath: join(root, 'pool.json'), now: () => now, validate: () => {},
+      usage: () => ({ version: 1, accounts: entries.map(e => ({ email: e.profile.expectedAccount, configHome: e.profile.configDirectory,
+        lastQuota: { measuredAt: new Date(now).toISOString(), fiveHour: { utilizationPct: 12, resetsAt: new Date(now + 3600000).toISOString() },
+          sevenDay: { utilizationPct: 34, resetsAt: new Date(now + 86400000).toISOString() } } })) }) });
+    for (const entry of entries.slice(0, 7)) pool.observe(entry,
+      { failure: { failureClass: 'limit', resetAt: now + (1 + (independentResets ? entry.index : entry.index % 2)) * 86400000 + entry.index * 60000 } });
+    // Independent reset dates must not multiply the hold heading or lose any login's reset.
+    const capacity = pool.brief();
+    expect(capacity.match(/provider limit/g)).toHaveLength(1);
+    for (const entry of entries.slice(0, 7)) {
+      const reset = now + (1 + (independentResets ? entry.index : entry.index % 2)) * 86400000 + entry.index * 60000;
+      expect(capacity).toContain(`${entry.index + 1}=${new Date(reset).toISOString().slice(0, 19)}`);
+    }
     const sources = () => [...briefing, disciplineSource(journal.view),
-      selfStateSource(selfStateBrief(journal.view, runs as never, now, 'UTC', now - 60_000, false, true), readSelfAccess({ credentials: () => [],
+      selfStateSource(selfStateBrief(journal.view, runs as never, now, 'UTC', now - 60_000, false, true) + '\n' + pool.brief(), readSelfAccess({ credentials: () => [],
         connectors: () => null, missing: () => [], held: () => [], bot: 'Telegram bot 12345678', now })),
       deskStatusSource(desk, now, DESK_PATH)!];
     let answer: { context: string; prepared: string } | undefined;
@@ -105,13 +122,13 @@ async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 
-it('keeps the always-sent prompt parts inside what the measured floor allows, with its reply review beside them', async () => {
+it.each([false, true])('keeps prompt, summary and review inside the floor (independent resets: %s)', async independentResets => {
   // Measured at the floor, not at the default: there the room is exactly the fixed parts, so the ladder is
   // forced to the shape that is ALWAYS present -- desk report at its cut bound, obligation guide intact --
   // which is what `PREVIEW_FIXED_PROMPT_BYTES` records. At the default the whole desk report now fits
   // instead (the second test below), so measuring there would measure a variable shape.
   const floor = PREVIEW_MIN_SERVABLE_CONTEXT_BYTES;
-  const measured = await firstTurn(floor);
+  const measured = await firstTurn(floor, false, 0, independentResets);
   expect(measured.sent).toBe(true);
   expect(measured.literalCopyGuidance).toBe(true);
   expect(measured.held).toBeUndefined();

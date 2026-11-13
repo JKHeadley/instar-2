@@ -478,7 +478,7 @@ const capabilityReport = (joined, reading, log, status, now) => capabilityRows(j
  * The self-state is recomputed at each turn from the journal and the run log; the desk's
  * report (optional) covers only other work. */
 const turnSources = (root, options, view, runs, current = () => undefined, handoff = () => null,
-  toolsOn = () => options['tools-activation'] !== undefined, access = () => undefined) => {
+  toolsOn = () => options['tools-activation'] !== undefined, access = () => undefined, capacity = () => 'Model login capacity: unknown (pool not observed).') => {
   // The standing mind-held instructions ride every prepared envelope; a changed rule book refuses launch.
   verifyMindRules(path => readFileSync(resolve(process.cwd(), path), 'utf8'));
   // Each turn carries the briefing that matches whether its tools are on now (default on, withdrawn when the record is
@@ -500,7 +500,7 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
     const tools = Boolean(toolsOn()), sources = packetFor(tools, tools ? mcpCount() : undefined);
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const note = handoff(), accessRead = access();
-    return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current(), false, accessRead !== undefined), accessRead), ...(desk ? [desk] : []), ...(note ? [note] : [])];
+    return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current(), false, accessRead !== undefined) + '\n' + capacity(), accessRead), ...(desk ? [desk] : []), ...(note ? [note] : [])];
   };
 };
 /** The installed runner, read from this checkout: repository paths only, never outside it. */
@@ -2208,7 +2208,7 @@ async function main() {
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff, preparation.active,
         () => readSelfAccess({ credentials: () => custody.records(), missing: names => custody.missing(names), connectors: () => readRootMcp(root),
           held: () => { const state = heldSecrets(); if (state.unavailable) throw Error('access unknown'); return state.values; },
-          bot: `Telegram bot ${g.bot}`, now: wallNow() })),
+          bot: `Telegram bot ${g.bot}`, now: wallNow() }), () => loginPool?.brief() ?? 'Model login capacity: unknown (no pool configured).'),
       prepareModel: modelEnvelope,
       preparePacket: preparation.run,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
@@ -2689,7 +2689,7 @@ async function main() {
     // becomes a durable child edge first, and each consequential tool passes the effect owner, which decides it by the
     // effect doorway's four tests under the installation's current effect policy (read at each decision, so a policy
     // withdrawn or unreadable mid-step refuses), exactly as an unchecked tool turn's hook does.
-    if (sessionSetup !== null || doorway.toolTurn?.harness) {
+    if (sessionSetup !== null || doorway.toolTurn?.harness || toolsActive()) {
       const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null || !active() || sessionAccountsChanged();
       const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
       gate = await createAdmissionGate({

@@ -682,6 +682,7 @@ export function createClaudeCodeSubscriptionRoute(input:
             + frame.usage.cache_creation_input_tokens + frame.usage.cache_read_input_tokens : null;
           reportedUsage = { inputTokens: completeInput !== null && Number.isSafeInteger(completeInput) ? completeInput : null,
             ...(completeInput !== null && Number.isSafeInteger(completeInput) ? { inputComplete: true as const } : {}),
+            ...(integer(frame.num_turns) && frame.num_turns > 0 ? { modelCalls: frame.num_turns } : {}),
             outputTokens: frame.usage.output_tokens, answerTokens: subscriptionAnswerTokens(frame.usage), charge: null,
             source: 'Subscription policy declares zero additional metered demand; actual charge unknown; CLI estimate is raw evidence only' };
         }

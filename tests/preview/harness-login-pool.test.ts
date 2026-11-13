@@ -836,3 +836,49 @@ it('reply-noise-1108: with no approved login usable, one plain line with no numb
   const sent = [{ id: 'sent', intent: `Done.\n\n${notices[0].line}`, answerNotices: notices, sent: 2 }];
   expect(openReplyNotices(sent, createHarnessLoginPool({ ...f.settings, unavailable: new Map([[0, 'x'], [1, 'y']]) }).notices(), 'next')).toEqual([]);
 });
+
+it('briefs six neutral logins, current holds and reset times without disclosing profiles', () => {
+  // Shape supplied by observer a8793994, 2026-11-12 16:52 PST; reconstruct durable selection state.
+  const f = fixture(['private-a', 'private-b', 'private-c', 'private-d', 'private-e', 'private-f']);
+  const firstReset = f.clock.at + 3600000, secondReset = f.clock.at + 7200000;
+  writeFileSync(f.settings.statePath, JSON.stringify({ ...f.pool.state, active: 3, holds: {
+    1: { reason: 'usage-threshold', observedAt: f.clock.at - 1000, resetAt: firstReset },
+    4: { reason: 'usage-threshold', observedAt: f.clock.at - 1000, resetAt: secondReset },
+    0: { reason: 'usage-threshold', observedAt: f.clock.at - 2000, resetAt: f.clock.at - 1 },
+  } }));
+  const pool = createHarnessLoginPool(f.settings), text = pool.brief();
+  expect(text).toContain('6 logins, 4 usable');
+  expect(text).toContain(new Date(firstReset).toISOString().slice(0, 10));
+  expect(text).toContain(`2=${new Date(firstReset).toISOString().slice(0, 19).replace(/:00$/, '')}`);
+  expect(text).toContain(`5=${new Date(secondReset).toISOString().slice(0, 19).replace(/:00$/, '')}`);
+  expect(text).toContain('no hold: 1,3,4,6');
+  expect(text).toContain('Work can continue');
+  expect(text).not.toMatch(/private-|@|\/profile\//);
+  f.clock.at = secondReset;
+  expect(pool.brief()).toContain('6 logins, 6 usable');
+  expect(pool.brief()).toContain('None are currently held or limited');
+});
+
+it('briefs unknown resets and total unavailability without claiming zero usage', () => {
+  const f = fixture();
+  for (const entry of f.configuration.entries) f.pool.observe(entry, limit);
+  expect(f.pool.brief()).toContain('2 logins, 0 usable');
+  expect(f.pool.brief()).toContain('new model work unavailable now');
+  expect(f.pool.brief()).toContain('1=unknown');
+  expect(f.pool.brief()).toContain('Other quotas unknown');
+});
+
+it('brief agrees with current recovery evidence and combines competing reset bounds', () => {
+  const f = fixture();
+  f.pool.observe(f.configuration.entries[0], limit);
+  f.clock.at += 1000;
+  const reading = capacity(f);
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => reading });
+  expect(pool.brief()).toContain('2 logins, 2 usable');
+  expect(pool.outage()).toBeNull();
+  pool.select(); // The selection owner durably clears the recovered hold.
+  pool.observe(f.configuration.entries[0], { failure: { failureClass: 'limit', resetAt: f.clock.at + 1000 } });
+  reading.accounts[0].lastQuota.fiveHour.utilizationPct = 100;
+  expect(pool.brief()).toContain(`1=${reading.accounts[0].lastQuota.fiveHour.resetsAt.slice(0, 19)}`);
+  expect(pool.brief()).toContain('2 logins, 1 usable');
+});

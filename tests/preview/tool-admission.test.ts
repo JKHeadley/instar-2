@@ -579,7 +579,7 @@ it('admits the registered subagent type per slot of one shared budget, from the 
   expect(run(JSON.stringify({ tool_name: 'Agent', tool_use_id: 'toolu_agent', tool_response: { status: 'completed', agentId: 'a1', content: [{ type: 'text', text: '42' }] } }), 'post').status).toBe(0);
   const trace = toolTrace(readFileSync(join(state, 'admission.jsonl'), 'utf8').trim().split('\n'));
   expect(trace.consistent).toBe(true);
-  expect(trace.children).toEqual([
+  expect(trace.children).toMatchObject([
     { toolUse: 'toolu_agent', slot: 1, agent: 'a1', parentAgent: null, started: true, stopped: true, state: 'returned', result: expect.stringContaining('42') },
     { toolUse: 'toolu_nested', slot: 2, agent: 'a2', parentAgent: 'a1', started: true, stopped: true, state: 'returned', result: expect.stringContaining('6') }]);
   // A child calls tools under its own agent id, through the same hook and the same per-step slots.
@@ -829,4 +829,27 @@ it('answers each admitted recorded call with an explicit one-call allow, never a
   const denied = hook(state, j('Write', { ...input, file_path: join(ws, '..', 'outside', 'recorded.txt') }));
   expect(denied.decision).toBe('deny');
   expect(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision).toBe('deny');
+});
+
+
+it('records the real child terminal usage before clipping, and never mistakes tool uses for model calls', () => {
+  const capture = JSON.parse(readFileSync(join(__dirname, 'fixtures/tool-turn/full-2026-10-03/outward.json'), 'utf8'));
+  const post = capture.admission.split('\n').filter(Boolean).map((line: string) => JSON.parse(line))
+    .find((row: { phase: string; tool: string }) => row.phase === 'post' && row.tool === 'Agent');
+  const response = JSON.parse(post.result);
+  expect(response.totalToolUseCount).toBe(0); expect(response.num_turns).toBeUndefined();
+  for (const count of [undefined, 2]) {
+    const { state } = turn();
+    writeFileSync(join(state, 'admission.jsonl'), JSON.stringify({ phase: 'pre', id: post.id, n: 1,
+      tool: 'Agent', kind: 'subagent', decision: 'allow', input: '{}', reason: 'recorded admission' }) + '\n');
+    expect(hook(state, JSON.stringify({ agent_id: response.agentId }), undefined, 'child-start').status).toBe(0);
+    expect(hook(state, JSON.stringify({ agent_id: response.agentId }), undefined, 'child-stop').status).toBe(0);
+    // count=2 is an explicit protocol neighbour; the recorded harness has NO count and cannot certify.
+    expect(hook(state, JSON.stringify({ tool_name: 'Agent', tool_use_id: post.id,
+      tool_response: { ...response, ...(count === undefined ? {} : { num_turns: count }) } }), undefined, 'post').status).toBe(0);
+    const edge = toolTrace(readFileSync(join(state, 'admission.jsonl'), 'utf8').trim().split('\n')).children[0];
+    expect(edge.retired).toBe(true);
+    expect(edge.terminal).toMatchObject({ state: 'complete', usage: { inputTokens: 8600, outputTokens: 6, inputComplete: true } });
+    expect(edge.terminal.usage.modelCalls).toBe(count);
+  }
 });

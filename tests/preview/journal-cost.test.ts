@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
+import { selfStateBrief, selfStateSource } from './self-state.js';
 import { interpretSummaryReview } from './summary-check.js';
 
 const key = new Uint8Array(32).fill(7);
@@ -48,6 +49,15 @@ it('projects observed and reserved-maximum tokens by call kind into read-only st
       replyCheck: { calls: 3, inputTokens: 271, outputTokens: 4100, unknownCalls: 1 },
     };
     expect(journal.view.tokenTotals).toEqual(expected);
+    const brief = selfStateBrief(journal.view, { launches: [], unreadable: 0 }, 1000, 'UTC');
+    expect(brief).toContain('answer: measured input/output 100/27; reserved input/output 65536/2048; 3 calls, 2 unknown usage');
+    expect(brief).toContain('summary: measured input/output 30/4; reserved input/output 32768/2048; 2 calls, 1 unknown usage');
+    expect(brief).toContain('replyCheck: measured input/output 21/4; reserved input/output 250/4096; 3 calls, 1 unknown usage');
+    expect(brief).toContain('4 calls with unknown usage');
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      sources: () => [selfStateSource(brief)], model: async () => 'unused', send: async () => 1, checkOutbound: () => {} });
+    const packet = worker.probe('How much usage is measured?');
+    expect('context' in packet && JSON.parse(packet.context).sources[0].text).toContain('4 calls with unknown usage');
     journal.close();
     const reopened = openPreviewJournal(path, key, undefined, undefined, true);
     expect(reopened.view.tokenTotals).toEqual(expected);
@@ -60,7 +70,7 @@ it('projects observed and reserved-maximum tokens by call kind into read-only st
     expect(report.tokens).toEqual(expected);
     expect(report.tokenTotal).toEqual({ calls: 8, inputTokens: 98705,
       outputTokens: 8227, unknownCalls: 4 });
-    expect(report.self).toContain('answer 65636/2075');
+    expect(report.self).toContain('answer: measured input/output 100/27');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

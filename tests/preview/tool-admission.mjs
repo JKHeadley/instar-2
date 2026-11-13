@@ -776,7 +776,7 @@ export function toolTrace(lines) {
       // A failed call's result is the harness's error text. A failed helper returned nothing, so its edge stays open.
       if (row.phase === 'post-failure') continue;
       const edge = children.find(item => item.toolUse === row.id);
-      if (edge) { edge.state = 'returned'; edge.result = entry.result; if (typeof row.agent === 'string') edge.agent = row.agent; }
+      if (edge) { edge.terminal = row.terminal; edge.retired = typeof row.agent === 'string'; edge.state = 'returned'; edge.result = entry.result; if (typeof row.agent === 'string') edge.agent = row.agent; }
     } else if (row?.phase === 'child-start' && typeof row.agent === 'string') started.push(row.agent);
     else if (row?.phase === 'child-stop' && typeof row.agent === 'string') started.push(`stop:${row.agent}`);
     else malformed++;
@@ -788,6 +788,7 @@ export function toolTrace(lines) {
     if (edge.agent === null && unclaimed.length) edge.agent = unclaimed.shift();
     edge.started = edge.agent !== null && starts.includes(edge.agent);
     edge.stopped = edge.agent !== null && stops.has(edge.agent);
+    edge.retired = edge.retired === true && edge.started && edge.stopped;
   }
   return { calls, children, consistent: consistent && malformed === 0,
     admitted: calls.filter(call => call.decision === 'allow').length, refused: calls.filter(call => call.decision !== 'allow').length };
