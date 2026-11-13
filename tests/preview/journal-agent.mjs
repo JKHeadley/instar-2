@@ -437,7 +437,12 @@ const scrubRunText = text => {
   return held.unavailable ? 'Error: diagnostic details withheld (secret sources unavailable)' : clean;
 };
 /** A refusal whose fixed text carries no secret, so the operator sees it instead of the suppressed default. */
-class PlainRefusal extends Error {}
+class PlainRefusal extends Error {
+  constructor() { super('preview: the step check is retired (2026-10-20, no live evidence); launch without --step-check true'); }
+}
+// Only this parameterless refusal is code-owned text; arbitrary startup errors still require every secret source.
+const runCause = error => redactedRunCause(error, error instanceof PlainRefusal
+  ? text => redact(concealSecretMaterial(text, environmentSecrets().values)).text : scrubRunText);
 const reportExit = reason => {
   if (!exitReported) { exitReported = true; process.stderr.write(`runner exiting: ${reason}\n`); }
 };
@@ -784,7 +789,7 @@ async function main() {
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
   if (options.attribution !== undefined && !['record', 'enforce'].includes(options.attribution)) throw Error('preview: --attribution must be record or enforce');
   // Retired 2026-10-20 by the operator's review (promotion record): no live evidence, so it can no longer be turned on.
-  if (options['step-check'] === 'true') throw new PlainRefusal('preview: the step check is retired (2026-10-20, no live evidence); launch without --step-check true');
+  if (options['step-check'] === 'true') throw new PlainRefusal();
   const stepCheckEnabled = false;
   if (options.retrospective !== undefined && !['true', 'false'].includes(options.retrospective)) throw Error('preview: --retrospective must be true or false');
   // On by default: one bounded pass at most hourly, inside the model-attempt cap with a reply reserve.
@@ -1528,7 +1533,7 @@ async function main() {
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false, startupFailure = null;
   let maintenanceCause = null;
   const reportMaintenanceFailure = error => {
-    const cause = redactedRunCause(error, scrubRunText);
+    const cause = runCause(error);
     if (cause === maintenanceCause) return;
     maintenanceCause = cause;
     process.stderr.write(`runner maintenance refused: ${cause}\n`);
@@ -3421,7 +3426,7 @@ async function main() {
       // lease refusal never reaches here, so it writes nothing); stderr and the fixed `reason` stay terse.
       if (launchedAt === null && startupFailure !== null) try {
         reportExit('refused before launch');
-        const at = wallNow(), detail = redactedRunCause(startupFailure, scrubRunText);
+        const at = wallNow(), detail = runCause(startupFailure);
         appendRun(runsPath, { v: 1, launch: at, pid: process.pid });
         appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: 'refused before launch', refused: detail, cause: detail });
       } catch { /* the refusal still exits non-zero; only its record is lost */ }
@@ -3448,7 +3453,7 @@ async function main() {
         } catch { /* an exit without a disposition is revived by the host watcher as a crash */ }
         if (retiredReason) end = { ...end, retired: retiredReason };
         try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason, ...end,
-          ...(startupFailure === null ? {} : { cause: redactedRunCause(startupFailure, scrubRunText) }) }); } catch { /* the next launch reports an unrecorded end */ }
+          ...(startupFailure === null ? {} : { cause: runCause(startupFailure) }) }); } catch { /* the next launch reports an unrecorded end */ }
       }
     } finally {
       // A delegated session never outlives the launch that owns it.
@@ -3464,6 +3469,6 @@ async function main() {
 
 try { await main(); } catch (error) {
   reportExit('error (details suppressed)');
-  process.stderr.write(`preview refused to start or continue: ${redactedRunCause(error, scrubRunText)}\n`);
+  process.stderr.write(`preview refused to start or continue: ${runCause(error)}\n`);
   process.exitCode = 1;
 }

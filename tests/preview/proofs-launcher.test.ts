@@ -144,12 +144,17 @@ it('answers the operator status pull with the proof posture', async () => {
   expect(sent[0]).toMatch(/Graduation: preview\.attribution-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-11-21 \(recorded 2026-11-08\)/u);
 }, 60000);
 
-it('refuses a launch with the retired step check turned on, plainly, before polling or sending; off still runs', async () => {
+it.each([false, true])('refuses the retired step check plainly before effects, scrubs held values (%s); off still runs', async held => {
   const { harness, message } = setup();
   harness.setUpdates([message(1, 'hello')]);
-  const refused = await harness.runLive(2, ['--step-check', 'true']);
+  const refused = await harness.runLive(2, ['--step-check', 'true'],
+    held ? { INSTAR_SECRET_ASTRA_FIXTURE: '2026-10-20' } : {});
   expect(refused.status).not.toBe(0);
-  expect(refused.stderr).toContain('preview: the step check is retired (2026-10-20, no live evidence); launch without --step-check true');
+  if (held) {
+    expect(refused.stderr).not.toContain('2026-10-20');
+    expect(refused.stderr).toContain('preview: the step check is retired (');
+    expect(refused.stderr).toContain('launch without --step-check true');
+  } else expect(refused.stderr).toContain('preview: the step check is retired (2026-10-20, no live evidence); launch without --step-check true');
   // Not one Telegram call, not even the identity check: the refusal comes before any polling or sending.
   expect(existsSync(join(harness.directory, 'telegram.jsonl'))).toBe(false);
   const off = await harness.runLive(2, ['--step-check', 'false']);
