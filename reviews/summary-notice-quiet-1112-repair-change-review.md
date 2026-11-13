@@ -16,7 +16,7 @@ Multi-machine posture: deterministic assembly on every machine, no local state o
 Team posture: existing verified conversation audience and private-by-default sharing unchanged; no new recipient or visibility.
 Layer below: withDisclosure appends after the answer; final assembly moves disclosure past approval lines; replyBody extracts for measurement; continuityFor and intent digest validation remain unchanged.
 Bug class: unit
-Bug evidence: reproducer=tests/preview/summary-notice-quiet.test.ts (preserves an answer quoting); actual worker/durable intent/send and replyBody asserted; original helper fails the exact answer comparison and repaired helper passes
+Bug evidence: reproducer=tests/preview/summary-notice-quiet.test.ts; actual worker/durable intent/send and replyBody asserted; original helper fails the exact answer comparison and repaired helper passes
 Hook bypass: none
 Convergence: none
 Decision: summary-notice-quoted-disclosure | remove one last appended disclosure paragraph and use anchored legacy-prefix fallback; preserve identical text earlier in the answer without additional machinery | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/summary-notice-quiet-1112-repair-build-report.md
