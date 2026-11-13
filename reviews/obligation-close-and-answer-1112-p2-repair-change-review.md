@@ -22,6 +22,8 @@ Convergence: none
 Prompt review: no prompt or parser changes; inherited finding dispositions in the original review still apply. This repair tests journal projection, without claiming live model wording or new recorded model-shape replay.
 Decision: obligation-close-and-answer-remove-unproved-reconciliation | Take the review-authorized removal route because ordinary receipt replay already closes the demonstrated supported history. Retain successful and UNKNOWN receipt neighbors, and assert two reopens preserve their distinct closure states without appending bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/obligation-close-and-answer-1112-p2-PROGRESS.md
 
+Verification: typecheck and build exit 0; the focused obligation-close-and-answer file passes 6/6 on both ambient Node 24.15.0 and the certified installed Node 24.14.1. Architecture passes with the certified runtime. Register replay from source commit 87d54b4ddc82f6c48dcb51fc9c7f57820fbcef68 refreshes eight generated artifacts (308 entries, 123 rules), without owner-manifest, declaration, certificate or hand-edited pin changes. Full-suite and live evidence remain the Studio gate.
+
 simplestRobustRoute: use existing receipt projection to settle delivered promises and preserve unknown delivery, inventory and sourced operator withdrawal; remove the redundant experimental closure protocol instead of inventing a recovery history or adding machinery. No tool, framework, session, network, delegation or persistence capability is narrowed to enforce a safeguard.
 80/20: a 40-line product removal plus focused replay evidence resolves the sole MUST-FIX; no new service, gate, or full-suite run.
 VERDICT: author submission; independent desk/Astra review pending
