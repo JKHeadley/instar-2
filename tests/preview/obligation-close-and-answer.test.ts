@@ -1,10 +1,10 @@
 /** Recorded shapes supplied by the 2026-11-12 brief (16:46 owed question; 17:26/message 830).
  * Declarations and scheduling times are constructed, not private live journal bytes. */
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, reconcileDeliveredCommitments, LOOP_REVISIT_MS } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, wholeReplyReceipt, LOOP_REVISIT_MS } from './journal-test-worker.js';
 import { loopHealth, workRecords } from './obligations.js';
 
 const key = new Uint8Array(32).fill(73), start = 1794528000000;
@@ -59,12 +59,20 @@ for (const mode of ['delivered', 'unknown'] as const) it(`${mode} result keeps r
       await w.say('Is anything waiting to be delivered?');
       expect(w.packets.at(-1)!.workRecords.deliveryUnknown).toBe(1);
       expect(w.journal.view.order.at(-1)!.answer).toContain('1 delivery unknown');
-      expect(reconcileDeliveredCommitments(w.journal, w.now())).toEqual({ examined: 1, closed: 0 });
-      expect(() => w.journal.append({ kind: 'commitment-closed', closure: { id: 0, source: report.boundTo!, quote: report.text }, receipt: 999, at: w.now() })).toThrow('lacks delivery evidence');
+      expect(wholeReplyReceipt(w.journal.view, w.journal.view.turns.get(report.boundTo!)!)).toBeNull();
     }
-    const replay = openPreviewJournal(w.path, key);
-    try { expect(replay.view.closed).toEqual(w.journal.view.closed);
-      expect(replay.view.obligationWork).toEqual(w.journal.view.obligationWork); } finally { replay.close(); }
+    // Ordinary receipt replay alone must settle delivery and preserve UNKNOWN, without a repair event.
+    const bytes = statSync(w.path).size;
+    for (let pass = 0; pass < 2; pass++) {
+      const replay = openPreviewJournal(w.path, key);
+      try {
+        expect(replay.view.closed.has(0)).toBe(mode === 'delivered');
+        expect(replay.view.closed.size).toBe(mode === 'delivered' ? 1 : 0);
+        expect(replay.view.closed).toEqual(w.journal.view.closed);
+        expect(replay.view.obligationWork).toEqual(w.journal.view.obligationWork);
+      } finally { replay.close(); }
+      expect(statSync(w.path).size).toBe(bytes);
+    }
   } finally { w.close(); }
 });
 
@@ -110,11 +118,10 @@ it('bounds the inventory and counts omissions without treating them as absence',
   } finally { w.close(); }
 });
 
-it('refuses a model-invented withdrawal and a reconcile without recorded delivery', async () => {
+it('refuses a model-invented withdrawal without recorded delivery', async () => {
   const w = world('invented-withdrawal');
   try {
     await w.say('Please compare the options.'); await w.say('Never mind the comparison.');
     expect(w.journal.view.closed.has(0)).toBe(false);
-    expect(reconcileDeliveredCommitments(w.journal, w.now())).toEqual({ examined: 1, closed: 0 });
   } finally { w.close(); }
 });

@@ -1141,7 +1141,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['commitment-closed', 'send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'attribution-check', 'attribution-reserve', 'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1161,8 +1161,6 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['commitment-close
 
 export type JournalRecord =
   | PhaseTiming
-  // Non-additive: an older writer must refuse instead of resurrecting settled work.
-  | { kind: 'commitment-closed'; closure: CommitmentClosure; receipt: number; at: number }
   // Non-additive: an older writer must not discard the no-repeat expectation.
   | { kind: 'media-claim'; id: string; digest: string; at: number }
   | { kind: 'media-custody'; id: string; result: MediaCustodyResult; at: number }
@@ -2467,35 +2465,6 @@ export function commitmentOpen(view: JournalView, id: number): boolean {
   const note = view.commitments[id], source = note && view.turns.get(note.source);
   return !!note && !!source && !view.closed.has(id) && !probeTurn(view, source) && !view.memory.some(change => change.mode === 'forget'
     && change.source === note.source && note.quote.includes(change.quote));
-}
-/** A bounded forward-only reconciliation may consume only an already recorded, whole delivery.
- * It never infers completion from report prose, a clock, or a model's unsupported assertion. */
-function deliveredClosure(view: JournalView, id: number) {
-  if (!commitmentOpen(view, id) || completionPending(view, id)) return undefined;
-  const report = view.obligationWork[`commitment:${id}`]?.report;
-  const delivered = report?.delivered && view.turns.get(report.delivered);
-  for (const turn of delivered ? [delivered] : view.order.slice(-100)) {
-    const receipt = wholeReplyReceipt(view, turn);
-    if (receipt === null || receipt.at === undefined || !turn.intent?.trim() || turn.id === view.commitments[id]!.source
-      || (view.obligationWork[`commitment:${id}`]?.last ?? 0) > receipt.at) continue;
-    if (turn.intentFulfills?.includes(id) || report?.delivered === turn.id && report.boundTo === turn.id) {
-      const quote = turn.intentCarriedReports?.find(item => item.key === `commitment:${id}`)?.quote ?? turn.intent;
-      return { closure: { id, source: turn.id, quote }, receipt: receipt.message };
-    }
-  }
-  return undefined;
-}
-export function reconcileDeliveredCommitments(journal: ReturnType<typeof openPreviewJournal>, at: number) {
-  // One launch pass, at most 100 open records examined and 100 journal events; no effects or model calls.
-  let examined = 0, closed = 0;
-  if (journal.readOnly || journal.view.stop) return { examined, closed };
-  for (let id = 0; id < journal.view.commitments.length && examined < 100; id++) {
-    if (!commitmentOpen(journal.view, id)) continue;
-    examined++;
-    const evidence = deliveredClosure(journal.view, id);
-    if (evidence) { journal.append({ kind: 'commitment-closed', ...evidence, at }); closed++; }
-  }
-  return { examined, closed };
 }
 /** What an open commitment waits on now: a completed work step may have moved it onto the operator or an outside party. */
 export const commitmentWaitsOn = (view: JournalView, id: number): string | undefined => {
@@ -4124,12 +4093,6 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   // generic read (`'state' in row`, `'failureClass' in row`) can fold a newer build's frame into this
   // build's counts and silently move the projection digest the two builds compare.
   if (!KNOWN_FRAME_KINDS.has(row.kind)) { admitForwardFrame(view, row); return; }
-  if (row.kind === 'commitment-closed') {
-    const evidence = deliveredClosure(view, row.closure.id);
-    if (!evidence || JSON.stringify(evidence) !== JSON.stringify({ closure: row.closure, receipt: row.receipt }))
-      throw Error('preview journal: commitment closure lacks delivery evidence');
-    closeCommitment(view, row.closure); return;
-  }
   if (row.kind === 'send-format-refused') {
     const prepared = replyFormatting(view, row.target), target = sendTarget(view, row.target);
     if (!prepared || prepared.refusal || !target || target.sent !== undefined

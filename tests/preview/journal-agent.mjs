@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { reconcileDeliveredCommitments } from './journal.js';
 import { createProductUpdater } from '../../scripts/update-product.mjs';
 import { observeUpdateBound } from '../../scripts/update-runner.mjs';
 import { initializeUpdateRuntime } from '../../scripts/update.mjs';
@@ -2677,7 +2676,6 @@ async function main() {
     }
     // Rule 114: a tool turn a crash interrupted has its hook record journaled now, before any new turn (and its retention
     // pass) can run; until it is, retention keeps that directory. No tool turn of this runner is live yet.
-    if (options['reconcile-delivered-obligations'] === 'true') reconcileDeliveredCommitments(journal, wallNow());
     try { reconcileToolTurns({ journal, root, redactText: text => redact(text).text, now: wallNow }); }
     catch (error) { process.stderr.write(`preview: interrupted tool turns not yet journaled (kept): ${String(error?.message ?? error)}\n`); }
     // Part fifteen §5 (docs/19-scheduled-work): long and scheduled work runs as a full delegated
