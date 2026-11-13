@@ -18,6 +18,8 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/journal-prompt-retention.test.ts
 Hook bypass: none; core.hooksPath unset, actual repository hooks directory contains sample hooks only; plain git commit and push.
 Convergence: none
+Validation: 48 focused tests pass; two new regression probes fail on unrepaired 3783357 and pass on the repair. Typecheck/build pass. Register replay uses 35d138ea8a634e46fb3df258e727ff173219a5a2. Native R105 composition certificate renewal requires the Studio; no declaration is edited.
+Decision: retention-repair-register | Run the authorized desk rehash/repin tools and replay the generated register from the committed repair. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/journal-prompt-retention-1112-repair-build-report.md
 Team posture: Source ownership and audience metadata remain inside the existing private encrypted journal. Existing owner/member/guest standing controls access; no sharing or authority is widened.
 Decision: retention-repair-sources | Retain complete source bodies/provenance because mutable desk reports can have no other durable copy. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/journal-prompt-retention-1112-repair-build-report.md
 Decision: retention-repair-replay | Match reservation reference and original hash to the retired prompt, mark input body-not-retained, and preserve all output and accounting evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/journal-prompt-retention-1112-repair-build-report.md
@@ -32,7 +34,7 @@ Prompt finding: 9f0106c66027 | protocol-literal | Unchanged existing prompt inst
 Prompt finding: bac6ce7485d9 | protocol-literal | Unchanged existing prompt instruction; no semantic literal gate introduced — fixture-phrase tests/preview/journal.ts <- tests/preview/plain-task-stop.test.ts: "work on your request stopped before a finished answer was available."
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged existing prompt instruction; no semantic literal gate introduced — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 
-Subject (3 paths): tests/preview/journal-prompt-retention.test.ts, tests/preview/journal.ts, tests/preview/model-call-boundary.ts
+Subject (11 paths): tests/preview/journal-prompt-retention.test.ts, tests/preview/journal.ts, tests/preview/model-call-boundary.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/required-release-checks.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
