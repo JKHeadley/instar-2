@@ -4,7 +4,7 @@ import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
 import { createHarnessLoginPool } from './harness-login-pool.mjs';
 import { createHash } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { readAnswer } from './answer-reading.js';
@@ -15,7 +15,7 @@ import { createConversationTopicsPort, type ConversationTopicsState } from '../.
 import { parseReplyReviewVerdict, type ReplyCheckResult } from './reply-check.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
-import { createJournalWorker, openPreviewJournal, ModelNotStarted, ModelDisclosureRefused,
+import { createJournalWorker, openPreviewJournal, requestedToolSources, conversationTurnEligible, ModelNotStarted, ModelDisclosureRefused,
   createModelLaunchBoundary, type PreviewPorts } from './journal-test-worker.js';
 
 // Execute the shipped host closure, substituting only its physical/model dependencies.
@@ -32,7 +32,7 @@ const update = (id: number, text: string) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
 
 function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOrExtra: string | Partial<PreviewPorts> = 'existing-role', bot = '12345678') {
-  const authority = typeof authorityOrExtra === 'string' ? authorityOrExtra : 'existing-role';
+  let authority = typeof authorityOrExtra === 'string' ? authorityOrExtra : 'existing-role';
   const extra = typeof authorityOrExtra === 'string' ? {} : authorityOrExtra;
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'conversation-wiring-'))); roots.push(root);
   const open = () => openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
@@ -41,7 +41,8 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
     maxTurns: 30, maxBytes: 262144, cursor: 0 });
   let journal = open();
   const f = assemblyRuntimeFixture();
-  let now = 1000, launches = 0, calls = 0, fallback = 0, stopped = false, edges = 0;
+  let now = 1000, authorized = true, launches = 0, calls = 0, fallback = 0, stopped = false, edges = 0;
+  let onDeliver: ((operation: string) => string | undefined) | undefined;
   let destination = '', answer = JSON.stringify({ reply: 'A useful answer.', memory: [] });
   const files = new Map<string, string>(), delivered: string[] = [], sent: string[] = [], speakers: string[] = [];
   let state: ConversationTopicsState | null = null, busy = false;
@@ -56,10 +57,10 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
       adapter.deliver = input => busy ? Promise.resolve({ state: 'busy-not-dispatched', evidence: 'proved busy' }) : deliver(input);
       return adapter;
     } });
-  const config: Parameters<typeof adapt>[0] = { prepareTurn: input => turnBoundary(input), conversation: 'operator', allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => authority,
+  const config: Parameters<typeof adapt>[0] = { prepareTurn: input => turnBoundary(input), conversation: 'operator', allowanceDeadline: 9999999999999, authorized: () => authorized, currentAuthority: () => authority,
     createDriver: resolve => ({ owner: 'part-eight', launch: () => { launches++; return f.success('session:123:1'); },
       deliver: input => { if (checkIntake) expect(journal.view.order.some(turn => (turn.id === input.intake || `${turn.id}:format-retry` === input.intake && turn.answerRetried) && turn.reserved)).toBe(true);
-        delivered.push(resolve(input.intake, input.digest)); calls++; files.set(destination, answer); return f.success('accepted'); },
+        delivered.push(resolve(input.intake, input.digest)); calls++; files.set(destination, onDeliver?.(input.intake) ?? answer); return f.success('accepted'); },
       observe: () => f.success({ phase: 'output-observed', evidence: 'turn-closed:fake:1', detail: 'closed' }), stop: () => f.success(['123']) }),
     io: { clearResult: path => { destination = path; files.delete(path); }, readResult: path => files.get(path) ?? null,
       wait: async ms => { now += ms; }, modelCalls: () => calls, prepareAdmission: () => {}, closeAdmission: () => {},
@@ -71,16 +72,19 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
     incarnation: 'one', deadlineMs: 10000, pollMs: 25, maxResultBytes: 65536, maxSteps: 8, maxCalls: 10 };
   let port = value(adapt(config));
   let intercept: ((request: Parameters<typeof port.run>[0]) => ReturnType<typeof port.run>) | undefined;
-  const openModel = () => Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
+  const sessionTurnEligible = (id: string, current = true) => Function('journal', 'conversationTurnEligible', 'sessionWork',
+    `return (${host.split('const sessionTurnEligible = ')[1]!.split('\n    const scopedTurnEligible')[0]!.trim().replace(/;$/u, '')});`)(journal, conversationTurnEligible,
+      { port, authority })(id, current);
+  const openModel = () => Function('journal', 'requireGroupDisclosure', 'toolsActive', 'scopedTurnEligible', 'invokeTools',
     'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', 'conversationSession',
-    'sessionWork', 'ModelNotStarted', 'conversationSessionAnswer', 'readAnswer', 'recordShape', 'shapesPath', `return (${signature}${body});`)(journal, async () => {}, () => false, () => false,
+    'sessionWork', 'ModelNotStarted', 'conversationSessionAnswer', 'readAnswer', 'recordShape', 'shapesPath', 'sessionTurnEligible', `return (${signature}${body});`)(journal, async () => {}, () => false, () => false,
     () => { throw Error('unexpected tools fallback'); }, async () => { fallback++; return { state: 'complete', value: answer, usage }; },
     (input: unknown) => input, ModelDisclosureRefused, createModelLaunchBoundary(), enabled,
-    { get port() { return { ...port, run: intercept ?? port.run }; }, authority }, ModelNotStarted, conversationSessionAnswer, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
+    { get port() { return { ...port, run: intercept ?? port.run }; }, authority }, ModelNotStarted, conversationSessionAnswer, readAnswer, () => {}, '/unused', sessionTurnEligible) as PreviewPorts['model'];
   let model = openModel();
   const collectBody = host.split('      collectModel: async id => {')[1]!.split('\n      model:')[0]!.trimEnd().replace(/,$/u, '');
-  const collectModel = (id: string) => Function('journal', 'conversationSession', 'sessionWork', 'conversationSessionAnswer', 'recordShape', 'shapesPath',
-    `return (async id => {${collectBody});`)(journal, enabled, { port }, conversationSessionAnswer, () => {}, '/unused')(id);
+  const collectModel = (id: string) => Function('journal', 'conversationSession', 'sessionWork', 'conversationSessionAnswer', 'recordShape', 'shapesPath', 'sessionTurnEligible',
+    `return (async id => {${collectBody});`)(journal, enabled, { port }, conversationSessionAnswer, () => {}, '/unused', sessionTurnEligible)(id);
   let prepare: ((input: unknown) => string) | undefined;
   const openWorker = () => createJournalWorker(journal, { now: () => now, stopped: () => stopped,
     sources: () => sources, prepareModel: input => prepare ? prepare(input) : JSON.stringify({ ...input, responseContract: "decision-envelope-marker" }), model, collectModel,
@@ -90,6 +94,9 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
   return { root, get journal() { return journal; }, get worker() { return worker; }, get model() { return model; }, get port() { return port; }, sent, speakers, delivered, edges: () => edges, counts: () => ({ launches, calls, fallback }),
     boundary: (next: typeof turnBoundary) => { turnBoundary = next; },
     evidence: (value: unknown) => { sources = [value]; },
+    setTime: (value: number) => { now = value; }, authorize: (value: boolean) => { authorized = value; },
+    authority: (value: string) => { authority = value; model = openModel(); worker = openWorker(); },
+    enable: (value: boolean) => { enabled = value; model = openModel(); worker = openWorker(); },
     busy: (value: boolean) => { busy = value; }, advance: (ms: number) => { now += ms; },
     state: () => structuredClone(state!.topics.main!), topics: () => structuredClone(state!.topics), restore: (next: import('../../src/assembly/production-conversation-session.js').ConversationState) => { state = { ...state!, topics: { ...state!.topics, main: structuredClone(next) } }; },
     restart: async (crash = false) => { if (!crash) await port.close(); journal.close(); journal = open(); port = value(adapt(config)); model = openModel(); worker = openWorker(); },
@@ -106,6 +113,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
         return reopened.view.order[0]!.sent;
       } finally { reopened.close(); }
     },
+    respond: (next: typeof onDeliver) => { onDeliver = next; },
     intercept: (run: typeof intercept) => { intercept = run; },
     answer: (text: string) => { answer = text; }, stop: () => { stopped = true; },
     close: async () => { await port.close(); journal.close(); } };
@@ -226,12 +234,17 @@ it.each([false, true])('the shipped grant refresh validates changed bytes before
   const route = build(() => bytes, initial, { policy: () => policy, validateActivation: (record: { policy: string }) => {
     seen.push(record); if (record.policy === 'invalid') throw Error('invalid grant');
   } }, (...args: unknown[]) => { presented.push(args[5]); }, (text: string) => text, pool) as { select(): void; active(): boolean; authority(): string };
+  const eligible = Function('journal', 'conversationTurnEligible', 'sessionWork',
+    `return (${host.split('const sessionTurnEligible = ')[1]!.split('\n    const scopedTurnEligible')[0]!.trim().replace(/;$/u, '')});`)(
+      { view: {} }, (_view: unknown, _id: string, authorized: () => boolean) => authorized(),
+      { select: route.select, port: { available: route.active } }) as (id: string) => boolean;
   expect(route.active()).toBe(true); const before = route.authority();
   bytes = JSON.stringify({ reference: 'same-grant', policy: 'new' });
-  expect(route.active()).toBe(false); route.select(); expect(route.active()).toBe(true);
+  expect(route.active()).toBe(false); expect(eligible('requested-action:0')).toBe(true); expect(route.active()).toBe(true);
   expect(route.authority()).not.toBe(before); expect(route.authority()).not.toContain('stale-pool-record');
   bytes = JSON.stringify({ reference: 'same-grant', policy: 'invalid' });
-  expect(() => route.select()).toThrow(/invalid grant/); expect(route.active()).toBe(false);
+  expect(eligible('requested-action:0')).toBe(false);
+  expect(route.active()).toBe(false);
   expect(seen).toHaveLength(2);
   expect(presented).toEqual([policy]);
 });
@@ -1031,5 +1044,156 @@ it.each(shapes.otherShapes)('carryover 08 collects completed single input after 
     expect(f.delivered).toHaveLength(1); expect(f.sent).toHaveLength(1); expect(f.sent[0]!.trim()).not.toBe('');
     expect(f.journal.view.order[0]!.failureClass).toBe(row.kind === 'empty-reply-in-recorded-context' ? 'empty' : undefined);
     await f.restart(); await f.worker.drain(); expect(f.sent).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+// Recorded incident 788, supplied in the due-turn-tools-1112 desk brief. The exact operator
+// words, dated fields and update positions are recorded; the model/physical driver below
+// is a substitute, not a claim of a fresh production model or GitHub reading.
+const due788 = {
+  update: 969390728,
+  at: Date.parse('2026-11-12T12:51:23-08:00'),
+  text: 'every 10 minutes for the next 30 minutes, send me the newest commit message on EchoOfDawn/instar main. Stop after three.',
+  times: ['13:01', '13:11', '13:21'],
+  unavailable: "I couldn't re-check GitHub for this update, so I can't confirm the current newest commit on EchoOfDawn/instar main."
+};
+async function schedule788(f: ReturnType<typeof fixture>) {
+  f.setTime(due788.at);
+  f.answer(JSON.stringify({ reply: 'The newest commit is e76caca6: chore: release v1.3.1334 [skip ci]. Three updates are scheduled.',
+    memory: [], dated: due788.times.map((time, index) => ({
+      // The brief omits the three quote fields. Use distinct exact excerpts (the writer's key),
+      // and bind the recorded due instants to the original clock using the current schema.
+      quote: [due788.text, due788.text.split('. Stop')[0]!, due788.text.slice(0, -1)][index],
+      when: 'every 10 minutes', remind: true, resolution: { at: due788.at, zone: 'America/Los_Angeles',
+        instant: new Date(Date.parse(`2026-11-12T${time}:00-08:00`)).toISOString() } })) }));
+  const incoming = update(due788.update, due788.text);
+  f.worker.intake([{ ...incoming, message: { ...incoming.message, date: Math.floor(due788.at / 1000) } }]);
+  await f.worker.drain();
+  expect(f.journal.view.dated.map(item => item.time)).toEqual(due788.times);
+}
+const at788 = (index: number) => Date.parse(`2026-11-12T${due788.times[index]}:00-08:00`);
+
+it('788: all three due turns inherit the recorded session, perform a fresh tool read, stop after three, and survive restart', async () => {
+  const f = fixture();
+  let toolCalls = 0;
+  try {
+    await schedule788(f);
+    f.respond(operation => {
+      if (!operation.startsWith('requested-action:')) return undefined;
+      // Exercise the same durable tool-preparation checkpoint the session's hook uses.
+      const state = f.state();
+      f.port.noteToolPreparation!(state.claim!, (state.claimTools ?? 0) + 1);
+      toolCalls++;
+      const reading = readFileSync(join(f.root, 'latest-commit.txt'), 'utf8');
+      return JSON.stringify({ reply: `Fresh GitHub reading ${toolCalls}: ${reading}`, memory: [] });
+    });
+    for (let tick = 0; tick < 3; tick++) {
+      f.setTime(at788(tick) - 1); await f.worker.sendRequested();
+      expect(toolCalls).toBe(tick);
+      if (tick < 2) await f.restart(true);
+      writeFileSync(join(f.root, 'latest-commit.txt'), `commit-${tick + 1}`); // physical read substitute for GitHub
+      f.setTime(at788(tick)); await f.worker.sendRequested();
+      const due = f.journal.view.order.filter(turn => turn.requestedAction).at(-1)!;
+      expect(due.update).toBe(due788.update + (tick + 1) / 1024);
+      expect(due.writer?.kind).toBe('system');
+      expect(requestedToolSources(f.journal.view, due.id).map(turn => turn.update)).toEqual([due788.update]);
+      expect(f.sent.at(-1)).toContain(`Fresh GitHub reading ${tick + 1}: commit-${tick + 1}`);
+      expect(toolCalls).toBe(tick + 1);
+      expect(f.counts().fallback).toBe(0);
+      await f.worker.sendRequested();
+      expect(toolCalls).toBe(tick + 1);
+    }
+    f.setTime(at788(2) + 3600000); await f.worker.sendRequested();
+    expect(toolCalls).toBe(3); expect(f.sent).toHaveLength(4);
+    expect(f.counts().calls).toBe(4);
+  } finally { await f.close(); }
+});
+
+it.each(['plain-source', 'renewed-grant'] as const)('788: currently authorized due work uses the session after %s', async change => {
+  const f = fixture(change !== 'plain-source');
+  try {
+    await schedule788(f);
+    if (change === 'plain-source') f.enable(true);
+    else f.authority('renewed-existing-role');
+    expect(f.port.available()).toBe(true);
+    const before = f.counts();
+    f.setTime(at788(0)); await f.worker.sendRequested();
+    expect(f.counts().calls).toBe(change === 'plain-source' ? 1 : 2);
+    expect(f.counts().fallback).toBe(before.fallback);
+    expect(f.state().inputs.some(input => input.request.operation === 'requested-action:0')).toBe(true);
+  } finally { await f.close(); }
+});
+
+it.each(['withdrawn-tools', 'stop', 'call-cap', 'reply-cap'] as const)(
+  '788: preserves the %s boundary without granting tools from due text', async boundary => {
+    const f = fixture();
+    try {
+      await schedule788(f);
+      if (boundary === 'withdrawn-tools') f.authorize(false);
+      if (boundary === 'stop') f.worker.stop('operator');
+      if (boundary === 'call-cap') {
+        // The writer charges reservations up to the actual configured cap.
+        while (f.journal.view.calls < f.journal.view.limits.maxCalls) f.journal.append({
+          kind: 'tool-turn', phase: 'reserved', id: 'cap-fixture', attempt: f.journal.view.calls, calls: 1, at: due788.at });
+      }
+      if (boundary === 'reply-cap') {
+        while (f.journal.view.replies < f.journal.view.limits.maxReplies)
+          f.journal.append({ kind: 'legacy-reply', at: due788.at });
+      }
+      const before = f.counts();
+      f.answer(JSON.stringify({ reply: due788.unavailable, memory: [] }));
+      f.setTime(at788(0)); await f.worker.sendRequested();
+      expect(f.counts().calls).toBe(before.calls);
+      if (boundary === 'withdrawn-tools') {
+        expect(f.counts().fallback).toBe(before.fallback + 1);
+        expect(f.sent.at(-1)).toContain(due788.unavailable);
+      } else {
+        expect(f.counts().fallback).toBe(before.fallback);
+        expect(f.journal.view.order.filter(turn => turn.requestedAction)).toHaveLength(0);
+      }
+    } finally { await f.close(); }
+  });
+
+it('788: scoped due tools use current authorization without requiring original tool reservations', async () => {
+  const f = fixture(false), activation = { reference: 'original-tools', invocationPolicyDigest: 'policy:original' };
+  const scopedBody = host.split('const scopedTurnEligible = ')[1]!.split('\n    const modelEnvelope')[0]!;
+  // Execute the real scoped eligibility with current activation; provenance still comes from the journal.
+  const eligible = (id: string, current: typeof activation | null = activation, mcp: object | null = null) => Function(
+    'journal', 'requestedToolSources', 'toolTurnEligible', 'toolsRecord', 'readRootMcp', 'root',
+    `return (${scopedBody.trim().replace(/;$/u, '')});`)(f.journal, requestedToolSources,
+      (value: string) => /^telegram:[0-9]+:update:[0-9]+$/u.test(value), current, () => mcp, '/unused')(id);
+  try {
+    await schedule788(f);
+    const source = f.journal.view.order[0]!;
+    f.setTime(at788(0)); await f.worker.sendRequested();
+    const due = f.journal.view.order.find(turn => turn.requestedAction)!;
+    expect(eligible(due.id)).toBe(true);
+    expect(eligible(due.id, { ...activation, invocationPolicyDigest: 'policy:renewed' })).toBe(true);
+    expect(eligible(due.id, activation, { digest: 'new-server' })).toBe(true);
+    expect(eligible(due.id, null)).toBe(false);
+    expect(conversationTurnEligible(f.journal.view, due.id, () => true)).toBe(true);
+    expect(conversationTurnEligible(f.journal.view, due.id, () => false)).toBe(false);
+    expect(eligible('requested-action:invented')).toBe(false);
+    f.journal.append({ kind: 'tool-turn', phase: 'refused', id: source.id, reason: 'call cap', at: at788(0) });
+    expect(eligible(due.id)).toBe(true);
+    expect(requestedToolSources(f.journal.view, 'summary:969390728')).toEqual([]);
+    expect(requestedToolSources(f.journal.view, source.id)).toEqual([]);
+  } finally { await f.close(); }
+});
+
+it.each(shapes.otherShapes)('788: replays recorded $kind ($id) through the due session and retains its outcome', async row => {
+  const f = fixture();
+  try {
+    await schedule788(f);
+    f.answer(row.raw);
+    f.setTime(at788(0)); await f.worker.sendRequested();
+    expect(f.state().inputs.some(input => input.request.operation === 'requested-action:0')).toBe(true);
+    expect(f.counts().fallback).toBe(0);
+    const calls = f.counts().calls, sends = f.sent.length;
+    expect(calls).toBeGreaterThan(1);
+    expect(f.sent.every(text => text.trim().length > 0)).toBe(true);
+    await f.restart(true); await f.worker.sendRequested();
+    expect(f.counts().calls).toBe(calls);
+    expect(f.sent).toHaveLength(sends);
   } finally { await f.close(); }
 });
