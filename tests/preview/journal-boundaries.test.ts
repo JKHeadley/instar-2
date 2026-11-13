@@ -428,6 +428,33 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
     } finally { rmSync(revised.dir, { recursive: true, force: true }); }
   }, 30_000);
 
+  it('preserves disclosure quotations in a model revision through actual send', async () => {
+    // Synthetic explanatory answer from Astra's round-two reproducer, not a recorded live reply.
+    const drafts: string[] = [];
+    const answer = 'The notice you asked about reads:\n\nNote: the earlier part of our conversation is now summarized for me; your last request before that was answered.\n\nIt describes the earlier request.';
+    const revised = setup(32768, garden, () => 'Look in /Users/me/notes for it.', {
+      prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', at + 100_000, 32768),
+      replyCheck: { elapsedMs: () => 1, jev: async () => { throw Error('Jev unavailable'); },
+        escalate: async () => ({ verdict: 'violation' as const, ruleIds: ['raw_path'], confidence: null, latencyMs: 1 }),
+        revise: async (input: { text: string }) => { drafts.push(input.text);
+          return { state: 'complete' as const, text: answer }; } } });
+    try {
+      summarize(revised.journal, 29, 'Twenty-nine garden updates.');
+      revised.worker.intake([update(31, 'Hello again')]); await revised.worker.drain();
+      const turn = revised.journal.view.turns.get('telegram:12345678:update:31')!;
+      expect(drafts).toEqual(['Look in /Users/me/notes for it.']);
+      expect(turn.release).toMatchObject({ review: 'violation', objections: ['raw_path'], revised: true });
+      expect(revised.sent[0]).toBe(withDisclosure(answer, turn.continuity!.disclosure));
+      expect(turn.revision?.text).toBe(answer);
+      expect(turn.intent).toBe(revised.sent[0]);
+      expect(turn.continuity?.replyDigest).toBe(createHash('sha256').update(turn.intent!).digest('hex'));
+      revised.journal.close();
+      const reopened = openPreviewJournal(join(revised.dir, 'journal.encrypted'), key);
+      expect(reopened.view.turns.get('telegram:12345678:update:31')!.continuity).toBeDefined();
+      reopened.close();
+    } finally { rmSync(revised.dir, { recursive: true, force: true }); }
+  }, 30_000);
+
   // Live 2026-10-03 (room two, cint-L36 4228d0c5, group A): the reply to fill-34 (update 6231425) was prepared and
   // its Telegram send settled UNKNOWN ("transport transport at fetch-failure"); fill-35's first reply after the
   // compaction accounted for it as pending, "my reply to it was prepared but its delivery is unconfirmed". That is

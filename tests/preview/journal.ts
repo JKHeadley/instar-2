@@ -10415,8 +10415,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   ...(outcome.usage ? { usage: outcome.usage } : {}), at: revisionAt });
               }
               if (turn.revision?.state === 'complete' && turn.revision.text) {
-                let body = turn.revision.text.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
-                if (continuity) body = withoutDisclosure(body, continuity.disclosure);
+                // Raw model prose has no infrastructure disclosure to strip; an identical quotation is answer content.
+                const body = turn.revision.text.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
                 const prose = actionHeader === undefined ? disclosed(body) : `${actionHeader}\n${body}`;
                 const candidate = `${prose.trimEnd()}${resultLines.filter(line => !prose.includes(line)
                   && supportedLine(line, prose, [...turn.revision!.carriedReports ?? [], ...turn.answerCarriedReports ?? []])).join('')}`;
