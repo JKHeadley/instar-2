@@ -34,7 +34,7 @@ Prompt finding: e8708c7fea24 | quoted-evidence | existing source-citation instru
 
 Repair comparison: re-read both 1.x files and their history at the same exact revision before editing; verified src/ and docs/specs/ matches. This repair inherits the reviewed comparison above. Local ONEX-LESSONS.md search found none; Studio existing-role guidance request returned 401 with no ambient INSTAR_AUTH_TOKEN, so access was not bypassed. Reconstructed the single regression from M1's exact supplied answer and the existing focused writer fixture because the Studio probe was unavailable.
 
-Verification: targeted focused test file passes 9/9 including M1 and historical prefix; original helper produces exactly the missing-quotation/double-notice failure. Build and typecheck pass. Final cheap gate results and captured update ids are recorded in the report. No full suite or live release claimed.
+Verification: targeted focused test file passes 9/9 including M1 and historical prefix; original helper produces exactly the missing-quotation/double-notice failure. Build and typecheck pass. The register was mechanically replayed from source commit 1b65c935dfa53a7ed226e974de5c602a877e409f; generated files carry no authored behavior. Final cheap gate results and captured update ids are recorded in the report. No full suite or live release claimed.
 
 ## Closing block
 
