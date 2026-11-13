@@ -2296,7 +2296,9 @@ async function main() {
       model: async ({ id, prepared, question, context: packet }) => {
         try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
-        if (conversationSession && sessionTurnEligible(id)) {
+        // Ordinary turns keep their established route; only due work needs current-grant eligibility.
+        const dueTurn = journal.view.turns.get(id)?.requestedAction !== undefined;
+        if (conversationSession && (/^telegram:[0-9]+:update:[0-9]+$/u.test(id) || dueTurn && sessionTurnEligible(id))) {
           // The journal reserves the one format repair before this call. Its exact packet gets
           // a durable child identity; replaying the original bytes still names the original turn.
           // Never relax the host's same-identity request-digest check.
@@ -2306,7 +2308,7 @@ async function main() {
           let outcome;
           try {
             sessionWork?.select?.();
-            if (!sessionTurnEligible(id)) return invokeSubscription(prepared, id);
+            if (dueTurn && !sessionTurnEligible(id)) return invokeSubscription(prepared, id);
             if (!sessionWork?.port.available()) throw new ModelNotStarted();
             outcome = await sessionWork.port.run({ operation, question: prepared, context: packet,
               authority: sessionWork.authority });
@@ -2320,7 +2322,7 @@ async function main() {
         }
         const callsBefore = journal.view.modelCalls.total;
         let result;
-        try { result = await modelLaunch.run(() => toolsActive() && scopedTurnEligible(id) ? invokeTools(prepared, id) : invokeSubscription(prepared, id)); }
+        try { result = await modelLaunch.run(() => toolsActive() && (toolTurnEligible(id) || dueTurn && scopedTurnEligible(id)) ? invokeTools(prepared, id) : invokeSubscription(prepared, id)); }
         catch (error) {
           // A resumed tool turn may already have invoked a provider before a later disclosure refusal.
           if (error instanceof ModelDisclosureRefused && journal.view.modelCalls.total !== callsBefore)
