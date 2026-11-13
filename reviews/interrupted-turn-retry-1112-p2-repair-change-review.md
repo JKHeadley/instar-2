@@ -25,6 +25,8 @@ Decision: interrupted-turn-retry-1112-p2-R1 | Use the existing evidence-gated de
 
 Validation: Build and typecheck passed on Node 24.14.1. Ten native contract cases pass after renewal; the pre-renewal failure proves the certificate check rejects the old declaration. These use captured provider frames and actual native confined local execution, not live-provider or deployed-user acceptance. No full suite run; the pipeline owns it. Original recorded incident and eight output-shape replays remain the independently reviewed evidence for the unchanged retry implementation.
 
+Publication: Replayed generated/ from source commit efe3c7860befc87a67ae9dd81a1dad858da08fb8; generation sha256:c89060e21813c4338af0f2ca952b5c85eac7b36ea9a8ed2038f2382dcd5dca98, 308 entries / 123 rules / 34 terms. Delegated owner-manifest and inventory refresh tools found no changes.
+
 simplestRobustRoute: This is the simplest route: existing native contract, evidence-gated declaration renewal, and register replay. Start guards require Darwin, exact runtime and complete composition; the end guard requires all ten contract cases passing; a behavioral failure restores the declaration. No machinery or ability restriction is added.
 80/20: One certificate line plus required Rule 115 review and derived publication; bounded native proof and cheap gates suffice for this repair, with the full suite owned by the Studio pipeline.
 VERDICT: author submission; no independent verdict asserted
