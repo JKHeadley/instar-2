@@ -1537,6 +1537,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   toolRouted?: boolean;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
+  promptRetention?: { state: 'body not retained'; sha256: string; bytes: number };
   reserved: boolean; answerAccount?: true; accountNeeded?: true; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; safetyCeiling?: 'deadline' | 'calls'; toolChecks?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; acknowledgementMode?: 'reaction-or-text'; heldNoticeSent?: number; heldNoticeSentAt?: number; acknowledgementPath?: 'reaction' | 'text'; memoryPending?: true; memoryUnresolved?: true; memoryUndecided?: true; datedPending?: true;
   /** This turn's own answer decided what it withdrew: the keys it cancelled, or none. Rules 57, 93: a
    * recorded decision, including "withdraws none", settles the reminder question this turn opened. */
@@ -2046,6 +2047,60 @@ function snapshotOf(view: JournalView, retained: JournalRecord[]): Snapshot {
 }
 /** The complete durable projection, as the compaction verifier compares it (Rule 26: the state itself, not a count of it). */
 export const durableProjection = (view: JournalView): Snapshot['view'] => snapshotOf(view, []).view;
+/** Exact prompt replay window per conversation; unresolved work is never aged out. */
+export const PROMPT_RETENTION_TURNS = 32;
+const bodyDigest = (body: string) => ({ state: 'body not retained' as const,
+  sha256: createHash('sha256').update(body).digest('hex'), bytes: Buffer.byteLength(body) });
+function retainedPromptView(view: JournalView): JournalView {
+  const counts = new Map<string, number>(), sentCounts = new Map<string, number>(), turns = new Map(view.turns);
+  for (const turn of [...view.order].reverse()) {
+    if (turn.prompt === undefined) continue;
+    const conversation = String(turn.thread ?? 'main'), count = (counts.get(conversation) ?? 0) + 1;
+    counts.set(conversation, count);
+    const sent = turn.accepted && turn.sent !== undefined && turn.intent !== undefined;
+    const sentCount = (sentCounts.get(conversation) ?? 0) + (sent ? 1 : 0);
+    sentCounts.set(conversation, sentCount);
+    if (sent && sentCount <= 4) continue; // continuation reads completed replies, even behind a large pending backlog
+    if (count <= PROMPT_RETENTION_TURNS || turn.promptRetention || !wholeReplySent(turn)
+      || turn.held !== undefined || turn.checked === undefined && !turn.requestedAction || turn.memoryPending || turn.memoryUnresolved || turn.memoryUndecided || turn.datedPending
+      || view.lastPrompt?.kind === 'answer' && view.lastPrompt.id === turn.id) continue;
+    let packet: Record<string, unknown> = {};
+    try {
+      const envelope = JSON.parse(turn.prompt), content = envelope?.messages?.find((item: { role?: string }) => item.role === 'context')?.content;
+      const outer = content === undefined ? envelope : JSON.parse(content);
+      const candidate = outer?.packet ?? outer;
+      if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) packet = candidate;
+    } catch { /* Legacy non-JSON prompts still receive a digest and explicit missing-body marker. */ }
+    const retained: Record<string, unknown> = Object.fromEntries(['audience', 'actionFacts', 'governingConstraints', 'installedUpdate']
+      .filter(key => key in packet).map(key => [key, packet[key]]));
+    // Retain only offered clauses later cited by memory audits, not the whole rolling summary.
+    const passages = view.memory.filter(change => change.trigger === turn.id).flatMap(change => change.summaryPassages ?? []);
+    for (const key of ['memorySummary', 'summary']) {
+      const summary = packet[key] as { text?: string; through?: number } | undefined;
+      if (summary && passages.length) retained[key] = { through: summary.through,
+        text: passages.filter(passage => typeof summary.text === 'string' && summary.text.includes(passage)).join('\n') };
+    }
+    const promptRetention = bodyDigest(turn.prompt);
+    turns.set(turn.id, { ...turn, promptRetention, prompt: JSON.stringify({ promptRetention,
+      messages: [{ role: 'context', content: JSON.stringify({ packet: { ...retained, promptRetention } }) }] }) });
+  }
+  const summaryCandidates = new Map(view.summaryCandidates);
+  const frontier = view.order.at(-PROMPT_RETENTION_TURNS)?.update ?? -1;
+  for (const [through, body] of summaryCandidates) if (through < frontier && !view.summaryReservations.has(through)
+    && !body.startsWith('{"state":"body not retained","sha256":')) summaryCandidates.set(through, JSON.stringify(bodyDigest(body)));
+  const retroPasses = view.retroPasses.map((pass, index) => {
+    if (index >= view.retroPasses.length - PROMPT_RETENTION_TURNS || pass.state === undefined || !pass.dutyFollowUp?.held) return pass;
+    const { held, ...followUp } = pass.dutyFollowUp;
+    return { ...pass, dutyFollowUp: { ...followUp, heldRetention: bodyDigest(JSON.stringify(held)) } };
+  });
+  return { ...view, turns, order: view.order.map(turn => turns.get(turn.id)!), summaryCandidates, retroPasses };
+}
+/** Serialized durable state bytes, measured incrementally without V8's single-string limit. */
+export function serializedStateBytes(view: JournalView): number {
+  let bytes = 0;
+  for (const chunk of journalJsonChunks(durableProjection(view))) bytes += chunk.length;
+  return bytes;
+}
 /** Canonical digest of the whole conversation projection (what a snapshot would save). Two views agree
  * exactly when their digests match; Rule 33 uses it as a journal frontier and as the replay comparison. */
 export function projectionDigest(view: JournalView): string {
@@ -5703,6 +5758,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
   let view: JournalView | undefined;
   let retained: JournalRecord[] = [];
   let snapshotBase = 0;
+  let lastSnapshotSerializedBytes: number | null = null;
   let snapshotAllowed = false;
   let pendingSnapshot: { start: SnapshotStart; chunks: Buffer[] } | undefined;
   let closed = false;
@@ -5748,6 +5804,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
             throw Error('preview journal: snapshot digest differs');
           const snapshot = parseJournalJson(pendingSnapshot.chunks) as Snapshot;
           view = restoreSnapshot(snapshot, view.genesis); retained = snapshot.retained;
+          lastSnapshotSerializedBytes = pendingSnapshot.start.bytes;
           snapshotBase = decoded.end; pendingSnapshot = undefined;
         }
       } else {
@@ -5876,7 +5933,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         }
         const kept = retainedEvidence(rows, view);
         verifyPendingEvidence(kept, view);
-        const snapshot = snapshotOf(view, kept), hash = createHash('sha256');
+        const projected = retainedPromptView(view);
+        const snapshot = snapshotOf(projected, kept), hash = createHash('sha256');
         let bytes = 0;
         for (const chunk of journalJsonChunks(snapshot)) { hash.update(chunk); bytes += chunk.length; }
         const start: SnapshotStart = { kind: 'snapshot-start', version: 1, chunks: Math.ceil(bytes / snapshotChunkBytes), bytes,
@@ -5901,7 +5959,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         boundary?.('compact:after-fsync');
         const check = openPreviewJournal(temp, key, undefined, undefined, true, compactBytes);
         try {
-          if (projectionDigest(check.view) !== projectionDigest(view))
+          if (projectionDigest(check.view) !== projectionDigest(projected))
             throw Error('preview journal: snapshot projection differs');
         } finally { check.close(); }
         boundary?.('compact:after-verify');
@@ -5911,7 +5969,10 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         syncDirectory(path);
         boundary?.('compact:after-dir-fsync');
         const nextFd = openSync(path, constants.O_RDWR | constants.O_NOFOLLOW);
-        closeSync(fd); fd = nextFd; size = nextSize; snapshotBase = nextSize; retained = kept;
+        closeSync(fd); fd = nextFd; size = nextSize; snapshotBase = nextSize; retained = kept; lastSnapshotSerializedBytes = bytes;
+        // Preserve the worker's existing turn references; publish retention only after durable replacement.
+        for (const [id, turn] of projected.turns) Object.assign(view.turns.get(id)!, turn);
+        view.summaryCandidates = projected.summaryCandidates; view.retroPasses = projected.retroPasses;
         boundary?.('compact:after-reopen');
       } catch (error) {
         if (tempFd !== undefined) closeSync(tempFd);
@@ -5988,7 +6049,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         ...(outputs[0]!.usage ? { usage: outputs[0]!.usage! } : {}),
         detail: 'collected recorded output after verified worker closure' };
     };
-    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, get retainedRows() { return retained.length; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter, sessionWorkRecords, obligationCheckpoint,
+    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, get lastSnapshotSerializedBytes() { return lastSnapshotSerializedBytes; }, get retainedRows() { return retained.length; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter, sessionWorkRecords, obligationCheckpoint,
       close: () => { if (!closed) { closed = true; closeSync(fd); } } };
   } catch (error) { if (!closed) closeSync(fd); throw error; }
 }
@@ -7538,6 +7599,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       candidates: previous.map(item => ({ text: sentText(item) ?? '', at: sentAt(item) ?? 0 })) });
     const target = direct ?? (ranked.length ? previous[ranked[0]!]! : previous.at(-1)!);
     const packet = recordedPacket(target);
+    if (target.promptRetention) return { update: target.update, reply: replyFor(target), recorded: null, ...target.promptRetention };
     // Legacy packets have no turn identities on every historical field. A later
     // correction can withhold a paraphrased reply that string redaction cannot find.
     // The saved count also covers a correction decided after a later turn was prepared.
@@ -12312,7 +12374,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     if (stepId.startsWith('prepare:')) {
       const turn = journal.view.turns.get(stepId.slice('prepare:'.length))!;
-      return { step: stepId, request: clean(redact(turn.text).text, true, turn.id), ...packetEvidence(turn.prompt) };
+      return { step: stepId, request: clean(redact(turn.text).text, true, turn.id), ...(turn.promptRetention ?? packetEvidence(turn.prompt)) };
     }
     if (stepId.startsWith('cleanup:')) {
       const turn = journal.view.turns.get(stepId.slice('cleanup:'.length))!;
@@ -12410,6 +12472,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           journal.append({ kind: 'retro-rerun', pass: last.pass, index: run.index, state: 'unknown', reason: 'interrupted before its result was recorded', at: ports.now() });
         const followUp = last.dutyFollowUp;
         if (followUp) {
+          if (!followUp.held) throw Error('preview journal: pending retrospective body missing');
           // The first answer was validated and held before the follow-up was reserved: it is recorded as it stood,
           // with the interruption on every duty it left uninspected. The follow-up itself is never replayed.
           const unsettled = followUp.state === undefined;

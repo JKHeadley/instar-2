@@ -4598,3 +4598,21 @@ the last. Evidence a gate compares with the run's start therefore stays on the h
 (`tests/setup/host-clock.mjs`): model-provider proofs, the grounding ledger and boot receipts.
 Vitest stamps file windows on the shifted clock, so the process exit row records the shift and
 the gate moves each window back to the host clock before comparing.
+
+### Prompt retention in the encrypted journal
+
+Compaction keeps 32 complete prompts per conversation, plus the last four sent turns per conversation and unfinished, held or
+not-yet-reviewed turns. Older completed turns retain an explicit `promptRetention`
+marker with their original SHA256 and UTF-8 byte count, and packet audience,
+action facts, governing constraints, installed-update reference and source-linked
+summary clauses needed by historical readers. Messages, replies, decisions and
+memory remain. Exact prompt replay is available inside the window; outside it,
+inspection and review say `body not retained`. Settled old summary candidates and
+completed retrospective follow-up duplicates become digest markers; retrospective
+results remain because later findings and grading still use them. The status
+`journalCapacity.serializedStateBytes` measures the durable state projection in
+bytes, separately from encrypted file size, without allocating one giant string.
+
+`journalCapacity.lastSnapshotSerializedBytes` counts the complete last verified
+snapshot, including retained event evidence. It is null before first compaction
+and reflects that snapshot rather than later appended events.

@@ -29,9 +29,9 @@ const decide = (input: Input) => {
 /** Jev answers whichever step question it is asked; `score` picks the probability per step id. */
 const answer = (questions: Record<string, unknown> | undefined, value: number) => ({ model: 'jev-1.13.0',
   answers: Object.fromEntries(Object.keys(questions ?? { unsupported_effect: 1 }).map(id => [id, { type: 'noul', noul: value }])) });
-function world(options: { stepCheck?: 'pass' | ((step: string) => number | 'outage'); maxCalls?: number; dueDated?: unknown; dueAnswer?: string; dueAnswers?: string[] } = {}) {
+function world(options: { stepCheck?: 'pass' | ((step: string) => number | 'outage'); maxCalls?: number; maxTurns?: number; maxReplies?: number; maxBytes?: number; dueDated?: unknown; dueAnswer?: string; dueAnswers?: string[] } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'business-steps-')));
-  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxCalls: options.maxCalls ?? genesis.maxCalls });
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxCalls: options.maxCalls ?? genesis.maxCalls, maxTurns: options.maxTurns ?? genesis.maxTurns, maxReplies: options.maxReplies ?? genesis.maxReplies, maxBytes: options.maxBytes ?? genesis.maxBytes });
   const frames: JournalRecord[] = [];
   const append = journal.append;
   journal.append = row => { frames.push(row); append(row); };
@@ -274,4 +274,19 @@ it('real-Jev-shaped answers to the per-step questions: the requested key decides
   // Answered under the old generic key, or as a word: malformed, recorded as an unavailable check by the runner.
   expect(() => interpretStepJev(jev({ unsupported_effect: { type: 'noul', noul: 0.04 } }), 310, question)).toThrow('malformed');
   expect(() => interpretStepJev(jev({ not_due: { type: 'noul', noul: 'no' } }), 310, question)).toThrow('malformed');
+});
+
+it('retained old requested-action prompts still bind the original supervision digest', async () => {
+  const w = world({ stepCheck: 'pass', maxCalls: 2000, maxTurns: 100, maxReplies: 100, maxBytes: 262144 });
+  try {
+    w.worker.intake([update(1, priya)]); await w.worker.drain();
+    w.state.now = friday9; await w.worker.sendRequested();
+    const due = w.journal.view.order.find(turn => turn.requestedAction)!;
+    for (let n = 2; n <= 36; n++) { w.worker.intake([update(n, `Question ${n}`)]); await w.worker.drain(); }
+    const before = stepCoverage(w.journal.view, on)['requested-action'];
+    w.journal.compact();
+    expect(due.promptRetention?.state).toBe('body not retained');
+    expect(stepCoverage(w.journal.view, on)['requested-action']).toEqual(before);
+    expect(row(stepCoverage(w.journal.view, on), 'requested-action', 'prepare-packet').state).toBe('validated');
+  } finally { w.close(); }
 });

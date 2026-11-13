@@ -4,7 +4,7 @@ import { observeUpdateBound } from '../../scripts/update-runner.mjs';
 import { initializeUpdateRuntime } from '../../scripts/update.mjs';
 import { observeUpdateBoot, drainUpdateRestart } from '../../scripts/update-runner.mjs';
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
-import { nextObligationAt } from './journal.js';
+import { nextObligationAt, serializedStateBytes } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
 import { createClaudePoolQuota } from '../../scripts/claude-pool-quota.mjs';
 import { createWorkingActivities, readWorkingAdmission } from './working-activity.mjs';
@@ -1033,7 +1033,7 @@ async function main() {
           harness: last.harness, doorway: last.doorway, stallClasses: last.stallClasses, briefingDigest: last.briefingDigest,
           update, updateDelivered: update ? updateDelivery(update, view.view.order) : null };
       })(),
-      journalCapacity: journalCapacity(view.compacted, PREVIEW_JOURNAL_COMPACT_BYTES),
+      journalCapacity: { ...journalCapacity(view.compacted, PREVIEW_JOURNAL_COMPACT_BYTES), serializedStateBytes: serializedStateBytes(view.view), lastSnapshotSerializedBytes: view.lastSnapshotSerializedBytes },
       resources: resourceStatus(resourcesPath, view.view),
       doorways: (() => { const map = readDoorwayMap(doorwaysPath);
         return map ? { map, ...doorwayFreshness(map, statusNow), standing: map.check ?? null } : { map: null, fresh: false, models: [], prices: [], standing: null }; })(),
@@ -1311,7 +1311,7 @@ async function main() {
             return { outcome: settled.kind === 'accepted' ? 'api-accepted' : !whole.started ? 'sending' : settled.kind === 'refused' ? 'send-refused' : 'send-unknown',
               ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}),
               ...(whole.of > 1 ? { parts: { of: whole.of, ...(settled.kind === 'accepted' ? {} : { stoppedAt: whole.part }) } } : {}) }; })(),
-          grounding: reply.grounding ?? null, unavailableChecks: unavailableChecks(reply),
+          promptRetention: reply.promptRetention ?? null, grounding: reply.grounding ?? null, unavailableChecks: unavailableChecks(reply),
           answerReason: reply.answerReason ?? null,
           retrospectiveGrade: (() => { const row = latestGrades(view.view).get(`answer:${reply.id}`);
             return row ? { pass: row.pass, conclusion: row.grade.conclusion, reason: row.grade.reason, outcome: row.grade.outcome,

@@ -665,7 +665,7 @@ function operations(view: JournalView, pipeline: string, supervisors: ProofPorts
     send: [['reply-review', turn.id]], cleanup: [['step-check', `cleanup:${turn.id}`]] }));
   if (pipeline === 'requested-action') return view.order.filter(turn => requestedActionTurn(turn) && turn.intent !== undefined).map(turn => {
     // The pre-model checks bound to the packet this due turn was actually prepared with.
-    const packet = turn.prompt === undefined ? null : packetDigest(turn.prompt);
+    const packet = turn.promptRetention?.sha256.slice(0, 16) ?? (turn.prompt === undefined ? null : packetDigest(turn.prompt));
     const bound = (prefix: string) => [...view.stepChecks.keys()].filter(key => key.startsWith(`${prefix}:${turn.id}:`)
       && (packet === null || key.endsWith(`:${packet}`)));
     return byTurn(turn, { 'select-due': bound('select-due').map(key => ['step-check', key] as [Supervisor, string]),

@@ -248,8 +248,11 @@ export function replyRemainderPrompt(originalPrompt: string, removed: readonly s
  * audience, sources, memory and conversation history. */
 export function replyReviewContext(originalPrompt: string, candidateReply: string, flagged: readonly ReplyRule[] = [],
   declared?: DeclaredObligations, credentialRegister: readonly RecordedCredentialFact[] = []): string {
-  const messages = JSON.parse(originalPrompt).messages as { role: string; content: string }[];
+  const envelope = JSON.parse(originalPrompt);
+  const messages = envelope.messages as { role: string; content: string }[];
   const packet = JSON.parse(messages.find(message => message.role === 'context')?.content ?? '').packet;
+  if (envelope.promptRetention?.state === 'body not retained')
+    return JSON.stringify({ ...packet, promptRetention: envelope.promptRetention, candidateReply, operatorMessage: 'body not retained' });
   const operatorMessage = messages.find(message => message.role === 'user')?.content;
   if (typeof operatorMessage !== 'string' || !packet?.audience || !Array.isArray(packet.history)
     || typeof candidateReply !== 'string')

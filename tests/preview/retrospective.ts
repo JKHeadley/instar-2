@@ -420,7 +420,7 @@ export interface RetroPass { pass: number; at: number; turnsSeen: number; cases:
   /** The duty follow-up (RETRO_DUTY_FOLLOWUP_QUESTION): the duties it asked about, the first answer's validated result
    * and usage held until the pass is recorded, and the follow-up call's own outcome. A crash between the reservation
    * and the pass's record leaves `held` durable, so recovery records the first answer as it stood (never replayed). */
-  dutyFollowUp?: { duties: RetrospectiveDuty[]; held: RetroResult;
+  dutyFollowUp?: { duties: RetrospectiveDuty[]; held?: RetroResult; heldRetention?: { state: 'body not retained'; sha256: string; bytes: number };
     heldUsage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true };
     state?: 'complete' | 'failed' | 'unknown'; reason?: string } }
 
@@ -533,7 +533,7 @@ export function retrospectivePopulation(view: JournalView, operator: (turn: Turn
         ...(answered && wholeReplySent(turn) && turn.intent?.trim() && turn.noticeClass === undefined
           ? { deliveredReply: redact(turn.intent).text, request: redact(turn.text).text } : {}),
         ...(turn.answerReason ? { reason: clip(turn.answerReason, RETRO_REASON_TEXT_CHARS) } : {}),
-        meta: { remembered: remembered(turn), question: `turn:${turn.id}`, state: turn.modelState, sent: wholeReplySent(turn),
+        meta: { ...(turn.promptRetention ? { promptRetention: JSON.stringify(turn.promptRetention) } : {}), remembered: remembered(turn), question: `turn:${turn.id}`, state: turn.modelState, sent: wholeReplySent(turn),
           // Process-tier and proportionality inputs: which checks this reply went through and whether it was held.
           checks: (turn.replyChecks ?? []).map(check => `${check.path}:${check.verdict}`).join(',') || 'none',
           held: turn.held !== undefined || turn.wasHeld === true },
