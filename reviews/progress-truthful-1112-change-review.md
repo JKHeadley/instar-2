@@ -38,5 +38,7 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged journal gui
 ## Closing block
 
 simplestRobustRoute: reuse the existing admission reader, fresh session observations, progress timer and durable sender. This is the simplest route; no new monitor, model call, store or authority. Optional request evidence makes truthfulness explicit without reinterpreting stored replay. Stable fallback identity prevents repeated generic chatter and cross-turn suppression. Start requires admitted unanswered work and fresh observation; end is answer dispatch/session end/stop/expiry/ownership loss; limits remain reply allowance, four notes, bounded text, freshness and widening cadence. This is a builder submission, not a claim of unattended deployment or live acceptance.
+Additional consumer evidence: captured failure-hook records retain their failure outcome; assertions now distinguish a fresh generic session fallback from an active tool claim.
+
 80/20: narrow product change with recorded-shape writer tests and direct consumer checks; independent review repaired two concrete gaps, then found no further product defect. Desk owns full native/live gate.
 VERDICT: author submission; independent landing review pending

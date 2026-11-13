@@ -40,7 +40,7 @@ it('registers failure completion on the actual session launch, retaining the exi
 
 it('replays message 744 exact raw prefix/hash, then clears the ended step through the executable failure hook', () => {
   expect(createHash('sha256').update(prefix).digest('hex')).toBe('259e71a4c73df06aa0dcce2c9678417ec31b92b30ecf1e5e93a23ce7bbcb5fd9');
-  expect(admissionActivity(prefix, 0, claim)).toEqual({ text: 'Status: List workspace contents', running: true,
+  expect(admissionActivity(prefix, 0, claim)).toEqual({ text: 'Status: List workspace contents', running: true, request: 'Bash: List workspace contents',
     step: 'bd1def8ea6ccdde4bbb04fbe6186621d5252625deb70b687025681528f9ff934' });
   const { result, bytes } = runFailure();
   expect(result.status).toBe(0);
@@ -63,7 +63,7 @@ it.each([0, 1, 2])('recorded failure %i stays failed; matched activity closes an
   bytes += failed.bytes;
   expect(reader.current('turn')?.text).toBe('Status: latest main-session tool call ended');
   now += 10001; expect(reader.current('turn')).toBeNull();
-  reader.observe('turn', claim, 'working'); expect(reader.current('turn')).toBeNull(); // polls cannot renew unchanged evidence
+  reader.observe('turn', claim, 'working'); expect(reader.current('turn')).toMatchObject({ running: false, text: 'Status: no observable main-session tool' }); // fresh session, no renewed tool claim
   reader.observe('turn', claim, 'end'); expect(reader.current('turn')).toBeNull();
 });
 
