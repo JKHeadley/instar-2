@@ -36,5 +36,5 @@ Subject (2 paths): tests/preview/journal.ts, tests/preview/self-repair-request.t
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: key the existing cooldown by turn and discard obsolete entries; retain existing invalidation and durable acceleration. No second scheduler or capability restriction.
-80/20: One review must-fix, repaired at source in 13 changed runtime lines; regression fails before and passes after. No full-suite or live deployment claim.
+80/20: Eight generated projections refreshed mechanically against c19af8831eb43610c03d87d570520de320a5cca1 (generation sha256:932eab3277ee0d51fea0c235af28e8b46cfc1cc2e3efd5549ae16d99cc342bf5). One review must-fix, repaired at source in 13 changed runtime lines; regression fails before and passes after. No full-suite or live deployment claim.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
