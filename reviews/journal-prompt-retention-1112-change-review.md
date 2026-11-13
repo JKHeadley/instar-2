@@ -22,6 +22,7 @@ Convergence: none
 Decision: retention-window | Keep 32 prompts per conversation, four latest sent turns independently, and every unfinished, held or unreviewed turn. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/journal-prompt-retention-1112-PROGRESS.md
 Decision: retention-evidence | Preserve required packet fields, memory-audit clauses and original hashes; disclose missing historical bodies and keep full retrospective results. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/journal-prompt-retention-1112-PROGRESS.md
 Decision: retention-size | Measure serialized durable projection incrementally and separately expose last complete snapshot bytes including evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/journal-prompt-retention-1112-PROGRESS.md
+Decision: retention-register | Regenerate the register from the tested implementation commit to keep source wiring pins current. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/journal-prompt-retention-1112-PROGRESS.md
 Team posture: Private encrypted journal retains original audience fields and source ownership. No access widening or new outbound surface; owners, members and guests use the existing standing and disclosure path.
 Prompt review: Turn-time prompts and choices are unchanged. Historical reduced envelopes disclose missing bodies and original digest. Existing instructions below are unchanged protocol or quoted fixture text; no new semantic keyword gate. Writer-backed 500-turn shape test, historical-reader boundaries, crash-before-replacement and recorded sibling replay exercise the retention route.
 Prompt finding: 0abb3dc96311 | protocol-literal | Existing unchanged instruction or fixture quotation, not a new literal semantic decision — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "an unresolved date or unrecorded scheduling claim is no admitted reminder."
@@ -43,7 +44,7 @@ Prompt finding: f6d7f3274c85 | protocol-literal | Existing unchanged instruction
 Prompt finding: feadb66b8ad1 | protocol-literal | Existing unchanged instruction or fixture quotation, not a new literal semantic decision — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
 Deferral: tests/preview/README.md:4611 | not-a-deferral=Describes existing completed retrospective follow-up records, not deferred builder work.
 
-Subject (8 paths): tests/preview/README.md, tests/preview/business-step-supervision.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-prompt-retention.test.ts, tests/preview/journal.ts, tests/preview/proofs.ts, tests/preview/reply-check.ts, tests/preview/retrospective.ts
+Subject (16 paths): tests/preview/README.md, tests/preview/business-step-supervision.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-prompt-retention.test.ts, tests/preview/journal.ts, tests/preview/proofs.ts, tests/preview/reply-check.ts, tests/preview/retrospective.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/required-release-checks.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
