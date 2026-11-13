@@ -43,6 +43,8 @@ Prompt finding: 849db3a6296a | quoted-evidence | Existing journal prompt phrase 
 
 Deferral: tests/preview/journal.ts:10828 | not-a-deferral=Describes a batch attempt ending in the existing pending or not-started state; it does not postpone implementation.
 
+Final register publication: b709a0c3d317e91e796be8d9ff70d29bf3ab4ff4 regenerates the eight derived register artifacts from source ab00e25bbecf796ab3d11e0d053f7f09aed0e686, including the two revised fixture references. This review covers that publication; it introduces no new authority, native conformance declaration, prompt, or product behavior. Final lint and register checks pass.
+
 simplestRobustRoute: extend the existing journal with start/settlement facts, wrap the two existing boundaries, reuse existing notices and status, and preserve effect accounting. A catch alone loses its failure count on restart or failed failure-fact append; durable start closes that specific gap without another store, timer or process protocol.
 80/20: the product diff remains below 220 changed lines. Added state and tests address durable poison recovery and exception containment only; no arbitrary synchronous responsiveness claim is made.
 VERDICT: author submission; independent desk review remains authoritative.
