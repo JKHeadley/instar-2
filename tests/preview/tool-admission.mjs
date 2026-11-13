@@ -194,7 +194,7 @@ export const HOOK_PRE_MAX_MS = ATTRIBUTION_WAIT_MS + ADMISSION_WAIT_MS + 10000;
 /** The effect doorway's admission for a tool call's proposal, under the turn's config: its effect policy (absent:
  * nothing outward by default), the register's irreversible term and the installation's accepted closed operation set. */
 export function admitToolEffect(proposal, config, now) {
-  const options = { ...(config.irreversibleTerm ? { irreversibleTerm: config.irreversibleTerm } : {}), now };
+  const options = { ...(config.irreversibleTerm ? { irreversibleTerm: config.irreversibleTerm } : {}), now, rolePolicy: config.rolePolicy };
   let policy;
   try { policy = config.effectPolicy === undefined ? DEFAULT_EFFECT_POLICY : decodeEffectPolicy(config.effectPolicy); }
   catch (error) {

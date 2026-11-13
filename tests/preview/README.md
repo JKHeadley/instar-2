@@ -4598,3 +4598,25 @@ the last. Evidence a gate compares with the run's start therefore stays on the h
 (`tests/setup/host-clock.mjs`): model-provider proofs, the grounding ledger and boot receipts.
 Vitest stamps file windows on the shifted clock, so the process exit row records the shift and
 the gate moves each window back to the host clock before comparing.
+
+### Versioned whole-role single-machine policy
+
+The default P-08 profile remains `single-machine-v1`, with its original digest and acceptance.
+`--installation-profile single-machine-v2` selects the whole-role loss model. Selection does not
+accept it: the existing authority owner must record and seal a new acceptance naming that exact
+profile and `singleMachineProfileDigest('single-machine-v2')`. An old acceptance never covers it.
+No real installation is switched by installing this code.
+
+Under v2, the host effect checkpoint rereads acceptance and current role policy on each
+irreversible tool admission. The exact durable parent and its reservation ancestors must exist;
+the existing effect owner records input, policy, acceptance evidence and decision before dispatch.
+Scope, all five sign-off conditions, spending, secrets, stop and duplicate protection still apply.
+Provider calls and ordinary replies retain their existing paths. Raw proxy writes do not acquire
+v2 eligibility: they need an installed effect owner retaining the whole cause and uniqueness.
+The v2 loss model itself has no list of operations. It grants no new account or role authority.
+
+Accepting v2 means permanent machine loss may destroy the authority, work, captures, observations
+and accounting needed to reconstruct any role-covered effect. No peer survives, and an uncertain
+earlier effect cannot safely be repeated from memory or a new installation. The operator accepts
+this loss model once for this installation, through the existing acceptance owner. A deployment
+with enrolled peers must retain its replication demands; v2 is not a fallback after peer loss.

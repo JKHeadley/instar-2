@@ -183,12 +183,15 @@ export function admitEffect(proposal, policy = DEFAULT_EFFECT_POLICY, operations
   const head = { effect: proposal.effect, ...(proposal.target ? { target: proposal.target } : {}), tests: c.tests,
     consequential: c.consequential, signOff: c.signOff, signOffRequired: c.signOffRequired, durability: c.durability };
   const inClosedSet = operations.includes(proposal.effect);
+  // Only the host's current acceptance resolution supplies this; dispatch still needs the full durable cause.
+  const roleDurability = options.rolePolicy?.kind === 'resolved' && options.rolePolicy.profile === 'single-machine-v2'
+    && !c.tests.scope;
   const missingSignOff = SIGN_OFF_TESTS.filter(test => c.signOff[test]
     && !c.grants.some(grant => grant.approves.includes(test)));
   // Unknown or above-level cost cannot be covered by a resource grant merely naming the test.
   if (c.signOff.resources && !missingSignOff.includes('resources')) missingSignOff.push('resources');
   const missing = [];
-  if (c.tests.irreversible && !inClosedSet) missing.push(['durability',
+  if (c.tests.irreversible && !inClosedSet && !roleDurability) missing.push(['durability',
     'purpose: a single-machine installation is a supported deployment shape; an irreversible act follows its durable cause',
     admitsBy('irreversible', proposal, operations)]);
   if (c.tests.scope) missing.push(['role', 'purpose: a role is granted once, at onboarding', admitsBy('scope', proposal, operations)]);
@@ -202,7 +205,8 @@ export function admitEffect(proposal, policy = DEFAULT_EFFECT_POLICY, operations
         + missing.map(item => `${item[0]} (${item[1]})`).join('; ') + `. What would admit it: ${admits}. Nothing was done; `
         + 'tell the user plainly that this step was refused, why, and what would admit it.' };
   }
-  const grant = c.grants.find(item => item.approves.some(test => c.tests[test] || c.signOff[test]));
+  const grant = c.grants.find(item => item.approves.some(test => c.tests[test] || c.signOff[test])
+    || (roleDurability && item.approves.includes('scope')));
   const disposition = !c.consequential ? 'ordinary' : grant ? 'granted' : 'closed-set';
   return { ...head, admitted: true, disposition, ...(grant ? { grant: grant.id } : {}),
     reason: `effect doorway: ${proposal.effect} is ${disposition}; admitted under its recorded role and installed durability path` };

@@ -71,7 +71,8 @@ import { loopHealth } from './obligations.js';
 import { createReplyTyping, reactionAcknowledgement } from './telegram-acknowledgement.mjs';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 import { sendFormattedText } from './telegram-markdown.mjs';
-import { authoritySealKey, resolveActivationAuthority, resolveInstallationPolicy, sealAuthorityRecord, singleMachineProfileDigest, SINGLE_MACHINE_PROFILE } from './activation-authority.js';
+import { roleProfileDecision } from './role-profile.mjs';
+import { authoritySealKey, resolveActivationAuthority, resolveInstallationPolicy, sealAuthorityRecord, singleMachineProfileDigest, singleMachineProfile, SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { deriveProfile } from '../../src/index.js';
 import { PREVIEW_PROOF_PLANS, executeProof, nextDuePlan, probeId, proofPosture, stepCoverage } from './proofs.js';
 import { capabilityRows, previewInventory, proofStatusLines, resolveLiveProof } from './capabilities.js';
@@ -390,12 +391,16 @@ const writeToolsDefaultActivation = (path, bytes) => {
 /** P-08 (Purpose; Eleven §5): this trial's single-machine acceptance, resolved from the same sealed
  * authority record as the activation. Its absence never refuses a launch; it only leaves the minimal
  * path's peer question unsettled, so limited answers stay inhibited and the outage names it. */
-const installationPolicyOf = (options, activation, activationPath, view, now) => {
+const installationAuthorityOf = (options, activationPath) => {
   const path = options['authority-record'] ?? join(dirname(resolve(activationPath)), 'activation-authority.json');
   let record = null;
   try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { record = null; }
-  try { return resolveInstallationPolicy(activation.trial, record, view.genesis.operator, now,
-    operatorRecords(options['operator-records']), authoritySealKey(key())); }
+  return { record, records: operatorRecords(options['operator-records']), sealKey: authoritySealKey(key()) };
+};
+const installationPolicyOf = (options, activation, activationPath, view, now) => {
+  try { const authority = installationAuthorityOf(options, activationPath);
+    return resolveInstallationPolicy(activation.trial, authority.record, view.genesis.operator, now,
+      authority.records, authority.sealKey, options['installation-profile']); }
   catch { return { kind: 'refused', reason: 'the authority record could not be resolved' }; }
 };
 /** The installed register generation, read from the checkout now. Ten's rule for the `register`
@@ -1580,6 +1585,7 @@ async function main() {
   let effectPolicyOf = () => DEFAULT_EFFECT_POLICY;
   /** The admission config every route's effect doorway decides with: the accepted closed operation set, the effect
    * policy as it reads now, and the register's irreversible term. */
+  const installedProfile = singleMachineProfile(options['installation-profile']);
   const admissionConfig = () => ({ operations: SINGLE_MACHINE_PROFILE.operations, effectPolicy: effectPolicyOf(),
     irreversibleTerm: shapeTerms().derivedFrom.irreversible });
   const workerStop = { value: false };
@@ -2431,8 +2437,8 @@ async function main() {
         lease: ownerClaim?.owner === true, fence: ownerClaim?.owner === true && ownerClaim.verify(),
         'replication-peer': false, 'conversation-binding': Boolean(journal.view.genesis.chat && journal.view.genesis.operator),
         route: identityVerified && routeHealthy, 'delivery-evidence': identityVerified }),
-      shape: () => ({ kind: 'single-machine', installation: journal.view.genesis.grant, profile: SINGLE_MACHINE_PROFILE.id,
-        lossModel: singleMachineProfileDigest(), operation: LIMITED_ANSWER_OPERATION,
+      shape: () => ({ kind: 'single-machine', installation: journal.view.genesis.grant, profile: installedProfile.id,
+        lossModel: singleMachineProfileDigest(installedProfile.id), operation: LIMITED_ANSWER_OPERATION,
         policy: installationPolicy.kind !== 'resolved' ? null : { policy: 'P-08', installation: installationPolicy.trial,
           profile: installationPolicy.profile, operations: SINGLE_MACHINE_PROFILE.operations, causalPrefix: SINGLE_MACHINE_PROFILE.causalPrefix,
           lossModel: installationPolicy.profileDigest, acceptance: installationPolicy.acceptance } }) },
@@ -2698,11 +2704,16 @@ async function main() {
           held: heldVerdict(heldSecrets), now: wallNow }) : null,
         append: appendWork, stopped: gateStopped, now: wallNow, held: heldVerdict(heldSecrets),
         note: (call, text) => worker.attributionOfNote(call, text),
-        effects: createToolEffectOwner({ decide: (tool, input, parent) => conversationSession && sessionConnectors.has(parent.child)
-          ? admitSessionConnector({ tool, input, config: admissionConfig(), mcp: readRootMcp(root), enabled: accountActions,
-            now: wallNow(), decide: admitToolCallEffect })
-          : admitToolCallEffect(tool, input, { ...admissionConfig(),
-            ...(sessionConnectors.has(parent.child) ? { mcpReads: readRootMcp(root)?.reads ?? [] } : {}) }, wallNow()),
+        effects: createToolEffectOwner({ decide: (tool, input, parent) => roleProfileDecision({
+          profile: installedProfile.id, singleMachine: posture === 'single-machine' && shared === null
+            && !['journal-lineage.json', 'replica', 'replication.json'].some(path => existsSync(join(root, path))),
+          trial: activation.trial, operator: journal.view.genesis.operator, now: wallNow(),
+          authority: installedProfile.id === SINGLE_MACHINE_PROFILE.id ? null : installationAuthorityOf(options, activationPath),
+          parent, active: journal.view.activeSessionWork ?? {}, config: admissionConfig(), tool, input,
+          decide: (tool, input, config, now) => conversationSession && sessionConnectors.has(parent.child)
+            ? admitSessionConnector({ tool, input, config, mcp: readRootMcp(root), enabled: accountActions, now, decide: admitToolCallEffect })
+            : admitToolCallEffect(tool, input, { ...config,
+              ...(sessionConnectors.has(parent.child) ? { mcpReads: readRootMcp(root)?.reads ?? [] } : {}) }, now) }),
           append: appendWork, stopped: gateStopped, now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
     }
     if (sessionSetup !== null) {

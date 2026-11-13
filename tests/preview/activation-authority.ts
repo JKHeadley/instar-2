@@ -65,6 +65,16 @@ export const SINGLE_MACHINE_PROFILE = Object.freeze({ id: 'single-machine-v1',
   lossModel: 'Permanent loss of the machine can destroy the authority, work, captures, observations and accounting evidence '
     + 'needed to reconstruct a paid call or send; no peer survives; and an unknown earlier effect cannot safely be repeated '
     + 'from memory or a new installation.' });
+/** P-08 v2 changes the accepted loss model, never an older acceptance's meaning. */
+export const ROLE_SINGLE_MACHINE_PROFILE = Object.freeze({ id: 'single-machine-v2', operations: 'granted-role' as const,
+  causalPrefix: 'full' as const, lossModel: 'Permanent loss of the machine can destroy the authority, work, captures, observations '
+    + 'and accounting evidence needed to reconstruct any effect within the granted role; no peer survives; and an unknown '
+    + 'earlier effect cannot safely be repeated from memory or a new installation.' });
+export function singleMachineProfile(id: string = SINGLE_MACHINE_PROFILE.id) {
+  if (id === SINGLE_MACHINE_PROFILE.id) return SINGLE_MACHINE_PROFILE;
+  if (id === ROLE_SINGLE_MACHINE_PROFILE.id) return ROLE_SINGLE_MACHINE_PROFILE;
+  throw Error('unknown single-machine profile');
+}
 /** The operator's recorded acceptance of that profile for one trial: the exact words and the authenticated
  * message they came from. It has the standing of the trial's other recorded authority (an account-authenticated
  * operator message under the desk's seal); it is never a device-signed or independently verified approval. */
@@ -231,12 +241,12 @@ export function resolveActivationAuthority(activation: ActivationFacts, record: 
 }
 
 /** Digest of the fixed single-machine profile: the subject an acceptance must name exactly. */
-export const singleMachineProfileDigest = (): string => authorityDigest(SINGLE_MACHINE_PROFILE);
+export const singleMachineProfileDigest = (id: string = SINGLE_MACHINE_PROFILE.id): string => authorityDigest(singleMachineProfile(id));
 /** Resolves this trial's P-08 single-machine acceptance from the desk's sealed authority record. It resolves
  * only an unrevoked entry for this trial and the current profile digest whose words and time are the
  * operator's authenticated message, exactly. Nothing else settles the peer question (Rules 26, 28, 94). */
 export function resolveInstallationPolicy(trial: string, record: unknown, operator: string, now: number,
-  records: OperatorMessageRecords | null, sealKey: Uint8Array | null): InstallationPolicyResolution {
+  records: OperatorMessageRecords | null, sealKey: Uint8Array | null, profileId: string = SINGLE_MACHINE_PROFILE.id): InstallationPolicyResolution {
   const refuse = (reason: string): InstallationPolicyResolution => ({ kind: 'refused', reason });
   const r = record as Partial<ActivationAuthorityRecord> | null;
   if (r?.type !== 'PreviewActivationAuthority' || r.schemaVersion !== 1 || !Array.isArray(r.grants) || !Array.isArray(r.waivers)
@@ -246,9 +256,10 @@ export function resolveInstallationPolicy(trial: string, record: unknown, operat
   const entries = Array.isArray(r.installationPolicies) ? r.installationPolicies : [];
   const named = entries.filter(p => p && text(p.id) && p.policy === 'P-08' && p.shape === 'single-machine' && p.grantor === operator
     && text(p.words) && time(p.acceptedAt) && p.acceptedAt <= now && p.subject?.trial === trial);
-  if (!named.length) return refuse('no operator acceptance of the single-machine profile (P-08) is recorded for this trial');
-  const digest = singleMachineProfileDigest();
-  const current = named.filter(p => p.subject.profile === SINGLE_MACHINE_PROFILE.id && p.subject.profileDigest === digest);
+  if (!named.length) return refuse('no operator acceptance of the single-machine profile (P-08) is recorded for this trial'
+    + (profileId === SINGLE_MACHINE_PROFILE.id ? '' : '; a new acceptance is required'));
+  const digest = singleMachineProfileDigest(profileId);
+  const current = named.filter(p => p.subject.profile === profileId && p.subject.profileDigest === digest);
   if (!current.length) return refuse('the recorded acceptance covers a different profile, operation set or loss model; a new acceptance is required');
   const sourced = current.filter(p => authentic(p.source, p.words, p.acceptedAt, operator, records));
   if (!sourced.length) return refuse('the recorded acceptance does not resolve to an authenticated operator message with its exact words and time');
