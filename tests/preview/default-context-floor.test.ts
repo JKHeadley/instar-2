@@ -57,7 +57,7 @@ async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
         lastQuota: { measuredAt: new Date(now).toISOString(), fiveHour: { utilizationPct: 12, resetsAt: new Date(now + 3600000).toISOString() },
           sevenDay: { utilizationPct: 34, resetsAt: new Date(now + 86400000).toISOString() } } })) }) });
     for (const entry of entries.slice(0, 7)) pool.observe(entry,
-      { failure: { failureClass: 'limit', resetAt: now + 86400000 + entry.index * 60000 } });
+      { failure: { failureClass: 'limit', resetAt: now + (1 + entry.index % 2) * 86400000 + entry.index * 60000 } });
     const sources = () => [...briefing, disciplineSource(journal.view),
       selfStateSource(selfStateBrief(journal.view, runs as never, now, 'UTC', now - 60_000, false, true) + '\n' + pool.brief(), readSelfAccess({ credentials: () => [],
         connectors: () => null, missing: () => [], held: () => [], bot: 'Telegram bot 12345678', now })),

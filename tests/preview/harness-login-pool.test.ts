@@ -848,9 +848,9 @@ it('briefs six neutral logins, current holds and reset times without disclosing 
   } }));
   const pool = createHarnessLoginPool(f.settings), text = pool.brief();
   expect(text).toContain('6 logins, 4 usable');
-  expect(text).toContain(new Date(firstReset).toISOString().slice(0, 10) + ' UTC');
-  expect(text).toContain(`2=${new Date(firstReset).toISOString().slice(11, 19)}`);
-  expect(text).toContain(`5=${new Date(secondReset).toISOString().slice(11, 19)}`);
+  expect(text).toContain(new Date(firstReset).toISOString().slice(0, 10));
+  expect(text).toContain(`2=${new Date(firstReset).toISOString().slice(11, 19).replace(/:00$/, '')}`);
+  expect(text).toContain(`5=${new Date(secondReset).toISOString().slice(11, 19).replace(/:00$/, '')}`);
   expect(text).toContain('no hold: 1,3,4,6');
   expect(text).toContain('Work can continue');
   expect(text).not.toMatch(/private-|@|\/profile\//);

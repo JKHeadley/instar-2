@@ -348,7 +348,7 @@ export function selfStateBrief(view: JournalView, runs: RunLog, now: number, tim
   // Access metadata is variable context. This compact rendering preserves the same facts
   // while paying for its fixed guidance within the existing context floor (no cap increase).
   if (compact) return [
-    `${when(now)}. Messages today/total: operator ${incoming.today}/${incoming.total}, accepted replies ${delivered.today}/${delivered.total}; reply unsent.`,
+    `${when(now)}. Today/total: operator ${incoming.today}/${incoming.total}, replies accepted ${delivered.today}/${delivered.total}; this unsent.`,
     usageBrief(view, true),
     `Replies ${view.replies}/${view.limits.maxReplies}; updates ${view.order.length}/${view.limits.maxTurns}.`,
     view.capAuthority === null ? 'Caps not raised.' : `Caps raised: ${redact(view.capAuthority).text}; ${view.capRaisedAt ? when(view.capRaisedAt) : 'time unknown'}.`,

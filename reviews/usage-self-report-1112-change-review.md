@@ -9,7 +9,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: reversible self-description repair using existing accounting and pool observations, without new authority.
-Side effects: adds mandatory prompt bytes and distinguishes unknown usage from calls lacking a durable answer. Both packet forms share the same accounting wording as full self-state. No new store or model call. No keyword-based intent or outbound gate. Eight-login context-floor test measures distinct resets and fresh quota. Compact state keeps all counters with an explicit zero default and recent run evidence; usage dimensions remain labeled.
+Side effects: adds mandatory prompt bytes and distinguishes unknown usage from calls lacking a durable answer. Both packet forms share the same accounting wording as full self-state. No new store or model call. No keyword-based intent or outbound gate. Eight-login context-floor test measures distinct resets across two dates and fresh quota. Compact state keeps all counters with an explicit zero default and recent run evidence; usage dimensions remain labeled.
 Undo and recovery: revert this presentation change; no data or activation migration, replay unchanged.
 Multi-machine posture: usage comes from the current owned journal and its existing replication path. Login availability is deliberately local to the executing runner's configured pool, re-read each turn; no claim about a remote machine's logins.
 Team posture: existing private self-state packet and status audiences unchanged; no account name, email, profile, path or credential is carried by the new capacity text. No sharing or grant changes.
@@ -29,3 +29,5 @@ Step 0: selfStateBrief deliberately excluded tokens and called view.calls 'used'
 simplestRobustRoute: This is the simplest robust route: reuse existing journal and pool projections and inject their labeled figures through the existing always-sent self-state source. No new ledger, query tool, model call or authority. Packet-size checks guard the additional bytes; cap and stop guards remain at their existing owners. This is builder evidence for review, not a claim of live deployment or unattended acceptance.
 80/20: narrow rendering/wiring plus targeted writer, packet, pool, and context-floor tests; Studio owns live gate and host-only checks.
 VERDICT: author submission; independent landing verdict belongs to the desk
+
+Final consumer verification: the real launcher passes across restart and a cap raise; its subprocess timeout is enlarged for this host without weakening assertions. Reset text shares a UTC legend and omits zero seconds; different dates retain separate groups. Generated outputs regenerated from the committed source.

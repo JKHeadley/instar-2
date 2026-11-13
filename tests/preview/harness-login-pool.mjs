@@ -443,16 +443,16 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
         if (!holding && !signedOut && !unavailableNow) usable++;
         const resetText = reset === null ? null : new Date(reset).toISOString().replace('.000Z', 'Z');
         const reason = unavailableNow ? 'unavailable (recovery unknown)' : signedOut ? 'needs sign-in (recovery unknown)'
-          : holding ? `${holding.reason === 'usage-threshold' ? 'usage threshold' : 'provider limit'}; reset ${resetText === null ? 'unknown' : resetText.slice(0, 10) + ' UTC'} (#=time)` : 'no hold';
+          : holding ? `${holding.reason === 'usage-threshold' ? 'usage threshold' : 'provider limit'}; ${resetText === null ? 'unknown' : resetText.slice(0, 10)}` : 'no hold';
         const detail = `${entry.index + 1}` + (holding && !signedOut && !unavailableNow
-          ? `=${resetText === null ? 'unknown' : resetText.slice(11, -1)}` : '') + (!holding && quota?.windows.some(Boolean)
+          ? `=${resetText === null ? 'unknown' : resetText.slice(11, -1).replace(/:00$/, '')}` : '') + (!holding && quota?.windows.some(Boolean)
           ? ` (5h ${quota.windows[0]?.utilizationPct ?? '?'}%,week ${quota.windows[1]?.utilizationPct ?? '?'}%)` : '');
         groups.set(reason, [...(groups.get(reason) ?? []), detail]);
       });
       const members = [...groups].map(([reason, details]) => `${reason}: ${details.join(',')}`);
       return `${entries.length} logins, ${usable} usable. `
         + (usable ? 'Work can continue. ' : 'No usable login; new model work unavailable now. ')
-        + (usable === entries.length ? 'None are currently held or limited. ' : '') + members.join(' | ') + '. Other quotas unknown.';
+        + (usable === entries.length ? 'None are currently held or limited. ' : '') + 'UTC resets: ' + members.join(' | ') + '. Other quotas unknown.';
     },
     status: () => harnessLoginPoolStatus(configuration, state, unavailable, observedUsage, now),
     get state() { return structuredClone(state); },

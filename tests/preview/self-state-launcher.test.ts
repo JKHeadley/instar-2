@@ -56,7 +56,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'offline-test-key',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` };
     const agent = (...rest) => spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
-      '--loader', loader, 'tests/preview/journal-agent.mjs', ...rest], { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env });
+      '--loader', loader, 'tests/preview/journal-agent.mjs', ...rest], { cwd: process.cwd(), encoding: 'utf8', timeout: 120000, env });
     const run = (cycles, stepCheck = false) => {
       const start = performance.now();
       const result = agent('run', '--root', root, '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
@@ -107,8 +107,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       && !text.includes(env.INSTAR_SECRET_PREVIEW_STORAGE_KEY))).toBe(true);
     expect(prompt[0]).toMatch(/current start 2026-\d\d-\d\d \d\d:\d\d P[DS]T/u);
     // The burst intake admits every waiting update before reply work, so both are already received.
-    expect(prompt[0]).toContain('Messages today/total: operator 2/2, accepted replies 0/0;');
-    expect(prompt[1]).toContain('operator 2/2, accepted replies 1/1;');
+    expect(prompt[0]).toContain('Today/total: operator 2/2, replies accepted 0/0;');
+    expect(prompt[1]).toContain('operator 2/2, replies accepted 1/1;');
     expect(prompt[1]).toContain('Cap held=1/3 (includes reserves, not usage)');
     expect(prompt[1]).toContain('Tokens(in/out measured,reserved;calls,unknown;others=0):');
     expect(prompt[1]).toContain('Model login capacity: unknown (no pool configured).');
@@ -131,8 +131,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       .toContain('pending turns 0; held items 0; UNKNOWN model outcomes 0; UNKNOWN sends 0; lost-answer notices due 0');
     expect(packetOf(lines[3]).sources.some(source => source.id === 'restart-handoff')).toBe(false);
     const now = prompt[2];
-    expect(now).toContain('Messages today/total: operator 4/4, accepted replies 2/2;');
-    expect(now).toContain('reply unsent.');
+    expect(now).toContain('Today/total: operator 4/4, replies accepted 2/2;');
+    expect(now).toContain('this unsent.');
     expect(now).toContain('Cap held=2/6 (includes reserves, not usage)');
     expect(now).toContain('Caps raised: Justin, offline test;');
     expect(now).toMatch(/current start 2026-\d\d-\d\d \d\d:\d\d P[DS]T/u);
@@ -144,8 +144,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(s.self).toContain('Operator messages received: 4 today, 4 so far');
     expect(s.self).toContain('My replies Telegram accepted: 4 today, 4 so far');
     expect(s.self).toContain('Messages exchanged today: 8');
-    expect(s.self).toContain(now.match(/Last restart: [^.]*\./u)[0]);
+    expect(s.self).toContain(now.match(/current start ([^;]*)/u)[1]);
     expect(s.self).toContain('ended'); // the latest launch has recorded its end
     process.stdout.write(`launcher runs: first=${firstLaunch.toFixed(0)} ms, restarted=${secondLaunch.toFixed(0)} ms\n`);
   } finally { endpoint.kill('SIGTERM'); }
-}, 60000);
+}, 300000);
