@@ -9,7 +9,7 @@ import { createJournalWorker, openPreviewJournal, selfRepairOptions, obligationS
 // All state below goes through the actual durable writer, never projection mutation.
 const T0 = 1_794_519_000_000, DAY = 86_400_000, key = new Uint8Array(32).fill(42);
 const id = (n: number) => `telegram:12345678:update:${n}`;
-function world(options: { failRepair?: boolean; cap?: number; unknownWork?: boolean; stopped?: boolean; cancel?: boolean; expire?: boolean } = {}) {
+function world(options: { failRepair?: boolean; cap?: number; unknownWork?: boolean; stopped?: boolean; cancel?: boolean; expire?: boolean; sameTime?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'self-repair-')), path = join(root, 'journal');
   const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
     grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: T0 + 10 * DAY,
@@ -35,7 +35,7 @@ function world(options: { failRepair?: boolean; cap?: number; unknownWork?: bool
   intake(3, 'An operation whose outcome is unknown.');
   journal.append({ kind: 'reserve', id: id(3), at: clock.now });
   journal.append({ kind: 'hold', id: id(3), reason: 'reply check unavailable', at: clock.now });
-  clock.now += 1000;
+  if (!options.sameTime) clock.now += 1000;
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => clock.stop,
     prepareModel: input => {
       preparations.push(input.id);
@@ -56,7 +56,7 @@ function world(options: { failRepair?: boolean; cap?: number; unknownWork?: bool
         selfRepairs: [`reply:${id(2)}`, 'work:commitment:0', `reply:${id(3)}`],
         ...(options.cancel ? { cancelDeliveries: [{ id: 0, quote: 'Cancel the plan review.' }] } : {}) });
     }, checkOutbound: () => {}, send: async input => { sends.push(input.text); return sends.length + 1; } });
-  const ask = async (n: number) => { clock.now += 1000; intake(n, options.cancel ? 'Cancel the plan review.' : 'Is anything broken or stuck on your side right now? If so, what are you doing about it?'); await worker.drain(); };
+  const ask = async (n: number) => { if (!options.sameTime) clock.now += 1000; intake(n, options.cancel ? 'Cancel the plan review.' : 'Is anything broken or stuck on your side right now? If so, what are you doing about it?'); await worker.drain(); };
   return { journal, worker, clock, calls, sends, preparations, intake, ask, path, close: () => { journal.close(); rmSync(root, { recursive: true, force: true }); } };
 }
 
@@ -171,5 +171,26 @@ it('expiry during the answer records no repair and starts no work', async () => 
     expect(w.journal.view.order.flatMap(turn => turn.selfRepairs ?? [])).toEqual([]);
     expect(w.calls).not.toContain(id(2));
     expect(w.calls.some(call => call.startsWith('obligation:'))).toBe(false);
+  } finally { w.close(); }
+});
+
+
+it('equal clock readings retain one pending work acceleration across replay, then consume it by attempt count', async () => {
+  const w = world({ sameTime: true });
+  try {
+    await w.ask(4);
+    expect(w.journal.view.turns.get(id(4))!.selfRepairs).toContain('work:commitment:0');
+    expect(w.calls.some(call => call.startsWith('obligation:'))).toBe(false);
+    expect(obligationSchedule(w.journal.view)[0]!.slot).toBe(w.clock.now + 1);
+    w.journal.compact();
+    const replay = openPreviewJournal(w.path, key);
+    expect(obligationSchedule(replay.view)).toEqual(obligationSchedule(w.journal.view));
+    replay.close();
+    w.clock.now++;
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(await w.worker.workObligations()).toBe(false);
+    await w.ask(5);
+    expect(w.calls.filter(call => call.startsWith('obligation:'))).toHaveLength(1);
+    expect(w.journal.view.turns.get(id(5))!.selfRepairs).toBeUndefined();
   } finally { w.close(); }
 });

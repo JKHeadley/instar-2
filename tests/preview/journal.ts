@@ -1537,7 +1537,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   toolRouted?: boolean;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
-  selfRepairs?: string[]; selfRepairAttempted?: true;
+  selfRepairs?: string[]; selfRepairAttempts?: Record<string, number>; selfRepairAttempted?: true;
   reserved: boolean; answerAccount?: true; accountNeeded?: true; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; safetyCeiling?: 'deadline' | 'calls'; toolChecks?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; acknowledgementMode?: 'reaction-or-text'; heldNoticeSent?: number; heldNoticeSentAt?: number; acknowledgementPath?: 'reaction' | 'text'; memoryPending?: true; memoryUnresolved?: true; memoryUndecided?: true; datedPending?: true;
   /** This turn's own answer decided what it withdrew: the keys it cancelled, or none. Rules 57, 93: a
    * recorded decision, including "withdraws none", settles the reminder question this turn opened. */
@@ -2515,15 +2515,15 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
         awaitingDelivery: attachableReport(work), deliveryUnknown: !attachableReport(work) });
   const requests = selfRepairRequests(view);
   for (const item of items) {
-    const at = requests.get(`work:${item.key}`), work = view.obligationWork[item.key];
-    if (at !== undefined && (work?.last ?? -Infinity) < at && !work?.recoveryHeld && work?.outcome !== 'uncertain'
-      && (item.kind === 'blocker' || commitmentWaitsOn(view, item.id) === 'nothing')) item.slot = Math.min(item.slot, at);
+    const request = requests.get(`work:${item.key}`), work = view.obligationWork[item.key];
+    if (request && (work?.attempts ?? 0) === request.attempts && !work?.recoveryHeld && work?.outcome !== 'uncertain'
+      && (item.kind === 'blocker' || commitmentWaitsOn(view, item.id) === 'nothing')) item.slot = Math.min(item.slot, Math.max(request.at, (work?.lastSlot ?? -1) + 1));
   }
   return items;
 }
 /** Rules 23/55/88: requests are durable answer facts, once per item, not new execution authority. */
 const selfRepairRequests = (view: JournalView) => new Map(view.order.flatMap(turn =>
-  (turn.selfRepairs ?? []).map(key => [key, turn.answerAt!] as const)));
+  (turn.selfRepairs ?? []).map(key => [key, { at: turn.answerAt!, attempts: turn.selfRepairAttempts?.[key] ?? -1 }] as const)));
 const repairableHold = (turn: Turn) => !turn.reserved && !turn.intent && !turn.sent &&
   (turn.held === 'prompt overflow' || turn.held === 'context overflow' || turn.held?.startsWith('summary unavailable:'));
 export function selfRepairOptions(view: JournalView, asking: Turn) {
@@ -5377,6 +5377,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
         || new Set(row.selfRepairs).size !== row.selfRepairs.length || row.selfRepairs.some(key => !eligible.includes(key)))
         throw Error('preview journal: self repair request refused');
       turn.selfRepairs = row.selfRepairs;
+      turn.selfRepairAttempts = Object.fromEntries(row.selfRepairs.map(key => [key, view.obligationWork[key.slice(5)]?.attempts ?? 0]));
     }
     settleTokens(view, `answer:${row.id}`, row.usage);
     if (row.lastNamedPerson !== undefined && (row.lastNamedPerson.trim() !== row.lastNamedPerson
