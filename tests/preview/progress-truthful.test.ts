@@ -56,7 +56,8 @@ it.each(['open', 'completed', 'no description', 'no tools', 'secret', 'stopped']
         expect(progress()[0]!.at - intakeAt).toBeGreaterThanOrEqual(120000);
         expect(progress()[0]!.at - intakeAt).toBeLessThanOrEqual(125000);
         expect(progress()[0]!.text).not.toMatch(/finished|found|counted|success/iu);
-      } else if (mode === 'secret' || mode === 'stopped') expect(progress()).toHaveLength(0);
+      } else if (mode === 'no description') expect(progress().map(row => row.text)).toEqual(['Tool request in progress: “Bash”']);
+      else if (mode === 'secret' || mode === 'stopped') expect(progress()).toHaveLength(0);
       else expect(progress().map(row => row.text)).toEqual([WORKING_LIVENESS]);
       activity.observe('answer', null, 'end');
       await vi.advanceTimersByTimeAsync(40000); release('The requested answer.'); await drain.catch(error => { if (mode !== 'stopped') throw error; });

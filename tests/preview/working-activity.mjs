@@ -43,13 +43,14 @@ export function admissionActivity(bytes, offset, claim) {
   // A tool name by itself is not a useful account of what is being done.
   const command = typeof input.command === 'string' ? input.command.trim() : '';
   const detail = own || (target ? `${row.tool}: ${target}` : command ? `${row.tool}: ${command}` : '');
-  if (!detail) return { step, text: 'Status: main-session tool has no description', running: true };
+  if (!detail) return { step, text: 'Status: main-session tool has no description', running: true,
+    ...(row.tool.length <= 240 ? { request: row.tool } : {}) };
   const text = `Status: ${detail.replace(/\s+/gu, ' ')}`;
   // Do not cut a credential before the existing exact outbound wall can inspect it.
   if (text.length > 280) return null;
   // Quote the request, not an inferred result. Raw command arguments remain internal.
-  const request = `${row.tool}: ${own || target}`.replace(/\s+/gu, ' ');
-  return { step, text, running: true, ...((own || target) && request.length <= 240 ? { request } : {}) };
+  const request = (own || target ? `${row.tool}: ${own || target}` : row.tool).replace(/\s+/gu, ' ');
+  return { step, text, running: true, ...(request.length <= 240 ? { request } : {}) };
 }
 
 export function createWorkingActivities({ read, now }) {
