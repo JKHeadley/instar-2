@@ -57,7 +57,8 @@ async function replay(options: { correction?: string; pending?: boolean; verdict
       await worker.drain(); worker.checkCoherence();
     }
     worker.intake([update(capture.current.update, capture.current.question)]);
-    if (options.crash) await expect(worker.drain()).rejects.toThrow('interrupted correction review');
+    if (options.crash) { await expect(worker.drain()).resolves.toBeUndefined();
+      expect(journal.view.order.at(-1)?.attempt?.state).toBe('exception'); }
     else await worker.drain();
     const before = journal.view.calls;
     journal.close();

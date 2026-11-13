@@ -60,7 +60,8 @@ it.each(['recorded', 'full-path', 'restart', 'jev-unsure', 'jev-undecided', 'sum
     const w = world(mode);
     try {
       if (mode === 'restart') {
-        await expect(w.worker.drain()).rejects.toThrow('crash after admitted answer');
+        await expect(w.worker.drain()).resolves.toBeUndefined();
+        expect(w.journal.view.turns.get(id)?.attempt?.state).toBe('exception');
         expect(w.sends).toEqual([]); w.restart();
       }
       for (let pass = 0; pass < 3 && !w.sends.length; pass++) await w.worker.drain();

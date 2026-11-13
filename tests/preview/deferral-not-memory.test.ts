@@ -49,7 +49,8 @@ it.each(['recorded sequence', 'restart-before-send', 'jev-unsure', 'jev-undecide
       from: { id: Number(capture.operator) }, text: capture.message } }]);
     if (mode === 'restart-before-send') {
       await worker.drain(); // The first pass exhausts the summary frontier.
-      await expect(worker.drain()).rejects.toThrow('interrupted after durable answer');
+      await expect(worker.drain()).resolves.toBeUndefined();
+      expect(journal.view.order.at(-1)?.attempt?.state).toBe('exception');
       expect(sends).toEqual([]);
       journal.close(); journal = openPreviewJournal(path, key);
       worker = createJournalWorker(journal, ports);

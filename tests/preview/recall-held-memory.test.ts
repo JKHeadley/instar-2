@@ -64,7 +64,8 @@ it.each(['recorded', 'restart-before-send', 'missing-fact', 'retired-fact', 'wro
     if (mode === 'dependent-answer') journal.append({ kind: 'memory-undecided', id: frame(178).id,
       reason: frame(178).reason, at: frame(178).at });
     if (mode === 'restart-before-send') {
-      await expect(worker.drain()).rejects.toThrow('interrupted before recall send');
+      await expect(worker.drain()).resolves.toBeUndefined();
+      expect(journal.view.order.at(-1)?.attempt?.state).toBe('exception');
       expect(sends).toHaveLength(beforeSends);
       journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
     }
