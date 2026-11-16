@@ -127,7 +127,9 @@ a status word or a group reply carries no more than the least a recipient is ent
 audience defaults for a given deployment are operator policy; the principle is not. **Check:**
 every outbound surface names its audience and the standing that admits each field it reveals.
 
-**Rule — a role is granted once, at onboarding.** Setting up an Instar agent is a brief onboarding, like bringing on a new member of a team. In one conversation, the person says what the agent's role is, which accounts and channels go with it, and how much trust it starts with. The aim is always a highly trusted member. Where a given agent starts on that range is the person's choice in that conversation. What is agreed is recorded as standing grants. Inside its role the agent acts without asking again. The person can widen or narrow the role at any time, in conversation. **Check:** a fresh installation completes onboarding in one conversation and ends with recorded grants covering the role. No ability inside a granted role prompts for approval. An ability outside every grant is refused, and the refusal says which grant would allow it.
+**Rule — a role starts at onboarding and grows only by the person's grant.** Setting up an Instar agent is a brief onboarding, like bringing on a new member of a team. In one conversation, the person says what the agent's role is, which accounts and channels go with it, and how much trust it starts with. The aim is always a highly trusted member. Where a given agent starts on that range is the person's choice in that conversation. What is agreed is recorded as standing grants. Inside its role the agent acts without asking again. The person can widen or narrow the role at any time, in conversation. A grant can carry a condition the person set for narrowing it. When the condition is met, the agent applies it and tells the person once, and only the person's yes restores the grant. **Check:** a fresh installation completes onboarding in one conversation and ends with recorded grants covering the role. No ability inside a granted role prompts for approval unless the sign-off list requires it. An ability outside every grant is refused, and the refusal says which grant would allow it. A grant's condition is recorded with the grant. When the condition is met, the recorded narrowing takes effect, the person is told once, and no restoration exceeds the person's subsequent recorded grant.
+
+**Value — trust is earned by work and granted only by the person.** Where an agent starts is the person's choice, and it differs for every person. From there the role grows the way a colleague's does: the agent does the work well, keeps an honest record of it that the person can see, and offers a wider role, with that record, when the record supports one. Good work earns an offer, never a permission. Only the person's yes changes what the agent may do.
 
 **Rule — an irreversible act follows its durable cause.** Before dispatch of an effect the agent
 cannot undo alone, its authorization and causal preparation are durably recorded, so a crash
@@ -178,19 +180,16 @@ acceptable because the agent can undo the effect alone, its resource use stays w
 operator's limit, it stays within granted scope, and it touches no policy-sensitive matter.
 The loss grants no permission to repeat uncertain work or weaken protection for irreversible effects.
 
-**Rule — automatic suggestions never widen themselves.** A standing-permission candidate the
-system derives on its own proposes no action or scope beyond the exact authorization it was
-derived from, and a candidate creates no standing until a person approves it. **Check:** derived
-candidates carry the authorization they descend from, and a candidate exceeding it fails review.
+**Rule — automatic suggestions never widen themselves.** A standing-permission candidate the system derives on its own proposes no action or scope beyond the exact authorization it was derived from, and a candidate creates no standing until a person approves it. A candidate may propose that the same action, for the same audience and within the same limits, be done from now on without asking; it says so plainly, and that is not a wider scope. Whether an action is the same is judged by what it is, not by a label it shares with others. A candidate derived from several authorizations stays within each of them and covers no combination that none of them approved. No candidate proposes to stop asking for an effect the first four items of the sign-off list cover. **Check:** derived candidates carry the authorization they descend from. A candidate exceeding it in action, audience or limit fails review, as does one that does not say it covers future acts, or one that covers an effect under the first four sign-off items.
 
 **Rule — sign-off is kept for a short, fixed list.** An effect needs the person's sign-off before it happens only when one of these holds:
 - it commits money or a resource above the level the person named;
 - it cannot be undone and falls outside the agent's role;
 - it speaks publicly in the person's name;
 - it widens the agent's own role or authority;
-- it touches a matter the person marked as sensitive.
+- it touches a matter the person marked as sensitive, or is a kind of action the person has asked to see first.
 
-Everything else inside the agent's role is ordinary, including sending messages and using the accounts that go with the role. **Check:** the effect doorway classifies every registered effect against this list at registration. An effect not on the list and inside a granted role is dispatched without a prompt.
+Everything else inside the agent's role is ordinary, including sending messages and using the accounts that go with the role. **Check:** the effect doorway classifies every registered effect against this list at registration, and reads the person's sensitive marks and see-first choices at dispatch. An effect not on the list and inside a granted role is dispatched without a prompt.
 
 **Value — the rest is held the way a trusted colleague is held.** Full records, review after the fact by the best judgment available, and corrections that last. Patterns are judged in retrospect. A moment is judged live only when it is irreversible.
 
