@@ -3,11 +3,11 @@
   "approvalBasis": "Repository replay publication pin; exact operator approval is recorded in PR/changelog history; replay has no entering-force authority.",
   "shape": "sha256:25ee29a3eac960ce783f87fe1cd329833c4643cab7cfa7195e44b09d363b688c",
   "documents": {
-    "docs/01-the-rules.md": "sha256:e08da0c4e66f521aa00d4ae24e1362644d54d81f70782f2872496334f0e33df0",
-    "docs/02-the-register.md": "sha256:726e33fe4c3da31714f67e242b7a31387aa2e44cf1d7ff8808d80eb42e585794",
-    "docs/03-the-glossary.md": "sha256:457ab48b2c5283cd4f185f9ea58d2793a33cf671e553f671203fd7a573410c06",
-    "docs/07-the-declarations.md": "sha256:4570a7bd698a4c4dfacdd35834c5690466b6e0d56f50d74f28cd7bb043ad4706",
-    "docs/rules/91-a-document-reads-as-its-first-version.md": "sha256:df247971187ce343a167f19ec0a7d7273d81eb4538e2628ff552956c5664e434"
+    "docs/01-the-rules.md": "sha256:1ccb635b21572079a3130292c04a166b5fc120710f27c0afffeb3714034697a0",
+    "docs/02-the-register.md": "sha256:9e229cfae1fb784736286f72b16124a461e473f93cbe0e284cd75f1e7c282db5",
+    "docs/03-the-glossary.md": "sha256:e1cacc55080a53478694c2f8c98bd2873ad1dcffc692d4cecb1345b31758b1e4",
+    "docs/07-the-declarations.md": "sha256:be690d1a07a73287d36b4e3dff9d927271c1b94e5d90611b33b215b69408734b",
+    "docs/rules/91-a-document-reads-as-its-first-version.md": "sha256:49e37e4f31009804f28a2dd38f67b3c894a5d662d3a4ea2d9c703310252492a0"
   },
   "rules": [
     {
