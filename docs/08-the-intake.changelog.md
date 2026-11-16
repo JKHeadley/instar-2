@@ -4,6 +4,10 @@ _Generated from `08-the-intake.changelog.json` by `scripts/render-changelog.mjs`
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 10 · 2026-11-15 · draft — Justin, topic 142440, 2026-11-15 22:01 PST: "I approve the constitution amendment doc" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text). Final-head GitHub code-owner approval and merge pending.
+
+- **The exact quote of the purpose's role rule is replaced by its amended text.** — The quote is declared exact; the purpose's role rule was retitled and gained a narrowing condition. _(Justin, topic 142440, 2026-11-15 22:01 PST: "I approve the constitution amendment doc" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text). Final-head GitHub code-owner approval and merge pending.)_
+
 ## Revision 9 · 2026-10-13 · draft — install-bootstrap-design-1013: desk selects verified binding before the existing P-02 yes, 2026-10-13
 
 - **Bind the verified installing operator before accepting the first P-02 subscription approval.** — A fresh installation needs an authenticated initial operator and independently held approval anchor before ordinary subscription admission. _(install-bootstrap-design-1013 brief; install-firstgrant-1013 finding; reviews/install-bootstrap-design-1013.md)_

@@ -4,6 +4,10 @@ _Generated from `23-judgment-of-use.changelog.json` by `scripts/render-changelog
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 11 · 2026-11-15 · draft — Justin, topic 142440, 2026-11-15 22:01 PST: "I approve the constitution amendment doc" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text). Final-head GitHub code-owner approval and merge pending.
+
+- **The exact quote of the sign-off list and its check follows the amended purpose.** — The quote is declared exact; the fifth item and the check changed. _(Justin, topic 142440, 2026-11-15 22:01 PST: "I approve the constitution amendment doc" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text). Final-head GitHub code-owner approval and merge pending.)_
+
 ## Revision 10 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
 
 - **Quote the fixed sign-off list, retain separate verification profiles, and exercise all five conditions with ordinary and outside-grant controls.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_

@@ -1,5 +1,21 @@
 [
   {
+    "revision": 10,
+    "date": "2026-11-15",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 142440, 2026-11-15 22:01 PST: \"I approve the constitution amendment doc\" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text). Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "The exact quote of the sign-off list and its check, and one title citation, follow the amended purpose.",
+        "why": "The quote is declared exact; the fifth item and the check changed, and the role rule was retitled.",
+        "ref": "Justin, topic 142440, 2026-11-15 22:01 PST: \"I approve the constitution amendment doc\" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text). Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 9,
     "date": "2026-10-10",
     "status": "draft",
