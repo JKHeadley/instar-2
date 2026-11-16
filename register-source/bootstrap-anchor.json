@@ -192,7 +192,7 @@
     },
     {
       "number": 10,
-      "declarationHash": "sha256:bcae4984b7d79f78645b5a823f66e4f9fab701ffa9c237e31ed496285943315c",
+      "declarationHash": "sha256:a02104efac84876fbb5d82e66e12e2bf6237a03529811e6796f4c58bc690e7e0",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
@@ -477,7 +477,7 @@
     },
     {
       "number": 104,
-      "declarationHash": "sha256:1d99bdb001f1c65bfdf4c95351eda46bddd9270d99033831c211c8892e5c63d3",
+      "declarationHash": "sha256:126e45045b2a8180609618d334721560d45e339e645831d5ba309f71bf35d161",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
