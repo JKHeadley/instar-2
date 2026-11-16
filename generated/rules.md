@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:291e99a5c7fbf6c4affee4dfdce8bcbbbb24e8fec9188b28757c85d2633fedba
-Source commit: 2526322a05869e80fc7d5e09f93d6faed2d613fc
+Register generation: sha256:46d264efcb133048da74545c9cbb543a73b3a93fe5501951caf87236e5b42c4e
+Source commit: 81f2d50f59e1e5d9a31931ab7810d6968eee5cb0
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -14,9 +14,9 @@ Terms: (none)
 
 ## 10. Intelligence Infers, Keywords Only Guard
 
-What a person *meant* is decided by a model reading the conversation, never by a keyword list.
+What a person *meant* is decided by a model reading the conversation, never by a keyword list. That includes what an approval covered: whether a new action is the same task the person said yes to, and what a correction or decline restricted. A fixed label, list or table may enforce an exact boundary that the person or a rule authorized, such as this account or these people, but it never decides which task an action is, whether two asks are the same yes, or how wide a grant is.
 
-Check: A lint: no decision about meaning branches on a literal string.
+Check: A lint: no decision about meaning branches on a literal string. The design review records, for each decision about meaning, its judge, the floor that guards it, and contrasting cases: the same meaning worded differently, and different tasks that share a label. A label that decides meaning fails review.
 Terms: (none)
 
 ## 100. A Secret Is Stored Before It Is Spent
@@ -49,9 +49,9 @@ Terms: term:operator
 
 ## 104. Every Authorization Is a Candidate Standing Grant
 
-Humans never have to remember anything — including that they already said yes. Each authorization that reaches the operator is reviewed as a candidate standing grant, so the same yes is never asked twice.
+Humans never have to remember anything — including that they already said yes. Each authorization that reaches the operator is reviewed as a candidate standing grant, so the same yes is never asked twice unless the person chooses to keep being asked. An offer to stop asking shows the record it rests on. An offer the person declines or leaves unanswered grants nothing and is not made again without new work of that kind. A proposed standing grant is sized by the meaning of the person's recorded approvals, corrections and limits, in context. It covers the work those approvals support without splitting it needlessly, and stays within the action, audience and limits of the authorizations it descends from. Evidence of comfort supports an offer, never a permission: future standing needs the person's explicit yes. The person's attention is a cost. Within a current grant, the agent does not ask again for what it already covers unless the sign-off list requires it, and it settles real doubt about coverage with the smallest question that resolves it.
 
-Check: Onboarding records standing grants for the agreed role. No ability inside that role asks again unless it is on the purpose's sign-off list; outside every grant, refusal names the grant needed. A review walks repeated asks and proposes the grant. (First stated by the operator at #25758; recovered by the 2026-08-26 re-sweep.)
+Check: Onboarding records standing grants for the agreed role. No ability inside that role asks again unless it is on the purpose's sign-off list; outside every grant, refusal names the grant needed. A review walks repeated asks and proposes the grant. Every offer carries its record for that kind of action over a stated period: how many were asked, approved unchanged, changed and declined, and what is known of how they turned out. An offer with no record, or one repeated with no work of that kind since the last offer, fails review. An offer states what it covers and what it excludes, names the authorizations and record it rests on, and says it covers future acts. A derived offer that exceeds those authorizations in action, audience or limits fails review even if it says so; a wider step is a separate request to widen the role. The review records why actions were treated as the same or different, and checks for both needless repeat asks and coverage the record does not support. The sign-off list is never relaxed by either. (First stated by the operator at #25758; recovered by the 2026-08-26 re-sweep.)
 Terms: term:operator, term:reach, term:standing
 
 ## 105. Channel Parity
