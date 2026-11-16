@@ -19,8 +19,8 @@ Bug evidence: none
 Hook bypass: none
 Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
-Decision: quote-sync | The exact quotes of the amended rules in parts 08, 12 and 23 are declared exact, so they carry the new approved text verbatim; the glossary's consequential definition gains the approved see-first clause verbatim | reported=PR body
-Decision: source-sentence | The approved document asks for one closing source sentence "in the form used for Rules 121 to 123" without giving its text; it quotes the operator's 2026-11-14 message (as already quoted in the approved 1.x article) and his approval, and marks the wording as the agent's | reported=PR body
+Decision: quote-sync | The exact quotes of the amended rules in parts 08, 12 and 23 are declared exact, so they carry the new approved text verbatim; the glossary's consequential definition gains the approved see-first clause verbatim | reported=reviews/constitution-trust-journey-amendments-change-review.md
+Decision: source-sentence | The approved document asks for one closing source sentence "in the form used for Rules 121 to 123" without giving its text; it quotes the operator's 2026-11-14 message (as already quoted in the approved 1.x article) and his approval, and marks the wording as the agent's | reported=reviews/constitution-trust-journey-amendments-change-review.md
 Deferral: generated/conversion.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
 Deferral: generated/register.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
 
