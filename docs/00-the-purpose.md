@@ -93,33 +93,58 @@ amendments are rare by design: an amendment states a general principle that deci
 questions, never a single deployment's answer. The review desk refuses convergence while a
 question carries none of the four dispositions.
 
-**Rule — the agent never administers its own safeguards, except for approval-account access
-expressly accepted by the operator.** Protection, approval and the keys behind them run under an
-authority the agent cannot alter, impersonate or replace, except for that account access. An
-approval is signed by something the operator holds and the agent does not, or Instar may accept
-a recorded, one-use approval of an exact, unexpired request from an operator account held with a
-named service that the agent cannot use or administer. An operator may explicitly accept, in a
-recorded statement naming the account and installation, that approvals from that account count
-as the operator's yes despite the agent also having access. This exception changes only the
-approval-account access requirement; independently enforced safeguards remain independently
-administered. Account-based approval requires no separate device signature or independent
-approval verifier and is never reported as signed or independently verified evidence. Every
-approval accepted under the exception is recorded, displayed and exported with the disclosure
-that the agent can also use the account and that the account does not establish who gave the
-approval. The operator may withdraw the acceptance at any time; on receipt, Instar records the
-withdrawal and stops consuming approvals under that acceptance. **Check:** every
-protected-execution and approval design names the custodian identity and shows the agent has no
-administrative path to it, except for the expressly accepted approval-account access. An
+**Rule — the agent never administers its own safeguards, except for approval-account or
+paired-device access expressly accepted by the operator.** Protection, approval and the keys
+behind them run under an authority the agent cannot alter, impersonate or replace, except for
+that account access. An approval is signed by something the operator holds and the agent does
+not, or Instar may accept a recorded, one-use approval of an exact, unexpired request from an
+operator account held with a named service that the agent cannot use or administer. An operator
+may explicitly accept, in a recorded statement naming the account and installation, that
+approvals from that account count as the operator's yes despite the agent also having access.
+These exceptions change only the access requirements they name; independently enforced
+safeguards remain independently administered. Account-based approval requires no separate device
+signature or independent approval verifier and is never reported as signed or independently
+verified evidence. Every approval accepted under the exception is recorded, displayed and
+exported with the disclosure that the agent can also use the account and that the account does
+not establish who gave the approval. The operator may withdraw the acceptance at any time; on
+receipt, Instar records the withdrawal and stops consuming approvals under that acceptance. An
+operator may likewise accept, in a recorded statement naming the device and installation, that
+approvals from a paired device count as their yes, although the list of paired devices is kept
+where the agent could alter it. A paired-device approval counts only when the device's key stays
+in secure hardware on the device that never releases it; the device asks its person to unlock it
+(face, fingerprint or passcode) for that one approval; the device shows the exact request, and
+the approval covers that request once, before it expires; and the acceptance has not been
+withdrawn. The first device may be paired by the Instar app that creates the agent on that
+computer, before the agent first runs, and the acceptance is recorded in the app at that moment.
+An agent created another way pairs its first device by approval from an accepted approval
+account. A later device is paired only by approval from an already-paired device, confirmed with
+its unlock, and that approval records the acceptance for the new device. If every paired device
+is lost, a new first pairing needs a new recorded acceptance. The agent must not add, change or
+remove a paired device. Because the list is kept on the agent's own computer, this is a duty,
+not an independently verified guarantee. Every approval accepted this way is recorded, displayed
+and exported with the disclosure that the agent could add a device whose approval would look the
+same. A paired-device approval is never reported as independently verified evidence. A device's
+approval counts only as the yes of the person who paired it, within that person's own authority.
+An operator policy may forbid paired-device acceptance. With several machines, the device list
+and acceptance travel with the installation, and a machine uses a device approval only when it
+has the current withdrawal state. The operator may withdraw the acceptance at any time, and
+Instar then stops consuming approvals from that device. **Check:** every protected-execution and
+approval design names the custodian identity and shows the agent has no administrative path to
+it, except for the expressly accepted approval-account or paired-device access. An
 account-authenticated approval design names the service and shows that the agent holds no
 session, credential, delegated sender or recovery path to the account, or cites the operator's
 current recorded acceptance for that account and installation. It consumes each approval once
 against its exact, unexpired request, checks that any relied-on acceptance has not been
 withdrawn, and carries the shared-access disclosure wherever that approval is recorded,
-displayed or exported.
+displayed or exported. A paired-device approval design shows the key held in the device's secure
+hardware, the unlock for each approval, one use of an exact unexpired request, how each pairing
+was approved, the disclosure wherever the approval is recorded, displayed or exported, and that
+withdrawal is checked before use; and it cites the operator's current recorded acceptance for
+that device and installation.
 
 **Value — the operator's approval remains the operator's act.** The agent must not approve as
-the operator. With shared account access, this is a duty, not an independently verified
-guarantee.
+the operator. With shared account access, or a paired-device list the agent can write, this is a
+duty, not an independently verified guarantee.
 
 **Rule — least revelation.** No action reveals a relationship, an identity or a fact beyond what
 the recipient's verified standing permits, and never by accident: an acknowledgement, a receipt,
