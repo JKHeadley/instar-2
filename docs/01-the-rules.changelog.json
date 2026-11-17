@@ -1,5 +1,26 @@
 [
   {
+    "revision": 24,
+    "date": "2026-11-15",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 142440, 2026-11-15 22:01 PST: \"I approve the constitution amendment doc\" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text); origin: 142440/143245 (2026-11-14) and telegram 142440 2026-11-15 12:35 PST. Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Rule 10 names what an approval covered as a decision about meaning; a label may enforce only an authorized exact boundary; the design review records judge, floor and contrasting cases.",
+        "why": "Recognizing a repeated task by a fixed label is a decision about meaning made by a string.",
+        "ref": "Justin, topic 142440, 2026-11-15 22:01 PST: \"I approve the constitution amendment doc\" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text); origin: 142440/143245 (2026-11-14) and telegram 142440 2026-11-15 12:35 PST. Final-head GitHub code-owner approval and merge pending."
+      },
+      {
+        "what": "Rule 104: offers show their record, a declined or unanswered offer is not repeated without new work, and a grant is sized to the evidence with the person's attention as a cost; source note names the operator's direction and approval.",
+        "why": "Trust grows by the person's grant on an honest record, without overburdening or over-covering.",
+        "ref": "Justin, topic 142440, 2026-11-15 22:01 PST: \"I approve the constitution amendment doc\" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text); origin: 142440/143245 (2026-11-14) and telegram 142440 2026-11-15 12:35 PST. Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 23,
     "date": "2026-11-10",
     "status": "draft",

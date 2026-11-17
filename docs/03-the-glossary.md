@@ -155,7 +155,7 @@ its strictest.
 **Definition.** For sign-off, a *consequential* effect is one on the purpose's short, fixed list:
 it commits money or a resource above the person's named level; it cannot be undone and falls
 outside the agent's role; it speaks publicly in the person's name; it widens the agent's own
-role or authority; or it touches a matter the person marked as sensitive. Everything else inside
+role or authority; or it touches a matter the person marked as sensitive, or is a kind of action the person has asked to see first. Everything else inside
 the granted role is *ordinary*, including messages and use of the accounts that go with it.
 
 **Test.** A message inside the role with none of these conditions needs no prompt. Public speech

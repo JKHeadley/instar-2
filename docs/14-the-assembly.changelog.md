@@ -4,6 +4,10 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 25 · 2026-11-15 · draft — Justin, topic 142440, 2026-11-15 22:01 PST: "I approve the constitution amendment doc" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text). Final-head GitHub code-owner approval and merge pending.
+
+- **One title citation names the role rule by its new title.** — The purpose's role rule was retitled. _(Justin, topic 142440, 2026-11-15 22:01 PST: "I approve the constitution amendment doc" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text). Final-head GitHub code-owner approval and merge pending.)_
+
 ## Revision 24 · 2026-10-13 · draft — operator review on PR #162; Operator requires macOS and Linux compatibility without requiring a Mac.
 
 - **Specify platform-neutral installation guarantees and concrete macOS/Linux implementations, including headless Linux and named build units.** — Keep the reviewed enrollment and authority record chain while removing the implicit Mac requirement. _(https://github.com/JKHeadley/instar-2/pull/162)_

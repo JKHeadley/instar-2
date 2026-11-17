@@ -4,6 +4,10 @@ _Generated from `00-the-policy-register.changelog.json` by `scripts/render-chang
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 8 · 2026-11-15 · draft — Justin, topic 142440, 2026-11-15 22:01 PST: "I approve the constitution amendment doc" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text). Final-head GitHub code-owner approval and merge pending.
+
+- **The role section's 'serves' line names the role rule by its new title.** — The purpose's role rule was retitled (Rule 69: references run from both ends). _(Justin, topic 142440, 2026-11-15 22:01 PST: "I approve the constitution amendment doc" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text). Final-head GitHub code-owner approval and merge pending.)_
+
 ## Revision 7 · 2026-10-13 · draft — Justin, 2026-10-13 20:00 PDT, owner ruling in amend-single-machine-1013-brief.txt: a single-machine agent is fully functional; replication requirements begin with a second enrolled machine. Exact-head owner Approve on the pull request remains pending.
 
 - **Align P-08 with role-wide single-machine operation: retain replica-count policy and the installation/profile causal-prefix and loss-model acceptance, without an operation-kind limit.** — The closed set contradicts full single-machine functionality and excludes role-covered reminders, account actions and irreversible file writes. The general principle preserves the safeguards without a deployment-specific enumeration. _(Justin, 2026-10-13 20:00 PDT, owner ruling in amend-single-machine-1013-brief.txt: a single-machine agent is fully functional; replication requirements begin with a second enrolled machine. Exact-head owner Approve on the pull request remains pending.)_

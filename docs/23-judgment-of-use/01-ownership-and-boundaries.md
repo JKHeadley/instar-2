@@ -52,9 +52,9 @@ Basis: [Purpose — least revelation](../00-the-purpose.md#the-purpose), trust, 
 - it cannot be undone and falls outside the agent's role;
 - it speaks publicly in the person's name;
 - it widens the agent's own role or authority;
-- it touches a matter the person marked as sensitive.
+- it touches a matter the person marked as sensitive, or is a kind of action the person has asked to see first.
 
-Everything else inside the agent's role is ordinary, including sending messages and using the accounts that go with the role. **Check:** the effect doorway classifies every registered effect against this list at registration. An effect not on the list and inside a granted role is dispatched without a prompt.
+Everything else inside the agent's role is ordinary, including sending messages and using the accounts that go with the role. **Check:** the effect doorway classifies every registered effect against this list at registration, and reads the person's sensitive marks and see-first choices at dispatch. An effect not on the list and inside a granted role is dispatched without a prompt.
 
 **Value — the rest is held the way a trusted colleague is held.** Full records, review after the fact by the best judgment available, and corrections that last. Patterns are judged in retrospect. A moment is judged live only when it is irreversible.
 

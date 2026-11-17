@@ -4,6 +4,10 @@ _Generated from `03-the-glossary.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 11 · 2026-11-15 · draft — Justin, topic 142440, 2026-11-15 22:01 PST: "I approve the constitution amendment doc" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text). Final-head GitHub code-owner approval and merge pending.
+
+- **The consequential-effect definition includes a kind of action the person asked to see first.** — The purpose's sign-off list gained that clause in its fifth item. _(Justin, topic 142440, 2026-11-15 22:01 PST: "I approve the constitution amendment doc" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text). Final-head GitHub code-owner approval and merge pending.)_
+
 ## Revision 10 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
 
 - **Distinguish verification coverage from acceptance; require recorded real conversation evidence rather than a rule score.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_

@@ -20,7 +20,7 @@ Entries are numbered P-01 onward. "Default" is what ships. "Per deployment" stat
 
 **Value — P-04 chat steering exposure.** Default: steering approved work from a chat channel is allowed only after the operator records and accepts the exposure that a compromised chat token would create. Per deployment: the acceptance record, or refusal, is the operator's.
 
-## Role and outward exposure (serves: a role is granted once, at onboarding)
+## Role and outward exposure (serves: a role starts at onboarding and grows only by the person's grant)
 
 **Value — P-05 personal-account grants.** Default: the onboarding conversation records the accounts, recipients, channels and actions agreed for the role, including starting conversations when that is part of the role. Inside those grants the agent acts without asking again, subject to the purpose's short sign-off list. Per deployment: the person chooses the starting trust and may widen or narrow the recorded role in conversation.
 

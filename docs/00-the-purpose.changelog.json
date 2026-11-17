@@ -1,5 +1,36 @@
 [
   {
+    "revision": 16,
+    "date": "2026-11-15",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 142440, 2026-11-15 22:01 PST: \"I approve the constitution amendment doc\" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text); origin: 142440/143245 (2026-11-14) and telegram 142440 2026-11-15 12:35 PST. Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Retitle the role rule to 'a role starts at onboarding and grows only by the person's grant'; add the narrowing-condition sentence and check clauses; the check now exempts the sign-off list.",
+        "why": "The old title implied the role is fixed on day one, and its check contradicted the sign-off list.",
+        "ref": "Justin, topic 142440, 2026-11-15 22:01 PST: \"I approve the constitution amendment doc\" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text); origin: 142440/143245 (2026-11-14) and telegram 142440 2026-11-15 12:35 PST. Final-head GitHub code-owner approval and merge pending."
+      },
+      {
+        "what": "Add the Value 'trust is earned by work and granted only by the person' after the role rule.",
+        "why": "Good work earns an offer, never a permission; only the person's yes changes what the agent may do.",
+        "ref": "Justin, topic 142440, 2026-11-15 22:01 PST: \"I approve the constitution amendment doc\" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text); origin: 142440/143245 (2026-11-14) and telegram 142440 2026-11-15 12:35 PST. Final-head GitHub code-owner approval and merge pending."
+      },
+      {
+        "what": "Extend the sign-off list's fifth item to actions the person asked to see first; the check reads sensitive marks and see-first choices at dispatch.",
+        "why": "A person's choices change after an effect is registered.",
+        "ref": "Justin, topic 142440, 2026-11-15 22:01 PST: \"I approve the constitution amendment doc\" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text); origin: 142440/143245 (2026-11-14) and telegram 142440 2026-11-15 12:35 PST. Final-head GitHub code-owner approval and merge pending."
+      },
+      {
+        "what": "The suggestions rule allows a candidate to propose repeating the same action without asking, judged by meaning within each authorization, and never for the first four sign-off items.",
+        "why": "A strict reading failed every standing-grant candidate; an offer mechanism is the easiest way to erode the four floors.",
+        "ref": "Justin, topic 142440, 2026-11-15 22:01 PST: \"I approve the constitution amendment doc\" [source: telegram 142440/4516843644856181 2026-11-16T06:01:41Z], approving version 1 of the constitution amendments document (changes 1 to 8, exact text); origin: 142440/143245 (2026-11-14) and telegram 142440 2026-11-15 12:35 PST. Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 15,
     "date": "2026-10-15",
     "status": "draft",

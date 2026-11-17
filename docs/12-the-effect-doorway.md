@@ -104,9 +104,9 @@ amend its policy. A pending definition is reviewable but cannot grant dispatch p
 - it cannot be undone and falls outside the agent's role;
 - it speaks publicly in the person's name;
 - it widens the agent's own role or authority;
-- it touches a matter the person marked as sensitive.
+- it touches a matter the person marked as sensitive, or is a kind of action the person has asked to see first.
 
-Everything else inside the agent's role is ordinary, including sending messages and using the accounts that go with the role. **Check:** the effect doorway classifies every registered effect against this list at registration. An effect not on the list and inside a granted role is dispatched without a prompt.
+Everything else inside the agent's role is ordinary, including sending messages and using the accounts that go with the role. **Check:** the effect doorway classifies every registered effect against this list at registration, and reads the person's sensitive marks and see-first choices at dispatch. An effect not on the list and inside a granted role is dispatched without a prompt.
 
 **Value — the rest is held the way a trusted colleague is held.** Full records, review after the fact by the best judgment available, and corrections that last. Patterns are judged in retrospect. A moment is judged live only when it is irreversible.
 
@@ -276,7 +276,7 @@ business workers. An operator-started restricted worker is physical-boundary evi
 |---|---|
 | It cannot be undone and falls outside the agent's role; ordinary local durability additionally requires reversibility | The only effect is finite local worker/resource occupation in a disposable scope. The admitted boundary enforces expiry of the whole process tree and all queued dispatch rights without a subsequent discretionary action; externally perceptible disclosure, messaging, provider work and persistent authoritative mutation are unreachable. Absence of that proof makes this arm unsupported. |
 | Commits resources above the operator's level | The installed finite resource declaration and Six allocation stay within the operator's approved threshold, including worst-case expiry and observation work. Missing limits or a larger exposure refuse; costly is not automatically irreversible. |
-| Standing floor: outside every grant refuses under “a role is granted once, at onboarding” | Derive machine, installation, principal, run/step, incarnation, executable/artifact, boundary, working area and permitted handles from the exact approved definition and actual parameters. Any mismatch refuses before invoking the OS; the executor must hold the checked executable/profile identity through invocation, so a path or symlink replacement cannot change the admitted bytes. |
+| Standing floor: outside every grant refuses under “a role starts at onboarding and grows only by the person's grant” | Derive machine, installation, principal, run/step, incarnation, executable/artifact, boundary, working area and permitted handles from the exact approved definition and actual parameters. Any mismatch refuses before invoking the OS; the executor must hold the checked executable/profile identity through invocation, so a path or symlink replacement cannot change the admitted bytes. |
 | It touches a matter the person marked as sensitive | Check the actual scope against current policy-sensitive designations. This operation supplies no protected mutation, credential access or policy exception. A sensitive scope requires its existing authorization/supervision and cannot be called ordinary by its label. |
 | It speaks publicly in the person's name | This loading-only launch cannot publish or send; a separate public-speaking operation requires sign-off even inside the role. |
 | It widens the agent's own role or authority | The launch consumes current grants and cannot widen them; an authority change requires sign-off. |
