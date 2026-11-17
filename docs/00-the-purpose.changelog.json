@@ -1,5 +1,26 @@
 [
   {
+    "revision": 17,
+    "date": "2026-11-16",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 143810, 2026-11-16 22:13 PST: \"approved\" [source: telegram 143810/144056 2026-11-17T06:13:09Z], approving the exact text (doc 9cdcabac, \"Approving from the Instar app: exact constitution text\"); origin: Justin, topic 143810, 2026-11-16 20:35 PST [source: telegram 143810/143996 2026-11-17T04:35:46Z]: \"we definitely do NOT want to require Slack or Telegram if at all possible. We should definitely support Instar app only as the primary route.\" Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "The safeguards rule gains a second accepted exception: approvals from a paired device the operator accepted, with a hardware-held key, an unlock for each approval, one use of an exact unexpired request, pairing rules for the first and later devices, a stated duty that the agent never adds a device, and a disclosure that the device list is kept on the agent's own computer.",
+        "why": "A person who has only the Instar app could not give their agent more than 'Ask me first', because a raise needed a reply in a Telegram or Slack chat. The operator wants the app alone to be the primary route.",
+        "ref": "Justin, topic 143810, 2026-11-16 22:13 PST: \"approved\" [source: telegram 143810/144056 2026-11-17T06:13:09Z], approving the exact text (doc 9cdcabac, \"Approving from the Instar app: exact constitution text\"); origin: Justin, topic 143810, 2026-11-16 20:35 PST [source: telegram 143810/143996 2026-11-17T04:35:46Z]: \"we definitely do NOT want to require Slack or Telegram if at all possible. We should definitely support Instar app only as the primary route.\" Final-head GitHub code-owner approval and merge pending."
+      },
+      {
+        "what": "The rule's check and the Value 'the operator's approval remains the operator's act' name paired-device access alongside approval-account access.",
+        "why": "The check and the Value must cover both accepted exceptions, so neither weakens what the other requires.",
+        "ref": "Justin, topic 143810, 2026-11-16 22:13 PST: \"approved\" [source: telegram 143810/144056 2026-11-17T06:13:09Z], approving the exact text (doc 9cdcabac, \"Approving from the Instar app: exact constitution text\"); origin: Justin, topic 143810, 2026-11-16 20:35 PST [source: telegram 143810/143996 2026-11-17T04:35:46Z]: \"we definitely do NOT want to require Slack or Telegram if at all possible. We should definitely support Instar app only as the primary route.\" Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 16,
     "date": "2026-11-15",
     "status": "draft",
