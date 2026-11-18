@@ -1,5 +1,21 @@
 [
   {
+    "revision": 25,
+    "date": "2026-11-17",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 144319, 2026-11-17 15:32 PST: \"approved\" [source: telegram 144319/144458 2026-11-17T23:32:37Z], answering the approval request 144319/144392 for the 1.x spec frontier-design-review-standard, whose decision 7 makes that approval cover the constitution article in both books, this book first; origin: 141133/141213 (2026-11-09) and 144319/4578964629224360 (2026-11-17). Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Add Rule 124, Frontier Models Design and Review; Efficient Models Build, in Needs building with its rationale and source note; update the group and total counts.",
+        "why": "Rules 56 and 65 keep the model map current and run audits to convergence; no rule said which model designs and reviews, or that an approval request shows what reviewed the design.",
+        "ref": "Justin, topic 144319, 2026-11-17 15:32 PST: \"approved\" [source: telegram 144319/144458 2026-11-17T23:32:37Z], answering the approval request 144319/144392 for the 1.x spec frontier-design-review-standard, whose decision 7 makes that approval cover the constitution article in both books, this book first; origin: 141133/141213 (2026-11-09) and 144319/4578964629224360 (2026-11-17). Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 24,
     "date": "2026-11-15",
     "status": "draft",
