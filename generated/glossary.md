@@ -1,7 +1,7 @@
 # Generated glossary
 
-Register generation: sha256:46d264efcb133048da74545c9cbb543a73b3a93fe5501951caf87236e5b42c4e
-Source commit: 81f2d50f59e1e5d9a31931ab7810d6968eee5cb0
+Register generation: sha256:792a29210e2c4f0f3e72da57ee28bb9c9c74e295c1e068907ae00c24a8a53cde
+Source commit: b5d740b2db4400429ec783198ec8c8a719b063aa
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -160,7 +160,7 @@ Used by: rule:29
 
 Who or what does it touch?
 
-Used by: rule:104, rule:44, rule:56, rule:77, rule:80, rule:81, rule:91, rule:95, rule:97
+Used by: rule:104, rule:124, rule:44, rule:56, rule:77, rule:80, rule:81, rule:91, rule:95, rule:97
 
 ## register generation
 
