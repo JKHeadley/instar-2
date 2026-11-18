@@ -1,6 +1,6 @@
 # Change review — Frontier Models Design and Review; Efficient Models Build
 
-Subject base: e575f8232881dbb8f22cb65321413f154203ec91
+Subject base: 6dda4402372709fae836edebbe14b0bd517a5243
 Review state: open
 Reviewed content: none
 Outcome: Record the operator-approved constitution article as Rule 124, Frontier Models Design and Review; Efficient Models Build: plans, designs and specs are reviewed on the strongest model the agent can reach, named in the doorway/model map, and drafted on it where the work can be routed there; building runs on the efficient default; before the person is asked to approve a design, review has read it as it stands, with another provider the agent already works through where reachable, and the request states from system-written records which models wrote it, which reviewed it, what each concluded and how many times; an unreachable model never stops work and is named first; a request with no readable record is held until the agent runs the review; when nothing can review, the request says so. A new rule in Needs building, because no check exists in 2.0 yet. Approval: "approved" [source: telegram 144319/144458 2026-11-17T23:32:37Z], answering 144319/144392 for the 1.x spec docs/specs/frontier-design-review-standard.md, whose decision 7 makes that approval cover the article in both books, this book first.
@@ -20,6 +20,7 @@ Hook bypass: none
 Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
 Decision: book-form | The approved text is the 1.x article; this book receives the same obligation as one Needs-building row (its meaning and owed check), a rationale and a source sentence, in the form used for Rules 121 to 123; the row says "person" where 1.x says "operator" (Rule 120's term) and "doorway/model map (#56)" where 1.x says "model registry"; the title is kept identical so the alignment map pairs them by name | reported=reviews/constitution-frontier-design-review-change-review.md
+Decision: subject-base | The subject base is 6dda4402372709fae836edebbe14b0bd517a5243, the tip of the #204 branch, not main's head e575f8232881: main's merge commit for #204 was covered by no record (document-checks on main fails Rule 74 on it), and its tree is identical to that tip, so this range covers that merge while the subject stays exactly this change's paths | reported=reviews/constitution-frontier-design-review-change-review.md
 Deferral: generated/conversion.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
 Deferral: generated/register.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
 
