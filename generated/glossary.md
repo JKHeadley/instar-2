@@ -1,7 +1,7 @@
 # Generated glossary
 
-Register generation: sha256:792a29210e2c4f0f3e72da57ee28bb9c9c74e295c1e068907ae00c24a8a53cde
-Source commit: b5d740b2db4400429ec783198ec8c8a719b063aa
+Register generation: sha256:c60bbba2c9e6fd6dc7050fa8e3b00f5c7fc0fc484f8c11a4da74c2d75071d59e
+Source commit: 5db190644976c0ade528bb5b232825154df09e41
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -132,7 +132,7 @@ A principal holding *operator* standing for a scope. **In one conversation there
 exactly one** — the verified person the conversation is bound to. **Across the organization there
 may be several**, each for their scope. Both are true once operator is a standing.
 
-Used by: rule:101, rule:102, rule:103, rule:104, rule:117, rule:28, rule:4, rule:62, rule:79, rule:80, rule:81, rule:82, rule:88, rule:91, rule:93, rule:94, rule:98
+Used by: rule:101, rule:102, rule:103, rule:104, rule:117, rule:124, rule:28, rule:4, rule:62, rule:79, rule:80, rule:81, rule:82, rule:88, rule:91, rule:93, rule:94, rule:98
 
 ## pending-landing
 

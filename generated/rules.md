@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:792a29210e2c4f0f3e72da57ee28bb9c9c74e295c1e068907ae00c24a8a53cde
-Source commit: b5d740b2db4400429ec783198ec8c8a719b063aa
+Register generation: sha256:c60bbba2c9e6fd6dc7050fa8e3b00f5c7fc0fc484f8c11a4da74c2d75071d59e
+Source commit: 5db190644976c0ade528bb5b232825154df09e41
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -203,10 +203,10 @@ Terms: term:feature
 
 ## 124. Frontier Models Design and Review; Efficient Models Build
 
-Plans, designs and specs are reviewed on the strongest model the agent can reach, named in the doorway/model map (#56), and are drafted on it wherever the work can be routed there; building runs on the efficient default. Before the person is asked to approve a design, review has read the design as it stands, with a model from another provider the agent already works through where one is reachable, and the request states which models are on record as having written it, which models reviewed it, what each concluded and how many times it was reviewed, from records the system wrote. A model that cannot be reached does not stop work: the work runs on the default model and the request says so first. A request with no record for the design as it stands is held until the agent runs the review, and a record that cannot be read holds the same way. When nothing can review, the request goes out saying exactly that; the check never passes a request silently. The design model is one entry per doorway in the map; no brief, skill or prompt names a model. An agent with one provider loses nothing (#118). Extends #56 and #65 from keeping the map current and auditing to convergence, to where the strongest judgment is spent.
+Plans, designs and specs are reviewed on the strongest model the agent can reach, named in the model registry (the doorway/model map of #56), and are drafted on it wherever the work can be routed there; building runs on the efficient default. Before the operator is asked to approve a design, review code has read the design as it stands, with a model from another provider the agent already works through where one is reachable, and the request states which models are on record as having written it, which models reviewed it, what each concluded and how many times it was reviewed, from records the system wrote. A model that cannot be reached does not stop work: the work runs on the default model and the request says so first. A request with no record for the design as it stands is held until the agent runs the review, and a record that cannot be read holds the same way. When nothing on the machine can review, the request goes out saying exactly that. The check never passes a request silently; when the message gate itself is down, its existing delivery rule applies as for every other rule. The design model is one pinned entry per door in the model registry; no brief, skill or prompt names a model. A session spawned on the same machine and declared or judged to be design work launches on it when an account with confirmed access has room. The review driver's recording mode attempts every reviewer and writes what each concluded. Extends #56 and #65 from keeping the map current and auditing to convergence, to where the strongest judgment is spent.
 
-Check: Nothing checks this yet; the checks are being built. Owed: a hold at the outbound doorway on a request for the person's approval of a design that does not carry the line of that design's review record, found by exact lookup of the reference the system issued, tested on both sides with paraphrases, including that a shared draft that asks for no yes passes; and a check that no brief, skill or prompt names a model outside the map. Whether a text asks for approval, and whether a piece of work is design, are judgments held by a model, not a keyword list (#10). The 1.x design is `docs/specs/frontier-design-review-standard.md` in JKHeadley/instar, not yet merged.
-Terms: term:reach
+Check: Nothing checks this yet; the checks are being built. Owed: the outbound gate and the Work Board hold an approval request that does not carry its record's line. The 1.x design is `docs/specs/frontier-design-review-standard.md` in JKHeadley/instar, not yet merged.
+Terms: term:operator, term:reach
 
 ## 13. Quantitative Claims Must Bind a Subject
 
