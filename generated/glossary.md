@@ -1,7 +1,7 @@
 # Generated glossary
 
-Register generation: sha256:46d264efcb133048da74545c9cbb543a73b3a93fe5501951caf87236e5b42c4e
-Source commit: 81f2d50f59e1e5d9a31931ab7810d6968eee5cb0
+Register generation: sha256:4f4f1f66c6fb4a2866563ab131a8d73421888b52823161fd431b21cedb234e44
+Source commit: e5561e9909a591c498b34fe9b560ee86b46b0cab
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -132,7 +132,7 @@ A principal holding *operator* standing for a scope. **In one conversation there
 exactly one** — the verified person the conversation is bound to. **Across the organization there
 may be several**, each for their scope. Both are true once operator is a standing.
 
-Used by: rule:101, rule:102, rule:103, rule:104, rule:117, rule:28, rule:4, rule:62, rule:79, rule:80, rule:81, rule:82, rule:88, rule:91, rule:93, rule:94, rule:98
+Used by: rule:101, rule:102, rule:103, rule:104, rule:117, rule:125, rule:28, rule:4, rule:62, rule:79, rule:80, rule:81, rule:82, rule:88, rule:91, rule:93, rule:94, rule:98
 
 ## pending-landing
 
@@ -160,7 +160,7 @@ Used by: rule:29
 
 Who or what does it touch?
 
-Used by: rule:104, rule:44, rule:56, rule:77, rule:80, rule:81, rule:91, rule:95, rule:97
+Used by: rule:104, rule:125, rule:44, rule:56, rule:77, rule:80, rule:81, rule:91, rule:95, rule:97
 
 ## register generation
 
