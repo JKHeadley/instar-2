@@ -1,5 +1,26 @@
 [
   {
+    "revision": 26,
+    "date": "2026-11-18",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 145097, 2026-11-18 19:04 PST: \"Yes, to all\" [source: telegram 145097/145451 2026-11-19T03:04:02Z], answering the approval request 145097/145425, which linked the exact wording of the two 1.x constitution articles and said the matching change would be made in this book; origin: 145097/145401 and 145097/145419 (2026-11-18). Number 25 is left for the Rule 124 change open in pull request 206. Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Add Rule 125, A Safeguard Must Leave a Benefit, in Needs building with its rationale and source note; update the group and total counts.",
+        "why": "Rule 116 tests each piece of added machinery; no rule asked what benefit survives once all of a design's restrictions are in place, or required a practice-only phase to state its end.",
+        "ref": "Justin, topic 145097, 2026-11-18 19:04 PST: \"Yes, to all\" [source: telegram 145097/145451 2026-11-19T03:04:02Z], answering the approval request 145097/145425, which linked the exact wording of the two 1.x constitution articles and said the matching change would be made in this book; origin: 145097/145401 and 145097/145419 (2026-11-18). Number 25 is left for the Rule 124 change open in pull request 206. Final-head GitHub code-owner approval and merge pending."
+      },
+      {
+        "what": "Add Rule 126, Documents Stand on Their Own, in Needs building with its rationale and source note; update the group and total counts.",
+        "why": "No rule required a document written for a decision to be followable by a reader who had not followed the session.",
+        "ref": "Justin, topic 145097, 2026-11-18 19:04 PST: \"Yes, to all\" [source: telegram 145097/145451 2026-11-19T03:04:02Z], answering the approval request 145097/145425, which linked the exact wording of the two 1.x constitution articles and said the matching change would be made in this book; origin: 145097/145401 and 145097/145419 (2026-11-18). Number 25 is left for the Rule 124 change open in pull request 206. Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 24,
     "date": "2026-11-15",
     "status": "draft",
