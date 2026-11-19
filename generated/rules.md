@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:6293bc0891bca6e4ef05a6b97ae1d8485ea738d208f1cd94ab0a007dd2376963
-Source commit: 8e1c3ad64b65381da08e39b350c05039897d1db3
+Register generation: sha256:4f4f1f66c6fb4a2866563ab131a8d73421888b52823161fd431b21cedb234e44
+Source commit: e5561e9909a591c498b34fe9b560ee86b46b0cab
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -203,16 +203,16 @@ Terms: term:feature
 
 ## 125. A Safeguard Must Leave a Benefit
 
-Every restriction a design adds beyond the constitution's floors names what it protects and what benefit it costs. That includes a gate, a sandbox rule, an allowlist, a practice-only or shadow phase, a staged ladder or a cap. The design shows that a real benefit survives once all of its restrictions are in place, stated as a number where one exists. A design whose restrictions together leave no meaningful benefit is unfinished, however safe it is. A narrow restriction that a stronger one in the same design already covers is removed, unless it adds protection the stronger one does not. A practice-only or shadow phase states its end (runs, days or evidence) when it is introduced; "later, in another design" is not an end. This rule never weakens a constitutional floor: security, data loss, the owner's machine and the operator channel. Where the honest benefit is near zero because of a design's target rather than its walls, the remedy is a different target, not fewer protections.
+Every restriction a design adds beyond the constitution's floors names what it protects and what benefit it costs. That includes a gate, a sandbox rule, an allowlist, a practice-only or shadow phase, a staged ladder or a cap. The design shows that a real benefit survives once all of its restrictions are in place, stated as a number where one exists. A design whose restrictions together leave no meaningful benefit is unfinished, however safe it is. A narrow restriction that a stronger one in the same design already covers is removed, unless it adds protection the stronger one does not. A practice-only or shadow phase states its end (runs, days or evidence) when it is introduced; "later, in another design" is not an end. This rule never weakens a constitutional floor: security, data loss, the owner's machine and the operator channel. Where the honest benefit is near zero because of a design's target rather than its walls, the remedy is a different target, not fewer protections. The ladder Rule 72 requires and the evidence Rule 57 requires are constitutional obligations, not restrictions a design adds; this rule reaches only what a design adds on top of them.
 
-Check: Nothing checks this yet. Owed: every design carries, in its review, a table of its restrictions, naming what each protects, what it costs, and whether another restriction already covers it. Whether a real benefit survives, and whether a restriction is redundant, is a judgment, held by the independent review of that design, not a script. Where the surviving benefit cannot be established, the design goes back to review with that question stated; it is never shipped as "safe" in place of "useful". In 1.x the design reviewer asks this in every review round (`skills/spec-converge/templates/reviewer-lessons-aware.md` in JKHeadley/instar); no gate measures surviving benefit there either.
-Terms: term:operator
+Check: Nothing checks this yet. Owed: every design's review lists its restrictions, naming what each protects, what it costs, and whether another restriction already covers it. Two parts can be checked for presence by a script once built: that the list is there, and that every practice-only or shadow phase states its end. Whether a real benefit survives, and whether a restriction is redundant, is a judgment, held by the independent review of that design, not a script. Where the surviving benefit cannot be established, the design goes back to review with that question stated; it is never shipped as "safe" in place of "useful". This blocks landing, never work. In 1.x the design reviewer asks this in every review round (`skills/spec-converge/templates/reviewer-lessons-aware.md` in JKHeadley/instar); no gate measures surviving benefit there either.
+Terms: term:operator, term:reach
 
 ## 126. Documents Stand on Their Own
 
 Every document written for a decision or for review can be followed by a reader with none of the session's context. That covers specs, plain-language overviews, reports and approval requests. Before any detail, it says in plain words what this part of the system does today, what is wrong or wanted, and what changes. It defines each term at first use, and names things by what they do before giving any internal name. Every number carries its unit and its comparison. It never relies on earlier conversation, "as discussed", or session shorthand.
 
-Check: Nothing checks this yet. Owed: the independent review of a design reads each document written for a decision as a newcomer would. Whether a document stands on its own is a judgment, held by that review, not a script. A decision document that does not stand on its own is rewritten before the decision is asked for. In 1.x this is a rule at the top of the plain-language overview template (`skills/instar-dev/templates/eli16-overview.md` in JKHeadley/instar) and a reviewer question; no check reads a document as a newcomer would there either.
+Check: Whether a document stands on its own is a judgment. The independent review of a design reads each document written for a decision as a newcomer would. No script checks this, and none is owed. A decision document that does not stand on its own is rewritten before the decision is asked for. In 1.x this is a rule at the top of the plain-language overview template (`skills/instar-dev/templates/eli16-overview.md` in JKHeadley/instar) and a reviewer question; no check reads a document as a newcomer would there either.
 Terms: (none)
 
 ## 13. Quantitative Claims Must Bind a Subject
